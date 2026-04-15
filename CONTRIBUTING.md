@@ -41,7 +41,7 @@ mvn spotless:apply
 mvn spotless:check
 ```
 
-**Tip:** Run `mvn spotless:apply` before committing to ensure your code is properly formatted.
+> **Note:** Spotless automatic check during build is currently disabled due to a [Java 25 incompatibility](https://github.com/diffplug/spotless/issues/2468). Please run `mvn spotless:apply` manually before committing.
 
 ## Running Tests
 
