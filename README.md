@@ -1,119 +1,64 @@
 <h1 align="center">Kairo</h1>
 
-<h3 align="center">A Java Agent OS -- Runtime Infrastructure for AI Agents</h3>
+<!-- TODO: Replace with your project logo -->
+<!-- <p align="center"><img src="docs/logo.svg" alt="Kairo Logo" width="200" /></p> -->
+
+<h3 align="center">A Java Agent OS — Runtime Infrastructure for AI Agents</h3>
 
 <p align="center">
+  <a href="./README_zh.md">中文</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/kairo-agent/kairo/actions"><img src="https://github.com/kairo-agent/kairo/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License" />
   <img src="https://img.shields.io/badge/JDK-17%2B-orange" alt="JDK 17+" />
-  <img src="https://img.shields.io/badge/tests-717%20passed-brightgreen" alt="Tests" />
-  <img src="https://img.shields.io/badge/modules-7-informational" alt="Modules" />
   <img src="https://img.shields.io/badge/version-0.1.0--SNAPSHOT-yellow" alt="Version" />
+  <img src="https://img.shields.io/badge/reactive-Project%20Reactor-green" alt="Reactor" />
 </p>
 
 ---
 
 ## Overview
 
-**Kairo** (from Greek *Kairos* -- the decisive moment for action) is a Java Agent operating system that provides a complete runtime environment for AI agents. Rather than being yet another LLM wrapper, Kairo models the agent runtime as an operating system, mapping every component to a familiar OS concept:
+**Kairo** (from Greek *Kairos* — the decisive moment for action) is a Java Agent operating system that provides a complete runtime environment for AI agents. Rather than being yet another LLM wrapper, Kairo models the agent runtime as an operating system, mapping every component to a familiar OS concept:
 
 | OS Concept | Kairo Mapping | Description |
 |------------|---------------|-------------|
 | Memory | Context | Context window as bounded memory with intelligent compaction |
-| System Call | Tool | 30+ specialized tools -- the agent's interface to the outside world |
+| System Call | Tool | 21+ specialized tools — the agent's interface to the outside world |
 | Process | Agent | Independent execution unit driven by a ReAct loop |
 | File System | Memory | Persistent knowledge storage (file / in-memory) |
 | Signal | Hook | Lifecycle event chain (Pre/Post Reasoning, Acting) |
 | Executable | Skill | Plug-and-play capability packs in Markdown format |
 | Job Scheduling | Task + Team | Multi-agent task orchestration and team collaboration |
 
-This OS metaphor provides clear separation of concerns and makes agent internals instantly recognizable to any systems programmer. Kairo is built on Project Reactor for fully reactive, non-blocking execution and supports Claude, GLM, Qwen, GPT, and other models out of the box.
+Kairo is built on Project Reactor for fully reactive, non-blocking execution and supports Claude, GLM, Qwen, GPT, and other models out of the box.
 
 ## Architecture
 
 ```
 kairo-parent (0.1.0-SNAPSHOT)
-├── kairo-api                  — SPI interface layer
-├── kairo-core                 — Core runtime implementation
-├── kairo-tools                — Built-in tool suite (20+ tools)
-├── kairo-multi-agent          — Multi-agent orchestration
+├── kairo-api                  — SPI interface layer (zero implementation dependencies)
+├── kairo-core                 — Core runtime (ReAct engine, compaction, model providers)
+├── kairo-tools                — Built-in tool suite (21 tools)
+├── kairo-multi-agent          — Multi-agent orchestration (TaskBoard, TeamScheduler)
 ├── kairo-spring-boot-starter  — Spring Boot auto-configuration
 └── kairo-demo                 — Demo applications
 ```
 
-| Module | Description |
-|--------|-------------|
-| **kairo-api** | Pure SPI interfaces with zero implementation dependencies. Defines Agent, Context, Tool, Hook, Skill, Task, Team, Model, and Message contracts. |
-| **kairo-core** | Core runtime: ReAct engine (`DefaultReActAgent`), 6-stage compaction pipeline, Anthropic/OpenAI model providers, hook chain, memory stores, skill system. |
-| **kairo-tools** | 20+ built-in tools across file ops (`Read/Write/Edit/Glob/Grep`), execution (`Bash/Monitor`), interaction (`AskUser`), skills (`SkillList/SkillLoad`), and agent ops (`Spawn/Message/Task/Team/Plan`). |
-| **kairo-multi-agent** | Task board, plan builder, team manager, team scheduler, and in-process message bus for multi-agent collaboration. |
-| **kairo-spring-boot-starter** | `@EnableKairo` annotation and auto-configuration for seamless Spring Boot integration. |
-| **kairo-demo** | Ready-to-run demos supporting Mock, GLM (Zhipu), Qwen (DashScope), and Claude (Anthropic) modes. |
-
 ## Key Features
 
-### Tool System
-
-- **Read/write partition** -- read-only tools execute in parallel, write tools serialize automatically
-- **30+ specialized tools** -- annotation-scanned registration, precise parameter definitions, input validation
-- **Streaming execution** -- non-blocking tool execution with reactive backpressure
-- **Human-in-the-loop approval** -- `PermissionGuard` controls side-effect authorization per tool
-
-### Agent Loop
-
-- **ReAct engine** -- `DefaultReActAgent` (498 lines) implements the full Reasoning-Acting cycle
-- **Multi-layer error recovery** -- 3-retry with exponential backoff, automatic model fallback chain
-- **Configurable iteration limits** -- prevent runaway loops with `maxIterations`
-- **Streaming responses** -- real-time token streaming with non-streaming fallback
-
-### Context Engineering
-
-- **6-stage compaction pipeline** with progressive thresholds:
-
-  | Stage | Strategy | Trigger | Action |
-  |-------|----------|---------|--------|
-  | 1 | SnipCompaction | 80% | Trim old tool results |
-  | 2 | MicroCompaction | 85% | Clear tool result content |
-  | 3 | CollapseCompaction | 90% | Collapse message groups |
-  | 4 | AutoCompaction | 95% | LLM-generated summary |
-  | 5 | PartialCompaction | 98% | Selective last-resort compression |
-  | 6 | CircuitBreaker | -- | Halt after 3 consecutive failures |
-
-- **"Facts First" strategy** -- preserve raw context as long as possible; compaction is a safety net, not a policy
-- **Prompt caching** -- reduce redundant LLM calls for repeated context
-- **Post-compact recovery** -- restore critical information after aggressive compaction
-- **Token budget management** -- configurable per-agent token limits
-
-### Model Harness
-
-- **Deep Anthropic integration** -- `AnthropicProvider` (664 lines) with native Claude API support
-- **OpenAI-compatible fallback** -- `OpenAIProvider` supports any OpenAI-compatible endpoint
-- **Dynamic thinking budget** -- adjust reasoning depth based on task complexity
-- **Tool verbosity adaptation** -- tune tool descriptions per model capability
-
-### Plan Mode
-
-- **Mode isolation** -- separate planning from execution to improve reasoning quality
-- **Plan file persistence** -- plans survive agent restarts
-- **Approval flow** -- review and approve plans before execution via `EnterPlanModeTool` / `ExitPlanModeTool`
-
-### Multi-Agent Orchestration
-
-- **TaskBoard** -- track task state, dependencies, and assignment
-- **PlanBuilder** -- decompose complex tasks into executable sub-task graphs
-- **TeamScheduler** -- coordinate concurrent multi-agent execution
-- **MessageBus** -- in-process async communication between agents
-
-### Session Persistence
-
-- **File-based persistence** -- serialize agent state to disk for session recovery
-- **TTL cleanup** -- automatic expiration of stale sessions
-- **Session ID management** -- deterministic session identifiers for reproducibility
-
-### Skill System
-
-- **Markdown-based definitions** -- skills defined as Markdown files, loaded from the filesystem
-- **Anti-contamination design** -- `TriggerGuard` (0.8 threshold) prevents false activation
-- **Match priority** -- slash command > exact match > keyword match
+- **ReAct Engine** — `DefaultReActAgent` implements the full Reasoning-Acting cycle with configurable iteration limits, streaming responses, and multi-layer error recovery
+- **6-Stage Context Compaction** — Progressive pipeline (Snip → Micro → Collapse → Auto → Partial → CircuitBreaker) with "Facts First" strategy to preserve raw context as long as possible
+- **21 Built-in Tools** — File ops (Read/Write/Edit/Glob/Grep), execution (Bash/Monitor), interaction (AskUser), skills (SkillList/SkillLoad), and agent ops (Spawn/Message/Task/Team/Plan)
+- **Read/Write Partition** — READ_ONLY tools execute in parallel, WRITE/SYSTEM_CHANGE tools serialize automatically
+- **Human-in-the-Loop** — Three-state permission model (ALLOWED/ASK/DENIED) with `PermissionGuard`
+- **Multi-Agent Orchestration** — TaskBoard, PlanBuilder, TeamScheduler, and in-process MessageBus
+- **Skill System** — Markdown-based skill definitions with `TriggerGuard` anti-contamination design
+- **Plan Mode** — Separate planning from execution; write tools blocked during planning
+- **Model Harness** — Deep Anthropic integration + OpenAI-compatible fallback for GLM, Qwen, GPT, etc.
+- **Session Persistence** — File-based state serialization with TTL cleanup
 
 ## Quick Start
 
@@ -149,8 +94,6 @@ Msg result = agent.call(MsgBuilder.user("Create a HelloWorld.java, compile and r
 
 ## Model Support
 
-Kairo supports multiple model providers through a unified interface:
-
 | Provider | Models | API Type | Environment Variable |
 |----------|--------|----------|---------------------|
 | **Anthropic** | Claude Sonnet, Claude Opus, Claude Haiku | Native Anthropic API | `ANTHROPIC_API_KEY` |
@@ -158,36 +101,19 @@ Kairo supports multiple model providers through a unified interface:
 | **DashScope** | Qwen-Plus, Qwen-Max, Qwen-Turbo | OpenAI-compatible | `QWEN_API_KEY` |
 | **OpenAI** | GPT-4o, GPT-4, GPT-3.5 | OpenAI-compatible | `OPENAI_API_KEY` |
 
-Configuration examples:
-
 ```java
 // Anthropic (native API)
 AnthropicProvider claude = new AnthropicProvider(apiKey);
 
-// GLM (OpenAI-compatible)
-OpenAIProvider glm = new OpenAIProvider(apiKey,
-    "https://open.bigmodel.cn/api/paas/v4", "/chat/completions");
-
-// Qwen (OpenAI-compatible)
-OpenAIProvider qwen = new OpenAIProvider(apiKey,
-    "https://dashscope.aliyuncs.com/compatible-mode/v1", "/chat/completions");
-
-// Any OpenAI-compatible endpoint
-OpenAIProvider custom = new OpenAIProvider(apiKey, baseUrl, "/chat/completions");
+// GLM / Qwen / GPT (OpenAI-compatible)
+OpenAIProvider provider = new OpenAIProvider(apiKey, baseUrl, "/chat/completions");
 ```
 
 ## Build
 
-**Prerequisites:**
-- JDK 17+
-- Maven 3.8+
-
 ```bash
 # Build all modules
 mvn clean verify
-
-# Run tests only
-mvn test
 
 # Run demo (mock mode, no API key needed)
 mvn exec:java -pl kairo-demo \
@@ -200,17 +126,36 @@ mvn exec:java -pl kairo-demo \
 | Metric | Value |
 |--------|-------|
 | Version | 0.1.0-SNAPSHOT |
-| Modules | 7 (api, core, tools, multi-agent, spring-boot-starter, demo, parent) |
-| Tests | 717 passed, 0 failures |
+| Source files | 188 (22K+ lines) |
+| Test files | 98 (17K+ lines) |
 | Code Style | Spotless + Google Java Format (AOSP) |
-| Coverage | JaCoCo (multi-agent at 95.5%) |
-| CI/CD | GitHub Actions |
-| Reactive | Project Reactor (Mono/Flux) |
+| Coverage | JaCoCo |
 | License | Apache 2.0 |
 
 ## Contributing
 
-We welcome contributions. Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines, including code style requirements, issue/PR templates, and conventional commit conventions.
+We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+
+Look for issues labeled [`good first issue`](https://github.com/kairo-agent/kairo/labels/good%20first%20issue) to get started, or [`help wanted`](https://github.com/kairo-agent/kairo/labels/help%20wanted) for more challenging tasks.
+
+## Community
+
+- [GitHub Discussions](https://github.com/kairo-agent/kairo/discussions) — Questions, ideas, and general discussion
+- [GitHub Issues](https://github.com/kairo-agent/kairo/issues) — Bug reports and feature requests
+
+<!-- TODO: Add community channels when available -->
+<!-- - [Discord](https://discord.gg/xxx) -->
+<!-- - WeChat / DingTalk group QR codes -->
+
+## Acknowledgments
+
+Kairo was inspired by the following open-source projects:
+
+- [AgentScope Java](https://github.com/agentscope-ai/agentscope-java) (Apache 2.0, Alibaba) — Kairo's modular architecture, SPI interface design, Hook lifecycle system, and Spring Boot integration patterns were influenced by AgentScope Java's agent-oriented programming approach.
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (Anthropic) — Kairo's three-state permission model (allow/ask/deny), context compaction strategy, read/write tool partitioning, and plan mode isolation were inspired by design patterns from Anthropic's Claude Code.
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent) (MIT, Nous Research) — Kairo's Markdown-based skill system with frontmatter metadata and trigger guard concept were influenced by Hermes Agent's skills system.
+
+Kairo extends these ideas with original contributions including the OS metaphor architecture, multi-stage context compaction pipeline, Skill system with anti-contamination design, and deep Anthropic prompt caching integration.
 
 ## License
 
