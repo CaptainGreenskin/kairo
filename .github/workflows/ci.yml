@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & Test (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java: [ '17', '21' ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build and test
+        run: mvn clean verify -B -ntp
+
+      - name: Upload coverage to Codecov
+        if: matrix.java == '17'
+        uses: codecov/codecov-action@v4
+        with:
+          files: |
+            kairo-api/target/site/jacoco/jacoco.xml,
+            kairo-core/target/site/jacoco/jacoco.xml,
+            kairo-tools/target/site/jacoco/jacoco.xml,
+            kairo-multi-agent/target/site/jacoco/jacoco.xml
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # Spotless is disabled from automatic build due to Java 25 incompatibility.
+  # Uncomment when https://github.com/diffplug/spotless/issues/2468 is resolved.
+  # format-check:
+  #   name: Code Format Check
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-java@v4
+  #       with:
+  #         java-version: '17'
+  #         distribution: 'temurin'
+  #         cache: 'maven'
+  #     - run: mvn spotless:check -B -ntp
