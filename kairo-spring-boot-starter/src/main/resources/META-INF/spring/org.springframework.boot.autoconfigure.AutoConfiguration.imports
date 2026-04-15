@@ -1,0 +1,2 @@
+io.kairo.spring.AgentRuntimeAutoConfiguration
+io.kairo.spring.AgentActuatorAutoConfiguration

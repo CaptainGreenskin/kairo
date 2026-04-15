@@ -1,0 +1,92 @@
+/*
+ * Copyright 2025-2026 the Kairo authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package io.kairo.core.memory;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import io.kairo.api.memory.MemoryEntry;
+import io.kairo.api.memory.MemoryScope;
+import java.util.List;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+class MemoryEntryBuilderTest {
+
+    @Test
+    @DisplayName("session() creates SESSION-scoped entry with verbatim=true")
+    void testSessionFactory() {
+        MemoryEntry entry = MemoryEntryBuilder.session("session data");
+
+        assertNotNull(entry.id());
+        assertFalse(entry.id().isBlank());
+        assertEquals("session data", entry.content());
+        assertEquals(MemoryScope.SESSION, entry.scope());
+        assertNotNull(entry.timestamp());
+        assertEquals(List.of(), entry.tags());
+        assertTrue(entry.verbatim());
+    }
+
+    @Test
+    @DisplayName("project() creates PROJECT-scoped entry with tags")
+    void testProjectFactory() {
+        MemoryEntry entry = MemoryEntryBuilder.project("project data", "java", "kairo");
+
+        assertEquals("project data", entry.content());
+        assertEquals(MemoryScope.PROJECT, entry.scope());
+        assertEquals(List.of("java", "kairo"), entry.tags());
+        assertTrue(entry.verbatim());
+    }
+
+    @Test
+    @DisplayName("project() with no tags creates empty tag list")
+    void testProjectNoTags() {
+        MemoryEntry entry = MemoryEntryBuilder.project("data");
+
+        assertEquals(List.of(), entry.tags());
+    }
+
+    @Test
+    @DisplayName("user() creates USER-scoped entry with tags")
+    void testUserFactory() {
+        MemoryEntry entry = MemoryEntryBuilder.user("user pref", "preference", "theme");
+
+        assertEquals("user pref", entry.content());
+        assertEquals(MemoryScope.USER, entry.scope());
+        assertEquals(List.of("preference", "theme"), entry.tags());
+        assertTrue(entry.verbatim());
+    }
+
+    @Test
+    @DisplayName("create() allows full control over all fields")
+    void testCreateFactory() {
+        MemoryEntry entry =
+                MemoryEntryBuilder.create("custom", MemoryScope.PROJECT, List.of("t1"), false);
+
+        assertEquals("custom", entry.content());
+        assertEquals(MemoryScope.PROJECT, entry.scope());
+        assertEquals(List.of("t1"), entry.tags());
+        assertFalse(entry.verbatim());
+    }
+
+    @Test
+    @DisplayName("Each entry gets a unique ID")
+    void testUniqueIds() {
+        MemoryEntry e1 = MemoryEntryBuilder.session("a");
+        MemoryEntry e2 = MemoryEntryBuilder.session("b");
+
+        assertNotEquals(e1.id(), e2.id());
+    }
+}

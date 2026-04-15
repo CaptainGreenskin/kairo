@@ -1,0 +1,275 @@
+/*
+ * Copyright 2025-2026 the Kairo authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package io.kairo.core.context.compaction;
+
+import io.kairo.api.context.CompactionConfig;
+import io.kairo.api.context.CompactionResult;
+import io.kairo.api.context.CompactionStrategy;
+import io.kairo.api.context.ContextState;
+import io.kairo.api.hook.HookChain;
+import io.kairo.api.hook.PostCompactEvent;
+import io.kairo.api.hook.PreCompactEvent;
+import io.kairo.api.message.Msg;
+import io.kairo.api.model.ModelProvider;
+import io.kairo.core.model.ModelRegistry;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+/**
+ * Orchestrates progressive compaction through multiple stages.
+ *
+ * <p>Key design: compaction is <strong>progressive</strong> — lighter strategies are attempted
+ * first, and heavier ones only kick in when pressure remains high. A circuit breaker prevents
+ * runaway compaction attempts.
+ *
+ * <p>Default pipeline order (by priority):
+ *
+ * <ol>
+ *   <li>{@link TimeBasedMicrocompact} (idle) — compress old messages after 60min idle
+ *   <li>{@link SnipCompaction} (80%) — snip old tool results
+ *   <li>{@link MicroCompaction} (85%) — clear tool result content
+ *   <li>{@link CollapseCompaction} (90%) — fold message groups
+ *   <li>{@link AutoCompaction} (95%) — LLM-generated summary
+ *   <li>{@link PartialCompaction} (98%) — selective last-resort compression
+ * </ol>
+ */
+public class CompactionPipeline {
+
+    private static final Logger log = LoggerFactory.getLogger(CompactionPipeline.class);
+
+    private final List<CompactionStrategy> stages;
+    private final CircuitBreaker circuitBreaker;
+    private final String modelId;
+    private final HookChain hookChain;
+
+    /**
+     * Create a pipeline with default stages.
+     *
+     * @param modelProvider the model provider for AutoCompaction (may be null)
+     */
+    public CompactionPipeline(ModelProvider modelProvider) {
+        this(modelProvider, null, null);
+    }
+
+    /**
+     * Create a pipeline with default stages, model ID, and hook chain.
+     *
+     * @param modelProvider the model provider for AutoCompaction (may be null)
+     * @param modelId the model ID for resolving context window (may be null)
+     * @param hookChain the hook chain for pre/post compact events (may be null)
+     */
+    public CompactionPipeline(ModelProvider modelProvider, String modelId, HookChain hookChain) {
+        this(
+                List.of(
+                        new TimeBasedMicrocompact(),
+                        new SnipCompaction(),
+                        new MicroCompaction(),
+                        new CollapseCompaction(),
+                        new AutoCompaction(modelProvider),
+                        new PartialCompaction()),
+                modelId,
+                hookChain);
+    }
+
+    /**
+     * Create a pipeline with custom stages.
+     *
+     * @param stages the compaction strategies to use, in priority order
+     */
+    public CompactionPipeline(List<CompactionStrategy> stages) {
+        this(stages, null, null);
+    }
+
+    /**
+     * Create a pipeline with custom stages, model ID, and hook chain.
+     *
+     * @param stages the compaction strategies to use, in priority order
+     * @param modelId the model ID for resolving context window (may be null)
+     * @param hookChain the hook chain for pre/post compact events (may be null)
+     */
+    public CompactionPipeline(
+            List<CompactionStrategy> stages, String modelId, HookChain hookChain) {
+        this.stages =
+                stages.stream()
+                        .sorted(Comparator.comparingInt(CompactionStrategy::priority))
+                        .toList();
+        this.circuitBreaker = new CircuitBreaker(3);
+        this.modelId = modelId;
+        this.hookChain = hookChain;
+    }
+
+    /**
+     * Execute the compaction pipeline on the given messages.
+     *
+     * <p>Filters out verbatim messages before passing to strategies. Each stage is executed
+     * sequentially, and later stages only run if the current pressure still exceeds their trigger
+     * threshold.
+     *
+     * @param messages the full message list
+     * @param verbatimIds IDs of messages that must not be compressed
+     * @param currentPressure the current token pressure
+     * @param config the compaction configuration
+     * @return a Mono emitting the merged compaction result, or empty if nothing was done
+     */
+    public Mono<CompactionResult> execute(
+            List<Msg> messages,
+            Set<String> verbatimIds,
+            float currentPressure,
+            CompactionConfig config) {
+        if (circuitBreaker.isOpen()) {
+            log.warn("CompactionPipeline circuit breaker is OPEN — skipping compaction");
+            return Mono.empty();
+        }
+
+        int contextWindow = modelId != null ? ModelRegistry.getContextWindow(modelId) : 0;
+        ContextState state =
+                new ContextState(0, 0, currentPressure, messages.size(), contextWindow);
+
+        // Filter compressible messages (exclude verbatim)
+        List<Msg> compressible =
+                messages.stream().filter(m -> !verbatimIds.contains(m.id())).toList();
+
+        // Fire PreCompact hook if available
+        Mono<PreCompactEvent> preHookMono;
+        if (hookChain != null) {
+            PreCompactEvent preEvent = new PreCompactEvent(compressible, currentPressure);
+            preHookMono = hookChain.firePreCompact(preEvent);
+        } else {
+            preHookMono = Mono.just(new PreCompactEvent(compressible, currentPressure));
+        }
+
+        return preHookMono.flatMap(
+                preEvent -> {
+                    if (preEvent.cancelled()) {
+                        log.info("Compaction cancelled by PreCompact hook");
+                        return Mono.empty();
+                    }
+
+                    return Flux.fromIterable(stages)
+                            .filter(stage -> stage.shouldTrigger(state))
+                            .concatMap(
+                                    stage -> {
+                                        log.info(
+                                                "Executing compaction stage: {} (priority={})",
+                                                stage.name(),
+                                                stage.priority());
+                                        return stage.compact(compressible, config);
+                                    })
+                            .reduce(this::mergeResults)
+                            .flatMap(
+                                    result -> {
+                                        // Fire PostCompact hook if available
+                                        if (hookChain != null) {
+                                            PostCompactEvent postEvent =
+                                                    new PostCompactEvent(
+                                                            result.compactedMessages(),
+                                                            result.tokensSaved(),
+                                                            result.marker().strategyName(),
+                                                            List.of(result.marker()));
+                                            return hookChain
+                                                    .firePostCompact(postEvent)
+                                                    .map(
+                                                            evt -> {
+                                                                // Merge recovery messages
+                                                                List<Msg> recoveryMsgs =
+                                                                        evt.getRecoveryMessages();
+                                                                if (!recoveryMsgs.isEmpty()) {
+                                                                    List<Msg> merged =
+                                                                            new ArrayList<>(
+                                                                                    result
+                                                                                            .compactedMessages());
+                                                                    merged.addAll(recoveryMsgs);
+                                                                    return new CompactionResult(
+                                                                            merged,
+                                                                            result.tokensSaved(),
+                                                                            result.marker());
+                                                                }
+                                                                return result;
+                                                            });
+                                        }
+                                        return Mono.just(result);
+                                    })
+                            .doOnSuccess(
+                                    result -> {
+                                        if (result != null) {
+                                            circuitBreaker.recordSuccess();
+                                            log.info(
+                                                    "Compaction complete: saved {} tokens",
+                                                    result.tokensSaved());
+                                        }
+                                    })
+                            .doOnError(
+                                    e -> {
+                                        circuitBreaker.recordFailure();
+                                        log.error("Compaction failed: {}", e.getMessage());
+                                    });
+                });
+    }
+
+    private CompactionResult mergeResults(CompactionResult a, CompactionResult b) {
+        // Use the latest compacted messages, accumulate tokens saved
+        return new CompactionResult(
+                b.compactedMessages(), a.tokensSaved() + b.tokensSaved(), b.marker());
+    }
+
+    /**
+     * Check if the circuit breaker is open (too many consecutive failures).
+     *
+     * @return true if the pipeline is currently disabled
+     */
+    public boolean isCircuitBreakerOpen() {
+        return circuitBreaker.isOpen();
+    }
+
+    /** Reset the circuit breaker. */
+    public void resetCircuitBreaker() {
+        circuitBreaker.reset();
+    }
+
+    /** Internal circuit breaker to prevent runaway compaction attempts. */
+    static class CircuitBreaker {
+
+        private final int threshold;
+        private final AtomicInteger consecutiveFailures = new AtomicInteger(0);
+
+        CircuitBreaker(int threshold) {
+            this.threshold = threshold;
+        }
+
+        boolean isOpen() {
+            return consecutiveFailures.get() >= threshold;
+        }
+
+        void recordSuccess() {
+            consecutiveFailures.set(0);
+        }
+
+        void recordFailure() {
+            consecutiveFailures.incrementAndGet();
+        }
+
+        void reset() {
+            consecutiveFailures.set(0);
+        }
+    }
+}
