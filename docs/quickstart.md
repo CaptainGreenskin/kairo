@@ -191,7 +191,7 @@ ModelConfig config = ModelConfig.builder()
 
 ```bash
 # Clone and build
-git clone https://github.com/kairo-agent/kairo.git
+git clone https://github.com/CaptainGreenskin/kairo.git
 cd kairo
 mvn clean verify
 
