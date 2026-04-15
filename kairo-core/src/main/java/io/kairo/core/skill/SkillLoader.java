@@ -24,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,6 +53,9 @@ public class SkillLoader {
 
     /** Directory from which skills were loaded (for full-content reload). */
     private Path skillDirectory;
+
+    /** Maps skill name (frontmatter) → original filename stem (without .md extension). */
+    private final ConcurrentHashMap<String, String> nameToFileStem = new ConcurrentHashMap<>();
 
     public SkillLoader(SkillRegistry registry) {
         this.registry = registry;
@@ -160,6 +164,9 @@ public class SkillLoader {
                         // Progressive disclosure: register metadata-only, load full on demand
                         SkillDefinition metadataOnly = parser.parseMetadataOnly(content);
                         registry.register(metadataOnly);
+                        // Preserve the original filename for later full-content reload
+                        String fileStem = path.getFileName().toString().replaceFirst("\\.md$", "");
+                        nameToFileStem.put(metadataOnly.name(), fileStem);
                         log.debug("Loaded skill metadata: {} from {}", metadataOnly.name(), path);
                         return Flux.just(metadataOnly);
                     } catch (Exception e) {
@@ -172,8 +179,9 @@ public class SkillLoader {
         if (skillDirectory == null) {
             return metadataOnly;
         }
-        // Try to find the file by skill name
-        Path skillFile = skillDirectory.resolve(skillName + ".md");
+        // Use the original filename stem (not the frontmatter name) to locate the file
+        String fileStem = nameToFileStem.getOrDefault(skillName, skillName);
+        Path skillFile = skillDirectory.resolve(fileStem + ".md");
         if (!Files.exists(skillFile)) {
             log.warn(
                     "Cannot reload full content for skill '{}': file not found at {}",

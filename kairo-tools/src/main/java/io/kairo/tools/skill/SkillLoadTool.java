@@ -21,6 +21,7 @@ import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.core.skill.SkillLoader;
 import io.kairo.core.tool.ToolHandler;
 import java.util.HashMap;
 import java.util.Map;
@@ -44,9 +45,22 @@ public class SkillLoadTool implements ToolHandler {
     private String name;
 
     private final SkillRegistry registry;
+    private final SkillLoader skillLoader;
 
+    /**
+     * Create with a registry only (no progressive-disclosure reload support).
+     */
     public SkillLoadTool(SkillRegistry registry) {
+        this(registry, null);
+    }
+
+    /**
+     * Create with both registry and loader. The loader enables on-demand full-content reload
+     * for skills that were loaded metadata-only.
+     */
+    public SkillLoadTool(SkillRegistry registry, SkillLoader skillLoader) {
         this.registry = registry;
+        this.skillLoader = skillLoader;
     }
 
     @Override
@@ -56,7 +70,15 @@ public class SkillLoadTool implements ToolHandler {
             return error("Parameter 'name' is required");
         }
 
-        SkillDefinition skill = registry.get(skillName).orElse(null);
+        // Try to load full content via SkillLoader (progressive disclosure reload),
+        // falling back to direct registry lookup.
+        SkillDefinition skill = null;
+        if (skillLoader != null) {
+            skill = skillLoader.getFullContent(skillName);
+        }
+        if (skill == null) {
+            skill = registry.get(skillName).orElse(null);
+        }
         if (skill == null) {
             // Try to suggest similar skills
             String suggestions =

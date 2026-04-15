@@ -172,7 +172,7 @@ class SkillMarkdownParserTest {
         SkillDefinition skill = parser.parseMetadataOnly(VALID_MARKDOWN);
 
         assertEquals("code-review", skill.name());
-        assertEquals("", skill.instructions());
+        assertNull(skill.instructions());
         assertEquals("1.0.0", skill.version());
         assertEquals(2, skill.triggerConditions().size());
     }

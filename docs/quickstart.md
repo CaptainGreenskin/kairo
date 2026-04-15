@@ -190,17 +190,23 @@ ModelConfig config = ModelConfig.builder()
 ## Running the Demo
 
 ```bash
-# Clone and build
+# Clone and build (install is required for cross-module demos)
 git clone https://github.com/CaptainGreenskin/kairo.git
 cd kairo
-mvn clean verify
+mvn clean install
 
 # Mock mode (no API key needed)
 mvn exec:java -pl kairo-demo -Dexec.mainClass="io.kairo.demo.AgentDemo" -Dexec.args="--mock"
 
-# GLM mode
-export GLM_API_KEY=your-key
-mvn exec:java -pl kairo-demo -Dexec.mainClass="io.kairo.demo.AgentDemo" -Dexec.args="--glm"
+# Qwen mode
+export QWEN_API_KEY=your-key
+mvn exec:java -pl kairo-demo -Dexec.mainClass="io.kairo.demo.AgentDemo" -Dexec.args="--qwen"
+
+# Full toolset demo (requires Qwen API key)
+mvn exec:java -pl kairo-demo -Dexec.mainClass="io.kairo.demo.FullToolsetDemo"
+
+# Multi-agent demo (no API key needed)
+mvn exec:java -pl kairo-demo -Dexec.mainClass="io.kairo.demo.MultiAgentDemo"
 ```
 
 ## Next Steps
@@ -209,4 +215,3 @@ mvn exec:java -pl kairo-demo -Dexec.mainClass="io.kairo.demo.AgentDemo" -Dexec.a
 - Explore the [API module](../kairo-api/) for all extension points and SPI interfaces
 - Check [kairo-tools](../kairo-tools/) for the full built-in tool catalog
 - See [kairo-multi-agent](../kairo-multi-agent/) for Task, Team, and MessageBus orchestration
-- Read the [SUMMARY.md](../SUMMARY.md) for architecture overview and design principles

@@ -111,14 +111,34 @@ OpenAIProvider provider = new OpenAIProvider(apiKey, baseUrl, "/chat/completions
 ## Build
 
 ```bash
-# Build all modules
-mvn clean verify
+# Build and install all modules (required before running demos)
+mvn clean install
+
+# Run tests only
+mvn test
 
 # Run demo (mock mode, no API key needed)
 mvn exec:java -pl kairo-demo \
   -Dexec.mainClass="io.kairo.demo.AgentDemo" \
   -Dexec.args="--mock"
+
+# Run demo with Qwen (requires QWEN_API_KEY)
+export QWEN_API_KEY=your-key
+mvn exec:java -pl kairo-demo \
+  -Dexec.mainClass="io.kairo.demo.AgentDemo" \
+  -Dexec.args="--qwen"
 ```
+
+More demos available:
+
+| Demo | API Key | What it tests |
+|------|---------|---------------|
+| `AgentDemo --mock` | No | Basic ReAct loop with mock model |
+| `AgentDemo --qwen` | Qwen | ReAct loop with real LLM |
+| `FullToolsetDemo` | Qwen | All 6 tools: read, write, edit, glob, grep, bash |
+| `SkillDemo` | Qwen | Skill system: list, load, and use Markdown skills |
+| `MultiAgentDemo` | No | TaskBoard DAG tracking + MessageBus pub/sub |
+| `SessionDemo` | No | FileMemoryStore + SessionSerializer round-trip |
 
 ## Project Status
 
