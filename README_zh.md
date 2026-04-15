@@ -111,14 +111,34 @@ OpenAIProvider provider = new OpenAIProvider(apiKey, baseUrl, "/chat/completions
 ## 构建
 
 ```bash
-# 构建所有模块
-mvn clean verify
+# 构建并安装所有模块（运行 Demo 前必须先执行）
+mvn clean install
+
+# 仅运行测试
+mvn test
 
 # 运行演示（Mock 模式，无需 API Key）
 mvn exec:java -pl kairo-demo \
   -Dexec.mainClass="io.kairo.demo.AgentDemo" \
   -Dexec.args="--mock"
+
+# 运行演示（千问模式，需要 QWEN_API_KEY）
+export QWEN_API_KEY=your-key
+mvn exec:java -pl kairo-demo \
+  -Dexec.mainClass="io.kairo.demo.AgentDemo" \
+  -Dexec.args="--qwen"
 ```
+
+更多 Demo：
+
+| Demo | 需要 API Key | 测试内容 |
+|------|-------------|---------|
+| `AgentDemo --mock` | 否 | 基础 ReAct 循环（Mock 模型） |
+| `AgentDemo --qwen` | 千问 | 真实 LLM 的 ReAct 循环 |
+| `FullToolsetDemo` | 千问 | 全部 6 个工具：read, write, edit, glob, grep, bash |
+| `SkillDemo` | 千问 | 技能系统：列出、加载和使用 Markdown 技能 |
+| `MultiAgentDemo` | 否 | TaskBoard DAG 依赖追踪 + MessageBus 发布/订阅 |
+| `SessionDemo` | 否 | FileMemoryStore + SessionSerializer 序列化往返 |
 
 ## 项目状态
 

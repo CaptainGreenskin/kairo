@@ -29,7 +29,7 @@ jobs:
           cache: 'maven'
 
       - name: Build and test
-        run: mvn clean verify -B -ntp
+        run: mvn clean install -B -ntp
 
       - name: Upload coverage to Codecov
         if: matrix.java == '17'

@@ -79,14 +79,22 @@ public class StreamingToolDetector {
         private boolean streamDone = false;
         private int pendingTools = 0;
 
+        /**
+         * The most recently started tool call ID. Used as a fallback when providers (e.g. Qwen /
+         * DashScope) send DELTA or END chunks with empty or null tool call IDs.
+         */
+        private String lastStartedId = null;
+
         void startTool(String id, String name) {
             toolNames.put(id, name);
             toolArgs.put(id, new StringBuilder());
+            lastStartedId = id;
             pendingTools++;
         }
 
         void appendArgs(String id, String delta) {
-            var sb = toolArgs.get(id);
+            String resolvedId = resolveId(id);
+            var sb = toolArgs.get(resolvedId);
             if (sb != null && delta != null) {
                 sb.append(delta);
             }
@@ -94,14 +102,32 @@ public class StreamingToolDetector {
 
         void completeTool(String id) {
             pendingTools--;
-            String name = toolNames.remove(id);
+            String resolvedId = resolveId(id);
+            String name = toolNames.remove(resolvedId);
             if (name == null) {
-                log.warn("Tool completion for unknown id: {} — skipping", id);
+                log.warn("Tool completion for unknown id: {} — skipping", resolvedId);
                 return; // Don't emit a broken DetectedToolCall
             }
-            StringBuilder argsSb = toolArgs.remove(id);
+            StringBuilder argsSb = toolArgs.remove(resolvedId);
             Map<String, Object> args = parseArgs(argsSb != null ? argsSb.toString() : "{}");
-            completedTool = new DetectedToolCall(id, name, args, streamDone && pendingTools <= 0);
+            completedTool =
+                    new DetectedToolCall(
+                            resolvedId, name, args, streamDone && pendingTools <= 0);
+        }
+
+        /**
+         * Resolve a potentially empty/null tool call ID to the last-started tool call. Some
+         * providers (Qwen via DashScope) only set the ID on the first chunk.
+         */
+        private String resolveId(String id) {
+            if (id != null && !id.isEmpty()) {
+                return id;
+            }
+            if (lastStartedId != null) {
+                log.debug(
+                        "Resolved empty tool call ID to last-started: {}", lastStartedId);
+            }
+            return lastStartedId;
         }
 
         void markDone() {
