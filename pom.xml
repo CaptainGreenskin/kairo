@@ -11,7 +11,7 @@
 
     <name>Kairo</name>
     <description>General-purpose AI Agent runtime — smart context, compression, and orchestration</description>
-    <url>https://github.com/kairo-agent/kairo</url>
+    <url>https://github.com/CaptainGreenskin/kairo</url>
 
     <licenses>
         <license>
@@ -22,14 +22,14 @@
     </licenses>
 
     <scm>
-        <url>https://github.com/kairo-agent/kairo</url>
-        <connection>scm:git:git://github.com/kairo-agent/kairo.git</connection>
-        <developerConnection>scm:git:ssh://git@github.com/kairo-agent/kairo.git</developerConnection>
+        <url>https://github.com/CaptainGreenskin/kairo</url>
+        <connection>scm:git:git://github.com/CaptainGreenskin/kairo.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/CaptainGreenskin/kairo.git</developerConnection>
     </scm>
 
     <issueManagement>
         <system>GitHub Issues</system>
-        <url>https://github.com/kairo-agent/kairo/issues</url>
+        <url>https://github.com/CaptainGreenskin/kairo/issues</url>
     </issueManagement>
 
     <developers>
@@ -37,7 +37,7 @@
             <id>kairo-team</id>
             <name>Kairo Team</name>
             <email>dev@kairo.io</email>
-            <url>https://github.com/kairo-agent/kairo</url>
+            <url>https://github.com/CaptainGreenskin/kairo</url>
         </developer>
     </developers>
 

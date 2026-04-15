@@ -1,7 +1,6 @@
 <h1 align="center">Kairo</h1>
 
-<!-- TODO: Replace with your project logo -->
-<!-- <p align="center"><img src="docs/logo.svg" alt="Kairo Logo" width="200" /></p> -->
+<p align="center"><img src="docs/logo.png" alt="Kairo Logo" width="200" /></p>
 
 <h3 align="center">A Java Agent OS — Runtime Infrastructure for AI Agents</h3>
 
@@ -10,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/kairo-agent/kairo/actions"><img src="https://github.com/kairo-agent/kairo/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/CaptainGreenskin/kairo/actions"><img src="https://github.com/CaptainGreenskin/kairo/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License" />
   <img src="https://img.shields.io/badge/JDK-17%2B-orange" alt="JDK 17+" />
   <img src="https://img.shields.io/badge/version-0.1.0--SNAPSHOT-yellow" alt="Version" />
@@ -136,12 +135,12 @@ mvn exec:java -pl kairo-demo \
 
 We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
-Look for issues labeled [`good first issue`](https://github.com/kairo-agent/kairo/labels/good%20first%20issue) to get started, or [`help wanted`](https://github.com/kairo-agent/kairo/labels/help%20wanted) for more challenging tasks.
+Look for issues labeled [`good first issue`](https://github.com/CaptainGreenskin/kairo/labels/good%20first%20issue) to get started, or [`help wanted`](https://github.com/CaptainGreenskin/kairo/labels/help%20wanted) for more challenging tasks.
 
 ## Community
 
-- [GitHub Discussions](https://github.com/kairo-agent/kairo/discussions) — Questions, ideas, and general discussion
-- [GitHub Issues](https://github.com/kairo-agent/kairo/issues) — Bug reports and feature requests
+- [GitHub Discussions](https://github.com/CaptainGreenskin/kairo/discussions) — Questions, ideas, and general discussion
+- [GitHub Issues](https://github.com/CaptainGreenskin/kairo/issues) — Bug reports and feature requests
 
 <!-- TODO: Add community channels when available -->
 <!-- - [Discord](https://discord.gg/xxx) -->

@@ -12,7 +12,7 @@ If you discover a security vulnerability in Kairo, please report it responsibly.
 
 **DO NOT** open a public GitHub issue for security vulnerabilities.
 
-Instead, please use [GitHub Security Advisories](https://github.com/kairo-agent/kairo/security/advisories/new) to report vulnerabilities privately.
+Instead, please use [GitHub Security Advisories](https://github.com/CaptainGreenskin/kairo/security/advisories/new) to report vulnerabilities privately.
 
 We will acknowledge receipt within 48 hours and provide a detailed response within 7 days.
 

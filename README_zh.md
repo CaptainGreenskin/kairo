@@ -1,7 +1,6 @@
 <h1 align="center">Kairo</h1>
 
-<!-- TODO: 替换为项目 Logo -->
-<!-- <p align="center"><img src="docs/logo.svg" alt="Kairo Logo" width="200" /></p> -->
+<p align="center"><img src="docs/logo.png" alt="Kairo Logo" width="200" /></p>
 
 <h3 align="center">Java Agent 操作系统 — AI Agent 运行时基础设施</h3>
 
@@ -10,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/kairo-agent/kairo/actions"><img src="https://github.com/kairo-agent/kairo/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/CaptainGreenskin/kairo/actions"><img src="https://github.com/CaptainGreenskin/kairo/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License" />
   <img src="https://img.shields.io/badge/JDK-17%2B-orange" alt="JDK 17+" />
   <img src="https://img.shields.io/badge/version-0.1.0--SNAPSHOT-yellow" alt="Version" />
@@ -136,12 +135,12 @@ mvn exec:java -pl kairo-demo \
 
 欢迎贡献！请参阅 [CONTRIBUTING.md](./CONTRIBUTING.md) 了解详情。
 
-查看 [`good first issue`](https://github.com/kairo-agent/kairo/labels/good%20first%20issue) 标签快速上手，或 [`help wanted`](https://github.com/kairo-agent/kairo/labels/help%20wanted) 标签挑战更复杂的任务。
+查看 [`good first issue`](https://github.com/CaptainGreenskin/kairo/labels/good%20first%20issue) 标签快速上手，或 [`help wanted`](https://github.com/CaptainGreenskin/kairo/labels/help%20wanted) 标签挑战更复杂的任务。
 
 ## 社区
 
-- [GitHub Discussions](https://github.com/kairo-agent/kairo/discussions) — 提问、想法和讨论
-- [GitHub Issues](https://github.com/kairo-agent/kairo/issues) — Bug 报告和功能请求
+- [GitHub Discussions](https://github.com/CaptainGreenskin/kairo/discussions) — 提问、想法和讨论
+- [GitHub Issues](https://github.com/CaptainGreenskin/kairo/issues) — Bug 报告和功能请求
 
 <!-- TODO: 社区渠道就绪后添加 -->
 <!-- - [Discord](https://discord.gg/xxx) -->
