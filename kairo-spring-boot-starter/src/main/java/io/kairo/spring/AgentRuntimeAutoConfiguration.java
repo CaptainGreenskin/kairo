@@ -140,16 +140,21 @@ public class AgentRuntimeAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public ToolExecutor toolExecutor(ToolRegistry toolRegistry, PermissionGuard permissionGuard) {
-        return new DefaultToolExecutor((DefaultToolRegistry) toolRegistry, permissionGuard);
+    public ToolExecutor toolExecutor(
+            ToolRegistry toolRegistry,
+            PermissionGuard permissionGuard,
+            GracefulShutdownManager gracefulShutdownManager) {
+        return new DefaultToolExecutor(
+                (DefaultToolRegistry) toolRegistry, permissionGuard, null, gracefulShutdownManager);
     }
 
     // ---- Agent Factory ----
 
     @Bean
     @ConditionalOnMissingBean
-    public AgentFactory agentFactory(ToolExecutor toolExecutor) {
-        return new DefaultAgentFactory(toolExecutor);
+    public AgentFactory agentFactory(
+            ToolExecutor toolExecutor, GracefulShutdownManager gracefulShutdownManager) {
+        return new DefaultAgentFactory(toolExecutor, gracefulShutdownManager);
     }
 
     // ---- Memory Store ----
