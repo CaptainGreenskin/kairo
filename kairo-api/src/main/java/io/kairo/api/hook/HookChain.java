@@ -119,4 +119,48 @@ public interface HookChain {
     default <T> Mono<HookResult<T>> firePostActingWithResult(T event) {
         return firePostActing(event).map(HookResult::proceed);
     }
+
+    /**
+     * Fire the pre-reasoning event and return a structured result with behavioral decisions.
+     *
+     * @param event the event to fire
+     * @param <T> the event type
+     * @return a Mono emitting the structured hook result
+     */
+    default <T> Mono<HookResult<T>> firePreReasoningWithResult(T event) {
+        return firePreReasoning(event).map(HookResult::proceed);
+    }
+
+    /**
+     * Fire the post-reasoning event and return a structured result.
+     *
+     * @param event the event to fire
+     * @param <T> the event type
+     * @return a Mono emitting the structured hook result
+     */
+    default <T> Mono<HookResult<T>> firePostReasoningWithResult(T event) {
+        return firePostReasoning(event).map(HookResult::proceed);
+    }
+
+    /**
+     * Fire the pre-compact event and return a structured result with behavioral decisions.
+     *
+     * @param event the event to fire
+     * @param <T> the event type
+     * @return a Mono emitting the structured hook result
+     */
+    default <T> Mono<HookResult<T>> firePreCompactWithResult(T event) {
+        return firePreCompact(event).map(HookResult::proceed);
+    }
+
+    /**
+     * Fire the post-compact event and return a structured result.
+     *
+     * @param event the event to fire
+     * @param <T> the event type
+     * @return a Mono emitting the structured hook result
+     */
+    default <T> Mono<HookResult<T>> firePostCompactWithResult(T event) {
+        return firePostCompact(event).map(HookResult::proceed);
+    }
 }

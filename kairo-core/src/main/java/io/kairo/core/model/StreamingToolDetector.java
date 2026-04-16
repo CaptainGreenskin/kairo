@@ -17,8 +17,12 @@ package io.kairo.core.model;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kairo.api.model.StreamChunk;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -80,20 +84,39 @@ public class StreamingToolDetector {
         private int pendingTools = 0;
 
         /**
-         * The most recently started tool call ID. Used as a fallback when providers (e.g. Qwen /
-         * DashScope) send DELTA or END chunks with empty or null tool call IDs.
+         * Ordered list of active (not yet completed) tool call IDs.
+         * Supports parallel tool calls by allowing resolution of empty IDs
+         * to any active tool, not just the most recent one.
          */
-        private String lastStartedId = null;
+        private final List<String> activeToolIds = new ArrayList<>();
+
+        /**
+         * IDs of tool calls that have already been completed.
+         * Used to silently skip duplicate TOOL_USE_END events, which can occur
+         * when OpenAI-format providers flush remaining tools after index-based
+         * completion has already emitted an END for the same tool.
+         */
+        private final Set<String> completedToolIds = new HashSet<>();
 
         void startTool(String id, String name) {
+            if (id == null || id.isEmpty()) {
+                log.debug("Ignoring startTool with null/empty id (name='{}')", name);
+                return;
+            }
+            if (name == null || name.isEmpty()) {
+                log.debug("startTool called with empty name for id={}, buffering", id);
+                // Register with placeholder — name may arrive in a later chunk
+                name = "";
+            }
             toolNames.put(id, name);
             toolArgs.put(id, new StringBuilder());
-            lastStartedId = id;
+            activeToolIds.add(id);
             pendingTools++;
         }
 
         void appendArgs(String id, String delta) {
             String resolvedId = resolveId(id);
+            if (resolvedId == null) return;
             var sb = toolArgs.get(resolvedId);
             if (sb != null && delta != null) {
                 sb.append(delta);
@@ -101,13 +124,32 @@ public class StreamingToolDetector {
         }
 
         void completeTool(String id) {
-            pendingTools--;
             String resolvedId = resolveId(id);
+            if (resolvedId == null) {
+                log.debug("completeTool called with unresolvable id: {} — skipping", id);
+                return;
+            }
+            // Silently skip duplicate completions (common with OpenAI-format flush)
+            if (completedToolIds.contains(resolvedId)) {
+                log.debug("Duplicate completion for already-finished tool: {} — skipping",
+                        resolvedId);
+                return;
+            }
             String name = toolNames.remove(resolvedId);
             if (name == null) {
-                log.warn("Tool completion for unknown id: {} — skipping", resolvedId);
-                return; // Don't emit a broken DetectedToolCall
+                log.debug("Tool completion for unknown id: {} — skipping", resolvedId);
+                return;
             }
+            pendingTools--;
+            activeToolIds.remove(resolvedId);
+            completedToolIds.add(resolvedId);
+
+            // Skip tool calls that never received a name
+            if (name.isEmpty()) {
+                log.debug("Skipping tool call {} with empty name", resolvedId);
+                return;
+            }
+
             StringBuilder argsSb = toolArgs.remove(resolvedId);
             Map<String, Object> args = parseArgs(argsSb != null ? argsSb.toString() : "{}");
             completedTool =
@@ -116,18 +158,22 @@ public class StreamingToolDetector {
         }
 
         /**
-         * Resolve a potentially empty/null tool call ID to the last-started tool call. Some
-         * providers (Qwen via DashScope) only set the ID on the first chunk.
+         * Resolve a potentially empty/null tool call ID. For parallel tool calls,
+         * falls back to the oldest active (not yet completed) tool instead of just
+         * the last-started one.
          */
         private String resolveId(String id) {
             if (id != null && !id.isEmpty()) {
                 return id;
             }
-            if (lastStartedId != null) {
-                log.debug(
-                        "Resolved empty tool call ID to last-started: {}", lastStartedId);
+            // Fall back to the oldest active tool that hasn't been completed
+            if (!activeToolIds.isEmpty()) {
+                String resolved = activeToolIds.get(0);
+                log.debug("Resolved empty tool call ID to active tool: {}", resolved);
+                return resolved;
             }
-            return lastStartedId;
+            log.debug("Cannot resolve empty tool call ID — no active tools");
+            return null;
         }
 
         void markDone() {

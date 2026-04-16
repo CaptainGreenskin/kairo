@@ -58,6 +58,7 @@
         <module>kairo-api</module>
         <module>kairo-core</module>
         <module>kairo-tools</module>
+        <module>kairo-mcp</module>
         <module>kairo-multi-agent</module>
         <module>kairo-spring-boot-starter</module>
         <module>kairo-demo</module>
@@ -73,6 +74,7 @@
         <slf4j.version>2.0.16</slf4j.version>
         <junit.version>5.11.4</junit.version>
         <jackson.version>2.18.2</jackson.version>
+        <mcp-sdk.version>0.17.0</mcp-sdk.version>
     </properties>
 
     <dependencyManagement>
@@ -148,6 +150,18 @@
                 <artifactId>mockwebserver</artifactId>
                 <version>4.12.0</version>
                 <scope>test</scope>
+            </dependency>
+            <!-- MCP SDK -->
+            <dependency>
+                <groupId>io.modelcontextprotocol.sdk</groupId>
+                <artifactId>mcp</artifactId>
+                <version>${mcp-sdk.version}</version>
+            </dependency>
+            <!-- Kairo MCP module -->
+            <dependency>
+                <groupId>io.kairo</groupId>
+                <artifactId>kairo-mcp</artifactId>
+                <version>${revision}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

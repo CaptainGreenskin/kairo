@@ -150,16 +150,28 @@ public class CompactionPipeline {
                 messages.stream().filter(m -> !verbatimIds.contains(m.id())).toList();
 
         // Fire PreCompact hook if available
-        Mono<PreCompactEvent> preHookMono;
+        Mono<io.kairo.api.hook.HookResult<PreCompactEvent>> preHookMono;
         if (hookChain != null) {
             PreCompactEvent preEvent = new PreCompactEvent(compressible, currentPressure);
-            preHookMono = hookChain.firePreCompact(preEvent);
+            preHookMono = hookChain.firePreCompactWithResult(preEvent);
         } else {
-            preHookMono = Mono.just(new PreCompactEvent(compressible, currentPressure));
+            preHookMono =
+                    Mono.just(
+                            io.kairo.api.hook.HookResult.proceed(
+                                    new PreCompactEvent(compressible, currentPressure)));
         }
 
         return preHookMono.flatMap(
-                preEvent -> {
+                hookResult -> {
+                    // Handle ABORT decision
+                    if (!hookResult.shouldProceed()) {
+                        log.info(
+                                "Compaction aborted by PreCompact hook: {}",
+                                hookResult.reason());
+                        return Mono.empty();
+                    }
+
+                    PreCompactEvent preEvent = hookResult.event();
                     if (preEvent.cancelled()) {
                         log.info("Compaction cancelled by PreCompact hook");
                         return Mono.empty();
@@ -187,9 +199,21 @@ public class CompactionPipeline {
                                                             result.marker().strategyName(),
                                                             List.of(result.marker()));
                                             return hookChain
-                                                    .firePostCompact(postEvent)
+                                                    .<PostCompactEvent>
+                                                            firePostCompactWithResult(postEvent)
                                                     .map(
-                                                            evt -> {
+                                                            postResult -> {
+                                                                // Handle ABORT — discard compaction
+                                                                if (!postResult.shouldProceed()) {
+                                                                    log.info(
+                                                                            "Compaction discarded"
+                                                                                + " by PostCompact"
+                                                                                + " hook: {}",
+                                                                            postResult.reason());
+                                                                    return result;
+                                                                }
+                                                                PostCompactEvent evt =
+                                                                        postResult.event();
                                                                 // Merge recovery messages
                                                                 List<Msg> recoveryMsgs =
                                                                         evt.getRecoveryMessages();

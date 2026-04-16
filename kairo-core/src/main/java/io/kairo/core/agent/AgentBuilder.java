@@ -15,6 +15,7 @@
  */
 package io.kairo.core.agent;
 
+import io.kairo.api.Experimental;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.context.ContextManager;
@@ -23,12 +24,14 @@ import io.kairo.api.model.ModelProvider;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.api.tool.UserApprovalHandler;
+import io.kairo.api.tracing.Tracer;
 import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.session.SessionManager;
 import io.kairo.core.tool.DefaultToolExecutor;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -67,6 +70,8 @@ public class AgentBuilder {
     private String sessionId;
     private SessionManager sessionManager;
     private UserApprovalHandler approvalHandler;
+    private Tracer tracer;
+    private final List<Object> mcpServerConfigs = new ArrayList<>();
 
     private AgentBuilder() {}
 
@@ -195,6 +200,62 @@ public class AgentBuilder {
     }
 
     /**
+     * Set the tracer for observability and tracing.
+     *
+     * @param tracer the tracer implementation
+     * @return this builder
+     */
+    public AgentBuilder tracer(Tracer tracer) {
+        this.tracer = tracer;
+        return this;
+    }
+
+    /**
+     * Add a stdio-based MCP server configuration.
+     *
+     * <p>Requires {@code kairo-mcp} on the classpath at runtime.
+     *
+     * @param name the server name (used as tool name prefix)
+     * @param command the command to launch the server
+     * @param args additional command arguments
+     * @return this builder
+     */
+    @Experimental("MCP integration is experimental; API may change before v0.3.0")
+    public AgentBuilder mcpServer(String name, String command, String... args) {
+        try {
+            Class<?> configClass = Class.forName("io.kairo.mcp.McpServerConfig");
+            var cmdList = new ArrayList<String>();
+            cmdList.add(command);
+            Collections.addAll(cmdList, args);
+            Object config = configClass.getMethod("stdio", String.class, String[].class)
+                    .invoke(null, name, cmdList.stream().toArray(String[]::new));
+            mcpServerConfigs.add(config);
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException(
+                    "kairo-mcp is not on the classpath. Add kairo-mcp dependency to use MCP servers.", e);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to create MCP server config", e);
+        }
+        return this;
+    }
+
+    /**
+     * Add a pre-built MCP server configuration object.
+     *
+     * <p>The object must be an instance of {@code io.kairo.mcp.McpServerConfig}.
+     * Requires {@code kairo-mcp} on the classpath at runtime.
+     *
+     * @param mcpServerConfig the MCP server config
+     * @return this builder
+     */
+    @Experimental("MCP integration is experimental; API may change before v0.3.0")
+    public AgentBuilder mcpServer(Object mcpServerConfig) {
+        Objects.requireNonNull(mcpServerConfig, "mcpServerConfig must not be null");
+        mcpServerConfigs.add(mcpServerConfig);
+        return this;
+    }
+
+    /**
      * Build the agent, validating required parameters.
      *
      * @return a new {@link Agent} instance
@@ -277,10 +338,15 @@ public class AgentBuilder {
                         .modelName(modelName)
                         .contextManager(contextManager)
                         .memoryStore(memoryStore)
-                        .sessionId(sessionId);
+                        .sessionId(sessionId)
+                        .tracer(tracer);
 
         for (Object hook : hooks) {
             configBuilder.addHook(hook);
+        }
+
+        for (Object mcpConfig : mcpServerConfigs) {
+            configBuilder.addMcpServerConfig(mcpConfig);
         }
 
         return configBuilder.build();

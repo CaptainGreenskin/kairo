@@ -18,7 +18,6 @@ package io.kairo.core.context.recovery;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import io.kairo.api.context.McpInstructionProvider;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.skill.SkillCategory;
@@ -52,7 +51,7 @@ class PostCompactRecoveryHandlerTest {
         tracker.recordAccess(file2.toString());
         tracker.recordAccess(file3.toString());
 
-        PostCompactRecoveryHandler handler = new PostCompactRecoveryHandler(tracker, null, null);
+        PostCompactRecoveryHandler handler = new PostCompactRecoveryHandler(tracker, null);
 
         List<Msg> recovery = handler.recover();
 
@@ -95,7 +94,7 @@ class PostCompactRecoveryHandlerTest {
         when(skillRegistry.list()).thenReturn(List.of(skill1, skill2));
 
         PostCompactRecoveryHandler handler =
-                new PostCompactRecoveryHandler(tracker, skillRegistry, null);
+                new PostCompactRecoveryHandler(tracker, skillRegistry);
 
         List<Msg> recovery = handler.recover();
 
@@ -120,7 +119,7 @@ class PostCompactRecoveryHandlerTest {
             tracker.recordAccess(file.toString());
         }
 
-        PostCompactRecoveryHandler handler = new PostCompactRecoveryHandler(tracker, null, null);
+        PostCompactRecoveryHandler handler = new PostCompactRecoveryHandler(tracker, null);
 
         List<Msg> recovery = handler.recover();
 
@@ -136,7 +135,7 @@ class PostCompactRecoveryHandlerTest {
     }
 
     @Test
-    @DisplayName("Priority order: files before skills before MCP")
+    @DisplayName("Priority order: files before skills")
     void testPriorityOrder() throws IOException {
         // Create a file
         Path file = tempDir.resolve("Main.java");
@@ -157,15 +156,12 @@ class PostCompactRecoveryHandlerTest {
                         SkillCategory.CODE);
         when(skillRegistry.list()).thenReturn(List.of(skill));
 
-        // MCP
-        McpInstructionProvider mcpProvider = () -> List.of("MCP instruction 1");
-
         PostCompactRecoveryHandler handler =
-                new PostCompactRecoveryHandler(tracker, skillRegistry, mcpProvider);
+                new PostCompactRecoveryHandler(tracker, skillRegistry);
 
         List<Msg> recovery = handler.recover();
 
-        assertEquals(3, recovery.size());
+        assertEquals(2, recovery.size());
 
         // First: file (USER)
         assertEquals(MsgRole.USER, recovery.get(0).role());
@@ -174,11 +170,6 @@ class PostCompactRecoveryHandlerTest {
         // Second: skill (SYSTEM)
         assertEquals(MsgRole.SYSTEM, recovery.get(1).role());
         assertEquals("skill", recovery.get(1).metadata().get("recoveryType"));
-
-        // Third: MCP (SYSTEM)
-        assertEquals(MsgRole.SYSTEM, recovery.get(2).role());
-        assertEquals("mcp", recovery.get(2).metadata().get("recoveryType"));
-        assertTrue(recovery.get(2).text().contains("MCP instruction 1"));
     }
 
     @Test
@@ -190,7 +181,7 @@ class PostCompactRecoveryHandlerTest {
         FileAccessTracker tracker = new FileAccessTracker();
         tracker.recordAccess(file.toString());
 
-        PostCompactRecoveryHandler handler = new PostCompactRecoveryHandler(tracker, null, null);
+        PostCompactRecoveryHandler handler = new PostCompactRecoveryHandler(tracker, null);
 
         List<Msg> recovery = handler.recover();
 
@@ -199,25 +190,12 @@ class PostCompactRecoveryHandlerTest {
     }
 
     @Test
-    @DisplayName("With MCP noop (no MCP messages)")
-    void testMcpNoop() {
-        FileAccessTracker tracker = new FileAccessTracker();
-        PostCompactRecoveryHandler handler =
-                new PostCompactRecoveryHandler(tracker, null, McpInstructionProvider.noop());
-
-        List<Msg> recovery = handler.recover();
-
-        // No files tracked, no skills, noop MCP — should be empty
-        assertTrue(recovery.isEmpty());
-    }
-
-    @Test
     @DisplayName("Files that don't exist are skipped gracefully")
     void testMissingFilesSkipped() {
         FileAccessTracker tracker = new FileAccessTracker();
         tracker.recordAccess("/nonexistent/path/Missing.java");
 
-        PostCompactRecoveryHandler handler = new PostCompactRecoveryHandler(tracker, null, null);
+        PostCompactRecoveryHandler handler = new PostCompactRecoveryHandler(tracker, null);
 
         List<Msg> recovery = handler.recover();
         assertTrue(recovery.isEmpty());
@@ -227,7 +205,7 @@ class PostCompactRecoveryHandlerTest {
     @DisplayName("Empty file tracker and no skills produces empty recovery")
     void testEmptyRecovery() {
         FileAccessTracker tracker = new FileAccessTracker();
-        PostCompactRecoveryHandler handler = new PostCompactRecoveryHandler(tracker, null, null);
+        PostCompactRecoveryHandler handler = new PostCompactRecoveryHandler(tracker, null);
 
         List<Msg> recovery = handler.recover();
         assertTrue(recovery.isEmpty());

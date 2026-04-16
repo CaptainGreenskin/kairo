@@ -28,7 +28,8 @@ import io.kairo.api.model.StreamChunk;
 import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolResult;
-import io.kairo.api.tracing.TracerRegistry;
+import io.kairo.api.tracing.NoopTracer;
+import io.kairo.api.tracing.Tracer;
 import io.kairo.core.context.DefaultContextManager;
 import io.kairo.core.context.TokenBudgetManager;
 import io.kairo.core.hook.DefaultHookChain;
@@ -96,7 +97,10 @@ public class DefaultReActAgent implements Agent {
     private final SystemPromptResult systemPromptResult;
     private final DefaultContextManager contextManager; // nullable
     private final ErrorRecoveryStrategy errorRecovery;
+    private final Tracer tracer;
     private boolean streamingEnabled = false;
+    private volatile boolean mcpInitialized = false;
+    private AutoCloseable mcpRegistry; // McpClientRegistry, held as AutoCloseable to avoid compile dep
 
     /**
      * Create a new ReAct agent with the given configuration.
@@ -117,6 +121,9 @@ public class DefaultReActAgent implements Agent {
         this.interrupted = new AtomicBoolean(false);
         this.currentIteration = new AtomicInteger(0);
         this.totalTokensUsed = new AtomicLong(0);
+
+        // Initialize tracer from config with NoopTracer fallback
+        this.tracer = config.tracer() != null ? config.tracer() : new NoopTracer();
 
         // Initialize token budget manager from model name
         String modelId =
@@ -177,7 +184,7 @@ public class DefaultReActAgent implements Agent {
 
     @Override
     public Mono<Msg> call(Msg input) {
-        return TracerRegistry.get()
+        return tracer
                 .traceAgentCall(
                         name,
                         input,
@@ -207,6 +214,7 @@ public class DefaultReActAgent implements Agent {
                                                                                             .length())));
 
                                                     return loadSessionIfConfigured()
+                                                            .then(initMcpIfConfigured())
                                                             .then(runLoop());
                                                 })
                                         .doOnSuccess(
@@ -237,6 +245,8 @@ public class DefaultReActAgent implements Agent {
                                                     if (toolExecutor instanceof DefaultToolExecutor dte) {
                                                         dte.clearAllowedTools();
                                                     }
+                                                    // Close MCP registry if it was initialized
+                                                    closeMcpRegistry();
                                                 })
                                         .timeout(config.timeout())
                                         .onErrorMap(
@@ -346,6 +356,107 @@ public class DefaultReActAgent implements Agent {
                 .then();
     }
 
+    /**
+     * Lazily initialize MCP servers if configured. Connects to each MCP server, discovers tools,
+     * and registers them into the agent's ToolRegistry and ToolExecutor.
+     */
+    private Mono<Void> initMcpIfConfigured() {
+        if (mcpInitialized
+                || config.mcpServerConfigs() == null
+                || config.mcpServerConfigs().isEmpty()) {
+            return Mono.empty();
+        }
+        return Mono.fromCallable(
+                        () -> {
+                            mcpInitialized = true;
+                            // Runtime check for kairo-mcp on classpath
+                            Class<?> registryClass =
+                                    Class.forName("io.kairo.mcp.McpClientRegistry");
+                            Object registry = registryClass.getDeclaredConstructor().newInstance();
+                            this.mcpRegistry = (AutoCloseable) registry;
+
+                            // Get the register(McpServerConfig) method
+                            Class<?> configClass =
+                                    Class.forName("io.kairo.mcp.McpServerConfig");
+                            var registerMethod =
+                                    registryClass.getMethod("register", configClass);
+
+                            for (Object serverConfig : config.mcpServerConfigs()) {
+                                // register() returns Mono<McpToolGroup> — block to get group
+                                @SuppressWarnings("unchecked")
+                                Mono<Object> groupMono =
+                                        (Mono<Object>) registerMethod.invoke(registry, serverConfig);
+                                Object toolGroup = groupMono.block();
+
+                                // Get tool definitions and executors from the group
+                                var getAllDefs = toolGroup.getClass().getMethod("getAllToolDefinitions");
+                                @SuppressWarnings("unchecked")
+                                List<io.kairo.api.tool.ToolDefinition> defs =
+                                        (List<io.kairo.api.tool.ToolDefinition>)
+                                                getAllDefs.invoke(toolGroup);
+
+                                var getExecutor =
+                                        toolGroup.getClass().getMethod("getExecutor", String.class);
+
+                                for (var def : defs) {
+                                    // Register definition into ToolRegistry
+                                    if (config.toolRegistry() != null) {
+                                        config.toolRegistry().register(def);
+                                    }
+                                    // Register executor instance into DefaultToolExecutor's registry
+                                    if (toolExecutor instanceof DefaultToolExecutor dte) {
+                                        Object executor = getExecutor.invoke(toolGroup, def.name());
+                                        // Access the internal DefaultToolRegistry to register instance
+                                        var registryField =
+                                                DefaultToolExecutor.class.getDeclaredField("registry");
+                                        registryField.setAccessible(true);
+                                        var toolRegistry = registryField.get(dte);
+                                        var registerInstanceMethod =
+                                                toolRegistry
+                                                        .getClass()
+                                                        .getMethod(
+                                                                "registerInstance",
+                                                                String.class,
+                                                                Object.class);
+                                        registerInstanceMethod.invoke(
+                                                toolRegistry, def.name(), executor);
+                                    }
+                                }
+                                log.info(
+                                        "MCP server registered {} tool(s) into agent",
+                                        defs.size());
+                            }
+                            return true;
+                        })
+                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .onErrorResume(
+                        ClassNotFoundException.class,
+                        e -> {
+                            log.warn(
+                                    "kairo-mcp not on classpath, skipping MCP initialization: {}",
+                                    e.getMessage());
+                            return Mono.empty();
+                        })
+                .onErrorResume(
+                        e -> {
+                            log.error("Failed to initialize MCP servers: {}", e.getMessage(), e);
+                            return Mono.empty();
+                        })
+                .then();
+    }
+
+    /** Close the MCP registry if it was initialized. */
+    private void closeMcpRegistry() {
+        if (mcpRegistry != null) {
+            try {
+                mcpRegistry.close();
+                log.debug("MCP registry closed");
+            } catch (Exception e) {
+                log.warn("Error closing MCP registry: {}", e.getMessage());
+            }
+        }
+    }
+
     // ---- Private: ReAct Loop ----
 
     /** The core ReAct loop. Uses {@code Mono.defer()} for stack-safe recursion. */
@@ -400,14 +511,86 @@ public class DefaultReActAgent implements Agent {
                                     false);
 
                     return hookChain
-                            .<PreReasoningEvent>firePreReasoning(preEvent)
+                            .<PreReasoningEvent>firePreReasoningWithResult(preEvent)
                             .flatMap(
-                                    firedEvent -> {
-                                        PreReasoningEvent pre = (PreReasoningEvent) firedEvent;
+                                    hookResult -> {
+                                        // Handle ABORT decision
+                                        if (!hookResult.shouldProceed()) {
+                                            log.info(
+                                                    "Agent '{}' reasoning aborted by hook: {}",
+                                                    name,
+                                                    hookResult.reason());
+                                            String abortReason =
+                                                    hookResult.reason() != null
+                                                            ? hookResult.reason()
+                                                            : "Reasoning aborted by hook.";
+                                            return Mono.just(
+                                                    buildFinalResponse(abortReason));
+                                        }
+
+                                        PreReasoningEvent pre = hookResult.event();
+
+                                        // Handle cancelled event (backward compat)
                                         if (pre.cancelled()) {
                                             log.info(
                                                     "Agent '{}' reasoning cancelled by hook", name);
-                                            return Mono.<ModelResponse>just(null);
+                                            return Mono.<Msg>just(
+                                                    buildFinalResponse(
+                                                            "Processing cancelled by hook."));
+                                        }
+
+                                        // Handle MODIFY decision — apply modifiedInput to ModelConfig
+                                        ModelConfig effectiveConfig;
+                                        if (hookResult.hasModifiedInput()) {
+                                            ModelConfig.Builder cfgBuilder =
+                                                    ModelConfig.builder()
+                                                            .model(modelConfig.model())
+                                                            .maxTokens(modelConfig.maxTokens())
+                                                            .temperature(modelConfig.temperature())
+                                                            .systemPrompt(modelConfig.systemPrompt())
+                                                            .tools(modelConfig.tools());
+                                            if (modelConfig.systemPromptParts() != null) {
+                                                cfgBuilder.systemPromptParts(
+                                                        modelConfig.systemPromptParts());
+                                            }
+                                            if (modelConfig.systemPromptSegments() != null) {
+                                                cfgBuilder.segments(modelConfig.systemPromptSegments());
+                                            }
+                                            // Override model name if provided
+                                            Object modelOverride =
+                                                    hookResult.modifiedInput().get("model");
+                                            if (modelOverride instanceof String m) {
+                                                cfgBuilder.model(m);
+                                            }
+                                            // Override maxTokens if provided
+                                            Object maxTokensOverride =
+                                                    hookResult.modifiedInput().get("maxTokens");
+                                            if (maxTokensOverride instanceof Number n) {
+                                                cfgBuilder.maxTokens(n.intValue());
+                                            }
+                                            // Override temperature if provided
+                                            Object tempOverride =
+                                                    hookResult.modifiedInput().get("temperature");
+                                            if (tempOverride instanceof Number n) {
+                                                cfgBuilder.temperature(n.doubleValue());
+                                            }
+                                            effectiveConfig = cfgBuilder.build();
+                                        } else {
+                                            effectiveConfig = modelConfig;
+                                        }
+
+                                        // Inject additional context if provided
+                                        if (hookResult.hasInjectedContext()) {
+                                            Msg contextMsg =
+                                                    Msg.builder()
+                                                            .role(MsgRole.SYSTEM)
+                                                            .addContent(
+                                                                    new Content.TextContent(
+                                                                            "[Hook Context] "
+                                                                                    + hookResult
+                                                                                            .injectedContext()))
+                                                            .build();
+                                            conversationHistory.add(contextMsg);
                                         }
 
                                         // 3. Call LLM with error recovery
@@ -417,53 +600,114 @@ public class DefaultReActAgent implements Agent {
                                                 currentIteration.get());
 
                                         // Use streaming path if enabled
+                                        Mono<ModelResponse> responseMono;
                                         if (streamingEnabled) {
-                                            return callModelStreamingWithFallback(
-                                                    conversationHistory, modelConfig);
-                                        }
-                                        return errorRecovery.callModelWithRecovery(
-                                                conversationHistory, modelConfig, 0);
-                                    })
-                            .flatMap(
-                                    response -> {
-                                        if (response == null) {
-                                            // Cancelled by hook
-                                            return Mono.just(
-                                                    buildFinalResponse(
-                                                            "Processing cancelled by hook."));
-                                        }
-
-                                        // Reset fallback on success
-                                        errorRecovery.fallbackManager().reset();
-
-                                        // Track token usage and feed back to budget manager
-                                        if (response.usage() != null) {
-                                            tokenBudgetManager.updateFromApiUsage(response.usage());
-                                            totalTokensUsed.addAndGet(
-                                                    (long) response.usage().inputTokens()
-                                                            + response.usage().outputTokens());
-
-                                            log.info(
-                                                    "[Iteration {}] input={}"
-                                                            + " output={} cache_read={}"
-                                                            + " cache_write={}",
-                                                    currentIteration.get(),
-                                                    response.usage().inputTokens(),
-                                                    response.usage().outputTokens(),
-                                                    response.usage().cacheReadTokens(),
-                                                    response.usage().cacheCreationTokens());
+                                            responseMono =
+                                                    callModelStreamingWithFallback(
+                                                            conversationHistory, effectiveConfig);
                                         } else {
-                                            log.warn(
-                                                    "Model response missing usage data — token tracking may be inaccurate");
+                                            responseMono =
+                                                    errorRecovery.callModelWithRecovery(
+                                                            conversationHistory,
+                                                            effectiveConfig,
+                                                            0);
                                         }
-                                        tokenBudgetManager.advanceTurn();
 
-                                        // 4. Fire PostReasoning hook
-                                        PostReasoningEvent postEvent =
-                                                new PostReasoningEvent(response, false);
-                                        return hookChain
-                                                .firePostReasoning(postEvent)
-                                                .then(processModelResponse(response));
+                                        return responseMono.flatMap(
+                                                response -> {
+                                                    // Reset fallback on success
+                                                    errorRecovery.fallbackManager().reset();
+
+                                                    // Track token usage
+                                                    if (response.usage() != null) {
+                                                        tokenBudgetManager.updateFromApiUsage(
+                                                                response.usage());
+                                                        totalTokensUsed.addAndGet(
+                                                                (long)
+                                                                                response.usage()
+                                                                                        .inputTokens()
+                                                                        + response.usage()
+                                                                                .outputTokens());
+
+                                                        log.info(
+                                                                "[Iteration {}] input={}"
+                                                                    + " output={} cache_read={}"
+                                                                    + " cache_write={}",
+                                                                currentIteration.get(),
+                                                                response.usage().inputTokens(),
+                                                                response.usage().outputTokens(),
+                                                                response.usage().cacheReadTokens(),
+                                                                response.usage()
+                                                                        .cacheCreationTokens());
+                                                    } else {
+                                                        log.warn(
+                                                                "Model response missing usage"
+                                                                    + " data — token tracking may"
+                                                                    + " be inaccurate");
+                                                    }
+                                                    tokenBudgetManager.advanceTurn();
+
+                                                    // 4. Fire PostReasoning hook with structured result
+                                                    PostReasoningEvent postEvent =
+                                                            new PostReasoningEvent(response, false);
+                                                    return hookChain
+                                                            .<PostReasoningEvent>
+                                                                    firePostReasoningWithResult(
+                                                                            postEvent)
+                                                            .flatMap(
+                                                                    postResult -> {
+                                                                        // Handle ABORT — skip tool execution
+                                                                        if (!postResult
+                                                                                .shouldProceed()) {
+                                                                            log.info(
+                                                                                    "Agent '{}'"
+                                                                                        + " post-reasoning"
+                                                                                        + " aborted by"
+                                                                                        + " hook: {}",
+                                                                                    name,
+                                                                                    postResult
+                                                                                            .reason());
+                                                                            String reason =
+                                                                                    postResult
+                                                                                                    .reason()
+                                                                                            != null
+                                                                                            ? postResult
+                                                                                                    .reason()
+                                                                                            : "Post-reasoning"
+                                                                                                + " aborted"
+                                                                                                + " by"
+                                                                                                + " hook.";
+                                                                            return Mono.just(
+                                                                                    buildFinalResponse(
+                                                                                            reason));
+                                                                        }
+
+                                                                        // Inject post-reasoning context if provided
+                                                                        if (postResult
+                                                                                .hasInjectedContext()) {
+                                                                            Msg contextMsg =
+                                                                                    Msg.builder()
+                                                                                            .role(
+                                                                                                    MsgRole
+                                                                                                            .SYSTEM)
+                                                                                            .addContent(
+                                                                                                    new Content
+                                                                                                            .TextContent(
+                                                                                                            "[Hook"
+                                                                                                                + " Context]"
+                                                                                                                + " "
+                                                                                                                + postResult
+                                                                                                                        .injectedContext()))
+                                                                                            .build();
+                                                                            conversationHistory
+                                                                                    .add(
+                                                                                            contextMsg);
+                                                                        }
+
+                                                                        return processModelResponse(
+                                                                                response);
+                                                                    });
+                                                });
                                     });
                 });
     }
@@ -509,7 +753,7 @@ public class DefaultReActAgent implements Agent {
             conversationHistory.add(toolMsg);
 
             currentIteration.incrementAndGet();
-            TracerRegistry.get()
+            tracer
                     .recordIteration(name, currentIteration.get(), (int) totalTokensUsed.get());
             return runLoop();
         }
@@ -551,7 +795,7 @@ public class DefaultReActAgent implements Agent {
 
                             currentIteration.incrementAndGet();
                             // Record iteration for tracing
-                            TracerRegistry.get()
+                            tracer
                                     .recordIteration(
                                             name,
                                             currentIteration.get(),

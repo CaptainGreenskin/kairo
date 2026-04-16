@@ -19,6 +19,7 @@ import io.kairo.api.context.ContextManager;
 import io.kairo.api.memory.MemoryStore;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.tool.ToolRegistry;
+import io.kairo.api.tracing.Tracer;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,7 +51,9 @@ public record AgentConfig(
         List<Object> hooks,
         ContextManager contextManager,
         MemoryStore memoryStore,
-        String sessionId) {
+        String sessionId,
+        Tracer tracer,
+        List<Object> mcpServerConfigs) {
 
     /** Create a new builder. */
     public static Builder builder() {
@@ -71,6 +74,8 @@ public record AgentConfig(
         private ContextManager contextManager;
         private MemoryStore memoryStore;
         private String sessionId;
+        private Tracer tracer;
+        private final List<Object> mcpServerConfigs = new ArrayList<>();
 
         private Builder() {}
 
@@ -134,6 +139,16 @@ public record AgentConfig(
             return this;
         }
 
+        public Builder tracer(Tracer tracer) {
+            this.tracer = tracer;
+            return this;
+        }
+
+        public Builder addMcpServerConfig(Object config) {
+            this.mcpServerConfigs.add(config);
+            return this;
+        }
+
         public AgentConfig build() {
             Objects.requireNonNull(name, "name must not be null");
             Objects.requireNonNull(modelProvider, "modelProvider must not be null");
@@ -149,7 +164,9 @@ public record AgentConfig(
                     List.copyOf(hooks),
                     contextManager,
                     memoryStore,
-                    sessionId);
+                    sessionId,
+                    tracer,
+                    List.copyOf(mcpServerConfigs));
         }
     }
 }

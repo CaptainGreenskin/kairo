@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.kairo.api.model;
+package io.kairo.core.model;
 
 import io.kairo.api.message.Msg;
+import io.kairo.api.model.ModelConfig;
 import java.util.List;
 
 /**

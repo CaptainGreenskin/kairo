@@ -21,6 +21,7 @@ import static org.mockito.Mockito.*;
 
 import io.kairo.api.context.*;
 import io.kairo.api.hook.HookChain;
+import io.kairo.api.hook.HookResult;
 import io.kairo.api.hook.PostCompactEvent;
 import io.kairo.api.hook.PreCompactEvent;
 import io.kairo.api.message.Content;
@@ -103,11 +104,11 @@ class CompactionPipelineV2Test {
     void testPreCompactHookFires() {
         HookChain hookChain = mock(HookChain.class);
 
-        // The hook fires and returns the event unmodified
-        when(hookChain.firePreCompact(any(PreCompactEvent.class)))
-                .thenAnswer(inv -> Mono.just(inv.getArgument(0)));
-        when(hookChain.firePostCompact(any(PostCompactEvent.class)))
-                .thenAnswer(inv -> Mono.just(inv.getArgument(0)));
+        // The pipeline calls WithResult variants now
+        when(hookChain.firePreCompactWithResult(any(PreCompactEvent.class)))
+                .thenAnswer(inv -> Mono.just(HookResult.proceed(inv.getArgument(0))));
+        when(hookChain.firePostCompactWithResult(any(PostCompactEvent.class)))
+                .thenAnswer(inv -> Mono.just(HookResult.proceed(inv.getArgument(0))));
 
         CompactionStrategy stage = stubStrategy("test", 100, 0.0f, 200);
         CompactionPipeline pipeline = new CompactionPipeline(List.of(stage), null, hookChain);
@@ -119,7 +120,7 @@ class CompactionPipelineV2Test {
                         })
                 .verifyComplete();
 
-        verify(hookChain).firePreCompact(any(PreCompactEvent.class));
+        verify(hookChain).firePreCompactWithResult(any(PreCompactEvent.class));
     }
 
     @Test
@@ -127,14 +128,14 @@ class CompactionPipelineV2Test {
     void testPostCompactHookFires() {
         HookChain hookChain = mock(HookChain.class);
 
-        when(hookChain.firePreCompact(any(PreCompactEvent.class)))
-                .thenAnswer(inv -> Mono.just(inv.getArgument(0)));
-        when(hookChain.firePostCompact(any(PostCompactEvent.class)))
+        when(hookChain.firePreCompactWithResult(any(PreCompactEvent.class)))
+                .thenAnswer(inv -> Mono.just(HookResult.proceed(inv.getArgument(0))));
+        when(hookChain.firePostCompactWithResult(any(PostCompactEvent.class)))
                 .thenAnswer(
                         inv -> {
                             PostCompactEvent event = inv.getArgument(0);
                             assertEquals(200, event.tokensSaved());
-                            return Mono.just(event);
+                            return Mono.just(HookResult.proceed(event));
                         });
 
         CompactionStrategy stage = stubStrategy("test", 100, 0.0f, 200);
@@ -144,7 +145,7 @@ class CompactionPipelineV2Test {
                 .assertNext(result -> assertEquals(200, result.tokensSaved()))
                 .verifyComplete();
 
-        verify(hookChain).firePostCompact(any(PostCompactEvent.class));
+        verify(hookChain).firePostCompactWithResult(any(PostCompactEvent.class));
     }
 
     @Test
@@ -152,12 +153,12 @@ class CompactionPipelineV2Test {
     void testPreCompactCancellationPreventsCompaction() {
         HookChain hookChain = mock(HookChain.class);
 
-        when(hookChain.firePreCompact(any(PreCompactEvent.class)))
+        when(hookChain.firePreCompactWithResult(any(PreCompactEvent.class)))
                 .thenAnswer(
                         inv -> {
                             PreCompactEvent event = inv.getArgument(0);
                             event.cancel();
-                            return Mono.just(event);
+                            return Mono.just(HookResult.proceed(event));
                         });
 
         CompactionStrategy stage = stubStrategy("test", 100, 0.0f, 200);
@@ -168,7 +169,7 @@ class CompactionPipelineV2Test {
                 .verifyComplete();
 
         // PostCompact should NOT have fired
-        verify(hookChain, never()).firePostCompact(any(PostCompactEvent.class));
+        verify(hookChain, never()).firePostCompactWithResult(any(PostCompactEvent.class));
     }
 
     @Test
@@ -176,9 +177,9 @@ class CompactionPipelineV2Test {
     void testPostCompactRecoveryMessagesMerged() {
         HookChain hookChain = mock(HookChain.class);
 
-        when(hookChain.firePreCompact(any(PreCompactEvent.class)))
-                .thenAnswer(inv -> Mono.just(inv.getArgument(0)));
-        when(hookChain.firePostCompact(any(PostCompactEvent.class)))
+        when(hookChain.firePreCompactWithResult(any(PreCompactEvent.class)))
+                .thenAnswer(inv -> Mono.just(HookResult.proceed(inv.getArgument(0))));
+        when(hookChain.firePostCompactWithResult(any(PostCompactEvent.class)))
                 .thenAnswer(
                         inv -> {
                             PostCompactEvent event = inv.getArgument(0);
@@ -192,7 +193,7 @@ class CompactionPipelineV2Test {
                                             .metadata("recovery", true)
                                             .build();
                             event.addRecoveryMessage(recovery);
-                            return Mono.just(event);
+                            return Mono.just(HookResult.proceed(event));
                         });
 
         CompactionStrategy stage = stubStrategy("test", 100, 0.0f, 200);
