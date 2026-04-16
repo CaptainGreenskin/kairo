@@ -27,7 +27,6 @@ import io.kairo.api.tool.UserApprovalHandler;
 import io.kairo.api.tracing.Tracer;
 import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.session.SessionManager;
-import io.kairo.core.tool.DefaultToolExecutor;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -266,8 +265,8 @@ public class AgentBuilder {
         AgentConfig config = buildConfig();
 
         // Wire approval handler into tool executor if configured
-        if (approvalHandler != null && toolExecutor instanceof DefaultToolExecutor defaultExec) {
-            defaultExec.setApprovalHandler(approvalHandler);
+        if (approvalHandler != null) {
+            toolExecutor.setApprovalHandler(approvalHandler);
         }
 
         // Create hook chain — hooks will be registered by DefaultReActAgent constructor

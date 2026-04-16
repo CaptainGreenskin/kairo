@@ -26,8 +26,8 @@ import java.util.List;
  *
  * <pre>{@code
  * ModelConfig config = ModelConfigBuilder.create()
- *     .model("claude-sonnet-4-20250514")
- *     .maxTokens(8096)
+ *     .model(ModelConfig.DEFAULT_MODEL)
+ *     .maxTokens(ModelConfig.DEFAULT_MAX_TOKENS)
  *     .temperature(0.7)
  *     .thinking(true, 10000)
  *     .systemPrompt("You are a helpful assistant")
@@ -114,7 +114,10 @@ public final class ModelConfigBuilder {
      * @return a pre-configured builder for Claude Sonnet
      */
     public static ModelConfigBuilder claudeSonnet() {
-        return create().model("claude-sonnet-4-20250514").maxTokens(8096).temperature(1.0);
+        return create()
+                .model(ModelConfig.DEFAULT_MODEL)
+                .maxTokens(ModelConfig.DEFAULT_MAX_TOKENS)
+                .temperature(ModelConfig.DEFAULT_TEMPERATURE);
     }
 
     /**

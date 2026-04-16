@@ -29,10 +29,11 @@ import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tracing.NoopTracer;
+import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
 import io.kairo.core.context.DefaultContextManager;
 import io.kairo.core.context.TokenBudgetManager;
-import io.kairo.core.hook.DefaultHookChain;
+import io.kairo.api.hook.HookChain;
 import io.kairo.core.memory.SessionMemoryCompact;
 import io.kairo.core.message.MsgBuilder;
 import io.kairo.core.model.DetectedToolCall;
@@ -41,8 +42,9 @@ import io.kairo.core.model.StreamingToolDetector;
 import io.kairo.core.prompt.SystemPromptBuilder;
 import io.kairo.core.prompt.SystemPromptResult;
 import io.kairo.core.shutdown.GracefulShutdownManager;
-import io.kairo.core.tool.DefaultToolExecutor;
 import io.kairo.core.tool.StreamingToolExecutor;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -87,7 +89,7 @@ public class DefaultReActAgent implements Agent {
     private volatile AgentState state;
     private final AgentConfig config;
     private final ToolExecutor toolExecutor;
-    private final DefaultHookChain hookChain;
+    private final HookChain hookChain;
     private final List<Msg> conversationHistory;
     private final AtomicBoolean interrupted;
     private final AtomicInteger currentIteration;
@@ -99,6 +101,7 @@ public class DefaultReActAgent implements Agent {
     private final ErrorRecoveryStrategy errorRecovery;
     private final Tracer tracer;
     private boolean streamingEnabled = false;
+    private volatile Instant sessionStartTime;
     private volatile boolean mcpInitialized = false;
     private AutoCloseable mcpRegistry; // McpClientRegistry, held as AutoCloseable to avoid compile dep
 
@@ -110,7 +113,7 @@ public class DefaultReActAgent implements Agent {
      * @param hookChain the hook chain for lifecycle events
      */
     public DefaultReActAgent(
-            AgentConfig config, ToolExecutor toolExecutor, DefaultHookChain hookChain) {
+            AgentConfig config, ToolExecutor toolExecutor, HookChain hookChain) {
         this.id = UUID.randomUUID().toString();
         this.name = config.name();
         this.state = AgentState.IDLE;
@@ -127,7 +130,7 @@ public class DefaultReActAgent implements Agent {
 
         // Initialize token budget manager from model name
         String modelId =
-                config.modelName() != null ? config.modelName() : "claude-sonnet-4-20250514";
+                config.modelName() != null ? config.modelName() : ModelConfig.DEFAULT_MODEL;
         this.tokenBudgetManager = TokenBudgetManager.forModel(modelId);
 
         // Build system prompt including tool overview and session memory
@@ -158,7 +161,7 @@ public class DefaultReActAgent implements Agent {
     DefaultReActAgent(
             AgentConfig config,
             ToolExecutor toolExecutor,
-            DefaultHookChain hookChain,
+            HookChain hookChain,
             List<Msg> parentContext) {
         this(config, toolExecutor, hookChain);
         // Inherit parent context as initial conversation history
@@ -184,79 +187,106 @@ public class DefaultReActAgent implements Agent {
 
     @Override
     public Mono<Msg> call(Msg input) {
-        return tracer
-                .traceAgentCall(
-                        name,
-                        input,
-                        () ->
-                                Mono.defer(
-                                                () -> {
-                                                    state = AgentState.RUNNING;
-                                                    interrupted.set(false);
-                                                    currentIteration.set(0);
+        return Mono.defer(
+                        () -> {
+                            Span agentSpan = tracer.startAgentSpan(name, input);
+                            state = AgentState.RUNNING;
+                            interrupted.set(false);
+                            currentIteration.set(0);
 
-                                                    // Register with shutdown manager
-                                                    GracefulShutdownManager.getInstance()
-                                                            .registerAgent(this);
+                            // Register with shutdown manager
+                            GracefulShutdownManager.getInstance()
+                                    .registerAgent(this);
 
-                                                    // Add user input to conversation history
-                                                    conversationHistory.add(input);
-                                                    log.info(
-                                                            "Agent '{}' started processing input:"
-                                                                    + " {}",
-                                                            name,
+                            // Add user input to conversation history
+                            conversationHistory.add(input);
+                            log.info(
+                                    "Agent '{}' started processing input:"
+                                            + " {}",
+                                    name,
+                                    input.text()
+                                            .substring(
+                                                    0,
+                                                    Math.min(
+                                                            80,
                                                             input.text()
-                                                                    .substring(
-                                                                            0,
-                                                                            Math.min(
-                                                                                    80,
-                                                                                    input.text()
-                                                                                            .length())));
+                                                                    .length())));
 
-                                                    return loadSessionIfConfigured()
-                                                            .then(initMcpIfConfigured())
-                                                            .then(runLoop());
-                                                })
-                                        .doOnSuccess(
-                                                result -> {
-                                                    state = AgentState.COMPLETED;
-                                                    log.info(
-                                                            "Agent '{}' completed after {}"
-                                                                    + " iterations, {} tokens used",
-                                                            name,
-                                                            currentIteration.get(),
-                                                            totalTokensUsed.get());
-                                                })
-                                        .doOnError(
-                                                e -> {
-                                                    state = AgentState.FAILED;
-                                                    log.error(
-                                                            "Agent '{}' failed after {}"
-                                                                    + " iterations: {}",
-                                                            name,
-                                                            currentIteration.get(),
-                                                            e.getMessage());
-                                                })
-                                        .doFinally(
-                                                signal -> {
-                                                    GracefulShutdownManager.getInstance()
-                                                            .unregisterAgent(this);
-                                                    // Clear skill tool constraints on agent completion
-                                                    if (toolExecutor instanceof DefaultToolExecutor dte) {
-                                                        dte.clearAllowedTools();
-                                                    }
-                                                    // Close MCP registry if it was initialized
-                                                    closeMcpRegistry();
-                                                })
-                                        .timeout(config.timeout())
-                                        .onErrorMap(
-                                                java.util.concurrent.TimeoutException.class,
-                                                e ->
-                                                        new AgentInterruptedException(
-                                                                "Agent '"
-                                                                        + name
-                                                                        + "' timed out after "
-                                                                        + config.timeout())));
+                            sessionStartTime = Instant.now();
+
+                            return loadSessionIfConfigured()
+                                    .then(initMcpIfConfigured())
+                                    .then(Mono.defer(() -> {
+                                        hookChain.fireOnSessionStart(
+                                                new SessionStartEvent(
+                                                        name, input,
+                                                        config.modelName(),
+                                                        config.maxIterations()))
+                                                .subscribe();
+                                        return runLoop();
+                                    }))
+                                    .doOnSuccess(
+                                            result -> {
+                                                agentSpan.setStatus(true, "completed");
+                                                state = AgentState.COMPLETED;
+                                                log.info(
+                                                        "Agent '{}' completed after {}"
+                                                                + " iterations, {} tokens used",
+                                                        name,
+                                                        currentIteration.get(),
+                                                        totalTokensUsed.get());
+                                                Duration elapsed = sessionStartTime != null
+                                                        ? Duration.between(sessionStartTime, Instant.now())
+                                                        : Duration.ZERO;
+                                                hookChain.fireOnSessionEnd(
+                                                        new SessionEndEvent(
+                                                                name, AgentState.COMPLETED,
+                                                                currentIteration.get(),
+                                                                totalTokensUsed.get(),
+                                                                elapsed, null))
+                                                        .subscribe();
+                                            })
+                                    .doOnError(
+                                            e -> {
+                                                agentSpan.setStatus(false, e.getMessage());
+                                                state = AgentState.FAILED;
+                                                log.error(
+                                                        "Agent '{}' failed after {}"
+                                                                + " iterations: {}",
+                                                        name,
+                                                        currentIteration.get(),
+                                                        e.getMessage());
+                                                Duration elapsed = sessionStartTime != null
+                                                        ? Duration.between(sessionStartTime, Instant.now())
+                                                        : Duration.ZERO;
+                                                hookChain.fireOnSessionEnd(
+                                                        new SessionEndEvent(
+                                                                name, AgentState.FAILED,
+                                                                currentIteration.get(),
+                                                                totalTokensUsed.get(),
+                                                                elapsed, e.getMessage()))
+                                                        .subscribe();
+                                            })
+                                    .doFinally(
+                                            signal -> {
+                                                agentSpan.end();
+                                                GracefulShutdownManager.getInstance()
+                                                        .unregisterAgent(this);
+                                                // Clear skill tool constraints on agent completion
+                                                toolExecutor.clearAllowedTools();
+                                                // Close MCP registry if it was initialized
+                                                closeMcpRegistry();
+                                            })
+                                    .timeout(config.timeout())
+                                    .onErrorMap(
+                                            java.util.concurrent.TimeoutException.class,
+                                            e ->
+                                                    new AgentInterruptedException(
+                                                            "Agent '"
+                                                                    + name
+                                                                    + "' timed out after "
+                                                                    + config.timeout()));
+                        });
     }
 
     @Override
@@ -403,24 +433,9 @@ public class DefaultReActAgent implements Agent {
                                     if (config.toolRegistry() != null) {
                                         config.toolRegistry().register(def);
                                     }
-                                    // Register executor instance into DefaultToolExecutor's registry
-                                    if (toolExecutor instanceof DefaultToolExecutor dte) {
-                                        Object executor = getExecutor.invoke(toolGroup, def.name());
-                                        // Access the internal DefaultToolRegistry to register instance
-                                        var registryField =
-                                                DefaultToolExecutor.class.getDeclaredField("registry");
-                                        registryField.setAccessible(true);
-                                        var toolRegistry = registryField.get(dte);
-                                        var registerInstanceMethod =
-                                                toolRegistry
-                                                        .getClass()
-                                                        .getMethod(
-                                                                "registerInstance",
-                                                                String.class,
-                                                                Object.class);
-                                        registerInstanceMethod.invoke(
-                                                toolRegistry, def.name(), executor);
-                                    }
+                                    // Register executor instance into ToolExecutor's registry
+                                    Object executor = getExecutor.invoke(toolGroup, def.name());
+                                    toolExecutor.registerToolInstance(def.name(), executor);
                                 }
                                 log.info(
                                         "MCP server registered {} tool(s) into agent",
@@ -528,6 +543,16 @@ public class DefaultReActAgent implements Agent {
                                                     buildFinalResponse(abortReason));
                                         }
 
+                                        // Handle SKIP — skip model call, continue loop
+                                        if (hookResult.shouldSkip()) {
+                                            log.info(
+                                                    "Agent '{}' reasoning skipped by hook: {}",
+                                                    name,
+                                                    hookResult.reason());
+                                            currentIteration.incrementAndGet();
+                                            return runLoop();
+                                        }
+
                                         PreReasoningEvent pre = hookResult.event();
 
                                         // Handle cancelled event (backward compat)
@@ -537,6 +562,18 @@ public class DefaultReActAgent implements Agent {
                                             return Mono.<Msg>just(
                                                     buildFinalResponse(
                                                             "Processing cancelled by hook."));
+                                        }
+
+                                        // Handle INJECT — add injected message to history
+                                        if (hookResult.hasInjectedMessage()) {
+                                            Msg injected = Msg.builder()
+                                                    .role(hookResult.injectedMessage().role())
+                                                    .contents(hookResult.injectedMessage().contents())
+                                                    .metadata("hook_source", hookResult.hookSource())
+                                                    .metadata("hook_decision", "INJECT")
+                                                    .verbatimPreserved(true)
+                                                    .build();
+                                            conversationHistory.add(injected);
                                         }
 
                                         // Handle MODIFY decision — apply modifiedInput to ModelConfig
@@ -753,8 +790,6 @@ public class DefaultReActAgent implements Agent {
             conversationHistory.add(toolMsg);
 
             currentIteration.incrementAndGet();
-            tracer
-                    .recordIteration(name, currentIteration.get(), (int) totalTokensUsed.get());
             return runLoop();
         }
 
@@ -781,8 +816,8 @@ public class DefaultReActAgent implements Agent {
                                                 .filter(String.class::isInstance)
                                                 .map(String.class::cast)
                                                 .collect(Collectors.toSet());
-                                        if (!allowed.isEmpty() && toolExecutor instanceof DefaultToolExecutor dte) {
-                                            dte.setAllowedTools(allowed);
+                                        if (!allowed.isEmpty()) {
+                                            toolExecutor.setAllowedTools(allowed);
                                             log.info("Skill tool restrictions activated: {}", allowed);
                                         }
                                     }
@@ -794,12 +829,6 @@ public class DefaultReActAgent implements Agent {
                             conversationHistory.add(toolMsg);
 
                             currentIteration.incrementAndGet();
-                            // Record iteration for tracing
-                            tracer
-                                    .recordIteration(
-                                            name,
-                                            currentIteration.get(),
-                                            (int) totalTokensUsed.get());
 
                             // Auto-compaction check
                             if (contextManager != null
@@ -878,6 +907,32 @@ public class DefaultReActAgent implements Agent {
                                                 Map.of()));
                             }
 
+                            // 1b. Check SKIP — return neutral result, continue loop
+                            if (hookResult.shouldSkip()) {
+                                log.info(
+                                        "Tool '{}' skipped by hook: {}",
+                                        toolCall.toolName(),
+                                        hookResult.reason());
+                                return Mono.just(
+                                        new ToolResult(
+                                                toolCall.toolId(),
+                                                "Tool execution skipped by hook",
+                                                false,
+                                                Map.of("skipped_by_hook", true)));
+                            }
+
+                            // 1c. Handle INJECT — add message before tool execution
+                            if (hookResult.hasInjectedMessage()) {
+                                Msg injected = Msg.builder()
+                                        .role(hookResult.injectedMessage().role())
+                                        .contents(hookResult.injectedMessage().contents())
+                                        .metadata("hook_source", hookResult.hookSource())
+                                        .metadata("hook_decision", "INJECT")
+                                        .verbatimPreserved(true)
+                                        .build();
+                                conversationHistory.add(injected);
+                            }
+
                             // 2. Check cancelled event (backward compat with old-style hooks)
                             PreActingEvent pre = hookResult.event();
                             if (pre.cancelled()) {
@@ -913,6 +968,7 @@ public class DefaultReActAgent implements Agent {
                             }
 
                             // 5. Execute the tool with (possibly modified) input
+                            Instant toolStart = Instant.now();
                             return toolExecutor
                                     .execute(toolCall.toolName(), effectiveInput)
                                     .map(
@@ -935,6 +991,18 @@ public class DefaultReActAgent implements Agent {
                                                                         + e.getMessage(),
                                                                 true,
                                                                 Map.of()));
+                                            })
+                                    .doOnNext(
+                                            toolResult -> {
+                                                Duration toolDuration =
+                                                        Duration.between(toolStart, Instant.now());
+                                                hookChain.fireOnToolResult(
+                                                        new ToolResultEvent(
+                                                                toolCall.toolName(),
+                                                                toolResult,
+                                                                toolDuration,
+                                                                !toolResult.isError()))
+                                                        .subscribe();
                                             });
                         })
                 .flatMap(
@@ -992,8 +1060,8 @@ public class DefaultReActAgent implements Agent {
         Flux<DetectedToolCall> detectedTools = detector.detect(rawStream);
 
         // If the tool executor supports streaming dispatch
-        if (toolExecutor instanceof DefaultToolExecutor dte) {
-            var streamingExecutor = new StreamingToolExecutor(dte);
+        if (toolExecutor.supportsStreaming()) {
+            var streamingExecutor = new StreamingToolExecutor(toolExecutor);
             // Track tool call ID → tool name mapping for building the synthetic response
             var toolNameMap = new java.util.concurrent.ConcurrentHashMap<String, String>();
             Flux<DetectedToolCall> trackedTools =
@@ -1073,12 +1141,12 @@ public class DefaultReActAgent implements Agent {
 
     /** Build the {@link ModelConfig} for this iteration's LLM call. */
     private ModelConfig buildModelConfig() {
-        String model = config.modelName() != null ? config.modelName() : "claude-sonnet-4-20250514";
+        String model = config.modelName() != null ? config.modelName() : ModelConfig.DEFAULT_MODEL;
         ModelConfig.Builder builder =
                 ModelConfig.builder()
                         .model(model)
-                        .maxTokens(8096)
-                        .temperature(1.0)
+                        .maxTokens(ModelConfig.DEFAULT_MAX_TOKENS)
+                        .temperature(ModelConfig.DEFAULT_TEMPERATURE)
                         .systemPrompt(systemPrompt);
 
         // Add system prompt parts for cache-aware serialization

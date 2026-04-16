@@ -15,9 +15,11 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.tool.UserApprovalHandler;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -50,4 +52,61 @@ public interface ToolExecutor {
      * @return a Flux emitting results as they complete
      */
     Flux<ToolResult> executeParallel(List<ToolInvocation> invocations);
+
+    /**
+     * Set allowed tools whitelist for skill-based restrictions. When set, only tools in this set
+     * can be executed.
+     *
+     * @param tools set of tool names that are allowed
+     */
+    default void setAllowedTools(Set<String> tools) {}
+
+    /** Clear the allowed tools whitelist, allowing all tools to execute. */
+    default void clearAllowedTools() {}
+
+    /**
+     * Register a tool instance by name into this executor. Used by MCP and other dynamic tool
+     * sources to inject executable handlers at runtime.
+     *
+     * @param toolName the tool name
+     * @param instance the tool handler instance
+     */
+    default void registerToolInstance(String toolName, Object instance) {}
+
+    /**
+     * Whether this executor supports streaming tool execution.
+     *
+     * @return true if streaming dispatch is supported
+     */
+    default boolean supportsStreaming() {
+        return false;
+    }
+
+    /**
+     * Resolve the side-effect classification for a tool by name. Defaults to {@link
+     * ToolSideEffect#SYSTEM_CHANGE} (safest assumption) when the tool is unknown.
+     *
+     * @param toolName the tool name
+     * @return the side-effect classification
+     */
+    default ToolSideEffect resolveSideEffect(String toolName) {
+        return ToolSideEffect.SYSTEM_CHANGE;
+    }
+
+    /**
+     * Execute a single tool invocation through the permission and approval pipeline.
+     *
+     * @param invocation the tool invocation to execute
+     * @return a Mono emitting the tool result
+     */
+    default Mono<ToolResult> executeSingle(ToolInvocation invocation) {
+        return execute(invocation.toolName(), invocation.input());
+    }
+
+    /**
+     * Set the approval handler for tool execution requiring human approval.
+     *
+     * @param approvalHandler the approval handler, or null to disable approval flow
+     */
+    default void setApprovalHandler(UserApprovalHandler approvalHandler) {}
 }

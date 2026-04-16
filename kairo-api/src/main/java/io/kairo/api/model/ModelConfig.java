@@ -29,7 +29,7 @@ import java.util.Objects;
  *
  * <pre>{@code
  * ModelConfig config = ModelConfig.builder()
- *     .model("claude-sonnet-4-20250514")
+ *     .model(ModelConfig.DEFAULT_MODEL)
  *     .maxTokens(4096)
  *     .temperature(0.7)
  *     .build();
@@ -47,6 +47,15 @@ public record ModelConfig(
         Integer thinkingBudget,
         ToolVerbosity toolVerbosity,
         List<SystemPromptSegment> systemPromptSegments) {
+
+    /** Default model name used when no model is explicitly configured. */
+    public static final String DEFAULT_MODEL = "claude-sonnet-4-20250514";
+
+    /** Default maximum output tokens. */
+    public static final int DEFAULT_MAX_TOKENS = 8096;
+
+    /** Default temperature for model calls. */
+    public static final double DEFAULT_TEMPERATURE = 1.0;
 
     /**
      * Backward-compatible constructor without fallbackModels, thinkingBudget, toolVerbosity,

@@ -16,76 +16,55 @@
 package io.kairo.api.tracing;
 
 import io.kairo.api.message.Msg;
-import io.kairo.api.model.ModelResponse;
-import io.kairo.api.tool.ToolResult;
+import java.time.Duration;
 import java.util.Map;
-import java.util.function.Supplier;
-import reactor.core.publisher.Mono;
 
 /**
- * SPI for observability and tracing across the Kairo runtime.
+ * Tracing interface for observing Agent execution. Uses a Span model aligned with
+ * OpenTelemetry semantics for easy bridging in v0.3.0.
  *
- * <p>This provides interception points for
- * agent calls, model calls, and tool executions. Implementations can integrate with OpenTelemetry,
- * Micrometer, or any other observability stack.
- *
- * <p>Default methods are no-ops, so implementations only need to override what they care about.
+ * <p>Span factory methods create parent-child spans. Business convenience methods
+ * (recordTokenUsage, recordToolResult, recordCompaction) delegate to span.setAttribute
+ * with semantic convention keys.
  */
 public interface Tracer {
 
-    /**
-     * Wrap an agent call for tracing.
-     *
-     * @param agentName the agent name
-     * @param input the input message
-     * @param agentCall the actual agent call supplier
-     * @return the traced Mono
-     */
-    default Mono<Msg> traceAgentCall(String agentName, Msg input, Supplier<Mono<Msg>> agentCall) {
-        return agentCall.get();
+    // --- Span factories (override these) ---
+
+    default Span startAgentSpan(String agentName, Msg input) {
+        return NoopSpan.INSTANCE;
     }
 
-    /**
-     * Wrap a model API call for tracing.
-     *
-     * @param providerName the model provider name
-     * @param messageCount number of messages in the request
-     * @param modelCall the actual model call supplier
-     * @return the traced Mono
-     */
-    default Mono<ModelResponse> traceModelCall(
-            String providerName, int messageCount, Supplier<Mono<ModelResponse>> modelCall) {
-        return modelCall.get();
+    default Span startIterationSpan(Span parent, int iteration) {
+        return NoopSpan.INSTANCE;
     }
 
-    /**
-     * Wrap a tool execution for tracing.
-     *
-     * @param toolName the tool name
-     * @param input the tool input
-     * @param toolCall the actual tool call supplier
-     * @return the traced Mono
-     */
-    default Mono<ToolResult> traceToolCall(
-            String toolName, Map<String, Object> input, Supplier<Mono<ToolResult>> toolCall) {
-        return toolCall.get();
+    default Span startReasoningSpan(Span parent, String modelName, int messageCount) {
+        return NoopSpan.INSTANCE;
     }
 
-    /**
-     * Record a compaction event.
-     *
-     * @param tokensSaved tokens freed by compaction
-     * @param pressureBefore pressure before compaction
-     * @param pressureAfter pressure after compaction
-     */
-    default void recordCompaction(int tokensSaved, float pressureBefore, float pressureAfter) {}
+    default Span startToolSpan(Span parent, String toolName, Map<String, Object> input) {
+        return NoopSpan.INSTANCE;
+    }
 
-    /**
-     * Record an agent iteration.
-     *
-     * @param agentName the agent name
-     * @param iteration the iteration number
-     * @param tokensUsed total tokens used so far
-     */
-    default void recordIteration(String agentName, int iteration, int tokensUsed) {}
+    // --- Business convenience methods (use setAttribute internally) ---
+
+    default void recordTokenUsage(
+            Span span, int input, int output, int cacheRead, int cacheWrite) {
+        span.setAttribute("token.input", input);
+        span.setAttribute("token.output", output);
+        span.setAttribute("token.cache_read", cacheRead);
+        span.setAttribute("token.cache_write", cacheWrite);
+    }
+
+    default void recordToolResult(Span span, String toolName, boolean success, Duration duration) {
+        span.setAttribute("tool.name", toolName);
+        span.setAttribute("tool.success", success);
+        span.setAttribute("tool.duration_ms", duration.toMillis());
+    }
+
+    default void recordCompaction(Span span, String strategy, int tokensSaved) {
+        span.setAttribute("compaction.strategy", strategy);
+        span.setAttribute("compaction.tokens_saved", tokensSaved);
+    }
 }

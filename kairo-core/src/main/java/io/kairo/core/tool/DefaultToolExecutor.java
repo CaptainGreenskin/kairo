@@ -16,7 +16,7 @@
 package io.kairo.core.tool;
 
 import io.kairo.api.tool.*;
-import io.kairo.api.tracing.NoopTracer;
+import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
 import io.kairo.core.plan.PlanModeViolationException;
 import io.kairo.core.shutdown.GracefulShutdownManager;
@@ -73,7 +73,7 @@ public class DefaultToolExecutor implements ToolExecutor {
     public DefaultToolExecutor(DefaultToolRegistry registry, PermissionGuard permissionGuard, Tracer tracer) {
         this.registry = registry;
         this.permissionGuard = permissionGuard;
-        this.tracer = tracer != null ? tracer : new NoopTracer();
+        this.tracer = tracer != null ? tracer : new io.kairo.api.tracing.NoopTracer();
     }
 
     /**
@@ -81,6 +81,7 @@ public class DefaultToolExecutor implements ToolExecutor {
      *
      * @param handler the approval handler, or null to disable approval flow
      */
+    @Override
     public void setApprovalHandler(UserApprovalHandler handler) {
         this.approvalHandler = handler;
     }
@@ -90,6 +91,7 @@ public class DefaultToolExecutor implements ToolExecutor {
      * When set, only tools in this set can be executed.
      * @param allowed set of tool names that are allowed, or null to clear
      */
+    @Override
     public void setAllowedTools(Set<String> allowed) {
         this.activeToolConstraints = allowed;
     }
@@ -97,6 +99,7 @@ public class DefaultToolExecutor implements ToolExecutor {
     /**
      * Clear the active tool constraints, allowing all tools to execute.
      */
+    @Override
     public void clearAllowedTools() {
         this.activeToolConstraints = null;
     }
@@ -155,8 +158,16 @@ public class DefaultToolExecutor implements ToolExecutor {
 
     @Override
     public Mono<ToolResult> execute(String toolName, Map<String, Object> input, Duration timeout) {
-        return tracer
-                .traceToolCall(toolName, input, () -> executeInternal(toolName, input, timeout));
+        Span toolSpan = tracer.startToolSpan(null, toolName, input);
+        return executeInternal(toolName, input, timeout)
+                .doOnSuccess(result -> {
+                    toolSpan.setStatus(!result.isError(), result.isError() ? result.content() : "OK");
+                    toolSpan.end();
+                })
+                .doOnError(e -> {
+                    toolSpan.setStatus(false, e.getMessage());
+                    toolSpan.end();
+                });
     }
 
     /**
@@ -370,6 +381,7 @@ public class DefaultToolExecutor implements ToolExecutor {
      * @param toolName the tool name
      * @return the side-effect classification
      */
+    @Override
     public ToolSideEffect resolveSideEffect(String toolName) {
         var def = registry.get(toolName);
         if (def.isEmpty()) {
@@ -469,8 +481,19 @@ public class DefaultToolExecutor implements ToolExecutor {
      * @param invocation the tool invocation to execute
      * @return a Mono emitting the tool result
      */
+    @Override
     public Mono<ToolResult> executeSingle(ToolInvocation invocation) {
         return executeWithApproval(invocation);
+    }
+
+    @Override
+    public void registerToolInstance(String toolName, Object instance) {
+        registry.registerInstance(toolName, instance);
+    }
+
+    @Override
+    public boolean supportsStreaming() {
+        return true;
     }
 
     /** Create an error {@link ToolResult}. */

@@ -16,6 +16,7 @@
 package io.kairo.core.tool;
 
 import io.kairo.api.tool.StreamingToolResultCallback;
+import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolInvocation;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
@@ -45,7 +46,7 @@ import reactor.core.publisher.Mono;
 public class StreamingToolExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(StreamingToolExecutor.class);
-    private final DefaultToolExecutor toolExecutor;
+    private final ToolExecutor toolExecutor;
     private final StreamingToolResultCallback callback;
 
     /**
@@ -53,7 +54,7 @@ public class StreamingToolExecutor {
      *
      * @param toolExecutor the underlying tool executor
      */
-    public StreamingToolExecutor(DefaultToolExecutor toolExecutor) {
+    public StreamingToolExecutor(ToolExecutor toolExecutor) {
         this(toolExecutor, StreamingToolResultCallback.noop());
     }
 
@@ -64,7 +65,7 @@ public class StreamingToolExecutor {
      * @param callback callback invoked when each tool completes
      */
     public StreamingToolExecutor(
-            DefaultToolExecutor toolExecutor, StreamingToolResultCallback callback) {
+            ToolExecutor toolExecutor, StreamingToolResultCallback callback) {
         this.toolExecutor = toolExecutor;
         this.callback = callback;
     }

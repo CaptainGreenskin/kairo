@@ -163,4 +163,37 @@ public interface HookChain {
     default <T> Mono<HookResult<T>> firePostCompactWithResult(T event) {
         return firePostCompact(event).map(HookResult::proceed);
     }
+
+    /**
+     * Fire the session-start event through all registered handlers.
+     *
+     * @param event the event to fire
+     * @param <T> the event type
+     * @return a Mono emitting the (possibly modified) event
+     */
+    default <T> Mono<T> fireOnSessionStart(T event) {
+        return Mono.just(event);
+    }
+
+    /**
+     * Fire the session-end event through all registered handlers.
+     *
+     * @param event the event to fire
+     * @param <T> the event type
+     * @return a Mono emitting the (possibly modified) event
+     */
+    default <T> Mono<T> fireOnSessionEnd(T event) {
+        return Mono.just(event);
+    }
+
+    /**
+     * Fire the tool-result event through all registered handlers.
+     *
+     * @param event the event to fire
+     * @param <T> the event type
+     * @return a Mono emitting the (possibly modified) event
+     */
+    default <T> Mono<T> fireOnToolResult(T event) {
+        return Mono.just(event);
+    }
 }

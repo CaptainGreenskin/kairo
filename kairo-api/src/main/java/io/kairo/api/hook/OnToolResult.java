@@ -13,13 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.kairo.api.tracing;
+package io.kairo.api.hook;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
 /**
- * No-operation Tracer implementation. All span factories return {@link NoopSpan#INSTANCE}.
- * Uses default method implementations from {@link Tracer}.
+ * Marks a hook method to be invoked after each tool execution completes. Fires after tool result is
+ * received, before PostActing hook. This is a notification-only event — no HookResult return.
  */
-public final class NoopTracer implements Tracer {
-    public static final NoopTracer INSTANCE = new NoopTracer();
-    // All methods inherited from Tracer defaults (return NoopSpan.INSTANCE)
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface OnToolResult {
+    /** Execution order. Lower values execute first. */
+    int order() default 0;
 }

@@ -29,6 +29,7 @@ import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
 import io.kairo.api.tool.*;
+import io.kairo.api.hook.HookChain;
 import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
@@ -48,7 +49,7 @@ class DefaultReActAgentTest {
     private ModelProvider modelProvider;
     private DefaultToolRegistry toolRegistry;
     private DefaultToolExecutor toolExecutor;
-    private DefaultHookChain hookChain;
+    private HookChain hookChain;
 
     @BeforeEach
     void setUp() {

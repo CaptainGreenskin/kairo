@@ -90,7 +90,7 @@ public class CompactionModelFork {
         forkMessages.add(Msg.of(MsgRole.USER, conversationText.toString()));
 
         String model =
-                delegate.name().contains("anthropic") ? "claude-sonnet-4-20250514" : "gpt-4o-mini";
+                delegate.name().contains("anthropic") ? ModelConfig.DEFAULT_MODEL : "gpt-4o-mini";
 
         ModelConfig config =
                 ModelConfig.builder()

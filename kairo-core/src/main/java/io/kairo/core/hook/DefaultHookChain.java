@@ -16,6 +16,7 @@
 package io.kairo.core.hook;
 
 import io.kairo.api.hook.*;
+import io.kairo.api.message.Msg;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -121,6 +122,21 @@ public class DefaultHookChain implements HookChain {
         return fireEventWithResult(event, PostCompact.class);
     }
 
+    @Override
+    public <T> Mono<T> fireOnSessionStart(T event) {
+        return fireEvent(event, OnSessionStart.class);
+    }
+
+    @Override
+    public <T> Mono<T> fireOnSessionEnd(T event) {
+        return fireEvent(event, OnSessionEnd.class);
+    }
+
+    @Override
+    public <T> Mono<T> fireOnToolResult(T event) {
+        return fireEvent(event, OnToolResult.class);
+    }
+
     /**
      * Fire an event through all handlers that have methods annotated with the given annotation.
      * Methods are sorted by their {@code order()} value and invoked sequentially. If the event has
@@ -178,9 +194,11 @@ public class DefaultHookChain implements HookChain {
     }
 
     /**
-     * Fire an event and collect structured results. If a hook method returns a {@link HookResult},
-     * its decision is respected. If it returns the plain event, it is auto-wrapped as {@link
-     * HookResult#proceed(Object)}. An ABORT decision short-circuits the chain.
+     * Fire an event and collect structured results with decision priority merge.
+     *
+     * <p>Decision priority: ABORT > SKIP > MODIFY > INJECT > CONTINUE.
+     * ABORT short-circuits the chain. All other decisions continue processing but the
+     * highest-priority decision wins. Multiple INJECT results accumulate messages in order.
      */
     @SuppressWarnings("unchecked")
     private <T> Mono<HookResult<T>> fireEventWithResult(
@@ -193,7 +211,12 @@ public class DefaultHookChain implements HookChain {
                     }
 
                     T current = event;
-                    HookResult<T> accumulated = HookResult.proceed(event);
+                    HookResult.Decision winningDecision = HookResult.Decision.CONTINUE;
+                    String winningReason = null;
+                    String winningInjectedContext = null;
+                    java.util.Map<String, Object> winningModifiedInput = null;
+                    List<Msg> accumulatedInjectedMessages = new ArrayList<>();
+                    String lastHookSource = null;
 
                     for (AnnotatedMethod am : methods) {
                         if (isCancelled(current)) {
@@ -204,22 +227,49 @@ public class DefaultHookChain implements HookChain {
                             Object result = am.method().invoke(am.handler(), current);
 
                             if (result instanceof HookResult<?> hr) {
-                                // Hook returned a structured result
-                                accumulated = (HookResult<T>) hr;
-                                current = accumulated.event();
+                                HookResult<T> typed = (HookResult<T>) hr;
+                                current = typed.event();
 
-                                if (!accumulated.shouldProceed()) {
+                                // ABORT always short-circuits
+                                if (typed.decision() == HookResult.Decision.ABORT) {
                                     log.debug(
                                             "Hook {}#{} aborted: {}",
                                             am.handler().getClass().getSimpleName(),
                                             am.method().getName(),
-                                            accumulated.reason());
-                                    break;
+                                            typed.reason());
+                                    return Mono.just(new HookResult<>(
+                                            current, HookResult.Decision.ABORT,
+                                            winningInjectedContext, winningModifiedInput,
+                                            typed.reason(), typed.injectedMessage(),
+                                            typed.hookSource()));
+                                }
+
+                                // Priority merge: keep higher-priority decision
+                                if (typed.decision().priority() > winningDecision.priority()) {
+                                    winningDecision = typed.decision();
+                                    if (typed.reason() != null) {
+                                        winningReason = typed.reason();
+                                    }
+                                }
+
+                                // Accumulate injected context
+                                if (typed.hasInjectedContext()) {
+                                    winningInjectedContext = typed.injectedContext();
+                                }
+
+                                // Accumulate modified input (last writer wins)
+                                if (typed.hasModifiedInput()) {
+                                    winningModifiedInput = typed.modifiedInput();
+                                }
+
+                                // Accumulate injected messages in order
+                                if (typed.hasInjectedMessage()) {
+                                    accumulatedInjectedMessages.add(typed.injectedMessage());
+                                    lastHookSource = typed.hookSource();
                                 }
                             } else if (result != null && event.getClass().isInstance(result)) {
-                                // Hook returned a plain event — auto-wrap
+                                // Hook returned a plain event — auto-wrap as CONTINUE
                                 current = (T) result;
-                                accumulated = HookResult.proceed(current);
                             }
                         } catch (InvocationTargetException e) {
                             Throwable cause = e.getCause();
@@ -238,7 +288,19 @@ public class DefaultHookChain implements HookChain {
                             return Mono.error(e);
                         }
                     }
-                    return Mono.just(accumulated);
+
+                    // Build the final merged result
+                    // For INJECT with accumulated messages, use the first message
+                    // (caller should check accumulatedInjectedMessages via the list)
+                    Msg finalInjectedMsg = accumulatedInjectedMessages.isEmpty()
+                            ? null
+                            : accumulatedInjectedMessages.get(0);
+
+                    HookResult<T> merged = new HookResult<>(
+                            current, winningDecision, winningInjectedContext,
+                            winningModifiedInput, winningReason,
+                            finalInjectedMsg, lastHookSource);
+                    return Mono.just(merged);
                 });
     }
 
