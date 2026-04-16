@@ -44,8 +44,16 @@ class ConditionalActivationTest {
     void fullConstructor_setsAllFields() {
         SkillDefinition skill =
                 new SkillDefinition(
-                        "test", "1.0", "desc", "body", List.of(), SkillCategory.CODE,
-                        List.of("src/**/*.java"), List.of("bash"), "macos", 10);
+                        "test",
+                        "1.0",
+                        "desc",
+                        "body",
+                        List.of(),
+                        SkillCategory.CODE,
+                        List.of("src/**/*.java"),
+                        List.of("bash"),
+                        "macos",
+                        10);
         assertEquals(List.of("src/**/*.java"), skill.pathPatterns());
         assertEquals(List.of("bash"), skill.requiredTools());
         assertEquals("macos", skill.platform());
@@ -70,7 +78,8 @@ class ConditionalActivationTest {
     @Test
     void hasInstructions_withContentReturnsTrue() {
         SkillDefinition skill =
-                new SkillDefinition("test", "1.0", "desc", "do stuff", List.of(), SkillCategory.CODE);
+                new SkillDefinition(
+                        "test", "1.0", "desc", "do stuff", List.of(), SkillCategory.CODE);
         assertTrue(skill.hasInstructions());
     }
 
@@ -78,8 +87,16 @@ class ConditionalActivationTest {
     void metadataOnly_stripsInstructions() {
         SkillDefinition full =
                 new SkillDefinition(
-                        "test", "1.0", "desc", "full body", List.of("trigger"), SkillCategory.CODE,
-                        List.of("*.java"), List.of("bash"), "linux", 5);
+                        "test",
+                        "1.0",
+                        "desc",
+                        "full body",
+                        List.of("trigger"),
+                        SkillCategory.CODE,
+                        List.of("*.java"),
+                        List.of("bash"),
+                        "linux",
+                        5);
         SkillDefinition meta = full.metadataOnly();
         assertNull(meta.instructions());
         assertFalse(meta.hasInstructions());
@@ -104,8 +121,16 @@ class ConditionalActivationTest {
     void meetsConditions_requiredToolsPresent_returnsTrue() {
         SkillDefinition skill =
                 new SkillDefinition(
-                        "test", "1.0", "desc", "body", List.of(), SkillCategory.CODE,
-                        null, List.of("bash", "read"), null, 0);
+                        "test",
+                        "1.0",
+                        "desc",
+                        "body",
+                        List.of(),
+                        SkillCategory.CODE,
+                        null,
+                        List.of("bash", "read"),
+                        null,
+                        0);
         assertTrue(guard.meetsConditions(skill, null, Set.of("bash", "read", "write")));
     }
 
@@ -113,8 +138,16 @@ class ConditionalActivationTest {
     void meetsConditions_requiredToolsMissing_returnsFalse() {
         SkillDefinition skill =
                 new SkillDefinition(
-                        "test", "1.0", "desc", "body", List.of(), SkillCategory.CODE,
-                        null, List.of("bash", "docker"), null, 0);
+                        "test",
+                        "1.0",
+                        "desc",
+                        "body",
+                        List.of(),
+                        SkillCategory.CODE,
+                        null,
+                        List.of("bash", "docker"),
+                        null,
+                        0);
         assertFalse(guard.meetsConditions(skill, null, Set.of("bash", "read")));
     }
 
@@ -122,8 +155,16 @@ class ConditionalActivationTest {
     void meetsConditions_pathPatternMatches_returnsTrue() {
         SkillDefinition skill =
                 new SkillDefinition(
-                        "test", "1.0", "desc", "body", List.of(), SkillCategory.CODE,
-                        List.of("src/**/*.java"), null, null, 0);
+                        "test",
+                        "1.0",
+                        "desc",
+                        "body",
+                        List.of(),
+                        SkillCategory.CODE,
+                        List.of("src/**/*.java"),
+                        null,
+                        null,
+                        0);
         assertTrue(guard.meetsConditions(skill, "src/main/Foo.java", null));
     }
 
@@ -131,8 +172,16 @@ class ConditionalActivationTest {
     void meetsConditions_pathPatternNoMatch_returnsFalse() {
         SkillDefinition skill =
                 new SkillDefinition(
-                        "test", "1.0", "desc", "body", List.of(), SkillCategory.CODE,
-                        List.of("src/**/*.java"), null, null, 0);
+                        "test",
+                        "1.0",
+                        "desc",
+                        "body",
+                        List.of(),
+                        SkillCategory.CODE,
+                        List.of("src/**/*.java"),
+                        null,
+                        null,
+                        0);
         assertFalse(guard.meetsConditions(skill, "docs/README.md", null));
     }
 
@@ -141,8 +190,16 @@ class ConditionalActivationTest {
         // If no file is being operated on, path condition is not checked
         SkillDefinition skill =
                 new SkillDefinition(
-                        "test", "1.0", "desc", "body", List.of(), SkillCategory.CODE,
-                        List.of("src/**/*.java"), null, null, 0);
+                        "test",
+                        "1.0",
+                        "desc",
+                        "body",
+                        List.of(),
+                        SkillCategory.CODE,
+                        List.of("src/**/*.java"),
+                        null,
+                        null,
+                        0);
         assertTrue(guard.meetsConditions(skill, null, null));
     }
 
@@ -163,8 +220,16 @@ class ConditionalActivationTest {
 
         SkillDefinition skill =
                 new SkillDefinition(
-                        "test", "1.0", "desc", "body", List.of(), SkillCategory.CODE,
-                        null, null, wrongPlatform, 0);
+                        "test",
+                        "1.0",
+                        "desc",
+                        "body",
+                        List.of(),
+                        SkillCategory.CODE,
+                        null,
+                        null,
+                        wrongPlatform,
+                        0);
         assertFalse(guard.meetsConditions(skill, null, null));
     }
 

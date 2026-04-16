@@ -46,8 +46,16 @@ class SkillApiTest {
     void allowedToolsField() {
         SkillDefinition skill =
                 new SkillDefinition(
-                        "name", "1.0.0", "desc", "instructions", List.of(),
-                        SkillCategory.CODE, null, null, null, 0,
+                        "name",
+                        "1.0.0",
+                        "desc",
+                        "instructions",
+                        List.of(),
+                        SkillCategory.CODE,
+                        null,
+                        null,
+                        null,
+                        0,
                         List.of("Read", "Grep"));
 
         assertEquals(List.of("Read", "Grep"), skill.allowedTools());
@@ -57,8 +65,16 @@ class SkillApiTest {
     void hasToolRestrictionsTrue() {
         SkillDefinition skill =
                 new SkillDefinition(
-                        "name", "1.0.0", "desc", "instructions", List.of(),
-                        SkillCategory.CODE, null, null, null, 0,
+                        "name",
+                        "1.0.0",
+                        "desc",
+                        "instructions",
+                        List.of(),
+                        SkillCategory.CODE,
+                        null,
+                        null,
+                        null,
+                        0,
                         List.of("Read", "Grep"));
 
         assertTrue(skill.hasToolRestrictions());
@@ -68,8 +84,16 @@ class SkillApiTest {
     void hasToolRestrictionsFalseWhenNull() {
         SkillDefinition skill =
                 new SkillDefinition(
-                        "name", "1.0.0", "desc", "instructions", List.of(),
-                        SkillCategory.CODE, null, null, null, 0,
+                        "name",
+                        "1.0.0",
+                        "desc",
+                        "instructions",
+                        List.of(),
+                        SkillCategory.CODE,
+                        null,
+                        null,
+                        null,
+                        0,
                         null);
 
         assertFalse(skill.hasToolRestrictions());
@@ -79,8 +103,16 @@ class SkillApiTest {
     void hasToolRestrictionsFalseWhenEmpty() {
         SkillDefinition skill =
                 new SkillDefinition(
-                        "name", "1.0.0", "desc", "instructions", List.of(),
-                        SkillCategory.CODE, null, null, null, 0,
+                        "name",
+                        "1.0.0",
+                        "desc",
+                        "instructions",
+                        List.of(),
+                        SkillCategory.CODE,
+                        null,
+                        null,
+                        null,
+                        0,
                         Collections.emptyList());
 
         assertFalse(skill.hasToolRestrictions());
@@ -90,8 +122,12 @@ class SkillApiTest {
     void backwardCompatConstructorSetsNullAllowedTools() {
         SkillDefinition skill =
                 new SkillDefinition(
-                        "name", "1.0.0", "desc", "instructions",
-                        List.of("trigger"), SkillCategory.CODE);
+                        "name",
+                        "1.0.0",
+                        "desc",
+                        "instructions",
+                        List.of("trigger"),
+                        SkillCategory.CODE);
 
         assertNull(skill.allowedTools());
         assertFalse(skill.hasToolRestrictions());
@@ -101,8 +137,16 @@ class SkillApiTest {
     void metadataOnlyPreservesAllowedTools() {
         SkillDefinition skill =
                 new SkillDefinition(
-                        "name", "1.0.0", "desc", "instructions", List.of(),
-                        SkillCategory.CODE, null, null, null, 0,
+                        "name",
+                        "1.0.0",
+                        "desc",
+                        "instructions",
+                        List.of(),
+                        SkillCategory.CODE,
+                        null,
+                        null,
+                        null,
+                        0,
                         List.of("Read", "Grep"));
 
         SkillDefinition metadata = skill.metadataOnly();

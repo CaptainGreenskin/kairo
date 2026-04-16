@@ -42,35 +42,35 @@ class McpClientBuilderTest {
 
     @Test
     void stdioTransportCreatesClient() {
-        McpAsyncClient client = McpClientBuilder.create("fs")
-                .stdioTransport("echo", "hello")
-                .build();
+        McpAsyncClient client =
+                McpClientBuilder.create("fs").stdioTransport("echo", "hello").build();
         assertNotNull(client);
     }
 
     @Test
     void streamableHttpTransportCreatesClient() {
-        McpAsyncClient client = McpClientBuilder.create("api")
-                .streamableHttpTransport("http://localhost:8080/mcp")
-                .build();
+        McpAsyncClient client =
+                McpClientBuilder.create("api")
+                        .streamableHttpTransport("http://localhost:8080/mcp")
+                        .build();
         assertNotNull(client);
     }
 
     @Test
     void sseTransportCreatesClient() {
-        McpAsyncClient client = McpClientBuilder.create("events")
-                .sseTransport("http://localhost:9090/sse")
-                .build();
+        McpAsyncClient client =
+                McpClientBuilder.create("events").sseTransport("http://localhost:9090/sse").build();
         assertNotNull(client);
     }
 
     @Test
     void requestTimeoutIsApplied() {
         // Verify builder accepts custom timeout without error
-        McpAsyncClient client = McpClientBuilder.create("fs")
-                .stdioTransport("echo")
-                .requestTimeout(Duration.ofSeconds(120))
-                .build();
+        McpAsyncClient client =
+                McpClientBuilder.create("fs")
+                        .stdioTransport("echo")
+                        .requestTimeout(Duration.ofSeconds(120))
+                        .build();
         assertNotNull(client);
     }
 
@@ -97,11 +97,12 @@ class McpClientBuilderTest {
 
     @Test
     void fromConfigStdioRequiresCommand() {
-        McpServerConfig config = McpServerConfig.builder()
-                .name("empty")
-                .transportType(McpServerConfig.TransportType.STDIO)
-                .command(List.of())
-                .build();
+        McpServerConfig config =
+                McpServerConfig.builder()
+                        .name("empty")
+                        .transportType(McpServerConfig.TransportType.STDIO)
+                        .command(List.of())
+                        .build();
         assertThrows(IllegalArgumentException.class, () -> McpClientBuilder.fromConfig(config));
     }
 }

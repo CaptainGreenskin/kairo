@@ -36,6 +36,7 @@ import java.util.Map;
  * <p>Supports three transport types: Stdio, Streamable HTTP, and SSE.
  *
  * <p>Example:
+ *
  * <pre>{@code
  * McpAsyncClient client = McpClientBuilder.create("weather")
  *     .stdioTransport("npx", "-y", "@modelcontextprotocol/server-weather")
@@ -104,7 +105,8 @@ public class McpClientBuilder {
                 }
                 builder.stdioCommand = config.command().get(0);
                 if (config.command().size() > 1) {
-                    builder.stdioArgs = new ArrayList<>(config.command().subList(1, config.command().size()));
+                    builder.stdioArgs =
+                            new ArrayList<>(config.command().subList(1, config.command().size()));
                 }
                 if (config.env() != null) {
                     builder.stdioEnv = new HashMap<>(config.env());
@@ -217,8 +219,7 @@ public class McpClientBuilder {
         HttpClientStreamableHttpTransport.Builder builder =
                 HttpClientStreamableHttpTransport.builder(httpUrl);
         if (!httpHeaders.isEmpty()) {
-            builder.customizeRequest(
-                    requestBuilder -> httpHeaders.forEach(requestBuilder::header));
+            builder.customizeRequest(requestBuilder -> httpHeaders.forEach(requestBuilder::header));
         }
         return builder.build();
     }
@@ -227,8 +228,7 @@ public class McpClientBuilder {
         HttpClientSseClientTransport.Builder builder =
                 HttpClientSseClientTransport.builder(httpUrl);
         if (!httpHeaders.isEmpty()) {
-            builder.customizeRequest(
-                    requestBuilder -> httpHeaders.forEach(requestBuilder::header));
+            builder.customizeRequest(requestBuilder -> httpHeaders.forEach(requestBuilder::header));
         }
         return builder.build();
     }

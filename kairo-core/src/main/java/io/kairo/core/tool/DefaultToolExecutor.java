@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -44,10 +45,15 @@ public class DefaultToolExecutor implements ToolExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultToolExecutor.class);
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(120);
+    private static final int DEFAULT_CIRCUIT_BREAKER_THRESHOLD = 3;
 
     private final DefaultToolRegistry registry;
     private final PermissionGuard permissionGuard;
     private final Tracer tracer;
+    private final GracefulShutdownManager shutdownManager;
+    private final int circuitBreakerThreshold;
+    private final ConcurrentHashMap<String, AtomicInteger> consecutiveFailures =
+            new ConcurrentHashMap<>();
     private UserApprovalHandler approvalHandler;
     private volatile boolean planMode = false;
     private final Map<String, ToolPermission> toolPermissions = new ConcurrentHashMap<>();
@@ -60,7 +66,7 @@ public class DefaultToolExecutor implements ToolExecutor {
      * @param permissionGuard the permission guard
      */
     public DefaultToolExecutor(DefaultToolRegistry registry, PermissionGuard permissionGuard) {
-        this(registry, permissionGuard, null);
+        this(registry, permissionGuard, null, null);
     }
 
     /**
@@ -70,10 +76,50 @@ public class DefaultToolExecutor implements ToolExecutor {
      * @param permissionGuard the permission guard
      * @param tracer the tracer (null defaults to NoopTracer)
      */
-    public DefaultToolExecutor(DefaultToolRegistry registry, PermissionGuard permissionGuard, Tracer tracer) {
+    public DefaultToolExecutor(
+            DefaultToolRegistry registry, PermissionGuard permissionGuard, Tracer tracer) {
+        this(registry, permissionGuard, tracer, null);
+    }
+
+    /**
+     * Create a new executor with the given registry, permission guard, tracer, and shutdown manager.
+     *
+     * @param registry the tool registry
+     * @param permissionGuard the permission guard
+     * @param tracer the tracer (null defaults to NoopTracer)
+     * @param shutdownManager the shutdown manager (null creates a new instance)
+     */
+    public DefaultToolExecutor(
+            DefaultToolRegistry registry,
+            PermissionGuard permissionGuard,
+            Tracer tracer,
+            GracefulShutdownManager shutdownManager) {
+        this(registry, permissionGuard, tracer, shutdownManager, DEFAULT_CIRCUIT_BREAKER_THRESHOLD);
+    }
+
+    /**
+     * Create a new executor with all options including circuit breaker threshold.
+     *
+     * @param registry the tool registry
+     * @param permissionGuard the permission guard
+     * @param tracer the tracer (null defaults to NoopTracer)
+     * @param shutdownManager the shutdown manager (null creates a new instance)
+     * @param circuitBreakerThreshold consecutive failures before a tool is circuit-broken
+     */
+    public DefaultToolExecutor(
+            DefaultToolRegistry registry,
+            PermissionGuard permissionGuard,
+            Tracer tracer,
+            GracefulShutdownManager shutdownManager,
+            int circuitBreakerThreshold) {
         this.registry = registry;
         this.permissionGuard = permissionGuard;
         this.tracer = tracer != null ? tracer : new io.kairo.api.tracing.NoopTracer();
+        this.shutdownManager =
+                shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
+        this.circuitBreakerThreshold = circuitBreakerThreshold > 0
+                ? circuitBreakerThreshold
+                : DEFAULT_CIRCUIT_BREAKER_THRESHOLD;
     }
 
     /**
@@ -87,8 +133,9 @@ public class DefaultToolExecutor implements ToolExecutor {
     }
 
     /**
-     * Set the allowed tools whitelist for the currently active skill.
-     * When set, only tools in this set can be executed.
+     * Set the allowed tools whitelist for the currently active skill. When set, only tools in this
+     * set can be executed.
+     *
      * @param allowed set of tool names that are allowed, or null to clear
      */
     @Override
@@ -96,9 +143,7 @@ public class DefaultToolExecutor implements ToolExecutor {
         this.activeToolConstraints = allowed;
     }
 
-    /**
-     * Clear the active tool constraints, allowing all tools to execute.
-     */
+    /** Clear the active tool constraints, allowing all tools to execute. */
     @Override
     public void clearAllowedTools() {
         this.activeToolConstraints = null;
@@ -160,14 +205,17 @@ public class DefaultToolExecutor implements ToolExecutor {
     public Mono<ToolResult> execute(String toolName, Map<String, Object> input, Duration timeout) {
         Span toolSpan = tracer.startToolSpan(null, toolName, input);
         return executeInternal(toolName, input, timeout)
-                .doOnSuccess(result -> {
-                    toolSpan.setStatus(!result.isError(), result.isError() ? result.content() : "OK");
-                    toolSpan.end();
-                })
-                .doOnError(e -> {
-                    toolSpan.setStatus(false, e.getMessage());
-                    toolSpan.end();
-                });
+                .doOnSuccess(
+                        result -> {
+                            toolSpan.setStatus(
+                                    !result.isError(), result.isError() ? result.content() : "OK");
+                            toolSpan.end();
+                        })
+                .doOnError(
+                        e -> {
+                            toolSpan.setStatus(false, e.getMessage());
+                            toolSpan.end();
+                        });
     }
 
     /**
@@ -196,6 +244,21 @@ public class DefaultToolExecutor implements ToolExecutor {
             String toolName, Map<String, Object> input, Duration timeout) {
         return Mono.defer(
                 () -> {
+                    // 0. Circuit breaker check
+                    AtomicInteger failures = consecutiveFailures.get(toolName);
+                    if (failures != null && failures.get() >= circuitBreakerThreshold) {
+                        return Mono.just(
+                                errorResult(
+                                        toolName,
+                                        "Tool '"
+                                                + toolName
+                                                + "' is circuit-broken after "
+                                                + failures.get()
+                                                + " consecutive failures. Reset by"
+                                                + " successful execution or agent"
+                                                + " restart."));
+                    }
+
                     // 0a. Active skill tool constraints check
                     if (activeToolConstraints != null
                             && !activeToolConstraints.contains(toolName)
@@ -204,7 +267,10 @@ public class DefaultToolExecutor implements ToolExecutor {
                         return Mono.just(
                                 errorResult(
                                         toolName,
-                                        "Tool '" + toolName + "' is not allowed by the active skill. Allowed tools: " + activeToolConstraints));
+                                        "Tool '"
+                                                + toolName
+                                                + "' is not allowed by the active skill. Allowed tools: "
+                                                + activeToolConstraints));
                     }
 
                     // 0b. Plan mode check — must be before any execution
@@ -275,7 +341,7 @@ public class DefaultToolExecutor implements ToolExecutor {
                                         // Race against shutdown signal
                                         // (shutdown guard pattern)
                                         Mono<ToolResult> shutdownGuard =
-                                                GracefulShutdownManager.getInstance()
+                                                shutdownManager
                                                         .getShutdownSignal()
                                                         .then(
                                                                 Mono.just(
@@ -285,7 +351,8 @@ public class DefaultToolExecutor implements ToolExecutor {
                                                                                         + " due to"
                                                                                         + " system"
                                                                                         + " shutdown")));
-                                        return Mono.firstWithSignal(execution, shutdownGuard);
+                                        return Mono.firstWithSignal(execution, shutdownGuard)
+                                                .doOnNext(this::trackCircuitBreaker);
                                     });
                 });
     }
@@ -494,6 +561,33 @@ public class DefaultToolExecutor implements ToolExecutor {
     @Override
     public boolean supportsStreaming() {
         return true;
+    }
+
+    /**
+     * Track consecutive failures for circuit breaker logic.
+     *
+     * @param result the tool result to evaluate
+     */
+    private void trackCircuitBreaker(ToolResult result) {
+        if (result.isError()) {
+            consecutiveFailures
+                    .computeIfAbsent(result.toolUseId(), k -> new AtomicInteger())
+                    .incrementAndGet();
+        } else {
+            consecutiveFailures.remove(result.toolUseId());
+        }
+    }
+
+    /** Reset circuit breaker state for all tools. */
+    @Override
+    public void resetCircuitBreaker() {
+        consecutiveFailures.clear();
+    }
+
+    /** Reset circuit breaker state for a specific tool. */
+    @Override
+    public void resetCircuitBreaker(String toolName) {
+        consecutiveFailures.remove(toolName);
     }
 
     /** Create an error {@link ToolResult}. */

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.kairo.demo;
+package io.kairo.examples.quickstart;
 
 import io.kairo.api.agent.Agent;
 import io.kairo.api.message.Msg;
@@ -28,42 +28,44 @@ import io.kairo.core.model.OpenAIProvider;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
 import io.kairo.core.tool.DefaultToolRegistry;
+import io.kairo.examples.support.LoggingHook;
+import io.kairo.examples.support.MockModelProvider;
 import io.kairo.tools.exec.BashTool;
 import io.kairo.tools.file.ReadTool;
 import io.kairo.tools.file.WriteTool;
 import java.nio.file.Path;
 
 /**
- * Kairo Demo — showcases the complete ReAct reasoning loop.
+ * Kairo Example — showcases the complete ReAct reasoning loop.
  *
  * <p>Run with mock model (no API key needed):
  *
  * <pre>
- *   mvn exec:java -pl runtime-demo -Dexec.args="--mock"
+ *   mvn exec:java -pl kairo-examples -Dexec.args="--mock"
  * </pre>
  *
  * <p>Run with GLM (Zhipu) model:
  *
  * <pre>
  *   export GLM_API_KEY=your-api-key
- *   mvn exec:java -pl kairo-demo -Dexec.args="--glm"
+ *   mvn exec:java -pl kairo-examples -Dexec.args="--glm"
  * </pre>
  *
  * <p>Run with Qwen (Alibaba) model:
  *
  * <pre>
  *   export QWEN_API_KEY=your-api-key
- *   mvn exec:java -pl kairo-demo -Dexec.args="--qwen"
+ *   mvn exec:java -pl kairo-examples -Dexec.args="--qwen"
  * </pre>
  *
  * <p>Run with real Anthropic API:
  *
  * <pre>
  *   export ANTHROPIC_API_KEY=sk-ant-xxx
- *   mvn exec:java -pl kairo-demo
+ *   mvn exec:java -pl kairo-examples
  * </pre>
  */
-public class AgentDemo {
+public class AgentExample {
 
     /** Comprehensive E2E task that exercises multiple agent features. */
     private static final String E2E_TASK =
@@ -115,7 +117,7 @@ public class AgentDemo {
 
     private static void runMockDemo() {
         System.out.println("========================================");
-        System.out.println("  Kairo — ReAct Demo (Mock Mode)");
+        System.out.println("  Kairo — ReAct Example (Mock Mode)");
         System.out.println("========================================");
 
         String task = "Please create a HelloWorld.java in /tmp/agent-demo, compile and run it.";
@@ -161,13 +163,13 @@ public class AgentDemo {
         // 7. Print summary
         System.out.println("\n========================================");
         System.out.println(
-                "  Demo complete! ReAct loop: " + loggingHook.getIteration() + " iterations");
+                "  Example complete! ReAct loop: " + loggingHook.getIteration() + " iterations");
         System.out.println("========================================");
     }
 
     private static void runRealDemo(String apiKey) {
         System.out.println("========================================");
-        System.out.println("  Kairo — ReAct Demo");
+        System.out.println("  Kairo — ReAct Example");
         System.out.println("  Model: Claude Sonnet");
         System.out.println("========================================");
 
@@ -212,7 +214,7 @@ public class AgentDemo {
         // 7. Print summary
         System.out.println("\n========================================");
         System.out.println(
-                "  Demo complete! ReAct loop: " + loggingHook.getIteration() + " iterations");
+                "  Example complete! ReAct loop: " + loggingHook.getIteration() + " iterations");
         System.out.println("========================================");
     }
 
@@ -277,7 +279,7 @@ public class AgentDemo {
         // 9. Print summary
         System.out.println("\n========================================");
         System.out.println(
-                "  Demo complete! ReAct loop: " + loggingHook.getIteration() + " iterations");
+                "  Example complete! ReAct loop: " + loggingHook.getIteration() + " iterations");
         System.out.println("========================================");
     }
 
@@ -344,7 +346,7 @@ public class AgentDemo {
         // 9. Print summary
         System.out.println("\n========================================");
         System.out.println(
-                "  Demo complete! ReAct loop: " + loggingHook.getIteration() + " iterations");
+                "  Example complete! ReAct loop: " + loggingHook.getIteration() + " iterations");
         System.out.println("========================================");
     }
 
@@ -361,7 +363,7 @@ public class AgentDemo {
 
     private static void printUsage() {
         System.out.println("========================================");
-        System.out.println("  Kairo Demo");
+        System.out.println("  Kairo Example");
         System.out.println("========================================");
         System.out.println();
         System.out.println("Modes:");

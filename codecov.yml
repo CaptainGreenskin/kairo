@@ -9,4 +9,4 @@ coverage:
         target: 60%
         threshold: 5%
 ignore:
-  - "kairo-demo/**"
+  - "kairo-examples/**"

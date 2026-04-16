@@ -34,8 +34,7 @@ class GracefulShutdownManagerTest {
 
     @BeforeEach
     void setUp() {
-        manager = GracefulShutdownManager.getInstance();
-        manager.resetForTesting();
+        manager = new GracefulShutdownManager();
     }
 
     @AfterEach

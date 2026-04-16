@@ -37,7 +37,8 @@ import java.util.List;
  *     requirement)
  * @param platform target platform: "macos", "linux", "windows" (null = any platform)
  * @param matchScore priority weight for ordering when multiple skills match (higher = preferred)
- * @param allowedTools tool names whitelist (null = all tools allowed, non-null non-empty = whitelist)
+ * @param allowedTools tool names whitelist (null = all tools allowed, non-null non-empty =
+ *     whitelist)
  */
 public record SkillDefinition(
         String name,
@@ -55,7 +56,8 @@ public record SkillDefinition(
     /**
      * Backward-compatible constructor without conditional activation fields.
      *
-     * <p>Sets pathPatterns=null, requiredTools=null, platform=null, matchScore=0, allowedTools=null.
+     * <p>Sets pathPatterns=null, requiredTools=null, platform=null, matchScore=0,
+     * allowedTools=null.
      */
     public SkillDefinition(
             String name,
@@ -64,8 +66,17 @@ public record SkillDefinition(
             String instructions,
             List<String> triggerConditions,
             SkillCategory category) {
-        this(name, version, description, instructions, triggerConditions, category,
-                null, null, null, 0);
+        this(
+                name,
+                version,
+                description,
+                instructions,
+                triggerConditions,
+                category,
+                null,
+                null,
+                null,
+                0);
     }
 
     /**
@@ -84,8 +95,18 @@ public record SkillDefinition(
             List<String> requiredTools,
             String platform,
             int matchScore) {
-        this(name, version, description, instructions, triggerConditions, category,
-                pathPatterns, requiredTools, platform, matchScore, null);
+        this(
+                name,
+                version,
+                description,
+                instructions,
+                triggerConditions,
+                category,
+                pathPatterns,
+                requiredTools,
+                platform,
+                matchScore,
+                null);
     }
 
     /** Whether this skill has full instructions loaded (vs metadata-only). */
@@ -108,7 +129,16 @@ public record SkillDefinition(
     /** Create a metadata-only copy of this skill (instructions stripped). */
     public SkillDefinition metadataOnly() {
         return new SkillDefinition(
-                name, version, description, null, triggerConditions, category,
-                pathPatterns, requiredTools, platform, matchScore, allowedTools);
+                name,
+                version,
+                description,
+                null,
+                triggerConditions,
+                category,
+                pathPatterns,
+                requiredTools,
+                platform,
+                matchScore,
+                allowedTools);
     }
 }

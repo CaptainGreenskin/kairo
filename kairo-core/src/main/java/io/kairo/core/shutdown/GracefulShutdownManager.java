@@ -34,8 +34,7 @@ import reactor.core.publisher.Sinks;
 /**
  * Manages graceful shutdown of the Kairo agent runtime.
  *
- * <p>Inspired by claude-code-best's cleanup
- * registry pattern. Provides:
+ * <p>Inspired by claude-code-best's cleanup registry pattern. Provides:
  *
  * <ul>
  *   <li>State machine: RUNNING → SHUTTING_DOWN → TERMINATED
@@ -48,7 +47,6 @@ import reactor.core.publisher.Sinks;
 public final class GracefulShutdownManager {
 
     private static final Logger log = LoggerFactory.getLogger(GracefulShutdownManager.class);
-    private static final GracefulShutdownManager INSTANCE = new GracefulShutdownManager();
 
     /** Shutdown states. */
     public enum ShutdownState {
@@ -79,7 +77,7 @@ public final class GracefulShutdownManager {
                     });
     private volatile ScheduledFuture<?> monitorFuture;
 
-    private GracefulShutdownManager() {
+    public GracefulShutdownManager() {
         // Register JVM shutdown hook
         Runtime.getRuntime()
                 .addShutdownHook(
@@ -91,10 +89,6 @@ public final class GracefulShutdownManager {
                                     }
                                 },
                                 "kairo-jvm-shutdown"));
-    }
-
-    public static GracefulShutdownManager getInstance() {
-        return INSTANCE;
     }
 
     public ShutdownState getState() {

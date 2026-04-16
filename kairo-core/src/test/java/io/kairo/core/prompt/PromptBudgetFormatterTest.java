@@ -34,7 +34,11 @@ class PromptBudgetFormatterTest {
     void singleSkillWithinBudget() {
         SkillDefinition skill =
                 new SkillDefinition(
-                        "commit", "1.0.0", "Git commit helper", null, List.of("trigger"),
+                        "commit",
+                        "1.0.0",
+                        "Git commit helper",
+                        null,
+                        List.of("trigger"),
                         SkillCategory.CODE);
 
         String result = PromptBudgetFormatter.formatSkills(List.of(skill), 10000);
@@ -46,13 +50,22 @@ class PromptBudgetFormatterTest {
 
     @Test
     void multipleSkillsWithinBudget() {
-        List<SkillDefinition> skills = List.of(
-                new SkillDefinition(
-                        "commit", "1.0.0", "Git commit helper", null, List.of(),
-                        SkillCategory.CODE),
-                new SkillDefinition(
-                        "deploy", "2.0.0", "Deploy assistant", null, List.of(),
-                        SkillCategory.DEVOPS));
+        List<SkillDefinition> skills =
+                List.of(
+                        new SkillDefinition(
+                                "commit",
+                                "1.0.0",
+                                "Git commit helper",
+                                null,
+                                List.of(),
+                                SkillCategory.CODE),
+                        new SkillDefinition(
+                                "deploy",
+                                "2.0.0",
+                                "Deploy assistant",
+                                null,
+                                List.of(),
+                                SkillCategory.DEVOPS));
 
         String result = PromptBudgetFormatter.formatSkills(skills, 10000);
 
@@ -64,16 +77,29 @@ class PromptBudgetFormatterTest {
     @Test
     void budgetExceededFallsToTruncated() {
         // Create skills with long descriptions that exceed budget at Level 1
-        List<SkillDefinition> skills = List.of(
-                new SkillDefinition(
-                        "skill-a", "1.0.0", "A".repeat(200), null, List.of(),
-                        SkillCategory.CODE),
-                new SkillDefinition(
-                        "skill-b", "1.0.0", "B".repeat(200), null, List.of(),
-                        SkillCategory.CODE),
-                new SkillDefinition(
-                        "skill-c", "1.0.0", "C".repeat(200), null, List.of(),
-                        SkillCategory.DEVOPS));
+        List<SkillDefinition> skills =
+                List.of(
+                        new SkillDefinition(
+                                "skill-a",
+                                "1.0.0",
+                                "A".repeat(200),
+                                null,
+                                List.of(),
+                                SkillCategory.CODE),
+                        new SkillDefinition(
+                                "skill-b",
+                                "1.0.0",
+                                "B".repeat(200),
+                                null,
+                                List.of(),
+                                SkillCategory.CODE),
+                        new SkillDefinition(
+                                "skill-c",
+                                "1.0.0",
+                                "C".repeat(200),
+                                null,
+                                List.of(),
+                                SkillCategory.DEVOPS));
 
         // Budget too small for full but large enough for truncated (50-char descs)
         String full = PromptBudgetFormatter.formatSkills(skills, 10000);
@@ -89,13 +115,22 @@ class PromptBudgetFormatterTest {
 
     @Test
     void budgetExceededFallsToMinimal() {
-        List<SkillDefinition> skills = List.of(
-                new SkillDefinition(
-                        "skill-a", "1.0.0", "A".repeat(200), null, List.of(),
-                        SkillCategory.CODE),
-                new SkillDefinition(
-                        "skill-b", "1.0.0", "B".repeat(200), null, List.of(),
-                        SkillCategory.DEVOPS));
+        List<SkillDefinition> skills =
+                List.of(
+                        new SkillDefinition(
+                                "skill-a",
+                                "1.0.0",
+                                "A".repeat(200),
+                                null,
+                                List.of(),
+                                SkillCategory.CODE),
+                        new SkillDefinition(
+                                "skill-b",
+                                "1.0.0",
+                                "B".repeat(200),
+                                null,
+                                List.of(),
+                                SkillCategory.DEVOPS));
 
         // Very tight budget forces Level 3
         String result = PromptBudgetFormatter.formatSkills(skills, 10);
@@ -110,12 +145,28 @@ class PromptBudgetFormatterTest {
     void matchScoreSorting() {
         SkillDefinition high =
                 new SkillDefinition(
-                        "high", "1.0.0", "desc", null, List.of(), SkillCategory.CODE,
-                        null, null, null, 100);
+                        "high",
+                        "1.0.0",
+                        "desc",
+                        null,
+                        List.of(),
+                        SkillCategory.CODE,
+                        null,
+                        null,
+                        null,
+                        100);
         SkillDefinition low =
                 new SkillDefinition(
-                        "low", "1.0.0", "desc", null, List.of(), SkillCategory.CODE,
-                        null, null, null, 10);
+                        "low",
+                        "1.0.0",
+                        "desc",
+                        null,
+                        List.of(),
+                        SkillCategory.CODE,
+                        null,
+                        null,
+                        null,
+                        10);
 
         String result = PromptBudgetFormatter.formatSkills(List.of(low, high), 10000);
 
@@ -128,13 +179,17 @@ class PromptBudgetFormatterTest {
 
     @Test
     void categoriesGroupedAlphabetically() {
-        List<SkillDefinition> skills = List.of(
-                new SkillDefinition(
-                        "z-skill", "1.0.0", "desc z", null, List.of(),
-                        SkillCategory.TESTING),
-                new SkillDefinition(
-                        "a-skill", "1.0.0", "desc a", null, List.of(),
-                        SkillCategory.CODE));
+        List<SkillDefinition> skills =
+                List.of(
+                        new SkillDefinition(
+                                "z-skill",
+                                "1.0.0",
+                                "desc z",
+                                null,
+                                List.of(),
+                                SkillCategory.TESTING),
+                        new SkillDefinition(
+                                "a-skill", "1.0.0", "desc a", null, List.of(), SkillCategory.CODE));
 
         String result = PromptBudgetFormatter.formatSkills(skills, 10000);
 
@@ -148,8 +203,7 @@ class PromptBudgetFormatterTest {
     @Test
     void nullDescriptionHandled() {
         SkillDefinition skill =
-                new SkillDefinition(
-                        "no-desc", "1.0.0", null, null, List.of(), SkillCategory.CODE);
+                new SkillDefinition("no-desc", "1.0.0", null, null, List.of(), SkillCategory.CODE);
 
         String result = PromptBudgetFormatter.formatSkills(List.of(skill), 10000);
 

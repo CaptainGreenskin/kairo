@@ -22,6 +22,7 @@ import static org.mockito.Mockito.*;
 
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.agent.AgentState;
+import io.kairo.api.hook.HookChain;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
@@ -29,7 +30,6 @@ import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
 import io.kairo.api.tool.*;
-import io.kairo.api.hook.HookChain;
 import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
@@ -70,7 +70,7 @@ class DefaultReActAgentTest {
     }
 
     private DefaultReActAgent createAgent(AgentConfig config) {
-        return new DefaultReActAgent(config, toolExecutor, hookChain);
+        return new DefaultReActAgent(config, toolExecutor, hookChain, null);
     }
 
     private ModelResponse textResponse(String text) {
@@ -287,7 +287,7 @@ class DefaultReActAgentTest {
                         });
 
         AgentConfig config = baseConfig().build();
-        DefaultReActAgent agent = new DefaultReActAgent(config, null, hookChain);
+        DefaultReActAgent agent = new DefaultReActAgent(config, null, hookChain, null);
 
         StepVerifier.create(agent.call(Msg.of(MsgRole.USER, "call tool")))
                 .assertNext(msg -> assertNotNull(msg.text()))

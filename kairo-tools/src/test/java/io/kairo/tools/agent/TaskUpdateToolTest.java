@@ -57,9 +57,9 @@ class TaskUpdateToolTest {
     @Test
     void updateWithUpperCaseStatus() {
         Task task = taskBoard.create("Work", "desc");
-        ToolResult result = tool.execute(Map.of("taskId", task.id(), "status", "FAILED"));
+        ToolResult result = tool.execute(Map.of("taskId", task.id(), "status", "CANCELLED"));
         assertFalse(result.isError());
-        assertEquals(TaskStatus.FAILED, taskBoard.get(task.id()).status());
+        assertEquals(TaskStatus.CANCELLED, taskBoard.get(task.id()).status());
     }
 
     @Test

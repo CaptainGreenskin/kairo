@@ -196,9 +196,9 @@ public class DefaultHookChain implements HookChain {
     /**
      * Fire an event and collect structured results with decision priority merge.
      *
-     * <p>Decision priority: ABORT > SKIP > MODIFY > INJECT > CONTINUE.
-     * ABORT short-circuits the chain. All other decisions continue processing but the
-     * highest-priority decision wins. Multiple INJECT results accumulate messages in order.
+     * <p>Decision priority: ABORT > SKIP > MODIFY > INJECT > CONTINUE. ABORT short-circuits the
+     * chain. All other decisions continue processing but the highest-priority decision wins.
+     * Multiple INJECT results accumulate messages in order.
      */
     @SuppressWarnings("unchecked")
     private <T> Mono<HookResult<T>> fireEventWithResult(
@@ -237,11 +237,15 @@ public class DefaultHookChain implements HookChain {
                                             am.handler().getClass().getSimpleName(),
                                             am.method().getName(),
                                             typed.reason());
-                                    return Mono.just(new HookResult<>(
-                                            current, HookResult.Decision.ABORT,
-                                            winningInjectedContext, winningModifiedInput,
-                                            typed.reason(), typed.injectedMessage(),
-                                            typed.hookSource()));
+                                    return Mono.just(
+                                            new HookResult<>(
+                                                    current,
+                                                    HookResult.Decision.ABORT,
+                                                    winningInjectedContext,
+                                                    winningModifiedInput,
+                                                    typed.reason(),
+                                                    typed.injectedMessage(),
+                                                    typed.hookSource()));
                                 }
 
                                 // Priority merge: keep higher-priority decision
@@ -292,14 +296,20 @@ public class DefaultHookChain implements HookChain {
                     // Build the final merged result
                     // For INJECT with accumulated messages, use the first message
                     // (caller should check accumulatedInjectedMessages via the list)
-                    Msg finalInjectedMsg = accumulatedInjectedMessages.isEmpty()
-                            ? null
-                            : accumulatedInjectedMessages.get(0);
+                    Msg finalInjectedMsg =
+                            accumulatedInjectedMessages.isEmpty()
+                                    ? null
+                                    : accumulatedInjectedMessages.get(0);
 
-                    HookResult<T> merged = new HookResult<>(
-                            current, winningDecision, winningInjectedContext,
-                            winningModifiedInput, winningReason,
-                            finalInjectedMsg, lastHookSource);
+                    HookResult<T> merged =
+                            new HookResult<>(
+                                    current,
+                                    winningDecision,
+                                    winningInjectedContext,
+                                    winningModifiedInput,
+                                    winningReason,
+                                    finalInjectedMsg,
+                                    lastHookSource);
                     return Mono.just(merged);
                 });
     }

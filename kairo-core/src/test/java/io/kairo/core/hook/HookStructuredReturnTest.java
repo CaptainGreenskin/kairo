@@ -117,8 +117,7 @@ class HookStructuredReturnTest {
                             assertTrue(result.shouldProceed());
                             assertTrue(result.hasInjectedContext());
                             assertEquals(
-                                    "Remember: follow coding standards",
-                                    result.injectedContext());
+                                    "Remember: follow coding standards", result.injectedContext());
                         })
                 .verifyComplete();
     }
@@ -147,7 +146,8 @@ class HookStructuredReturnTest {
                 .assertNext(
                         result -> {
                             assertFalse(result.shouldProceed());
-                            // Event should NOT have "-modified" suffix since PlainHandler was skipped
+                            // Event should NOT have "-modified" suffix since PlainHandler was
+                            // skipped
                             assertEquals("input", result.event());
                         })
                 .verifyComplete();
@@ -279,8 +279,7 @@ class HookStructuredReturnTest {
                             assertEquals(HookResult.Decision.MODIFY, result.decision());
                             assertTrue(result.shouldProceed());
                             assertTrue(result.hasModifiedInput());
-                            assertEquals(
-                                    "modified-model", result.event().config().model());
+                            assertEquals("modified-model", result.event().config().model());
                         })
                 .verifyComplete();
     }

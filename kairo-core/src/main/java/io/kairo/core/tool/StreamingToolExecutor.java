@@ -64,8 +64,7 @@ public class StreamingToolExecutor {
      * @param toolExecutor the underlying tool executor
      * @param callback callback invoked when each tool completes
      */
-    public StreamingToolExecutor(
-            ToolExecutor toolExecutor, StreamingToolResultCallback callback) {
+    public StreamingToolExecutor(ToolExecutor toolExecutor, StreamingToolResultCallback callback) {
         this.toolExecutor = toolExecutor;
         this.callback = callback;
     }

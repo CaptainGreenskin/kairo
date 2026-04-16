@@ -85,10 +85,7 @@ public class AnthropicProvider implements ModelProvider {
      * @param baseUrl the API base URL (e.g. for proxy)
      */
     public AnthropicProvider(String apiKey, String baseUrl) {
-        this(
-                apiKey,
-                baseUrl,
-                ModelProviderUtils.createHttpClient(Duration.ofSeconds(30)));
+        this(apiKey, baseUrl, ModelProviderUtils.createHttpClient(Duration.ofSeconds(30)));
     }
 
     /**

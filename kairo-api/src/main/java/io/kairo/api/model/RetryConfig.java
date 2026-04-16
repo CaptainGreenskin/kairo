@@ -21,9 +21,8 @@ import java.util.function.Predicate;
 /**
  * Configuration for retry behavior on API calls and tool executions.
  *
- * <p>This provides a unified
- * retry/timeout configuration that can be layered (per-tool, per-agent, global defaults) with merge
- * semantics.
+ * <p>This provides a unified retry/timeout configuration that can be layered (per-tool, per-agent,
+ * global defaults) with merge semantics.
  *
  * <p>Usage:
  *

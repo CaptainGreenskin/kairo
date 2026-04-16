@@ -113,8 +113,16 @@ class SkillLoadToolTest {
     void loadSkillWithAllowedToolsIncludesMetadata() {
         SkillDefinition skill =
                 new SkillDefinition(
-                        "restricted", "1.0", "desc", "Do restricted things",
-                        List.of(), SkillCategory.CODE, null, null, null, 0,
+                        "restricted",
+                        "1.0",
+                        "desc",
+                        "Do restricted things",
+                        List.of(),
+                        SkillCategory.CODE,
+                        null,
+                        null,
+                        null,
+                        0,
                         List.of("Read", "Grep"));
         when(registry.get("restricted")).thenReturn(Optional.of(skill));
 
@@ -128,8 +136,16 @@ class SkillLoadToolTest {
     void loadSkillWithAllowedToolsAppendsRestrictionNotice() {
         SkillDefinition skill =
                 new SkillDefinition(
-                        "restricted", "1.0", "desc", "Do restricted things",
-                        List.of(), SkillCategory.CODE, null, null, null, 0,
+                        "restricted",
+                        "1.0",
+                        "desc",
+                        "Do restricted things",
+                        List.of(),
+                        SkillCategory.CODE,
+                        null,
+                        null,
+                        null,
+                        0,
                         List.of("Read", "Grep"));
         when(registry.get("restricted")).thenReturn(Optional.of(skill));
 
@@ -144,8 +160,7 @@ class SkillLoadToolTest {
     void loadSkillWithoutAllowedToolsNoRestriction() {
         SkillDefinition skill =
                 new SkillDefinition(
-                        "normal", "1.0", "desc", "Do normal things",
-                        List.of(), SkillCategory.CODE);
+                        "normal", "1.0", "desc", "Do normal things", List.of(), SkillCategory.CODE);
         when(registry.get("normal")).thenReturn(Optional.of(skill));
 
         ToolResult result = tool.execute(Map.of("name", "normal"));

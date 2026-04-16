@@ -67,7 +67,8 @@ public class CoordinatorAgent extends DefaultReActAgent {
         super(
                 buildFilteredConfig(config),
                 buildFilteredToolExecutor(config),
-                new DefaultHookChain());
+                new DefaultHookChain(),
+                new io.kairo.core.shutdown.GracefulShutdownManager());
         this.coordinatorConfig = config;
         log.info(
                 "CoordinatorAgent '{}' created with orchestration-only tool filtering",

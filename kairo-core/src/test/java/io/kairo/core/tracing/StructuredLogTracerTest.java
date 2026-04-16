@@ -20,7 +20,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.tracing.Span;
-import io.kairo.api.tracing.Tracer;
 import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
@@ -41,7 +40,8 @@ class StructuredLogTracerTest {
         span.setAttribute("custom.count", 42);
 
         // Verify via cast to access internal attributes
-        StructuredLogTracer.StructuredLogSpan logSpan = (StructuredLogTracer.StructuredLogSpan) span;
+        StructuredLogTracer.StructuredLogSpan logSpan =
+                (StructuredLogTracer.StructuredLogSpan) span;
         // end() should not throw — attributes are logged
         assertDoesNotThrow(span::end);
     }
@@ -71,7 +71,8 @@ class StructuredLogTracerTest {
         tracer.recordTokenUsage(span, 100, 50, 20, 10);
 
         // Verify via cast — StructuredLogSpan stores attributes in a ConcurrentHashMap
-        StructuredLogTracer.StructuredLogSpan logSpan = (StructuredLogTracer.StructuredLogSpan) span;
+        StructuredLogTracer.StructuredLogSpan logSpan =
+                (StructuredLogTracer.StructuredLogSpan) span;
         // The Tracer default recordTokenUsage calls setAttribute with these keys
         // We verify end() works without error (attributes are logged)
         assertDoesNotThrow(span::end);

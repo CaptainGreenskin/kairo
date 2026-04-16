@@ -17,7 +17,6 @@ package io.kairo.core.agent;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 import io.kairo.api.message.Content;
@@ -112,12 +111,13 @@ class ErrorRecoveryStrategyTest {
             messages.add(Msg.of(MsgRole.USER, "msg " + i));
         }
 
-        ModelResponse successResponse = new ModelResponse(
-                "resp-1",
-                List.of(new Content.TextContent("ok")),
-                new ModelResponse.Usage(10, 5, 0, 0),
-                ModelResponse.StopReason.END_TURN,
-                "test-model");
+        ModelResponse successResponse =
+                new ModelResponse(
+                        "resp-1",
+                        List.of(new Content.TextContent("ok")),
+                        new ModelResponse.Usage(10, 5, 0, 0),
+                        ModelResponse.StopReason.END_TURN,
+                        "test-model");
 
         // After truncation, model call succeeds
         when(modelProvider.call(any(), any())).thenReturn(Mono.just(successResponse));
@@ -138,19 +138,25 @@ class ErrorRecoveryStrategyTest {
     void handleRateLimitedRetriesAfterDelay() {
         List<Msg> messages = List.of(Msg.of(MsgRole.USER, "hello"));
 
-        ClassifiedError rateLimitError = new ClassifiedError(
-                ApiErrorType.RATE_LIMITED, "Rate limited", Duration.ofMillis(100), Map.of());
+        ClassifiedError rateLimitError =
+                new ClassifiedError(
+                        ApiErrorType.RATE_LIMITED,
+                        "Rate limited",
+                        Duration.ofMillis(100),
+                        Map.of());
 
-        ModelResponse successResponse = new ModelResponse(
-                "resp-1",
-                List.of(new Content.TextContent("ok")),
-                new ModelResponse.Usage(10, 5, 0, 0),
-                ModelResponse.StopReason.END_TURN,
-                "test-model");
+        ModelResponse successResponse =
+                new ModelResponse(
+                        "resp-1",
+                        List.of(new Content.TextContent("ok")),
+                        new ModelResponse.Usage(10, 5, 0, 0),
+                        ModelResponse.StopReason.END_TURN,
+                        "test-model");
 
         when(modelProvider.call(any(), any())).thenReturn(Mono.just(successResponse));
 
-        Mono<ModelResponse> result = strategy.handleRateLimited(messages, modelConfig, rateLimitError, 0);
+        Mono<ModelResponse> result =
+                strategy.handleRateLimited(messages, modelConfig, rateLimitError, 0);
 
         StepVerifier.create(result)
                 .assertNext(resp -> assertEquals("resp-1", resp.id()))
@@ -163,24 +169,25 @@ class ErrorRecoveryStrategyTest {
     void handleServerErrorRetriesWithBackoff() {
         List<Msg> messages = List.of(Msg.of(MsgRole.USER, "hello"));
 
-        ClassifiedError serverError = new ClassifiedError(
-                ApiErrorType.SERVER_ERROR, "Internal server error", null, Map.of());
+        ClassifiedError serverError =
+                new ClassifiedError(
+                        ApiErrorType.SERVER_ERROR, "Internal server error", null, Map.of());
 
-        ModelResponse successResponse = new ModelResponse(
-                "resp-1",
-                List.of(new Content.TextContent("ok")),
-                new ModelResponse.Usage(10, 5, 0, 0),
-                ModelResponse.StopReason.END_TURN,
-                "test-model");
+        ModelResponse successResponse =
+                new ModelResponse(
+                        "resp-1",
+                        List.of(new Content.TextContent("ok")),
+                        new ModelResponse.Usage(10, 5, 0, 0),
+                        ModelResponse.StopReason.END_TURN,
+                        "test-model");
 
         // The fallback manager has a fallback, so it should use it
         when(modelProvider.call(any(), any())).thenReturn(Mono.just(successResponse));
 
-        Mono<ModelResponse> result = strategy.handleServerError(messages, modelConfig, serverError, 0);
+        Mono<ModelResponse> result =
+                strategy.handleServerError(messages, modelConfig, serverError, 0);
 
-        StepVerifier.create(result)
-                .assertNext(resp -> assertNotNull(resp))
-                .verifyComplete();
+        StepVerifier.create(result).assertNext(resp -> assertNotNull(resp)).verifyComplete();
     }
 
     // ---- handleMaxOutputTokens tests ----
@@ -190,30 +197,36 @@ class ErrorRecoveryStrategyTest {
         List<Msg> messages = new ArrayList<>();
         messages.add(Msg.of(MsgRole.USER, "Write a long essay"));
 
-        ModelResponse successResponse = new ModelResponse(
-                "resp-1",
-                List.of(new Content.TextContent("continued response")),
-                new ModelResponse.Usage(10, 5, 0, 0),
-                ModelResponse.StopReason.END_TURN,
-                "test-model");
+        ModelResponse successResponse =
+                new ModelResponse(
+                        "resp-1",
+                        List.of(new Content.TextContent("continued response")),
+                        new ModelResponse.Usage(10, 5, 0, 0),
+                        ModelResponse.StopReason.END_TURN,
+                        "test-model");
 
         when(modelProvider.call(any(), any())).thenReturn(Mono.just(successResponse));
 
         Mono<ModelResponse> result = strategy.handleMaxOutputTokens(messages, modelConfig, 0);
 
         StepVerifier.create(result)
-                .assertNext(resp -> {
-                    assertEquals("resp-1", resp.id());
-                })
+                .assertNext(
+                        resp -> {
+                            assertEquals("resp-1", resp.id());
+                        })
                 .verifyComplete();
 
         // Verify model was called with an extra continuation message
-        verify(modelProvider).call(argThat(msgs -> {
-            // Original message + continuation request
-            return msgs.size() == 2
-                    && msgs.get(1).role() == MsgRole.USER
-                    && msgs.get(1).text().contains("truncated");
-        }), any());
+        verify(modelProvider)
+                .call(
+                        argThat(
+                                msgs -> {
+                                    // Original message + continuation request
+                                    return msgs.size() == 2
+                                            && msgs.get(1).role() == MsgRole.USER
+                                            && msgs.get(1).text().contains("truncated");
+                                }),
+                        any());
     }
 
     // ---- callModelWithRecovery tests ----
@@ -223,15 +236,18 @@ class ErrorRecoveryStrategyTest {
         List<Msg> messages = List.of(Msg.of(MsgRole.USER, "hello"));
 
         // First call fails with auth error (non-retryable)
-        ApiException authError = new ApiException(
-                ApiErrorType.AUTHENTICATION_ERROR, "Invalid API key", Map.of());
+        ApiException authError =
+                new ApiException(ApiErrorType.AUTHENTICATION_ERROR, "Invalid API key", Map.of());
         when(modelProvider.call(any(), any())).thenReturn(Mono.error(authError));
 
         Mono<ModelResponse> result = strategy.callModelWithRecovery(messages, modelConfig, 0);
 
         StepVerifier.create(result)
-                .expectErrorMatches(e -> e instanceof ApiException
-                        && ((ApiException) e).getErrorType() == ApiErrorType.AUTHENTICATION_ERROR)
+                .expectErrorMatches(
+                        e ->
+                                e instanceof ApiException
+                                        && ((ApiException) e).getErrorType()
+                                                == ApiErrorType.AUTHENTICATION_ERROR)
                 .verify(Duration.ofSeconds(5));
     }
 
@@ -244,7 +260,8 @@ class ErrorRecoveryStrategyTest {
 
         // Start at MAX_RETRY_ATTEMPTS so the next error exceeds the limit
         Mono<ModelResponse> result =
-                strategy.callModelWithRecovery(messages, modelConfig, ErrorRecoveryStrategy.MAX_RETRY_ATTEMPTS);
+                strategy.callModelWithRecovery(
+                        messages, modelConfig, ErrorRecoveryStrategy.MAX_RETRY_ATTEMPTS);
 
         StepVerifier.create(result)
                 .expectErrorMatches(e -> e.getMessage().equals("Server error"))
@@ -258,15 +275,18 @@ class ErrorRecoveryStrategyTest {
     void callModelWithRecoveryBudgetExceededNotRetried() {
         List<Msg> messages = List.of(Msg.of(MsgRole.USER, "hello"));
 
-        ApiException budgetError = new ApiException(
-                ApiErrorType.BUDGET_EXCEEDED, "Budget exceeded", Map.of());
+        ApiException budgetError =
+                new ApiException(ApiErrorType.BUDGET_EXCEEDED, "Budget exceeded", Map.of());
         when(modelProvider.call(any(), any())).thenReturn(Mono.error(budgetError));
 
         Mono<ModelResponse> result = strategy.callModelWithRecovery(messages, modelConfig, 0);
 
         StepVerifier.create(result)
-                .expectErrorMatches(e -> e instanceof ApiException
-                        && ((ApiException) e).getErrorType() == ApiErrorType.BUDGET_EXCEEDED)
+                .expectErrorMatches(
+                        e ->
+                                e instanceof ApiException
+                                        && ((ApiException) e).getErrorType()
+                                                == ApiErrorType.BUDGET_EXCEEDED)
                 .verify(Duration.ofSeconds(5));
 
         // Should only call once — budget exceeded is not retryable

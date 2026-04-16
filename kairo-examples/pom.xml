@@ -10,9 +10,9 @@
         <version>${revision}</version>
     </parent>
 
-    <artifactId>kairo-demo</artifactId>
-    <name>Kairo — Demo</name>
-    <description>Demo application showcasing the full ReAct reasoning loop</description>
+    <artifactId>kairo-examples</artifactId>
+    <name>Kairo — Examples</name>
+    <description>Example applications showcasing Kairo features and usage patterns</description>
 
     <dependencies>
         <dependency>

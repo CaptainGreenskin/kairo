@@ -226,13 +226,22 @@ class SystemPromptBuilderSegmentTest {
 
     @Test
     void addSkillOverviewWithBudget() {
-        List<SkillDefinition> skills = List.of(
-                new SkillDefinition(
-                        "commit", "1.0.0", "Git commit helper", null, List.of(),
-                        SkillCategory.CODE),
-                new SkillDefinition(
-                        "deploy", "2.0.0", "Deploy assistant", null, List.of(),
-                        SkillCategory.DEVOPS));
+        List<SkillDefinition> skills =
+                List.of(
+                        new SkillDefinition(
+                                "commit",
+                                "1.0.0",
+                                "Git commit helper",
+                                null,
+                                List.of(),
+                                SkillCategory.CODE),
+                        new SkillDefinition(
+                                "deploy",
+                                "2.0.0",
+                                "Deploy assistant",
+                                null,
+                                List.of(),
+                                SkillCategory.DEVOPS));
 
         List<SystemPromptSegment> segments =
                 SystemPromptBuilder.create()
@@ -263,10 +272,15 @@ class SystemPromptBuilderSegmentTest {
 
     @Test
     void addSkillOverviewDefaultBudget() {
-        List<SkillDefinition> skills = List.of(
-                new SkillDefinition(
-                        "lint", "1.0.0", "Linter tool", null, List.of(),
-                        SkillCategory.CODE));
+        List<SkillDefinition> skills =
+                List.of(
+                        new SkillDefinition(
+                                "lint",
+                                "1.0.0",
+                                "Linter tool",
+                                null,
+                                List.of(),
+                                SkillCategory.CODE));
 
         // Use the overload without explicit budget
         List<SystemPromptSegment> segments =

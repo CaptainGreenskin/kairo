@@ -32,10 +32,11 @@ import reactor.core.publisher.Mono;
 /**
  * Central registry managing multiple MCP server connections and their tools.
  *
- * <p>Handles client lifecycle (connect, initialize, list tools, close) and maps
- * MCP tools to Kairo {@link ToolDefinition} and {@link McpToolExecutor} instances.
+ * <p>Handles client lifecycle (connect, initialize, list tools, close) and maps MCP tools to Kairo
+ * {@link ToolDefinition} and {@link McpToolExecutor} instances.
  *
  * <p>Example:
+ *
  * <pre>{@code
  * McpClientRegistry registry = new McpClientRegistry();
  * McpToolGroup group = registry.register(McpServerConfig.stdio("fs", "npx", "-y",
@@ -51,8 +52,8 @@ public class McpClientRegistry implements Closeable {
     private final ConcurrentHashMap<String, McpToolGroup> toolGroups = new ConcurrentHashMap<>();
 
     /**
-     * Registers an MCP server from a config, initializes the client, lists tools,
-     * and creates a {@link McpToolGroup}.
+     * Registers an MCP server from a config, initializes the client, lists tools, and creates a
+     * {@link McpToolGroup}.
      *
      * @param config the server configuration
      * @return a Mono emitting the tool group for this server
@@ -66,60 +67,75 @@ public class McpClientRegistry implements Closeable {
         logger.info("Registering MCP server: {}", config.name());
         McpAsyncClient client = McpClientBuilder.fromConfig(config).build();
 
-        return client
-                .initialize()
+        return client.initialize()
                 .then(client.listTools())
-                .map(listToolsResult -> {
-                    List<McpSchema.Tool> mcpTools = listToolsResult.tools();
-                    McpToolGroup group = new McpToolGroup(config.name());
+                .map(
+                        listToolsResult -> {
+                            List<McpSchema.Tool> mcpTools = listToolsResult.tools();
+                            McpToolGroup group = new McpToolGroup(config.name());
 
-                    for (McpSchema.Tool mcpTool : mcpTools) {
-                        if (!shouldRegisterTool(
-                                mcpTool.name(), config.enableTools(), config.disableTools())) {
-                            logger.debug("Skipping disabled tool: {}", mcpTool.name());
-                            continue;
-                        }
+                            for (McpSchema.Tool mcpTool : mcpTools) {
+                                if (!shouldRegisterTool(
+                                        mcpTool.name(),
+                                        config.enableTools(),
+                                        config.disableTools())) {
+                                    logger.debug("Skipping disabled tool: {}", mcpTool.name());
+                                    continue;
+                                }
 
-                        // Determine preset args for this tool
-                        Map<String, Object> toolPresetArgs = null;
-                        if (config.presetArgs() != null) {
-                            toolPresetArgs = config.presetArgs().get(mcpTool.name());
-                        }
+                                // Determine preset args for this tool
+                                Map<String, Object> toolPresetArgs = null;
+                                if (config.presetArgs() != null) {
+                                    toolPresetArgs = config.presetArgs().get(mcpTool.name());
+                                }
 
-                        Set<String> excludeParams = toolPresetArgs != null
-                                ? toolPresetArgs.keySet()
-                                : Collections.emptySet();
+                                Set<String> excludeParams =
+                                        toolPresetArgs != null
+                                                ? toolPresetArgs.keySet()
+                                                : Collections.emptySet();
 
-                        ToolDefinition definition = McpToolAdapter.toToolDefinition(
-                                mcpTool, config.name(), config.requestTimeout(), excludeParams);
+                                ToolDefinition definition =
+                                        McpToolAdapter.toToolDefinition(
+                                                mcpTool,
+                                                config.name(),
+                                                config.requestTimeout(),
+                                                excludeParams);
 
-                        McpToolExecutor executor = new McpToolExecutor(
-                                client,
-                                mcpTool.name(),
-                                definition.name(),
-                                toolPresetArgs);
+                                McpToolExecutor executor =
+                                        new McpToolExecutor(
+                                                client,
+                                                mcpTool.name(),
+                                                definition.name(),
+                                                toolPresetArgs);
 
-                        group.addTool(definition, executor);
-                        logger.debug("Registered MCP tool: {} -> {}",
-                                mcpTool.name(), definition.name());
-                    }
+                                group.addTool(definition, executor);
+                                logger.debug(
+                                        "Registered MCP tool: {} -> {}",
+                                        mcpTool.name(),
+                                        definition.name());
+                            }
 
-                    clients.put(config.name(), client);
-                    toolGroups.put(config.name(), group);
-                    logger.info("MCP server '{}' registered with {} tools",
-                            config.name(), group.size());
-                    return group;
-                })
-                .doOnError(e -> {
-                    logger.error("Failed to register MCP server '{}': {}",
-                            config.name(), e.getMessage());
-                    // Best-effort close on failure
-                    try {
-                        client.closeGracefully().block();
-                    } catch (Exception ignored) {
-                        // ignore close errors during failed registration
-                    }
-                });
+                            clients.put(config.name(), client);
+                            toolGroups.put(config.name(), group);
+                            logger.info(
+                                    "MCP server '{}' registered with {} tools",
+                                    config.name(),
+                                    group.size());
+                            return group;
+                        })
+                .doOnError(
+                        e -> {
+                            logger.error(
+                                    "Failed to register MCP server '{}': {}",
+                                    config.name(),
+                                    e.getMessage());
+                            // Best-effort close on failure
+                            try {
+                                client.closeGracefully().block();
+                            } catch (Exception ignored) {
+                                // ignore close errors during failed registration
+                            }
+                        });
     }
 
     /**
@@ -137,15 +153,16 @@ public class McpClientRegistry implements Closeable {
             return Mono.empty();
         }
 
-        logger.info("Unregistering MCP server '{}' ({} tools)",
-                name, group != null ? group.size() : 0);
+        logger.info(
+                "Unregistering MCP server '{}' ({} tools)", name, group != null ? group.size() : 0);
 
         return client.closeGracefully()
                 .doOnSuccess(v -> logger.info("MCP server '{}' closed", name))
-                .onErrorResume(e -> {
-                    logger.warn("Error closing MCP server '{}': {}", name, e.getMessage());
-                    return Mono.empty();
-                });
+                .onErrorResume(
+                        e -> {
+                            logger.warn("Error closing MCP server '{}': {}", name, e.getMessage());
+                            return Mono.empty();
+                        });
     }
 
     /** Returns the tool group for the given server name, or null if not registered. */

@@ -47,16 +47,14 @@ public class SkillLoadTool implements ToolHandler {
     private final SkillRegistry registry;
     private final SkillLoader skillLoader;
 
-    /**
-     * Create with a registry only (no progressive-disclosure reload support).
-     */
+    /** Create with a registry only (no progressive-disclosure reload support). */
     public SkillLoadTool(SkillRegistry registry) {
         this(registry, null);
     }
 
     /**
-     * Create with both registry and loader. The loader enables on-demand full-content reload
-     * for skills that were loaded metadata-only.
+     * Create with both registry and loader. The loader enables on-demand full-content reload for
+     * skills that were loaded metadata-only.
      */
     public SkillLoadTool(SkillRegistry registry, SkillLoader skillLoader) {
         this.registry = registry;
@@ -109,7 +107,8 @@ public class SkillLoadTool implements ToolHandler {
                 .append(instructions);
 
         if (skill.hasToolRestrictions()) {
-            sb.append("\n\n---\n\u26A0\uFE0F TOOL RESTRICTION: While this skill is active, you may ONLY use these tools: ")
+            sb.append(
+                            "\n\n---\n\u26A0\uFE0F TOOL RESTRICTION: While this skill is active, you may ONLY use these tools: ")
                     .append(String.join(", ", skill.allowedTools()))
                     .append(". All other tools will be blocked.\n");
         }
@@ -122,11 +121,7 @@ public class SkillLoadTool implements ToolHandler {
             metadata.put("allowedTools", skill.allowedTools());
         }
 
-        return new ToolResult(
-                "skill_load",
-                sb.toString(),
-                false,
-                metadata);
+        return new ToolResult("skill_load", sb.toString(), false, metadata);
     }
 
     private ToolResult error(String msg) {

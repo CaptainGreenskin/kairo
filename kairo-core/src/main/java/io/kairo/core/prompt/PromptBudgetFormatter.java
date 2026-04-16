@@ -16,7 +16,6 @@
 package io.kairo.core.prompt;
 
 import io.kairo.api.skill.SkillDefinition;
-
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -60,9 +59,10 @@ public final class PromptBudgetFormatter {
             return "";
         }
 
-        List<SkillDefinition> sorted = skills.stream()
-                .sorted(Comparator.comparingInt(SkillDefinition::matchScore).reversed())
-                .collect(Collectors.toList());
+        List<SkillDefinition> sorted =
+                skills.stream()
+                        .sorted(Comparator.comparingInt(SkillDefinition::matchScore).reversed())
+                        .collect(Collectors.toList());
 
         // Level 1: Full descriptions
         String full = formatFull(sorted);
@@ -126,8 +126,11 @@ public final class PromptBudgetFormatter {
         for (Map.Entry<String, List<SkillDefinition>> entry : grouped.entrySet()) {
             sb.append("\n### ").append(entry.getKey()).append('\n');
             for (SkillDefinition skill : entry.getValue()) {
-                sb.append("- **").append(skill.name()).append("** [")
-                        .append(skill.category().name()).append("]\n");
+                sb.append("- **")
+                        .append(skill.name())
+                        .append("** [")
+                        .append(skill.category().name())
+                        .append("]\n");
             }
         }
         return sb.toString();

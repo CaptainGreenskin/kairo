@@ -16,8 +16,8 @@
 package io.kairo.api.tracing;
 
 /**
- * No-operation Tracer implementation. All span factories return {@link NoopSpan#INSTANCE}.
- * Uses default method implementations from {@link Tracer}.
+ * No-operation Tracer implementation. All span factories return {@link NoopSpan#INSTANCE}. Uses
+ * default method implementations from {@link Tracer}.
  */
 public final class NoopTracer implements Tracer {
     public static final NoopTracer INSTANCE = new NoopTracer();

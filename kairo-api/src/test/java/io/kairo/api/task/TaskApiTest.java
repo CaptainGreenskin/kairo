@@ -119,12 +119,13 @@ class TaskApiTest {
     @Test
     void taskStatusValues() {
         TaskStatus[] values = TaskStatus.values();
-        assertEquals(5, values.length);
+        assertEquals(6, values.length);
         assertNotNull(TaskStatus.valueOf("PENDING"));
         assertNotNull(TaskStatus.valueOf("IN_PROGRESS"));
         assertNotNull(TaskStatus.valueOf("COMPLETED"));
         assertNotNull(TaskStatus.valueOf("FAILED"));
         assertNotNull(TaskStatus.valueOf("CANCELLED"));
+        assertNotNull(TaskStatus.valueOf("ABANDONED"));
     }
 
     @Test

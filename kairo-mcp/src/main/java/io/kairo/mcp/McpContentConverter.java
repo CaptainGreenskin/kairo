@@ -20,9 +20,7 @@ import io.modelcontextprotocol.spec.McpSchema;
 import java.util.Collections;
 import java.util.stream.Collectors;
 
-/**
- * Converts MCP {@link McpSchema.CallToolResult} to Kairo {@link ToolResult}.
- */
+/** Converts MCP {@link McpSchema.CallToolResult} to Kairo {@link ToolResult}. */
 public final class McpContentConverter {
 
     private McpContentConverter() {}
@@ -40,9 +38,7 @@ public final class McpContentConverter {
         return new ToolResult(toolUseId, text, isError, Collections.emptyMap());
     }
 
-    /**
-     * Extracts a textual representation from the MCP result content list.
-     */
+    /** Extracts a textual representation from the MCP result content list. */
     private static String extractText(McpSchema.CallToolResult result) {
         if (result.content() == null || result.content().isEmpty()) {
             return "";

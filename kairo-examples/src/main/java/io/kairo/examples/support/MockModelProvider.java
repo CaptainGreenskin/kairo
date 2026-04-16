@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.kairo.demo;
+package io.kairo.examples.support;
 
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;

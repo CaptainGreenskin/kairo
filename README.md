@@ -43,7 +43,7 @@ kairo-parent (0.1.0-SNAPSHOT)
 ├── kairo-tools                — Built-in tool suite (21 tools)
 ├── kairo-multi-agent          — Multi-agent orchestration (TaskBoard, TeamScheduler)
 ├── kairo-spring-boot-starter  — Spring Boot auto-configuration
-└── kairo-demo                 — Demo applications
+└── kairo-examples             — Example applications
 ```
 
 ## Key Features
@@ -118,13 +118,13 @@ mvn clean install
 mvn test
 
 # Run demo (mock mode, no API key needed)
-mvn exec:java -pl kairo-demo \
+mvn exec:java -pl kairo-examples \
   -Dexec.mainClass="io.kairo.demo.AgentDemo" \
   -Dexec.args="--mock"
 
 # Run demo with Qwen (requires QWEN_API_KEY)
 export QWEN_API_KEY=your-key
-mvn exec:java -pl kairo-demo \
+mvn exec:java -pl kairo-examples \
   -Dexec.mainClass="io.kairo.demo.AgentDemo" \
   -Dexec.args="--qwen"
 ```

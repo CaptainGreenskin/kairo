@@ -97,8 +97,7 @@ public class GrepTool implements ToolHandler {
         // ReDoS protection: reject patterns with nested quantifiers that can cause
         // catastrophic backtracking (e.g. "(a+)+", "(a*)*", "(a+)*")
         if (regexStr.length() > 500) {
-            return error(
-                    "Regex pattern too long (max 500 characters). Use a simpler pattern.");
+            return error("Regex pattern too long (max 500 characters). Use a simpler pattern.");
         }
         if (NESTED_QUANTIFIER.matcher(regexStr).find()) {
             return error(

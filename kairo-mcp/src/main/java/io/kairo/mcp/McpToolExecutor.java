@@ -26,11 +26,11 @@ import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 /**
- * Executes an MCP tool call via the MCP async client and converts the result to a Kairo
- * {@link ToolResult}.
+ * Executes an MCP tool call via the MCP async client and converts the result to a Kairo {@link
+ * ToolResult}.
  *
- * <p>This class bridges Kairo's tool execution model with the MCP protocol. It supports
- * preset arguments that are merged with each invocation's input (input takes precedence).
+ * <p>This class bridges Kairo's tool execution model with the MCP protocol. It supports preset
+ * arguments that are merged with each invocation's input (input takes precedence).
  */
 public class McpToolExecutor {
 
@@ -69,24 +69,31 @@ public class McpToolExecutor {
      */
     public Mono<ToolResult> execute(Map<String, Object> input, String toolUseId) {
         Map<String, Object> mergedArgs = mergeArguments(input);
-        logger.debug("Calling MCP tool '{}' (kairo: '{}') with args: {}",
-                mcpToolName, kairoToolName, mergedArgs);
+        logger.debug(
+                "Calling MCP tool '{}' (kairo: '{}') with args: {}",
+                mcpToolName,
+                kairoToolName,
+                mergedArgs);
 
         return mcpClient
                 .callTool(new McpSchema.CallToolRequest(mcpToolName, mergedArgs))
                 .map(result -> McpContentConverter.convert(result, toolUseId))
                 .doOnSuccess(r -> logger.debug("MCP tool '{}' completed", mcpToolName))
-                .onErrorResume(e -> {
-                    logger.error("Error calling MCP tool '{}': {}", mcpToolName, e.getMessage());
-                    String errorMsg = e.getMessage() != null
-                            ? e.getMessage()
-                            : e.getClass().getSimpleName();
-                    return Mono.just(new ToolResult(
-                            toolUseId,
-                            "MCP tool error: " + errorMsg,
-                            true,
-                            Collections.emptyMap()));
-                });
+                .onErrorResume(
+                        e -> {
+                            logger.error(
+                                    "Error calling MCP tool '{}': {}", mcpToolName, e.getMessage());
+                            String errorMsg =
+                                    e.getMessage() != null
+                                            ? e.getMessage()
+                                            : e.getClass().getSimpleName();
+                            return Mono.just(
+                                    new ToolResult(
+                                            toolUseId,
+                                            "MCP tool error: " + errorMsg,
+                                            true,
+                                            Collections.emptyMap()));
+                        });
     }
 
     /**

@@ -27,6 +27,7 @@ import io.kairo.api.tool.UserApprovalHandler;
 import io.kairo.api.tracing.Tracer;
 import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.session.SessionManager;
+import io.kairo.core.shutdown.GracefulShutdownManager;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -70,6 +71,7 @@ public class AgentBuilder {
     private SessionManager sessionManager;
     private UserApprovalHandler approvalHandler;
     private Tracer tracer;
+    private GracefulShutdownManager shutdownManager;
     private final List<Object> mcpServerConfigs = new ArrayList<>();
 
     private AgentBuilder() {}
@@ -210,6 +212,19 @@ public class AgentBuilder {
     }
 
     /**
+     * Set the graceful shutdown manager.
+     *
+     * <p>If not set, a new instance will be created automatically.
+     *
+     * @param shutdownManager the shutdown manager
+     * @return this builder
+     */
+    public AgentBuilder shutdownManager(GracefulShutdownManager shutdownManager) {
+        this.shutdownManager = shutdownManager;
+        return this;
+    }
+
+    /**
      * Add a stdio-based MCP server configuration.
      *
      * <p>Requires {@code kairo-mcp} on the classpath at runtime.
@@ -226,12 +241,15 @@ public class AgentBuilder {
             var cmdList = new ArrayList<String>();
             cmdList.add(command);
             Collections.addAll(cmdList, args);
-            Object config = configClass.getMethod("stdio", String.class, String[].class)
-                    .invoke(null, name, cmdList.stream().toArray(String[]::new));
+            Object config =
+                    configClass
+                            .getMethod("stdio", String.class, String[].class)
+                            .invoke(null, name, cmdList.stream().toArray(String[]::new));
             mcpServerConfigs.add(config);
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException(
-                    "kairo-mcp is not on the classpath. Add kairo-mcp dependency to use MCP servers.", e);
+                    "kairo-mcp is not on the classpath. Add kairo-mcp dependency to use MCP servers.",
+                    e);
         } catch (Exception e) {
             throw new IllegalStateException("Failed to create MCP server config", e);
         }
@@ -241,8 +259,8 @@ public class AgentBuilder {
     /**
      * Add a pre-built MCP server configuration object.
      *
-     * <p>The object must be an instance of {@code io.kairo.mcp.McpServerConfig}.
-     * Requires {@code kairo-mcp} on the classpath at runtime.
+     * <p>The object must be an instance of {@code io.kairo.mcp.McpServerConfig}. Requires {@code
+     * kairo-mcp} on the classpath at runtime.
      *
      * @param mcpServerConfig the MCP server config
      * @return this builder
@@ -272,7 +290,11 @@ public class AgentBuilder {
         // Create hook chain — hooks will be registered by DefaultReActAgent constructor
         DefaultHookChain hookChain = new DefaultHookChain();
 
-        return new DefaultReActAgent(config, toolExecutor, hookChain);
+        // Default shutdown manager if none provided
+        GracefulShutdownManager sm =
+                shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
+
+        return new DefaultReActAgent(config, toolExecutor, hookChain, sm);
     }
 
     /**

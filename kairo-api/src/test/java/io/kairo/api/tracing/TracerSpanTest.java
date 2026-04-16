@@ -19,7 +19,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
-import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

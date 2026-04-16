@@ -97,10 +97,11 @@ class HookResultTest {
     @Test
     @DisplayName("inject() factory creates result with INJECT decision, message, and source")
     void hookResult_injectFactory() {
-        Msg msg = Msg.builder()
-                .role(MsgRole.ASSISTANT)
-                .addContent(new Content.TextContent("injected text"))
-                .build();
+        Msg msg =
+                Msg.builder()
+                        .role(MsgRole.ASSISTANT)
+                        .addContent(new Content.TextContent("injected text"))
+                        .build();
         HookResult<String> result = HookResult.inject("event", msg, "guardrail-hook");
         assertEquals("event", result.event());
         assertEquals(HookResult.Decision.INJECT, result.decision());
