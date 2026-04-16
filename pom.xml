@@ -55,6 +55,7 @@
     </distributionManagement>
 
     <modules>
+        <module>kairo-bom</module>
         <module>kairo-api</module>
         <module>kairo-core</module>
         <module>kairo-tools</module>
@@ -82,6 +83,7 @@
         <junit.version>5.11.4</junit.version>
         <jackson.version>2.18.2</jackson.version>
         <mcp-sdk.version>0.17.0</mcp-sdk.version>
+        <jacoco.line.threshold>0</jacoco.line.threshold>
     </properties>
 
     <dependencyManagement>
@@ -226,7 +228,7 @@
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
-                <version>0.8.12</version>
+                <version>0.8.13</version>
                 <executions>
                     <execution>
                         <goals><goal>prepare-agent</goal></goals>
@@ -235,6 +237,25 @@
                         <id>report</id>
                         <phase>test</phase>
                         <goals><goal>report</goal></goals>
+                    </execution>
+                    <execution>
+                        <id>check</id>
+                        <phase>verify</phase>
+                        <goals><goal>check</goal></goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.line.threshold}</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

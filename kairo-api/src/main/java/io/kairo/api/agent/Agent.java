@@ -18,38 +18,78 @@ package io.kairo.api.agent;
 import io.kairo.api.message.Msg;
 import reactor.core.publisher.Mono;
 
-/** Core agent abstraction. An agent can receive a message and produce a response. */
+/**
+ * Core agent abstraction representing a single autonomous unit of work.
+ *
+ * <p>An agent receives a {@link Msg} and produces a response by orchestrating reasoning
+ * (via {@link io.kairo.api.model.ModelProvider}), tool execution
+ * (via {@link io.kairo.api.tool.ToolExecutor}), and context management
+ * (via {@link io.kairo.api.context.ContextManager}) in an iterative loop.
+ *
+ * <p>Agents are configured through {@link AgentConfig} and follow a defined lifecycle
+ * expressed by {@link AgentState}. A typical usage pattern:
+ *
+ * <pre>{@code
+ * Agent agent = runtime.createAgent(config);
+ * Msg response = agent.call(Msg.user("Refactor the DAO layer")).block();
+ * }</pre>
+ *
+ * <p><strong>Thread safety:</strong> Implementations are expected to be safe for concurrent
+ * {@link #call(Msg)} invocations from different threads, though a single agent instance
+ * typically processes one conversation at a time.
+ *
+ * @see AgentConfig
+ * @see AgentState
+ */
 public interface Agent {
 
     /**
      * Process an input message and return the agent's response.
      *
-     * @param input the input message
-     * @return a Mono emitting the agent's response message
+     * <p>This is the primary entry point for driving agent behavior. The agent will iterate
+     * through reasoning and acting phases until it produces a final response or reaches
+     * the configured {@link AgentConfig#maxIterations()} limit.
+     *
+     * @param input the input message; must not be {@code null}
+     * @return a {@link Mono} emitting the agent's response message, or an error signal
+     *     if the agent fails or is interrupted
      */
     Mono<Msg> call(Msg input);
 
     /**
-     * The unique identifier of this agent.
+     * Returns the unique identifier of this agent.
      *
-     * @return the agent ID
+     * <p>The ID is typically auto-generated and used internally for tracing, logging,
+     * and multi-agent coordination.
+     *
+     * @return the agent ID, never {@code null}
      */
     String id();
 
     /**
-     * The human-readable name of this agent.
+     * Returns the human-readable name of this agent.
      *
-     * @return the agent name
+     * <p>This corresponds to the {@code name} field in {@link AgentConfig} and is used
+     * in log output, tracing spans, and multi-agent routing.
+     *
+     * @return the agent name, never {@code null}
      */
     String name();
 
     /**
-     * The current lifecycle state of this agent.
+     * Returns the current lifecycle state of this agent.
      *
-     * @return the agent state
+     * @return the current {@link AgentState}, never {@code null}
+     * @see AgentState
      */
     AgentState state();
 
-    /** Interrupt the agent's current processing. */
+    /**
+     * Interrupt the agent's current processing.
+     *
+     * <p>Signals the agent to abort its reasoning/acting loop as soon as possible.
+     * The in-flight {@link #call(Msg)} Mono will terminate with an error or a partial
+     * response, depending on the implementation.
+     */
     void interrupt();
 }

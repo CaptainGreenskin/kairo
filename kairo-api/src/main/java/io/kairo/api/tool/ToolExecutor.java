@@ -22,7 +22,21 @@ import java.util.Set;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-/** Executes tools by name with given input parameters. */
+/**
+ * Executes tools by name with given input parameters.
+ *
+ * <p>The executor is the central dispatch point for tool invocations within an agent's
+ * acting phase. It resolves tool handlers, enforces permission policies (via
+ * {@link UserApprovalHandler}), manages circuit breakers for fault tolerance, and
+ * optionally restricts execution to an allowed-tools whitelist.
+ *
+ * <p>Implementations should be thread-safe: parallel tool execution via
+ * {@link #executeParallel(List)} may invoke multiple handlers concurrently.
+ *
+ * @see ToolResult
+ * @see ToolInvocation
+ * @see ToolSideEffect
+ */
 public interface ToolExecutor {
 
     /**
@@ -60,7 +74,12 @@ public interface ToolExecutor {
      */
     default void setAllowedTools(Set<String> tools) {}
 
-    /** Clear the allowed tools whitelist, allowing all tools to execute. */
+    /**
+     * Clear the allowed tools whitelist, restoring unrestricted tool execution.
+     *
+     * <p>After this call, all registered tools are eligible for execution regardless of
+     * any prior {@link #setAllowedTools(Set)} restriction.
+     */
     default void clearAllowedTools() {}
 
     /**
@@ -109,9 +128,16 @@ public interface ToolExecutor {
      */
     default void setApprovalHandler(UserApprovalHandler approvalHandler) {}
 
-    /** Reset circuit breaker state for all tools. */
+    /**
+     * Reset circuit breaker state for all tools, allowing previously tripped tools to be
+     * retried.
+     */
     default void resetCircuitBreaker() {}
 
-    /** Reset circuit breaker state for a specific tool. */
+    /**
+     * Reset circuit breaker state for a specific tool.
+     *
+     * @param toolName the name of the tool whose circuit breaker should be reset
+     */
     default void resetCircuitBreaker(String toolName) {}
 }

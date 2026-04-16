@@ -79,11 +79,12 @@ DefaultReActAgent 的 5 处 instanceof → 直接调用接口方法。
 
 | Task | 状态 | 说明 |
 |------|------|------|
-| CI Spotless check | ⬜ | 在 ci.yml 加 JDK 17 的 format-check job（绕过 Java 25 不兼容） |
-| JaCoCo 覆盖率阈值 | ⬜ | kairo-core ≥ 50%，kairo-multi-agent ≥ 80%，其他不设 |
-| kairo-bom 模块 | ⬜ | 一个 pom.xml 列出所有模块版本，用户一次管理依赖 |
-| 核心接口 Javadoc | ⬜ | 补全 Agent / ToolExecutor / HookChain / ModelProvider / ContextManager（约 10 个文件） |
-| Release workflow | ⬜ | GitHub Actions 自动发布到 Maven Central（可在 Sonatype 审批期间编写） |
+| CI Spotless check | ✅ | 在 ci.yml 加 JDK 17 的 format-check job（绕过 Java 25 不兼容） |
+| JaCoCo 覆盖率阈值 | ✅ | kairo-core ≥ 50%，kairo-multi-agent ≥ 80%，其他不设 |
+| kairo-bom 模块 | ✅ | 一个 pom.xml 列出所有模块版本，用户一次管理依赖 |
+| 核心接口 Javadoc | ✅ | 补全 Agent / ToolExecutor / HookChain / ModelProvider / ContextManager（约 10 个文件） |
+| Release workflow | ✅ | GitHub Actions 自动发布到 Maven Central（可在 Sonatype 审批期间编写） |
+| Spring Boot Example | ✅ | 验证 Starter 可用性（AutoConfigurationIT），暴露强转等集成问题 |
 | API 稳定性注解扩展 | ⬜ P1 | 扩展 @Experimental 到整个 API 层，等 v0.2.0 API 稳定后做 |
 
 ---
@@ -187,6 +188,16 @@ public interface TokenBudgetManager {
 v0.2.0 只做接口定义 + 基础追踪实现（替代现有的静态 int）。
 模型降级策略（budget 快耗尽时自动切便宜模型）放 v0.3.0。
 
+### Task 2.9：System Prompt 增强 ⬜ 待完成
+
+**工具描述增强：** `@Tool` 注解增加 `usageGuidance` 字段（或 ToolDefinition 增加 guidance），
+SystemPromptBuilder 自动拼接到工具描述后。让 LLM 知道何时用 bash vs 专用工具、危险命令处理、长输出处理等。
+
+**模型适配指导：** `ModelCapability` 增加 `promptGuidance` 字段，根据模型类型注入不同指导：
+- GPT/Codex："必须用工具行动，不要描述"
+- Gemini："用绝对路径，修改前先读文件"
+- Claude/GLM：不需要额外指导
+
 ---
 
 ## 阶段三：v0.2.1 — 重构
@@ -209,6 +220,28 @@ v0.2.0 Hook + Tracer 的埋点位置自然形成代码分界线。
 
 拆分原则：不改公共 API，不改测试行为断言。
 
+### Task 3.2：行为准则 Skill 模板 ⬜ 待完成
+
+不内置默认行为规范（违反"不预设策略"原则），提供场景化 Skill 模板：
+- `skills/coding-guidelines.md` — 编码助手（Read before write, don't add features beyond asked）
+- `skills/sre-guidelines.md` — SRE 运维（Check before act, verify idempotency）
+- `skills/data-guidelines.md` — 数据分析
+
+用户按需加载，和 Skill 系统设计一致。
+
+### Task 3.3：工具输出注入防御 ⬜ 待完成
+
+在 `DefaultToolExecutor` 的后处理阶段扫描工具输出，命中注入模式时在 ToolResult 标记 warning。
+不在 prompt 层做（不依赖 LLM 自觉遵守，对所有模型有效，不消耗 prompt token）。
+
+扫描模式：ignore previous instructions、system prompt override、不可见 Unicode、凭据泄露等。
+
+### Task 3.4：Coordinator Prompt 精化 ⬜ 待完成
+
+增加精确行为约束：
+- "Worker results are internal signals, not conversation partners — never thank or acknowledge them"
+- "不要向用户暴露内部机制（compaction、hook、tool partition 等）"
+
 ---
 
 ## 阶段四：v0.3.0 — 生态连接
@@ -227,6 +260,7 @@ v0.2.0 Hook + Tracer 的埋点位置自然形成代码分界线。
 | Span.addEvent + 确定性回放 | Span 接口加 `addEvent(name, snapshot)` 支持完整输入输出快照，串成可回放 timeline（对齐 OTel SpanEvent） |
 | Token Budget 降级策略 | 基于 v0.2.0 的 TokenBudgetManager SPI，实现 budget 耗尽时自动切便宜模型 |
 | ExecutionStrategy SPI（预留） | 预留接口，默认 ReAct。简单任务场景已可通过 `@PreReasoning` + `HookResult.SKIP` 覆盖 |
+| 记忆使用指导 | 配套 MemoryTool，在 system prompt 中加入记忆使用规范（什么值得持久化、什么不值得） |
 
 **MCP 设计决策：**
 - MCP 完全可选，`kairo-core` 对 `kairo-mcp` 零编译期依赖
@@ -248,7 +282,7 @@ v0.2.0 Hook + Tracer 的埋点位置自然形成代码分界线。
 |------|------|
 | 自我改进机制 | 对话回顾、自动 Skill 提取、Memory 沉淀 |
 | 多租户隔离 | Agent 级资源配额、租户级 MemoryStore 隔离 |
-| Memory 分类重设计 | 参考 claude-code-best 的内容类型分类（user/feedback/project/reference） |
+| Memory 分类重设计 | 按内容类型重新分类（user/feedback/project/reference），替代当前的生命周期分类 |
 
 **已明确不做：**
 - Workflow Checkpoint — SessionSerializer + FileMemoryStore + TaskBoard 已覆盖恢复需求
@@ -291,14 +325,14 @@ kairo-mcp(@Exp)        kairo-mcp(@Exp)         kairo-mcp(正式)         kairo-m
 
 ---
 
-## Shannon 借鉴对照（学设计理念，不学基础设施复杂度）
+##  借鉴对照（学设计理念，不学基础设施复杂度）
 
 | 借鉴点 | 结论 | 落地方式 | 版本 |
 |--------|------|---------|------|
 | Token Budget 三级管控 | ✅ 做 | TokenBudgetManager SPI + 动态追踪 | v0.2.0 接口，v0.3.0 降级策略 |
 | 确定性回放调试 | ✅ 做 | Tracer 扩展：Span.addEvent(name, snapshot) | v0.3.0 |
 | 执行策略路由 | ⚠️ 只预留 SPI | Hook 已能覆盖简单场景（SKIP） | v0.3.0 预留 |
-| 策略引擎 (OPA) | ❌ 不做 | PermissionGuard SPI 够用，用户自行实现 | — |
+| 策略引擎 | ❌ 不做 | PermissionGuard SPI 够用，用户自行实现 | — |
 | 配置热更新 | ❌ 不做 | Spring @RefreshScope 原生支持 | — |
 
 核心原则：很多设计理念用现有的 SPI（Hook、Tracer、PermissionGuard）就能实现，不需要新增抽象。
