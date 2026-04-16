@@ -8,8 +8,8 @@
 ## 基线
 
 - 当前版本：v0.1.0-SNAPSHOT
-- 测试：2,018 个，0 失败
-- 模块：kairo-api / kairo-core / kairo-tools / kairo-multi-agent / kairo-spring-boot-starter / kairo-demo / kairo-mcp / docs（8 个）
+- 测试：1,009 个，0 失败
+- 模块：kairo-api / kairo-core / kairo-tools / kairo-multi-agent / kairo-spring-boot-starter / kairo-examples / kairo-mcp / docs（8 个）
 
 ---
 
@@ -63,15 +63,28 @@ DefaultReActAgent 的 5 处 instanceof → 直接调用接口方法。
 - AgentConfig + AgentBuilder 添加 `.tracer(Tracer)` 方法
 - DefaultReActAgent / DefaultToolExecutor 改为构造注入
 
-### Task 1.9：文档检查
+### Task 1.9：文档检查 ✅ 已完成
 
 确保 README / docs / Demo 不引用已删除的 API。
 
-### Task 1.10：全量验证
+### Task 1.10：全量验证 ✅ 已完成
 
-`mvn clean test` — 目标：2,000+ 测试，0 失败。
+`mvn clean test` — 结果：1,009 测试，0 失败。
 
-**v0.1.0 剩余工作：Task 1.9 + 1.10**
+**v0.1.0 全部完成 ✅**
+
+### v0.1.0 发布前补充项（新增）
+
+以下是发布到 Maven Central 前的补充工作：
+
+| Task | 状态 | 说明 |
+|------|------|------|
+| CI Spotless check | ⬜ | 在 ci.yml 加 JDK 17 的 format-check job（绕过 Java 25 不兼容） |
+| JaCoCo 覆盖率阈值 | ⬜ | kairo-core ≥ 50%，kairo-multi-agent ≥ 80%，其他不设 |
+| kairo-bom 模块 | ⬜ | 一个 pom.xml 列出所有模块版本，用户一次管理依赖 |
+| 核心接口 Javadoc | ⬜ | 补全 Agent / ToolExecutor / HookChain / ModelProvider / ContextManager（约 10 个文件） |
+| Release workflow | ⬜ | GitHub Actions 自动发布到 Maven Central（可在 Sonatype 审批期间编写） |
+| API 稳定性注解扩展 | ⬜ P1 | 扩展 @Experimental 到整个 API 层，等 v0.2.0 API 稳定后做 |
 
 ---
 
@@ -252,7 +265,7 @@ kairo-tools            kairo-tools             kairo-tools             kairo-too
 kairo-multi-agent      kairo-multi-agent(容错) kairo-multi-agent       kairo-multi-agent
 kairo-spring-boot-     kairo-spring-boot-      kairo-spring-boot-      kairo-spring-boot-
   starter                starter                 starter                 starter
-kairo-demo             kairo-demo              kairo-demo              kairo-demo
+kairo-examples         kairo-examples          kairo-examples          kairo-examples
 kairo-mcp(@Exp)        kairo-mcp(@Exp)         kairo-mcp(正式)         kairo-mcp
                                                + kairo-observability   kairo-observability
 ```

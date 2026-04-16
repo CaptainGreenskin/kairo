@@ -56,9 +56,7 @@ public class PostCompactRecoveryHandler {
      * @param fileTracker tracks recently accessed files
      * @param skillRegistry the skill registry (may be null)
      */
-    public PostCompactRecoveryHandler(
-            FileAccessTracker fileTracker,
-            SkillRegistry skillRegistry) {
+    public PostCompactRecoveryHandler(FileAccessTracker fileTracker, SkillRegistry skillRegistry) {
         this.fileTracker = fileTracker;
         this.skillRegistry = skillRegistry;
     }

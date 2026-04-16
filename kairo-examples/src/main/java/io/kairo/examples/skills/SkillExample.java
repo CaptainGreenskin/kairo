@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.kairo.demo;
+package io.kairo.examples.skills;
 
 import io.kairo.api.agent.Agent;
 import io.kairo.api.message.Msg;
@@ -28,6 +28,7 @@ import io.kairo.core.skill.SkillLoader;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
 import io.kairo.core.tool.DefaultToolRegistry;
+import io.kairo.examples.support.LoggingHook;
 import io.kairo.tools.exec.BashTool;
 import io.kairo.tools.file.ReadTool;
 import io.kairo.tools.file.WriteTool;
@@ -38,16 +39,17 @@ import java.nio.file.Path;
 /**
  * Demonstrates the Skill system: loading Markdown-based skills and using them.
  *
- * <p>Skills are defined as Markdown files in the skills/ directory. The agent can list
- * available skills and load them on demand (progressive disclosure).
+ * <p>Skills are defined as Markdown files in the skills/ directory. The agent can list available
+ * skills and load them on demand (progressive disclosure).
  *
  * <p>Usage:
+ *
  * <pre>
  *   export QWEN_API_KEY=your-key
- *   mvn exec:java -pl kairo-demo -Dexec.mainClass="io.kairo.demo.SkillDemo"
+ *   mvn exec:java -pl kairo-examples -Dexec.mainClass="io.kairo.examples.skills.SkillExample"
  * </pre>
  */
-public class SkillDemo {
+public class SkillExample {
 
     private static final String TASK =
             """
@@ -77,11 +79,14 @@ public class SkillDemo {
             return;
         }
 
-        String baseUrl = System.getenv().getOrDefault(
-                "QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1");
+        String baseUrl =
+                System.getenv()
+                        .getOrDefault(
+                                "QWEN_BASE_URL",
+                                "https://dashscope.aliyuncs.com/compatible-mode/v1");
         String model = System.getenv().getOrDefault("QWEN_MODEL", "qwen-plus");
 
-        System.out.println("=== Kairo Skill System Demo ===");
+        System.out.println("=== Kairo Skill System Example ===");
         System.out.println("Model: " + model);
         System.out.println("Skills directory: skills/");
         System.out.println("===============================\n");
@@ -92,7 +97,7 @@ public class SkillDemo {
 
         Path skillDir = Path.of("skills");
         if (!skillDir.toFile().isDirectory()) {
-            // Try relative to kairo-demo module
+            // Try relative to kairo-examples module
             skillDir = Path.of("../skills");
         }
         System.out.println("Loading skills from: " + skillDir.toAbsolutePath());
@@ -104,7 +109,8 @@ public class SkillDemo {
         registry.registerTool(BashTool.class);
         registry.registerTool(WriteTool.class);
         registry.registerTool(ReadTool.class);
-        // Skill tools require SkillRegistry in constructor — register definition + instance manually
+        // Skill tools require SkillRegistry in constructor — register definition + instance
+        // manually
         SkillListTool skillListTool = new SkillListTool(skillRegistry);
         SkillLoadTool skillLoadTool = new SkillLoadTool(skillRegistry, skillLoader);
         // Scan annotations for tool definitions, then register instances
@@ -121,18 +127,20 @@ public class SkillDemo {
         OpenAIProvider provider = new OpenAIProvider(apiKey, baseUrl, "/chat/completions");
         LoggingHook hook = new LoggingHook();
 
-        Agent agent = AgentBuilder.create()
-                .name("skill-agent")
-                .model(provider)
-                .tools(registry)
-                .toolExecutor(executor)
-                .modelName(model)
-                .systemPrompt("You are a helpful assistant with access to a skill system. "
-                        + "Use skill_list to discover skills and skill_load to activate them. "
-                        + "Follow loaded skill instructions precisely.")
-                .maxIterations(20)
-                .hook(hook)
-                .build();
+        Agent agent =
+                AgentBuilder.create()
+                        .name("skill-agent")
+                        .model(provider)
+                        .tools(registry)
+                        .toolExecutor(executor)
+                        .modelName(model)
+                        .systemPrompt(
+                                "You are a helpful assistant with access to a skill system. "
+                                        + "Use skill_list to discover skills and skill_load to activate them. "
+                                        + "Follow loaded skill instructions precisely.")
+                        .maxIterations(20)
+                        .hook(hook)
+                        .build();
 
         if (agent instanceof DefaultReActAgent ra) {
             ra.setStreamingEnabled(true);
@@ -142,7 +150,7 @@ public class SkillDemo {
         Msg result = agent.call(MsgBuilder.user(TASK)).block();
 
         System.out.println("\n========================================");
-        System.out.println("  Skill Demo complete! " + hook.getIteration() + " iterations");
+        System.out.println("  Skill Example complete! " + hook.getIteration() + " iterations");
         System.out.println("========================================");
     }
 }

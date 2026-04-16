@@ -79,10 +79,16 @@ class McpClientRegistryTest {
         assertEquals(0, group.size());
         assertTrue(group.getRegisteredToolNames().isEmpty());
 
-        ToolDefinition def = new ToolDefinition(
-                "testServer_tool1", "desc", ToolCategory.GENERAL,
-                new JsonSchema("object", Collections.emptyMap(), Collections.emptyList(), null),
-                McpToolExecutor.class, Duration.ofSeconds(30), ToolSideEffect.SYSTEM_CHANGE);
+        ToolDefinition def =
+                new ToolDefinition(
+                        "testServer_tool1",
+                        "desc",
+                        ToolCategory.GENERAL,
+                        new JsonSchema(
+                                "object", Collections.emptyMap(), Collections.emptyList(), null),
+                        McpToolExecutor.class,
+                        Duration.ofSeconds(30),
+                        ToolSideEffect.SYSTEM_CHANGE);
         McpToolExecutor executor = new McpToolExecutor(null, "tool1", "testServer_tool1", null);
         group.addTool(def, executor);
 
@@ -96,13 +102,20 @@ class McpClientRegistryTest {
     @Test
     void toolGroupReturnsAllDefinitions() {
         McpToolGroup group = new McpToolGroup("srv");
-        JsonSchema schema = new JsonSchema("object", Collections.emptyMap(), Collections.emptyList(), null);
+        JsonSchema schema =
+                new JsonSchema("object", Collections.emptyMap(), Collections.emptyList(), null);
 
         for (int i = 0; i < 3; i++) {
             String name = "srv_tool" + i;
-            ToolDefinition def = new ToolDefinition(
-                    name, "desc" + i, ToolCategory.GENERAL, schema,
-                    McpToolExecutor.class, Duration.ofSeconds(30), ToolSideEffect.SYSTEM_CHANGE);
+            ToolDefinition def =
+                    new ToolDefinition(
+                            name,
+                            "desc" + i,
+                            ToolCategory.GENERAL,
+                            schema,
+                            McpToolExecutor.class,
+                            Duration.ofSeconds(30),
+                            ToolSideEffect.SYSTEM_CHANGE);
             group.addTool(def, new McpToolExecutor(null, "tool" + i, name, null));
         }
 
@@ -117,20 +130,28 @@ class McpClientRegistryTest {
         CountDownLatch latch = new CountDownLatch(threads);
         ExecutorService executor = Executors.newFixedThreadPool(threads);
 
-        JsonSchema schema = new JsonSchema("object", Collections.emptyMap(), Collections.emptyList(), null);
+        JsonSchema schema =
+                new JsonSchema("object", Collections.emptyMap(), Collections.emptyList(), null);
         for (int i = 0; i < threads; i++) {
             final int idx = i;
-            executor.submit(() -> {
-                try {
-                    String name = "concurrent_tool" + idx;
-                    ToolDefinition def = new ToolDefinition(
-                            name, "desc", ToolCategory.GENERAL, schema,
-                            McpToolExecutor.class, Duration.ofSeconds(30), ToolSideEffect.SYSTEM_CHANGE);
-                    group.addTool(def, new McpToolExecutor(null, "tool" + idx, name, null));
-                } finally {
-                    latch.countDown();
-                }
-            });
+            executor.submit(
+                    () -> {
+                        try {
+                            String name = "concurrent_tool" + idx;
+                            ToolDefinition def =
+                                    new ToolDefinition(
+                                            name,
+                                            "desc",
+                                            ToolCategory.GENERAL,
+                                            schema,
+                                            McpToolExecutor.class,
+                                            Duration.ofSeconds(30),
+                                            ToolSideEffect.SYSTEM_CHANGE);
+                            group.addTool(def, new McpToolExecutor(null, "tool" + idx, name, null));
+                        } finally {
+                            latch.countDown();
+                        }
+                    });
         }
 
         assertTrue(latch.await(5, TimeUnit.SECONDS));

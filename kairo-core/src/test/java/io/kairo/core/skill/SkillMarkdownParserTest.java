@@ -291,8 +291,16 @@ class SkillMarkdownParserTest {
         assumeYaml();
         SkillDefinition skill =
                 new SkillDefinition(
-                        "restricted", "1.0.0", "desc", "body", List.of(),
-                        SkillCategory.CODE, null, null, null, 0,
+                        "restricted",
+                        "1.0.0",
+                        "desc",
+                        "body",
+                        List.of(),
+                        SkillCategory.CODE,
+                        null,
+                        null,
+                        null,
+                        0,
                         List.of("Read", "Grep"));
 
         String md = parser.serialize(skill);

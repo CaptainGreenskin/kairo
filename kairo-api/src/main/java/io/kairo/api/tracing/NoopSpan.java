@@ -15,9 +15,7 @@
  */
 package io.kairo.api.tracing;
 
-/**
- * No-operation Span implementation. All methods are silent no-ops.
- */
+/** No-operation Span implementation. All methods are silent no-ops. */
 public final class NoopSpan implements Span {
     public static final NoopSpan INSTANCE = new NoopSpan();
 

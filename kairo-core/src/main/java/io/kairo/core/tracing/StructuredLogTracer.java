@@ -111,9 +111,7 @@ public class StructuredLogTracer implements Tracer {
                     id,
                     parentSpan != null ? parentSpan.spanId() : "root",
                     duration.toMillis(),
-                    success
-                            ? "OK"
-                            : "ERROR" + (statusMessage != null ? ":" + statusMessage : ""),
+                    success ? "OK" : "ERROR" + (statusMessage != null ? ":" + statusMessage : ""),
                     attributes.isEmpty() ? "{}" : attributes);
         }
     }

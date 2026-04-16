@@ -165,17 +165,13 @@ public class CompactionPipeline {
                 hookResult -> {
                     // Handle ABORT decision
                     if (!hookResult.shouldProceed()) {
-                        log.info(
-                                "Compaction aborted by PreCompact hook: {}",
-                                hookResult.reason());
+                        log.info("Compaction aborted by PreCompact hook: {}", hookResult.reason());
                         return Mono.empty();
                     }
 
                     // Handle SKIP decision — skip compaction gracefully
                     if (hookResult.shouldSkip()) {
-                        log.info(
-                                "Compaction skipped by hook: {}",
-                                hookResult.reason());
+                        log.info("Compaction skipped by hook: {}", hookResult.reason());
                         return Mono.empty();
                     }
 
@@ -207,16 +203,16 @@ public class CompactionPipeline {
                                                             result.marker().strategyName(),
                                                             List.of(result.marker()));
                                             return hookChain
-                                                    .<PostCompactEvent>
-                                                            firePostCompactWithResult(postEvent)
+                                                    .<PostCompactEvent>firePostCompactWithResult(
+                                                            postEvent)
                                                     .map(
                                                             postResult -> {
                                                                 // Handle ABORT — discard compaction
                                                                 if (!postResult.shouldProceed()) {
                                                                     log.info(
                                                                             "Compaction discarded"
-                                                                                + " by PostCompact"
-                                                                                + " hook: {}",
+                                                                                    + " by PostCompact"
+                                                                                    + " hook: {}",
                                                                             postResult.reason());
                                                                     return result;
                                                                 }

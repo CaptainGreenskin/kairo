@@ -114,8 +114,7 @@ public final class ModelConfigBuilder {
      * @return a pre-configured builder for Claude Sonnet
      */
     public static ModelConfigBuilder claudeSonnet() {
-        return create()
-                .model(ModelConfig.DEFAULT_MODEL)
+        return create().model(ModelConfig.DEFAULT_MODEL)
                 .maxTokens(ModelConfig.DEFAULT_MAX_TOKENS)
                 .temperature(ModelConfig.DEFAULT_TEMPERATURE);
     }

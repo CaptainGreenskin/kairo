@@ -196,22 +196,22 @@ cd kairo
 mvn clean install
 
 # Mock mode (no API key needed)
-mvn exec:java -pl kairo-demo -Dexec.mainClass="io.kairo.demo.AgentDemo" -Dexec.args="--mock"
+mvn exec:java -pl kairo-examples -Dexec.mainClass="io.kairo.demo.AgentDemo" -Dexec.args="--mock"
 
 # Qwen mode
 export QWEN_API_KEY=your-key
-mvn exec:java -pl kairo-demo -Dexec.mainClass="io.kairo.demo.AgentDemo" -Dexec.args="--qwen"
+mvn exec:java -pl kairo-examples -Dexec.mainClass="io.kairo.demo.AgentDemo" -Dexec.args="--qwen"
 
 # Full toolset demo (requires Qwen API key)
-mvn exec:java -pl kairo-demo -Dexec.mainClass="io.kairo.demo.FullToolsetDemo"
+mvn exec:java -pl kairo-examples -Dexec.mainClass="io.kairo.demo.FullToolsetDemo"
 
 # Multi-agent demo (no API key needed)
-mvn exec:java -pl kairo-demo -Dexec.mainClass="io.kairo.demo.MultiAgentDemo"
+mvn exec:java -pl kairo-examples -Dexec.mainClass="io.kairo.demo.MultiAgentDemo"
 ```
 
 ## Next Steps
 
-- Browse [kairo-demo](../kairo-demo/src/main/java/io/kairo/demo/) for complete runnable examples
+- Browse [kairo-examples](../kairo-examples/src/main/java/io/kairo/demo/) for complete runnable examples
 - Explore the [API module](../kairo-api/) for all extension points and SPI interfaces
 - Check [kairo-tools](../kairo-tools/) for the full built-in tool catalog
 - See [kairo-multi-agent](../kairo-multi-agent/) for Task, Team, and MessageBus orchestration

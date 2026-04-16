@@ -84,17 +84,15 @@ public class StreamingToolDetector {
         private int pendingTools = 0;
 
         /**
-         * Ordered list of active (not yet completed) tool call IDs.
-         * Supports parallel tool calls by allowing resolution of empty IDs
-         * to any active tool, not just the most recent one.
+         * Ordered list of active (not yet completed) tool call IDs. Supports parallel tool calls by
+         * allowing resolution of empty IDs to any active tool, not just the most recent one.
          */
         private final List<String> activeToolIds = new ArrayList<>();
 
         /**
-         * IDs of tool calls that have already been completed.
-         * Used to silently skip duplicate TOOL_USE_END events, which can occur
-         * when OpenAI-format providers flush remaining tools after index-based
-         * completion has already emitted an END for the same tool.
+         * IDs of tool calls that have already been completed. Used to silently skip duplicate
+         * TOOL_USE_END events, which can occur when OpenAI-format providers flush remaining tools
+         * after index-based completion has already emitted an END for the same tool.
          */
         private final Set<String> completedToolIds = new HashSet<>();
 
@@ -131,7 +129,8 @@ public class StreamingToolDetector {
             }
             // Silently skip duplicate completions (common with OpenAI-format flush)
             if (completedToolIds.contains(resolvedId)) {
-                log.debug("Duplicate completion for already-finished tool: {} — skipping",
+                log.debug(
+                        "Duplicate completion for already-finished tool: {} — skipping",
                         resolvedId);
                 return;
             }
@@ -153,14 +152,12 @@ public class StreamingToolDetector {
             StringBuilder argsSb = toolArgs.remove(resolvedId);
             Map<String, Object> args = parseArgs(argsSb != null ? argsSb.toString() : "{}");
             completedTool =
-                    new DetectedToolCall(
-                            resolvedId, name, args, streamDone && pendingTools <= 0);
+                    new DetectedToolCall(resolvedId, name, args, streamDone && pendingTools <= 0);
         }
 
         /**
-         * Resolve a potentially empty/null tool call ID. For parallel tool calls,
-         * falls back to the oldest active (not yet completed) tool instead of just
-         * the last-started one.
+         * Resolve a potentially empty/null tool call ID. For parallel tool calls, falls back to the
+         * oldest active (not yet completed) tool instead of just the last-started one.
          */
         private String resolveId(String id) {
             if (id != null && !id.isEmpty()) {

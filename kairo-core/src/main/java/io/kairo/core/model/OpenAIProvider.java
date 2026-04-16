@@ -163,7 +163,8 @@ public class OpenAIProvider implements ModelProvider {
                                                 "OpenAI API error: HTTP "
                                                         + response.statusCode()
                                                         + " - "
-                                                        + ModelProviderUtils.sanitizeForLogging(response.body())));
+                                                        + ModelProviderUtils.sanitizeForLogging(
+                                                                response.body())));
                             }
                             try {
                                 return Mono.just(parseResponse(response.body()));
@@ -667,7 +668,6 @@ public class OpenAIProvider implements ModelProvider {
         String name;
         final StringBuilder arguments = new StringBuilder();
     }
-
 
     /**
      * A line-based SSE subscriber that emits raw {@link StreamChunk} objects for OpenAI-format

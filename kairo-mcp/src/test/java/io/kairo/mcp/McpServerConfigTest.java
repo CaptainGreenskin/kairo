@@ -53,52 +53,56 @@ class McpServerConfigTest {
 
     @Test
     void builderWithHeaders() {
-        McpServerConfig config = McpServerConfig.builder()
-                .name("api")
-                .transportType(McpServerConfig.TransportType.STREAMABLE_HTTP)
-                .url("http://localhost:8080")
-                .headers(Map.of("Authorization", "Bearer token123"))
-                .build();
+        McpServerConfig config =
+                McpServerConfig.builder()
+                        .name("api")
+                        .transportType(McpServerConfig.TransportType.STREAMABLE_HTTP)
+                        .url("http://localhost:8080")
+                        .headers(Map.of("Authorization", "Bearer token123"))
+                        .build();
         assertEquals("Bearer token123", config.headers().get("Authorization"));
     }
 
     @Test
     void builderWithEnvVars() {
-        McpServerConfig config = McpServerConfig.builder()
-                .name("fs")
-                .transportType(McpServerConfig.TransportType.STDIO)
-                .command(List.of("npx", "server"))
-                .env(Map.of("HOME", "/tmp"))
-                .build();
+        McpServerConfig config =
+                McpServerConfig.builder()
+                        .name("fs")
+                        .transportType(McpServerConfig.TransportType.STDIO)
+                        .command(List.of("npx", "server"))
+                        .env(Map.of("HOME", "/tmp"))
+                        .build();
         assertEquals("/tmp", config.env().get("HOME"));
     }
 
     @Test
     void builderWithEnableDisableTools() {
-        McpServerConfig config = McpServerConfig.builder()
-                .name("tools")
-                .transportType(McpServerConfig.TransportType.STDIO)
-                .command(List.of("cmd"))
-                .enableTools(List.of("read", "write"))
-                .disableTools(List.of("delete"))
-                .build();
+        McpServerConfig config =
+                McpServerConfig.builder()
+                        .name("tools")
+                        .transportType(McpServerConfig.TransportType.STDIO)
+                        .command(List.of("cmd"))
+                        .enableTools(List.of("read", "write"))
+                        .disableTools(List.of("delete"))
+                        .build();
         assertEquals(List.of("read", "write"), config.enableTools());
         assertEquals(List.of("delete"), config.disableTools());
     }
 
     @Test
     void builderRequiresName() {
-        assertThrows(IllegalArgumentException.class, () ->
-                McpServerConfig.builder()
-                        .transportType(McpServerConfig.TransportType.STDIO)
-                        .build());
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        McpServerConfig.builder()
+                                .transportType(McpServerConfig.TransportType.STDIO)
+                                .build());
     }
 
     @Test
     void builderRequiresTransportType() {
-        assertThrows(IllegalArgumentException.class, () ->
-                McpServerConfig.builder()
-                        .name("test")
-                        .build());
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> McpServerConfig.builder().name("test").build());
     }
 }

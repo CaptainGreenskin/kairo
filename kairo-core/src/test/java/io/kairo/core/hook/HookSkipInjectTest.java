@@ -62,10 +62,11 @@ class HookSkipInjectTest {
     public static class InjectHandler1 {
         @PreActing
         public HookResult<String> onPreActing(String event) {
-            Msg msg = Msg.builder()
-                    .role(MsgRole.ASSISTANT)
-                    .addContent(new Content.TextContent("injected-1"))
-                    .build();
+            Msg msg =
+                    Msg.builder()
+                            .role(MsgRole.ASSISTANT)
+                            .addContent(new Content.TextContent("injected-1"))
+                            .build();
             return HookResult.inject(event, msg, "hook-1");
         }
     }
@@ -74,10 +75,11 @@ class HookSkipInjectTest {
     public static class InjectHandler2 {
         @PreActing
         public HookResult<String> onPreActing(String event) {
-            Msg msg = Msg.builder()
-                    .role(MsgRole.ASSISTANT)
-                    .addContent(new Content.TextContent("injected-2"))
-                    .build();
+            Msg msg =
+                    Msg.builder()
+                            .role(MsgRole.ASSISTANT)
+                            .addContent(new Content.TextContent("injected-2"))
+                            .build();
             return HookResult.inject(event, msg, "hook-2");
         }
     }
@@ -92,15 +94,18 @@ class HookSkipInjectTest {
         chain.register(continueHandler);
 
         StepVerifier.create(chain.firePreActingWithResult("input"))
-                .assertNext(result -> {
-                    // Both handlers should have been called
-                    assertTrue(skipHandler.called, "SkipHandler should have been called");
-                    assertTrue(continueHandler.called, "ContinueHandler should have been called");
-                    // SKIP (priority 3) wins over CONTINUE (priority 0)
-                    assertEquals(HookResult.Decision.SKIP, result.decision());
-                    assertTrue(result.shouldSkip());
-                    assertEquals("skip reason", result.reason());
-                })
+                .assertNext(
+                        result -> {
+                            // Both handlers should have been called
+                            assertTrue(skipHandler.called, "SkipHandler should have been called");
+                            assertTrue(
+                                    continueHandler.called,
+                                    "ContinueHandler should have been called");
+                            // SKIP (priority 3) wins over CONTINUE (priority 0)
+                            assertEquals(HookResult.Decision.SKIP, result.decision());
+                            assertTrue(result.shouldSkip());
+                            assertEquals("skip reason", result.reason());
+                        })
                 .verifyComplete();
     }
 
@@ -112,14 +117,15 @@ class HookSkipInjectTest {
         chain.register(new InjectHandler2());
 
         StepVerifier.create(chain.firePreActingWithResult("input"))
-                .assertNext(result -> {
-                    assertEquals(HookResult.Decision.INJECT, result.decision());
-                    assertTrue(result.hasInjectedMessage());
-                    // The first injected message should be from hook-1
-                    assertEquals("injected-1", result.injectedMessage().text());
-                    // The last hook source should be hook-2
-                    assertEquals("hook-2", result.hookSource());
-                })
+                .assertNext(
+                        result -> {
+                            assertEquals(HookResult.Decision.INJECT, result.decision());
+                            assertTrue(result.hasInjectedMessage());
+                            // The first injected message should be from hook-1
+                            assertEquals("injected-1", result.injectedMessage().text());
+                            // The last hook source should be hook-2
+                            assertEquals("hook-2", result.hookSource());
+                        })
                 .verifyComplete();
     }
 
@@ -131,12 +137,13 @@ class HookSkipInjectTest {
         chain.register(new AbortHandler());
 
         StepVerifier.create(chain.firePreActingWithResult("input"))
-                .assertNext(result -> {
-                    // ABORT short-circuits and wins
-                    assertEquals(HookResult.Decision.ABORT, result.decision());
-                    assertFalse(result.shouldProceed());
-                    assertEquals("abort reason", result.reason());
-                })
+                .assertNext(
+                        result -> {
+                            // ABORT short-circuits and wins
+                            assertEquals(HookResult.Decision.ABORT, result.decision());
+                            assertFalse(result.shouldProceed());
+                            assertEquals("abort reason", result.reason());
+                        })
                 .verifyComplete();
     }
 
@@ -149,11 +156,12 @@ class HookSkipInjectTest {
         chain.register(new SkipHandler());
 
         StepVerifier.create(chain.firePreActingWithResult("input"))
-                .assertNext(result -> {
-                    assertEquals(HookResult.Decision.SKIP, result.decision());
-                    assertTrue(result.shouldSkip());
-                    assertEquals("skip reason", result.reason());
-                })
+                .assertNext(
+                        result -> {
+                            assertEquals(HookResult.Decision.SKIP, result.decision());
+                            assertTrue(result.shouldSkip());
+                            assertEquals("skip reason", result.reason());
+                        })
                 .verifyComplete();
     }
 }

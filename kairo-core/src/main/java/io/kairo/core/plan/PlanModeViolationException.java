@@ -19,12 +19,11 @@ package io.kairo.core.plan;
  * Thrown when a tool with write or system-change side effects is invoked while the agent is in plan
  * mode.
  *
- * <p>Plan mode restricts the agent to read-only tools. This exception signals that the requested
- * tool is blocked until plan mode is exited.
+ * @deprecated Use {@link io.kairo.api.exception.PlanModeViolationException} instead. This class is
+ *     kept for backward compatibility and delegates to the API exception hierarchy.
  */
-public class PlanModeViolationException extends RuntimeException {
-
-    private final String toolName;
+@Deprecated
+public class PlanModeViolationException extends io.kairo.api.exception.PlanModeViolationException {
 
     /**
      * Create a new exception with the given message.
@@ -42,16 +41,6 @@ public class PlanModeViolationException extends RuntimeException {
      * @param toolName the name of the blocked tool
      */
     public PlanModeViolationException(String message, String toolName) {
-        super(message);
-        this.toolName = toolName;
-    }
-
-    /**
-     * Get the name of the tool that was blocked.
-     *
-     * @return the tool name, or null if not specified
-     */
-    public String getToolName() {
-        return toolName;
+        super(message, toolName);
     }
 }

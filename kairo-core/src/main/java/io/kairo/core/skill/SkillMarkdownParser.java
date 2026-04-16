@@ -96,10 +96,16 @@ public class SkillMarkdownParser {
             String description = extractDescription(body);
 
             return new SkillDefinition(
-                    name, version, description, body, triggers, parseCategory(category),
+                    name,
+                    version,
+                    description,
+                    body,
+                    triggers,
+                    parseCategory(category),
                     pathPatterns.isEmpty() ? null : pathPatterns,
                     requiredTools.isEmpty() ? null : requiredTools,
-                    platform, matchScore,
+                    platform,
+                    matchScore,
                     allowedTools.isEmpty() ? null : allowedTools);
         } catch (IOException e) {
             throw new IllegalArgumentException("Invalid YAML front-matter: " + e.getMessage(), e);

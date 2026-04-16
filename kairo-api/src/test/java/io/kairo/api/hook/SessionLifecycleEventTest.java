@@ -18,7 +18,6 @@ package io.kairo.api.hook;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.agent.AgentState;
-import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.tool.ToolResult;
@@ -44,8 +43,9 @@ class SessionLifecycleEventTest {
     @Test
     @DisplayName("SessionEndEvent success case — no error, state COMPLETED")
     void sessionEndEvent_successCase() {
-        SessionEndEvent event = new SessionEndEvent(
-                "test-agent", AgentState.COMPLETED, 5, 1200L, Duration.ofSeconds(30), null);
+        SessionEndEvent event =
+                new SessionEndEvent(
+                        "test-agent", AgentState.COMPLETED, 5, 1200L, Duration.ofSeconds(30), null);
 
         assertEquals("test-agent", event.agentName());
         assertEquals(AgentState.COMPLETED, event.finalState());
@@ -58,8 +58,14 @@ class SessionLifecycleEventTest {
     @Test
     @DisplayName("SessionEndEvent error case — error present, state FAILED")
     void sessionEndEvent_errorCase() {
-        SessionEndEvent event = new SessionEndEvent(
-                "test-agent", AgentState.FAILED, 3, 800L, Duration.ofSeconds(10), "timeout");
+        SessionEndEvent event =
+                new SessionEndEvent(
+                        "test-agent",
+                        AgentState.FAILED,
+                        3,
+                        800L,
+                        Duration.ofSeconds(10),
+                        "timeout");
 
         assertEquals(AgentState.FAILED, event.finalState());
         assertEquals("timeout", event.error());
@@ -70,7 +76,8 @@ class SessionLifecycleEventTest {
     @DisplayName("ToolResultEvent success case — success=true, result accessible")
     void toolResultEvent_successCase() {
         ToolResult toolResult = new ToolResult("use-1", "file created", false, Map.of());
-        ToolResultEvent event = new ToolResultEvent("create_file", toolResult, Duration.ofMillis(150), true);
+        ToolResultEvent event =
+                new ToolResultEvent("create_file", toolResult, Duration.ofMillis(150), true);
 
         assertEquals("create_file", event.toolName());
         assertSame(toolResult, event.result());
@@ -83,7 +90,8 @@ class SessionLifecycleEventTest {
     @DisplayName("ToolResultEvent failure case — success=false")
     void toolResultEvent_failureCase() {
         ToolResult toolResult = new ToolResult("use-2", "file not found", true, Map.of());
-        ToolResultEvent event = new ToolResultEvent("read_file", toolResult, Duration.ofMillis(50), false);
+        ToolResultEvent event =
+                new ToolResultEvent("read_file", toolResult, Duration.ofMillis(50), false);
 
         assertEquals("read_file", event.toolName());
         assertFalse(event.success());
@@ -95,48 +103,50 @@ class SessionLifecycleEventTest {
     @DisplayName("HookChain default fire methods return the event unchanged")
     void hookChain_defaultFireMethods() {
         // Use a minimal HookChain that only implements required abstract methods
-        HookChain minimalChain = new HookChain() {
-            @Override
-            public void register(Object hookHandler) {}
+        HookChain minimalChain =
+                new HookChain() {
+                    @Override
+                    public void register(Object hookHandler) {}
 
-            @Override
-            public void unregister(Object hookHandler) {}
+                    @Override
+                    public void unregister(Object hookHandler) {}
 
-            @Override
-            public <T> reactor.core.publisher.Mono<T> firePreReasoning(T event) {
-                return reactor.core.publisher.Mono.just(event);
-            }
+                    @Override
+                    public <T> reactor.core.publisher.Mono<T> firePreReasoning(T event) {
+                        return reactor.core.publisher.Mono.just(event);
+                    }
 
-            @Override
-            public <T> reactor.core.publisher.Mono<T> firePostReasoning(T event) {
-                return reactor.core.publisher.Mono.just(event);
-            }
+                    @Override
+                    public <T> reactor.core.publisher.Mono<T> firePostReasoning(T event) {
+                        return reactor.core.publisher.Mono.just(event);
+                    }
 
-            @Override
-            public <T> reactor.core.publisher.Mono<T> firePreActing(T event) {
-                return reactor.core.publisher.Mono.just(event);
-            }
+                    @Override
+                    public <T> reactor.core.publisher.Mono<T> firePreActing(T event) {
+                        return reactor.core.publisher.Mono.just(event);
+                    }
 
-            @Override
-            public <T> reactor.core.publisher.Mono<T> firePostActing(T event) {
-                return reactor.core.publisher.Mono.just(event);
-            }
+                    @Override
+                    public <T> reactor.core.publisher.Mono<T> firePostActing(T event) {
+                        return reactor.core.publisher.Mono.just(event);
+                    }
 
-            @Override
-            public <T> reactor.core.publisher.Mono<T> firePreCompact(T event) {
-                return reactor.core.publisher.Mono.just(event);
-            }
+                    @Override
+                    public <T> reactor.core.publisher.Mono<T> firePreCompact(T event) {
+                        return reactor.core.publisher.Mono.just(event);
+                    }
 
-            @Override
-            public <T> reactor.core.publisher.Mono<T> firePostCompact(T event) {
-                return reactor.core.publisher.Mono.just(event);
-            }
-        };
+                    @Override
+                    public <T> reactor.core.publisher.Mono<T> firePostCompact(T event) {
+                        return reactor.core.publisher.Mono.just(event);
+                    }
+                };
 
         Msg input = Msg.of(MsgRole.USER, "test");
         SessionStartEvent startEvent = new SessionStartEvent("agent", input, "gpt-4", 5);
-        SessionEndEvent endEvent = new SessionEndEvent(
-                "agent", AgentState.COMPLETED, 3, 500L, Duration.ofSeconds(10), null);
+        SessionEndEvent endEvent =
+                new SessionEndEvent(
+                        "agent", AgentState.COMPLETED, 3, 500L, Duration.ofSeconds(10), null);
         ToolResult tr = new ToolResult("id", "ok", false, Map.of());
         ToolResultEvent toolEvent = new ToolResultEvent("tool", tr, Duration.ofMillis(100), true);
 

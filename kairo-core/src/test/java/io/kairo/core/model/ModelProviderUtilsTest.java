@@ -86,7 +86,9 @@ class ModelProviderUtilsTest {
                 assertThrows(
                         IllegalArgumentException.class,
                         () -> ModelProviderUtils.validateApiKey(null, "Anthropic"));
-        assertTrue(ex.getMessage().contains("Anthropic"), "Exception message should contain the provider name");
+        assertTrue(
+                ex.getMessage().contains("Anthropic"),
+                "Exception message should contain the provider name");
     }
 
     @Test

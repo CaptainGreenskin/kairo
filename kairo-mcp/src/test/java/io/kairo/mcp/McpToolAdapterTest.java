@@ -29,17 +29,21 @@ import org.junit.jupiter.api.Test;
 
 class McpToolAdapterTest {
 
-    private McpSchema.Tool makeTool(String name, String description, Map<String, Object> props, List<String> required) {
-        McpSchema.JsonSchema schema = new McpSchema.JsonSchema("object", props, required, null, null, null);
+    private McpSchema.Tool makeTool(
+            String name, String description, Map<String, Object> props, List<String> required) {
+        McpSchema.JsonSchema schema =
+                new McpSchema.JsonSchema("object", props, required, null, null, null);
         return new McpSchema.Tool(name, null, description, schema, null, null, null);
     }
 
     @Test
     void convertsSimpleToolToDefinition() {
-        Map<String, Object> props = Map.of("city", Map.of("type", "string", "description", "City name"));
+        Map<String, Object> props =
+                Map.of("city", Map.of("type", "string", "description", "City name"));
         McpSchema.Tool tool = makeTool("get_weather", "Get weather info", props, List.of("city"));
 
-        ToolDefinition def = McpToolAdapter.toToolDefinition(tool, "weather", Duration.ofSeconds(30));
+        ToolDefinition def =
+                McpToolAdapter.toToolDefinition(tool, "weather", Duration.ofSeconds(30));
 
         assertEquals("weather_get_weather", def.name());
         assertEquals("Get weather info", def.description());
@@ -51,8 +55,14 @@ class McpToolAdapterTest {
 
     @Test
     void prefixesToolNameWithServerName() {
-        McpSchema.Tool tool = makeTool("read_file", "Read a file", Collections.emptyMap(), Collections.emptyList());
-        ToolDefinition def = McpToolAdapter.toToolDefinition(tool, "filesystem", Duration.ofSeconds(10));
+        McpSchema.Tool tool =
+                makeTool(
+                        "read_file",
+                        "Read a file",
+                        Collections.emptyMap(),
+                        Collections.emptyList());
+        ToolDefinition def =
+                McpToolAdapter.toToolDefinition(tool, "filesystem", Duration.ofSeconds(10));
         assertEquals("filesystem_read_file", def.name());
     }
 
@@ -81,7 +91,8 @@ class McpToolAdapterTest {
 
     @Test
     void handlesNullInputSchema() {
-        McpSchema.Tool tool = new McpSchema.Tool("ping", null, "Ping server", null, null, null, null);
+        McpSchema.Tool tool =
+                new McpSchema.Tool("ping", null, "Ping server", null, null, null, null);
         ToolDefinition def = McpToolAdapter.toToolDefinition(tool, "srv", Duration.ofSeconds(5));
         assertEquals("object", def.inputSchema().type());
         assertTrue(def.inputSchema().properties().isEmpty());
@@ -89,7 +100,8 @@ class McpToolAdapterTest {
 
     @Test
     void handlesNullDescription() {
-        McpSchema.Tool tool = makeTool("noop", null, Collections.emptyMap(), Collections.emptyList());
+        McpSchema.Tool tool =
+                makeTool("noop", null, Collections.emptyMap(), Collections.emptyList());
         ToolDefinition def = McpToolAdapter.toToolDefinition(tool, "srv", Duration.ofSeconds(5));
         assertEquals("", def.description());
     }
@@ -102,7 +114,8 @@ class McpToolAdapterTest {
         McpSchema.Tool tool = makeTool("read", "Read file", props, List.of("path", "encoding"));
 
         Set<String> exclude = Set.of("encoding");
-        ToolDefinition def = McpToolAdapter.toToolDefinition(tool, "fs", Duration.ofSeconds(30), exclude);
+        ToolDefinition def =
+                McpToolAdapter.toToolDefinition(tool, "fs", Duration.ofSeconds(30), exclude);
 
         assertTrue(def.inputSchema().properties().containsKey("path"));
         assertFalse(def.inputSchema().properties().containsKey("encoding"));

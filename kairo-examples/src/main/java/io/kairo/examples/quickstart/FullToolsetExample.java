@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.kairo.demo;
+package io.kairo.examples.quickstart;
 
 import io.kairo.api.agent.Agent;
 import io.kairo.api.message.Msg;
@@ -27,22 +27,24 @@ import io.kairo.core.model.OpenAIProvider;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
 import io.kairo.core.tool.DefaultToolRegistry;
+import io.kairo.examples.support.LoggingHook;
 import io.kairo.tools.exec.BashTool;
 import io.kairo.tools.file.*;
 
 /**
  * Demonstrates the full toolset: Read, Write, Edit, Glob, Grep, and Bash.
  *
- * <p>The agent is asked to create a small project, then search, read, and edit files —
- * exercising all file tools plus bash execution in a single multi-step task.
+ * <p>The agent is asked to create a small project, then search, read, and edit files — exercising
+ * all file tools plus bash execution in a single multi-step task.
  *
  * <p>Usage:
+ *
  * <pre>
  *   export QWEN_API_KEY=your-key
- *   mvn exec:java -pl kairo-demo -Dexec.mainClass="io.kairo.demo.FullToolsetDemo"
+ *   mvn exec:java -pl kairo-examples -Dexec.mainClass="io.kairo.examples.quickstart.FullToolsetExample"
  * </pre>
  */
-public class FullToolsetDemo {
+public class FullToolsetExample {
 
     private static final String TASK =
             """
@@ -67,11 +69,14 @@ public class FullToolsetDemo {
             return;
         }
 
-        String baseUrl = System.getenv().getOrDefault(
-                "QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1");
+        String baseUrl =
+                System.getenv()
+                        .getOrDefault(
+                                "QWEN_BASE_URL",
+                                "https://dashscope.aliyuncs.com/compatible-mode/v1");
         String model = System.getenv().getOrDefault("QWEN_MODEL", "qwen-plus");
 
-        System.out.println("=== Kairo Full Toolset Demo ===");
+        System.out.println("=== Kairo Full Toolset Example ===");
         System.out.println("Model: " + model);
         System.out.println("Tools: read, write, edit, glob, grep, bash (6 tools)");
         System.out.println("===============================\n");
@@ -92,18 +97,20 @@ public class FullToolsetDemo {
         OpenAIProvider provider = new OpenAIProvider(apiKey, baseUrl, "/chat/completions");
         LoggingHook hook = new LoggingHook();
 
-        Agent agent = AgentBuilder.create()
-                .name("toolset-agent")
-                .model(provider)
-                .tools(registry)
-                .toolExecutor(executor)
-                .modelName(model)
-                .systemPrompt("You are a coding assistant. Use the provided tools to complete tasks. "
-                        + "Do not ask for confirmation, just proceed.")
-                .maxIterations(30)
-                .hook(hook)
-                .contextManager(new DefaultContextManager())
-                .build();
+        Agent agent =
+                AgentBuilder.create()
+                        .name("toolset-agent")
+                        .model(provider)
+                        .tools(registry)
+                        .toolExecutor(executor)
+                        .modelName(model)
+                        .systemPrompt(
+                                "You are a coding assistant. Use the provided tools to complete tasks. "
+                                        + "Do not ask for confirmation, just proceed.")
+                        .maxIterations(30)
+                        .hook(hook)
+                        .contextManager(new DefaultContextManager())
+                        .build();
 
         if (agent instanceof DefaultReActAgent ra) {
             ra.setStreamingEnabled(true);
@@ -113,7 +120,7 @@ public class FullToolsetDemo {
         Msg result = agent.call(MsgBuilder.user(TASK)).block();
 
         System.out.println("\n========================================");
-        System.out.println("  Full Toolset Demo complete! " + hook.getIteration() + " iterations");
+        System.out.println("  Full Toolset Example complete! " + hook.getIteration() + " iterations");
         System.out.println("========================================");
     }
 }

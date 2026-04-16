@@ -23,7 +23,7 @@ import io.kairo.api.model.ClassifiedError;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
-import io.kairo.core.context.DefaultContextManager;
+import io.kairo.api.context.ContextManager;
 import io.kairo.core.message.MsgBuilder;
 import io.kairo.core.model.ApiErrorClassifierImpl;
 import io.kairo.core.model.ModelFallbackManager;
@@ -38,8 +38,8 @@ import reactor.core.publisher.Mono;
 /**
  * Encapsulates error recovery strategies for the ReAct agent loop.
  *
- * <p>Handles prompt-too-long, rate limiting, server errors, and output token limits.
- * Independently testable without requiring a full agent setup.
+ * <p>Handles prompt-too-long, rate limiting, server errors, and output token limits. Independently
+ * testable without requiring a full agent setup.
  */
 public class ErrorRecoveryStrategy {
 
@@ -52,7 +52,7 @@ public class ErrorRecoveryStrategy {
     private final ApiErrorClassifierImpl errorClassifier = new ApiErrorClassifierImpl();
     private final ModelFallbackManager fallbackManager;
     private final ModelProvider modelProvider;
-    private final DefaultContextManager contextManager; // nullable
+    private final ContextManager contextManager; // nullable
 
     /**
      * Create a new error recovery strategy.
@@ -63,7 +63,7 @@ public class ErrorRecoveryStrategy {
      */
     public ErrorRecoveryStrategy(
             ModelProvider modelProvider,
-            DefaultContextManager contextManager,
+            ContextManager contextManager,
             ModelFallbackManager fallbackManager) {
         this.modelProvider = modelProvider;
         this.contextManager = contextManager;

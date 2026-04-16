@@ -15,8 +15,14 @@
  */
 package io.kairo.core.agent;
 
-/** Exception thrown when an agent's processing is interrupted. */
-public class AgentInterruptedException extends RuntimeException {
+/**
+ * Exception thrown when an agent's processing is interrupted.
+ *
+ * @deprecated Use {@link io.kairo.api.exception.AgentInterruptedException} instead. This class is
+ *     kept for backward compatibility and delegates to the API exception hierarchy.
+ */
+@Deprecated
+public class AgentInterruptedException extends io.kairo.api.exception.AgentInterruptedException {
 
     public AgentInterruptedException(String message) {
         super(message);

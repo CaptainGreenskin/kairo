@@ -49,6 +49,7 @@ public class FileMemoryStore implements MemoryStore {
     private static final Logger log = LoggerFactory.getLogger(FileMemoryStore.class);
     private static final String JSON_SUFFIX = ".json";
     private static final String TMP_SUFFIX = ".json.tmp";
+
     /** Only allow alphanumeric, hyphen, underscore, and dot in storage keys. */
     private static final java.util.regex.Pattern SAFE_KEY_PATTERN =
             java.util.regex.Pattern.compile("^[a-zA-Z0-9_\\-\\.]{1,255}$");

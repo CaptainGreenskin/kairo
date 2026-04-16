@@ -23,8 +23,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Tracks the tools registered from a single MCP server, enabling bulk operations
- * like unregistration of all tools from one server.
+ * Tracks the tools registered from a single MCP server, enabling bulk operations like
+ * unregistration of all tools from one server.
  */
 public class McpToolGroup {
 

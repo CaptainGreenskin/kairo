@@ -93,8 +93,7 @@ class PostCompactRecoveryHandlerTest {
                         SkillCategory.CODE);
         when(skillRegistry.list()).thenReturn(List.of(skill1, skill2));
 
-        PostCompactRecoveryHandler handler =
-                new PostCompactRecoveryHandler(tracker, skillRegistry);
+        PostCompactRecoveryHandler handler = new PostCompactRecoveryHandler(tracker, skillRegistry);
 
         List<Msg> recovery = handler.recover();
 
@@ -156,8 +155,7 @@ class PostCompactRecoveryHandlerTest {
                         SkillCategory.CODE);
         when(skillRegistry.list()).thenReturn(List.of(skill));
 
-        PostCompactRecoveryHandler handler =
-                new PostCompactRecoveryHandler(tracker, skillRegistry);
+        PostCompactRecoveryHandler handler = new PostCompactRecoveryHandler(tracker, skillRegistry);
 
         List<Msg> recovery = handler.recover();
 

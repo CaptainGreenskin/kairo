@@ -35,9 +35,20 @@ import org.slf4j.LoggerFactory;
 public class DefaultTaskBoard implements TaskBoard {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultTaskBoard.class);
+    private static final int DEFAULT_MAX_RETRIES = 3;
 
     private final ConcurrentHashMap<String, Task> tasks = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, AtomicInteger> retryCounts = new ConcurrentHashMap<>();
     private final AtomicInteger idCounter = new AtomicInteger(0);
+    private final int maxRetries;
+
+    public DefaultTaskBoard() {
+        this(DEFAULT_MAX_RETRIES);
+    }
+
+    public DefaultTaskBoard(int maxRetries) {
+        this.maxRetries = maxRetries;
+    }
 
     @Override
     public Task create(String subject, String description) {
@@ -61,6 +72,25 @@ public class DefaultTaskBoard implements TaskBoard {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
         TaskStatus oldStatus = task.status();
+
+        // Fault tolerance: auto-retry on FAILED
+        if (status == TaskStatus.FAILED) {
+            AtomicInteger count = retryCounts.computeIfAbsent(taskId, k -> new AtomicInteger(0));
+            int attempt = count.incrementAndGet();
+            if (attempt < maxRetries) {
+                task.setStatus(TaskStatus.PENDING);
+                log.info("Task #{} failed (attempt {}/{}), requeuing to PENDING", taskId, attempt, maxRetries);
+                return task;
+            } else {
+                task.setStatus(TaskStatus.ABANDONED);
+                log.warn("Task #{} failed after {} retries, marking as ABANDONED", taskId, maxRetries);
+                return task;
+            }
+        }
+
+        // Reset retry count on manual status change (non-FAILED)
+        retryCounts.remove(taskId);
+
         task.setStatus(status);
         log.debug("Updated task #{} from {} to {}", taskId, oldStatus, status);
 

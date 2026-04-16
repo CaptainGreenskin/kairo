@@ -43,7 +43,7 @@ kairo-parent (0.1.0-SNAPSHOT)
 ├── kairo-tools                — 内置工具集（21 个工具）
 ├── kairo-multi-agent          — 多 Agent 编排（TaskBoard、TeamScheduler）
 ├── kairo-spring-boot-starter  — Spring Boot 自动装配
-└── kairo-demo                 — 演示应用
+└── kairo-examples             — 示例应用
 ```
 
 ## 核心特性
@@ -118,13 +118,13 @@ mvn clean install
 mvn test
 
 # 运行演示（Mock 模式，无需 API Key）
-mvn exec:java -pl kairo-demo \
+mvn exec:java -pl kairo-examples \
   -Dexec.mainClass="io.kairo.demo.AgentDemo" \
   -Dexec.args="--mock"
 
 # 运行演示（千问模式，需要 QWEN_API_KEY）
 export QWEN_API_KEY=your-key
-mvn exec:java -pl kairo-demo \
+mvn exec:java -pl kairo-examples \
   -Dexec.mainClass="io.kairo.demo.AgentDemo" \
   -Dexec.args="--qwen"
 ```

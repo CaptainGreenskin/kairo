@@ -20,12 +20,12 @@ import java.time.Duration;
 import java.util.Map;
 
 /**
- * Tracing interface for observing Agent execution. Uses a Span model aligned with
- * OpenTelemetry semantics for easy bridging in v0.3.0.
+ * Tracing interface for observing Agent execution. Uses a Span model aligned with OpenTelemetry
+ * semantics for easy bridging in v0.3.0.
  *
  * <p>Span factory methods create parent-child spans. Business convenience methods
- * (recordTokenUsage, recordToolResult, recordCompaction) delegate to span.setAttribute
- * with semantic convention keys.
+ * (recordTokenUsage, recordToolResult, recordCompaction) delegate to span.setAttribute with
+ * semantic convention keys.
  */
 public interface Tracer {
 
@@ -49,8 +49,7 @@ public interface Tracer {
 
     // --- Business convenience methods (use setAttribute internally) ---
 
-    default void recordTokenUsage(
-            Span span, int input, int output, int cacheRead, int cacheWrite) {
+    default void recordTokenUsage(Span span, int input, int output, int cacheRead, int cacheWrite) {
         span.setAttribute("token.input", input);
         span.setAttribute("token.output", output);
         span.setAttribute("token.cache_read", cacheRead);
@@ -66,5 +65,12 @@ public interface Tracer {
     default void recordCompaction(Span span, String strategy, int tokensSaved) {
         span.setAttribute("compaction.strategy", strategy);
         span.setAttribute("compaction.tokens_saved", tokensSaved);
+    }
+
+    /** Record an exception on the given span, categorized by exception type. */
+    default void recordException(Span span, Throwable exception) {
+        span.setAttribute("exception.type", exception.getClass().getName());
+        span.setAttribute("exception.message", exception.getMessage());
+        span.setStatus(false, exception.getMessage());
     }
 }

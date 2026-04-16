@@ -28,9 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * Converts MCP tool schemas to Kairo {@link ToolDefinition} instances.
- */
+/** Converts MCP tool schemas to Kairo {@link ToolDefinition} instances. */
 public final class McpToolAdapter {
 
     private McpToolAdapter() {}
@@ -46,8 +44,7 @@ public final class McpToolAdapter {
     public static ToolDefinition toToolDefinition(
             McpSchema.Tool mcpTool, String serverName, Duration timeout) {
         String name = serverName + "_" + mcpTool.name();
-        String description =
-                mcpTool.description() != null ? mcpTool.description() : "";
+        String description = mcpTool.description() != null ? mcpTool.description() : "";
         JsonSchema inputSchema = convertSchema(mcpTool.inputSchema(), null);
         return new ToolDefinition(
                 name,
@@ -60,8 +57,8 @@ public final class McpToolAdapter {
     }
 
     /**
-     * Converts an MCP tool to a Kairo {@link ToolDefinition}, excluding preset parameter keys
-     * from the schema.
+     * Converts an MCP tool to a Kairo {@link ToolDefinition}, excluding preset parameter keys from
+     * the schema.
      *
      * @param mcpTool the MCP tool schema
      * @param serverName the MCP server name
@@ -75,8 +72,7 @@ public final class McpToolAdapter {
             Duration timeout,
             Set<String> excludeParams) {
         String name = serverName + "_" + mcpTool.name();
-        String description =
-                mcpTool.description() != null ? mcpTool.description() : "";
+        String description = mcpTool.description() != null ? mcpTool.description() : "";
         JsonSchema inputSchema = convertSchema(mcpTool.inputSchema(), excludeParams);
         return new ToolDefinition(
                 name,
@@ -88,9 +84,7 @@ public final class McpToolAdapter {
                 ToolSideEffect.SYSTEM_CHANGE);
     }
 
-    /**
-     * Converts an MCP {@link McpSchema.JsonSchema} to a Kairo {@link JsonSchema}.
-     */
+    /** Converts an MCP {@link McpSchema.JsonSchema} to a Kairo {@link JsonSchema}. */
     @SuppressWarnings("unchecked")
     static JsonSchema convertSchema(McpSchema.JsonSchema mcpSchema, Set<String> excludeParams) {
         if (mcpSchema == null) {

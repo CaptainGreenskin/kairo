@@ -333,8 +333,7 @@ class StreamingToolDetectorTest {
                         StreamChunk.toolUseDelta("call_ghost", "{}"),
                         StreamChunk.toolUseEnd("call_ghost"));
 
-        StepVerifier.create(detector.detect(chunks))
-                .verifyComplete(); // no tool emitted
+        StepVerifier.create(detector.detect(chunks)).verifyComplete(); // no tool emitted
     }
 
     @Test
@@ -346,8 +345,7 @@ class StreamingToolDetectorTest {
                         StreamChunk.toolUseDelta(null, "{}"),
                         StreamChunk.toolUseEnd(null));
 
-        StepVerifier.create(detector.detect(chunks))
-                .verifyComplete(); // no tool emitted
+        StepVerifier.create(detector.detect(chunks)).verifyComplete(); // no tool emitted
     }
 
     @Test

@@ -20,6 +20,7 @@ import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.agent.AgentFactory;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.core.hook.DefaultHookChain;
+import io.kairo.core.shutdown.GracefulShutdownManager;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,6 +30,7 @@ import java.util.List;
 public class DefaultAgentFactory implements AgentFactory {
 
     private final ToolExecutor toolExecutor;
+    private final GracefulShutdownManager shutdownManager;
 
     /**
      * Create a factory with the given tool executor.
@@ -36,18 +38,33 @@ public class DefaultAgentFactory implements AgentFactory {
      * @param toolExecutor the executor used by created agents
      */
     public DefaultAgentFactory(ToolExecutor toolExecutor) {
+        this(toolExecutor, null);
+    }
+
+    /**
+     * Create a factory with the given tool executor and shutdown manager.
+     *
+     * @param toolExecutor the executor used by created agents
+     * @param shutdownManager the graceful shutdown manager (null creates a new instance per agent)
+     */
+    public DefaultAgentFactory(ToolExecutor toolExecutor, GracefulShutdownManager shutdownManager) {
         this.toolExecutor = toolExecutor;
+        this.shutdownManager = shutdownManager;
     }
 
     @Override
     public Agent create(AgentConfig config) {
         DefaultHookChain hookChain = new DefaultHookChain();
-        return new DefaultReActAgent(config, toolExecutor, hookChain);
+        GracefulShutdownManager sm =
+                shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
+        return new DefaultReActAgent(config, toolExecutor, hookChain, sm);
     }
 
     @Override
     public Agent createSubAgent(Agent parent, AgentConfig config) {
         DefaultHookChain hookChain = new DefaultHookChain();
+        GracefulShutdownManager sm =
+                shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
 
         // Inherit parent's conversation history for context
         List<io.kairo.api.message.Msg> parentContext = new ArrayList<>();
@@ -55,6 +72,6 @@ public class DefaultAgentFactory implements AgentFactory {
             parentContext.addAll(reactAgent.conversationHistory());
         }
 
-        return new DefaultReActAgent(config, toolExecutor, hookChain, parentContext);
+        return new DefaultReActAgent(config, toolExecutor, hookChain, sm, parentContext);
     }
 }

@@ -19,7 +19,6 @@ import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelConfig;
-
 import io.kairo.core.message.MsgBuilder;
 import io.kairo.core.prompt.SystemPromptResult;
 import java.util.ArrayList;

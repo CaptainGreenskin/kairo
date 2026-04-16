@@ -22,9 +22,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Shared utility methods for model providers.
- * Stateless — all methods are static. Providers call these helpers
- * without inheritance, preserving full independence of their API-specific logic.
+ * Shared utility methods for model providers. Stateless — all methods are static. Providers call
+ * these helpers without inheritance, preserving full independence of their API-specific logic.
  */
 public final class ModelProviderUtils {
 
@@ -60,8 +59,7 @@ public final class ModelProviderUtils {
      */
     public static void validateApiKey(String apiKey, String providerName) {
         if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalArgumentException(
-                    providerName + " apiKey cannot be null or blank");
+            throw new IllegalArgumentException(providerName + " apiKey cannot be null or blank");
         }
     }
 
@@ -77,8 +75,7 @@ public final class ModelProviderUtils {
      */
     public static void validateBaseUrl(String baseUrl, String providerName) {
         if (baseUrl == null || baseUrl.isBlank()) {
-            throw new IllegalArgumentException(
-                    providerName + " baseUrl cannot be null or blank");
+            throw new IllegalArgumentException(providerName + " baseUrl cannot be null or blank");
         }
         if (!baseUrl.startsWith("https://")) {
             if (baseUrl.startsWith("http://localhost") || baseUrl.startsWith("http://127.0.0.1")) {
@@ -95,8 +92,8 @@ public final class ModelProviderUtils {
     }
 
     /**
-     * Sanitize a response body for safe logging by masking sensitive tokens
-     * such as bearer tokens and API keys.
+     * Sanitize a response body for safe logging by masking sensitive tokens such as bearer tokens
+     * and API keys.
      *
      * @param body the response body to sanitize
      * @return the sanitized string

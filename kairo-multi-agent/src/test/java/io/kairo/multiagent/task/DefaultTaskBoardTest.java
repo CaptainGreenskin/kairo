@@ -89,7 +89,8 @@ class DefaultTaskBoardTest {
         Task task = board.create("Flaky", "desc");
         board.update(task.id(), TaskStatus.IN_PROGRESS);
         Task updated = board.update(task.id(), TaskStatus.FAILED);
-        assertEquals(TaskStatus.FAILED, updated.status());
+        // With default maxRetries=3, first failure triggers retry → PENDING
+        assertEquals(TaskStatus.PENDING, updated.status());
     }
 
     @Test
@@ -310,5 +311,75 @@ class DefaultTaskBoardTest {
         executor.shutdown();
 
         assertEquals(threadCount * tasksPerThread, board.list().size());
+    }
+
+    // ==================== FAULT TOLERANCE ====================
+
+    @Test
+    void failureShouldAutoRetryTooPending() {
+        Task task = board.create("Retryable", "desc");
+        board.update(task.id(), TaskStatus.IN_PROGRESS);
+
+        // First failure → requeued to PENDING
+        Task updated = board.update(task.id(), TaskStatus.FAILED);
+        assertEquals(TaskStatus.PENDING, updated.status());
+    }
+
+    @Test
+    void exhaustedRetriesShouldMarkAbandoned() {
+        Task task = board.create("Doomed", "desc");
+
+        // Fail maxRetries (3) times → ABANDONED
+        for (int i = 0; i < 2; i++) {
+            board.update(task.id(), TaskStatus.FAILED);
+            assertEquals(TaskStatus.PENDING, board.get(task.id()).status());
+        }
+        // Third failure → ABANDONED
+        board.update(task.id(), TaskStatus.FAILED);
+        assertEquals(TaskStatus.ABANDONED, board.get(task.id()).status());
+    }
+
+    @Test
+    void retryCountResetsOnManualStatusChange() {
+        Task task = board.create("Recoverable", "desc");
+
+        // Fail twice
+        board.update(task.id(), TaskStatus.FAILED);
+        board.update(task.id(), TaskStatus.FAILED);
+        assertEquals(TaskStatus.PENDING, board.get(task.id()).status());
+
+        // Manually set to IN_PROGRESS → resets retry count
+        board.update(task.id(), TaskStatus.IN_PROGRESS);
+
+        // Can now fail 3 more times before ABANDONED
+        board.update(task.id(), TaskStatus.FAILED);
+        assertEquals(TaskStatus.PENDING, board.get(task.id()).status());
+        board.update(task.id(), TaskStatus.FAILED);
+        assertEquals(TaskStatus.PENDING, board.get(task.id()).status());
+        board.update(task.id(), TaskStatus.FAILED);
+        assertEquals(TaskStatus.ABANDONED, board.get(task.id()).status());
+    }
+
+    @Test
+    void customMaxRetriesIsRespected() {
+        DefaultTaskBoard customBoard = new DefaultTaskBoard(1);
+        Task task = customBoard.create("Quick fail", "desc");
+
+        // First failure → ABANDONED (maxRetries=1, so no retries)
+        customBoard.update(task.id(), TaskStatus.FAILED);
+        assertEquals(TaskStatus.ABANDONED, customBoard.get(task.id()).status());
+    }
+
+    @Test
+    void defaultMaxRetriesIsThree() {
+        Task task = board.create("Standard", "desc");
+
+        // 3 failures: first two → PENDING, third → ABANDONED
+        board.update(task.id(), TaskStatus.FAILED);
+        assertEquals(TaskStatus.PENDING, board.get(task.id()).status());
+        board.update(task.id(), TaskStatus.FAILED);
+        assertEquals(TaskStatus.PENDING, board.get(task.id()).status());
+        board.update(task.id(), TaskStatus.FAILED);
+        assertEquals(TaskStatus.ABANDONED, board.get(task.id()).status());
     }
 }

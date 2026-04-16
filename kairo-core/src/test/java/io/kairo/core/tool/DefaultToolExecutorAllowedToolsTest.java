@@ -51,13 +51,17 @@ class DefaultToolExecutorAllowedToolsTest {
     private void registerMockTool(String name, ToolSideEffect sideEffect) {
         ToolDefinition def =
                 new ToolDefinition(
-                        name, "desc", ToolCategory.FILE_AND_CODE, null, ToolHandler.class,
-                        null, sideEffect);
+                        name,
+                        "desc",
+                        ToolCategory.FILE_AND_CODE,
+                        null,
+                        ToolHandler.class,
+                        null,
+                        sideEffect);
         registry.register(def);
         ToolHandler handler = mock(ToolHandler.class);
         try {
-            when(handler.execute(any())).thenReturn(
-                    new ToolResult(name, "ok", false, Map.of()));
+            when(handler.execute(any())).thenReturn(new ToolResult(name, "ok", false, Map.of()));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

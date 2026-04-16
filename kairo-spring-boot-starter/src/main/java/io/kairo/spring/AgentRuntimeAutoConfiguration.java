@@ -181,6 +181,7 @@ public class AgentRuntimeAutoConfiguration {
             ModelProvider modelProvider,
             ToolRegistry toolRegistry,
             ToolExecutor toolExecutor,
+            GracefulShutdownManager gracefulShutdownManager,
             AgentRuntimeProperties properties) {
 
         AgentRuntimeProperties.Agent agentProps = properties.getAgent();
@@ -195,6 +196,7 @@ public class AgentRuntimeAutoConfiguration {
                         .maxIterations(agentProps.getMaxIterations())
                         .timeout(Duration.ofSeconds(agentProps.getTimeoutSeconds()))
                         .tokenBudget(agentProps.getTokenBudget())
+                        .shutdownManager(gracefulShutdownManager)
                         .build();
 
         log.info(
@@ -219,7 +221,7 @@ public class AgentRuntimeAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public GracefulShutdownManager gracefulShutdownManager(AgentRuntimeProperties properties) {
-        GracefulShutdownManager manager = GracefulShutdownManager.getInstance();
+        GracefulShutdownManager manager = new GracefulShutdownManager();
         int timeoutSeconds = properties.getAgent().getTimeoutSeconds();
         manager.setShutdownTimeout(Duration.ofSeconds(Math.min(timeoutSeconds, 30)));
         log.info("Configured graceful shutdown manager");

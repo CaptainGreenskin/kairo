@@ -132,13 +132,25 @@ class SkillListToolTest {
         List<SkillDefinition> skills =
                 List.of(
                         new SkillDefinition(
-                                "alpha", "1.0", "A".repeat(200), "instr", List.of(),
+                                "alpha",
+                                "1.0",
+                                "A".repeat(200),
+                                "instr",
+                                List.of(),
                                 SkillCategory.CODE),
                         new SkillDefinition(
-                                "beta", "1.0", "B".repeat(200), "instr", List.of(),
+                                "beta",
+                                "1.0",
+                                "B".repeat(200),
+                                "instr",
+                                List.of(),
                                 SkillCategory.DEVOPS),
                         new SkillDefinition(
-                                "gamma", "1.0", "C".repeat(200), "instr", List.of(),
+                                "gamma",
+                                "1.0",
+                                "C".repeat(200),
+                                "instr",
+                                List.of(),
                                 SkillCategory.TESTING));
         when(registry.list()).thenReturn(skills);
 

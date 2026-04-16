@@ -15,7 +15,6 @@
  */
 package io.kairo.api.tool;
 
-import io.kairo.api.tool.UserApprovalHandler;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -109,4 +108,10 @@ public interface ToolExecutor {
      * @param approvalHandler the approval handler, or null to disable approval flow
      */
     default void setApprovalHandler(UserApprovalHandler approvalHandler) {}
+
+    /** Reset circuit breaker state for all tools. */
+    default void resetCircuitBreaker() {}
+
+    /** Reset circuit breaker state for a specific tool. */
+    default void resetCircuitBreaker(String toolName) {}
 }

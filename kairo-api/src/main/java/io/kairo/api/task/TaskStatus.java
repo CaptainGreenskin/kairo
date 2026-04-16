@@ -31,5 +31,8 @@ public enum TaskStatus {
     FAILED,
 
     /** Task was cancelled before completion. */
-    CANCELLED
+    CANCELLED,
+
+    /** Task failed and exhausted all retry attempts. */
+    ABANDONED
 }

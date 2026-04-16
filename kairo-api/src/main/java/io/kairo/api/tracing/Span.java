@@ -16,12 +16,12 @@
 package io.kairo.api.tracing;
 
 /**
- * Represents a unit of work in a trace. Designed to map 1:1 to OpenTelemetry Span
- * for zero-adapter bridging in v0.3.0.
+ * Represents a unit of work in a trace. Designed to map 1:1 to OpenTelemetry Span for zero-adapter
+ * bridging in v0.3.0.
  *
- * <p>Span only has generic operations (setAttribute, setStatus, end).
- * Business-specific recording (tokens, tools, compaction) lives on {@link Tracer}
- * as convenience methods that delegate to setAttribute.
+ * <p>Span only has generic operations (setAttribute, setStatus, end). Business-specific recording
+ * (tokens, tools, compaction) lives on {@link Tracer} as convenience methods that delegate to
+ * setAttribute.
  */
 public interface Span {
     String spanId();
