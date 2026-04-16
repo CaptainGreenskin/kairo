@@ -18,11 +18,30 @@ package io.kairo.api.hook;
 import reactor.core.publisher.Mono;
 
 /**
- * Manages hook handler registration and event firing.
+ * Manages hook handler registration and lifecycle event firing.
  *
  * <p>Hook handlers are POJOs with methods annotated with hook annotations (e.g. {@link
- * PreReasoning}, {@link PostActing}). The chain discovers annotated methods and invokes them in
- * order.
+ * PreReasoning}, {@link PostActing}). The chain discovers annotated methods via reflection
+ * and invokes them in registration order during each phase of the agent loop.
+ *
+ * <p>The agent loop fires events in this order per iteration:
+ * <ol>
+ *   <li>{@link #firePreReasoning(Object)} &mdash; before the model call</li>
+ *   <li>{@link #firePostReasoning(Object)} &mdash; after the model responds</li>
+ *   <li>{@link #firePreActing(Object)} &mdash; before tool execution</li>
+ *   <li>{@link #firePostActing(Object)} &mdash; after tool execution</li>
+ * </ol>
+ *
+ * <p>The {@code *WithResult} variants (e.g. {@link #firePreActingWithResult(Object)}) return
+ * a {@link HookResult} that can carry behavioral decisions such as {@code ABORT}, {@code SKIP},
+ * or {@code MODIFY}, giving hooks fine-grained control over the agent pipeline.
+ *
+ * <p><strong>Thread safety:</strong> Implementations must be safe for concurrent event
+ * firing, though hook registration/unregistration may require external synchronization.
+ *
+ * @see HookResult
+ * @see PreReasoning
+ * @see PostActing
  */
 public interface HookChain {
 

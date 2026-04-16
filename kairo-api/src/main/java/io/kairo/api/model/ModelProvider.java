@@ -24,7 +24,20 @@ import reactor.core.publisher.Mono;
  * SPI for invoking a language model.
  *
  * <p>Implementations wrap a specific LLM provider (Anthropic, OpenAI, etc.) and handle
- * authentication, request formatting, and response parsing.
+ * authentication, request formatting, and response parsing. Each provider is identified
+ * by a unique {@link #name()} and can be selected at runtime through
+ * {@link ModelConfig#model()}.
+ *
+ * <p>Both blocking ({@link #call(List, ModelConfig)}) and streaming
+ * ({@link #stream(List, ModelConfig)}) invocation modes are supported. Streaming
+ * is preferred for interactive use cases where partial output should be displayed
+ * as it arrives.
+ *
+ * <p><strong>Thread safety:</strong> Implementations must be safe for concurrent use;
+ * the same provider instance may serve multiple agents simultaneously.
+ *
+ * @see ModelConfig
+ * @see ModelResponse
  */
 public interface ModelProvider {
 

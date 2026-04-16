@@ -48,18 +48,46 @@ public record ModelConfig(
         ToolVerbosity toolVerbosity,
         List<SystemPromptSegment> systemPromptSegments) {
 
-    /** Default model name used when no model is explicitly configured. */
+    /**
+     * Default model name used when no model is explicitly configured.
+     *
+     * <p>Set to {@code "claude-sonnet-4-20250514"} as it offers the best balance of
+     * capability, speed, and cost for agentic workloads that require tool use
+     * and extended reasoning.
+     */
     public static final String DEFAULT_MODEL = "claude-sonnet-4-20250514";
 
-    /** Default maximum output tokens. */
+    /**
+     * Default maximum output tokens per model call.
+     *
+     * <p>Set to {@code 8096} to allow substantial responses (including tool-call JSON)
+     * while staying within provider rate limits for most tiers.
+     */
     public static final int DEFAULT_MAX_TOKENS = 8096;
 
-    /** Default temperature for model calls. */
+    /**
+     * Default sampling temperature for model calls.
+     *
+     * <p>Set to {@code 1.0} (the Anthropic default) to preserve the model's full
+     * creative range. Lower values can be configured per-call via the {@link Builder}
+     * when deterministic output is desired.
+     */
     public static final double DEFAULT_TEMPERATURE = 1.0;
 
     /**
-     * Backward-compatible constructor without fallbackModels, thinkingBudget, toolVerbosity,
-     * systemPromptSegments.
+     * Backward-compatible constructor without {@code fallbackModels}, {@code thinkingBudget},
+     * {@code toolVerbosity}, and {@code systemPromptSegments}.
+     *
+     * @param model the model identifier
+     * @param maxTokens maximum output tokens
+     * @param temperature sampling temperature
+     * @param tools tool definitions available to the model
+     * @param thinking thinking/chain-of-thought configuration
+     * @param systemPrompt the system prompt text
+     * @param systemPromptParts cache-aware system prompt parts
+     * @param fallbackModels ordered list of fallback model names
+     * @param thinkingBudget optional token budget override for thinking
+     * @param toolVerbosity verbosity level for tool descriptions
      */
     public ModelConfig(
             String model,
@@ -87,8 +115,16 @@ public record ModelConfig(
     }
 
     /**
-     * Backward-compatible constructor without fallbackModels, thinkingBudget, toolVerbosity,
-     * systemPromptSegments.
+     * Backward-compatible constructor without {@code fallbackModels}, {@code thinkingBudget},
+     * {@code toolVerbosity}, and {@code systemPromptSegments}.
+     *
+     * @param model the model identifier
+     * @param maxTokens maximum output tokens
+     * @param temperature sampling temperature
+     * @param tools tool definitions available to the model
+     * @param thinking thinking/chain-of-thought configuration
+     * @param systemPrompt the system prompt text
+     * @param systemPromptParts cache-aware system prompt parts
      */
     public ModelConfig(
             String model,
@@ -120,12 +156,16 @@ public record ModelConfig(
      */
     public record ThinkingConfig(boolean enabled, int budgetTokens) {}
 
-    /** Create a new builder. */
+    /**
+     * Create a new {@link Builder} for constructing a {@link ModelConfig}.
+     *
+     * @return a new builder instance
+     */
     public static Builder builder() {
         return new Builder();
     }
 
-    /** Builder for {@link ModelConfig}. */
+    /** Builder for {@link ModelConfig}. Provides a fluent API for constructing immutable config instances. */
     public static class Builder {
         private String model;
         private int maxTokens = 4096;
@@ -141,37 +181,79 @@ public record ModelConfig(
 
         private Builder() {}
 
+        /**
+         * Set the model identifier (e.g. {@code "claude-sonnet-4-20250514"}).
+         *
+         * @param model the model name; must not be {@code null}
+         * @return this builder
+         */
         public Builder model(String model) {
             this.model = model;
             return this;
         }
 
+        /**
+         * Set the maximum number of output tokens the model may generate.
+         *
+         * @param maxTokens the token limit; must be positive
+         * @return this builder
+         */
         public Builder maxTokens(int maxTokens) {
             this.maxTokens = maxTokens;
             return this;
         }
 
+        /**
+         * Set the sampling temperature.
+         *
+         * @param temperature value between 0.0 (deterministic) and 2.0 (most random)
+         * @return this builder
+         */
         public Builder temperature(double temperature) {
             this.temperature = temperature;
             return this;
         }
 
+        /**
+         * Add a single tool definition that the model may invoke.
+         *
+         * @param tool the tool definition to add
+         * @return this builder
+         */
         public Builder addTool(ToolDefinition tool) {
             this.tools.add(tool);
             return this;
         }
 
+        /**
+         * Replace all tool definitions with the given list.
+         *
+         * @param tools the tool definitions; must not be {@code null}
+         * @return this builder
+         */
         public Builder tools(List<ToolDefinition> tools) {
             this.tools.clear();
             this.tools.addAll(tools);
             return this;
         }
 
+        /**
+         * Set the thinking (chain-of-thought) configuration.
+         *
+         * @param thinking the thinking config
+         * @return this builder
+         */
         public Builder thinking(ThinkingConfig thinking) {
             this.thinking = thinking;
             return this;
         }
 
+        /**
+         * Set the system prompt text.
+         *
+         * @param systemPrompt the system prompt
+         * @return this builder
+         */
         public Builder systemPrompt(String systemPrompt) {
             this.systemPrompt = systemPrompt;
             return this;
@@ -189,21 +271,46 @@ public record ModelConfig(
             return this;
         }
 
+        /**
+         * Set the ordered list of fallback model names to try if the primary model fails.
+         *
+         * @param fallbackModels the fallback model names
+         * @return this builder
+         */
         public Builder fallbackModels(List<String> fallbackModels) {
             this.fallbackModels = fallbackModels;
             return this;
         }
 
+        /**
+         * Set an explicit token budget for the thinking phase, overriding
+         * {@link ThinkingConfig#budgetTokens()}.
+         *
+         * @param thinkingBudget the thinking token budget, or {@code null} to use the default
+         * @return this builder
+         */
         public Builder thinkingBudget(Integer thinkingBudget) {
             this.thinkingBudget = thinkingBudget;
             return this;
         }
 
+        /**
+         * Set the verbosity level for tool descriptions sent to the model.
+         *
+         * @param toolVerbosity the tool verbosity level
+         * @return this builder
+         */
         public Builder toolVerbosity(ToolVerbosity toolVerbosity) {
             this.toolVerbosity = toolVerbosity;
             return this;
         }
 
+        /**
+         * Add a single system prompt segment for structured prompt composition.
+         *
+         * @param segment the segment to add
+         * @return this builder
+         */
         public Builder addSegment(SystemPromptSegment segment) {
             if (this.systemPromptSegments == null) {
                 this.systemPromptSegments = new ArrayList<>();
@@ -212,11 +319,23 @@ public record ModelConfig(
             return this;
         }
 
+        /**
+         * Replace all system prompt segments with the given list.
+         *
+         * @param segments the segments, or {@code null} to clear
+         * @return this builder
+         */
         public Builder segments(List<SystemPromptSegment> segments) {
             this.systemPromptSegments = segments != null ? new ArrayList<>(segments) : null;
             return this;
         }
 
+        /**
+         * Build an immutable {@link ModelConfig} from the current builder state.
+         *
+         * @return the constructed config
+         * @throws NullPointerException if {@code model} has not been set
+         */
         public ModelConfig build() {
             Objects.requireNonNull(model, "model must not be null");
             return new ModelConfig(

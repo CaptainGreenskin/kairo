@@ -14,6 +14,10 @@
     <name>Kairo — Multi-Agent</name>
     <description>Multi-agent collaboration: Plan, Task, Agent orchestration, and Team management</description>
 
+    <properties>
+        <jacoco.line.threshold>0.80</jacoco.line.threshold>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>io.kairo</groupId>

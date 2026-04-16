@@ -18,7 +18,22 @@ package io.kairo.api.memory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-/** Persistent storage for memory entries. */
+/**
+ * Persistent storage for agent memory entries.
+ *
+ * <p>Provides CRUD and search operations over {@link MemoryEntry} objects, scoped by
+ * {@link MemoryScope}. Implementations may back this with in-memory maps, databases,
+ * or vector stores depending on the deployment environment.
+ *
+ * <p>All operations return reactive types ({@link Mono}/{@link Flux}) to support
+ * non-blocking I/O in the agent pipeline.
+ *
+ * <p><strong>Thread safety:</strong> Implementations must be safe for concurrent use
+ * from multiple agents or agent iterations.
+ *
+ * @see MemoryEntry
+ * @see MemoryScope
+ */
 public interface MemoryStore {
 
     /**
