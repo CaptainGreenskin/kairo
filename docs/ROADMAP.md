@@ -260,6 +260,7 @@ v0.2.0 Hook + Tracer 的埋点位置自然形成代码分界线。
 ```
 v0.1.0 (API清理)       v0.2.0 (骨架加固)       v0.3.0 (生态连接)       v0.4.0 (生产级)
 kairo-api (精简)       kairo-api (异常+Hook)   kairo-api               kairo-api
+kairo-bom              kairo-bom               kairo-bom               kairo-bom
 kairo-core             kairo-core              kairo-core              kairo-core
 kairo-tools            kairo-tools             kairo-tools             kairo-tools
 kairo-multi-agent      kairo-multi-agent(容错) kairo-multi-agent       kairo-multi-agent
@@ -288,7 +289,7 @@ kairo-mcp(@Exp)        kairo-mcp(@Exp)         kairo-mcp(正式)         kairo-m
 
 | 版本 | 主题 | 关键交付物 | 预估周期 |
 |------|------|-----------|---------|
-| v0.1.0 | 首次发布 | API 清理完成 → Maven Central | 1 周 |
+| v0.1.0 | 首次发布 | 补充 CI/BOM/Javadoc → Maven Central | 1-2 周 |
 | v0.2.0 | 骨架加固 | 异常层次 + ShutdownManager + 熔断 + 容错 + 性能基线 | 2-3 周 |
 | v0.2.1 | 重构 | DefaultReActAgent 拆分 | 1 周 |
 | v0.3.0 | 生态连接 | MCP 正式 + OTel + SSE + OpenAPI | 4-6 周 |
