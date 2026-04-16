@@ -26,6 +26,7 @@ package io.kairo.api.model;
  * @param supportsCaching whether the model supports prompt caching
  * @param toolVerbosity the recommended tool description verbosity for this model
  * @param thinkingBudgetRange the thinking budget range, or null if thinking is not supported
+ * @param promptGuidance model-specific guidance injected into the system prompt, or empty
  */
 public record ModelCapability(
         String modelFamily,
@@ -35,4 +36,47 @@ public record ModelCapability(
         boolean supportsThinking,
         boolean supportsCaching,
         ToolVerbosity toolVerbosity,
-        IntRange thinkingBudgetRange) {}
+        IntRange thinkingBudgetRange,
+        String promptGuidance) {
+
+    /** Backward-compatible constructor without promptGuidance. */
+    public ModelCapability(
+            String modelFamily,
+            String modelTier,
+            int contextWindow,
+            int maxOutputTokens,
+            boolean supportsThinking,
+            boolean supportsCaching,
+            ToolVerbosity toolVerbosity,
+            IntRange thinkingBudgetRange) {
+        this(
+                modelFamily,
+                modelTier,
+                contextWindow,
+                maxOutputTokens,
+                supportsThinking,
+                supportsCaching,
+                toolVerbosity,
+                thinkingBudgetRange,
+                defaultPromptGuidance(modelFamily));
+    }
+
+    /**
+     * Return the default model-specific prompt guidance for a given model family.
+     *
+     * @param modelFamily the model family identifier
+     * @return guidance string, or empty if none is needed
+     */
+    public static String defaultPromptGuidance(String modelFamily) {
+        if (modelFamily == null) {
+            return "";
+        }
+        return switch (modelFamily.toLowerCase(java.util.Locale.ROOT)) {
+            case "gpt", "codex" ->
+                    "Always use tools to take action; do not describe what you would do.";
+            case "gemini" ->
+                    "Use absolute paths; read files before modifying them.";
+            default -> "";
+        };
+    }
+}

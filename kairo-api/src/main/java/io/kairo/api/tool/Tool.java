@@ -44,4 +44,16 @@ public @interface Tool {
 
     /** The side-effect classification of this tool. Defaults to {@code READ_ONLY}. */
     ToolSideEffect sideEffect() default ToolSideEffect.READ_ONLY;
+
+    /**
+     * Optional usage guidance hint appended to the tool description in the system prompt.
+     *
+     * <p>Examples:
+     *
+     * <ul>
+     *   <li>"Use for quick file reads; for large files use GrepTool instead"
+     *   <li>"Danger: may modify system state — confirm before running destructive commands"
+     * </ul>
+     */
+    String usageGuidance() default "";
 }

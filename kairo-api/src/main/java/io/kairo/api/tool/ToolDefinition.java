@@ -27,6 +27,7 @@ import java.time.Duration;
  * @param implementationClass the class that implements this tool
  * @param timeout per-tool timeout, or null to use the executor default
  * @param sideEffect the side-effect classification of this tool
+ * @param usageGuidance optional usage hint appended to the tool description in the system prompt
  */
 public record ToolDefinition(
         String name,
@@ -35,26 +36,21 @@ public record ToolDefinition(
         JsonSchema inputSchema,
         Class<?> implementationClass,
         Duration timeout,
-        ToolSideEffect sideEffect) {
+        ToolSideEffect sideEffect,
+        String usageGuidance) {
 
-    /** Backward-compatible constructor without timeout and sideEffect. */
+    /** Backward-compatible constructor without timeout, sideEffect, and usageGuidance. */
     public ToolDefinition(
             String name,
             String description,
             ToolCategory category,
             JsonSchema inputSchema,
             Class<?> implementationClass) {
-        this(
-                name,
-                description,
-                category,
-                inputSchema,
-                implementationClass,
-                null,
-                ToolSideEffect.READ_ONLY);
+        this(name, description, category, inputSchema, implementationClass, null,
+                ToolSideEffect.READ_ONLY, "");
     }
 
-    /** Backward-compatible constructor without sideEffect. */
+    /** Backward-compatible constructor without sideEffect and usageGuidance. */
     public ToolDefinition(
             String name,
             String description,
@@ -62,13 +58,20 @@ public record ToolDefinition(
             JsonSchema inputSchema,
             Class<?> implementationClass,
             Duration timeout) {
-        this(
-                name,
-                description,
-                category,
-                inputSchema,
-                implementationClass,
-                timeout,
-                ToolSideEffect.READ_ONLY);
+        this(name, description, category, inputSchema, implementationClass, timeout,
+                ToolSideEffect.READ_ONLY, "");
+    }
+
+    /** Backward-compatible constructor without usageGuidance. */
+    public ToolDefinition(
+            String name,
+            String description,
+            ToolCategory category,
+            JsonSchema inputSchema,
+            Class<?> implementationClass,
+            Duration timeout,
+            ToolSideEffect sideEffect) {
+        this(name, description, category, inputSchema, implementationClass, timeout,
+                sideEffect, "");
     }
 }

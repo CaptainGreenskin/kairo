@@ -272,6 +272,7 @@ public class SystemPromptBuilder {
      * @return the assembled system prompt
      */
     public String build() {
+        injectModelPromptGuidance();
         if (!sections.isEmpty() || dynamicBoundaryIndex >= 0) {
             return buildResult().fullPrompt();
         }
@@ -285,6 +286,7 @@ public class SystemPromptBuilder {
      * @return the {@link SystemPromptResult} with static prefix, dynamic suffix, and full prompt
      */
     public SystemPromptResult buildResult() {
+        injectModelPromptGuidance();
         // If only legacy API was used, convert to sections first
         if (sections.isEmpty() && dynamicBoundaryIndex < 0) {
             convertLegacyToSections();
@@ -362,8 +364,11 @@ public class SystemPromptBuilder {
                 sb.append("- **")
                         .append(tool.name())
                         .append("**: ")
-                        .append(tool.description())
-                        .append("\n");
+                        .append(tool.description());
+                if (tool.usageGuidance() != null && !tool.usageGuidance().isBlank()) {
+                    sb.append("\n\n  Usage guidance: ").append(tool.usageGuidance());
+                }
+                sb.append("\n");
             }
             sb.append("\n");
         }
@@ -421,6 +426,29 @@ public class SystemPromptBuilder {
     /** Whether the current model's verbosity level includes example sections. */
     private boolean shouldIncludeExamples() {
         return modelCapability == null || modelCapability.toolVerbosity() != ToolVerbosity.CONCISE;
+    }
+
+    /**
+     * Inject model-specific prompt guidance as a section if the model capability provides one. This
+     * is called once during build; duplicate injections are prevented by a guard flag.
+     */
+    private boolean modelGuidanceInjected;
+
+    private void injectModelPromptGuidance() {
+        if (modelGuidanceInjected) {
+            return;
+        }
+        modelGuidanceInjected = true;
+        if (modelCapability != null
+                && modelCapability.promptGuidance() != null
+                && !modelCapability.promptGuidance().isBlank()) {
+            sections.add(
+                    new PromptSection(
+                            "model-guidance",
+                            modelCapability.promptGuidance(),
+                            false,
+                            CacheScope.GLOBAL));
+        }
     }
 
     /**

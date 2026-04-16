@@ -59,6 +59,17 @@ class AnnotationToolScannerTest {
         }
     }
 
+    @Tool(
+            name = "guided_tool",
+            description = "Tool with usage guidance",
+            usageGuidance = "Use for quick reads; for large files use GrepTool instead")
+    static class GuidedTool implements ToolHandler {
+        @Override
+        public ToolResult execute(Map<String, Object> input) {
+            return new ToolResult("test", "done", false, Map.of());
+        }
+    }
+
     @Test
     void scanClassExtractsAnnotationMetadata() {
         ToolDefinition def = scanner.scanClass(TestToolWithParams.class);
@@ -139,5 +150,21 @@ class AnnotationToolScannerTest {
                         Object.class);
         assertNull(def.timeout());
         assertEquals("legacy", def.name());
+        assertEquals("", def.usageGuidance());
+    }
+
+    @Test
+    void scanClassExtractsUsageGuidance() {
+        ToolDefinition def = scanner.scanClass(GuidedTool.class);
+        assertEquals("guided_tool", def.name());
+        assertEquals(
+                "Use for quick reads; for large files use GrepTool instead",
+                def.usageGuidance());
+    }
+
+    @Test
+    void scanClassDefaultUsageGuidanceIsEmpty() {
+        ToolDefinition def = scanner.scanClass(NoParamsTool.class);
+        assertEquals("", def.usageGuidance());
     }
 }

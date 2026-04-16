@@ -85,7 +85,8 @@ public class AnnotationToolScanner {
                 inputSchema,
                 toolClass,
                 timeout,
-                annotation.sideEffect());
+                annotation.sideEffect(),
+                annotation.usageGuidance());
     }
 
     /**

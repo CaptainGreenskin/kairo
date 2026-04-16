@@ -54,4 +54,60 @@ class ModelCapabilityTest {
         assertFalse(cap.supportsThinking());
         assertNull(cap.thinkingBudgetRange());
     }
+
+    @Test
+    void backwardCompatConstructorDeriveGptPromptGuidance() {
+        ModelCapability cap =
+                new ModelCapability(
+                        "gpt", "4o", 128_000, 4096, false, false, ToolVerbosity.STANDARD, null);
+        assertEquals(
+                "Always use tools to take action; do not describe what you would do.",
+                cap.promptGuidance());
+    }
+
+    @Test
+    void backwardCompatConstructorDeriveGeminiPromptGuidance() {
+        ModelCapability cap =
+                new ModelCapability(
+                        "gemini", "1.5-pro", 1_000_000, 8192, false, false,
+                        ToolVerbosity.STANDARD, null);
+        assertEquals(
+                "Use absolute paths; read files before modifying them.",
+                cap.promptGuidance());
+    }
+
+    @Test
+    void backwardCompatConstructorClaudeNoGuidance() {
+        ModelCapability cap =
+                new ModelCapability(
+                        "claude", "sonnet", 200_000, 8192, true, true,
+                        ToolVerbosity.STANDARD, new IntRange(1024, 8192));
+        assertEquals("", cap.promptGuidance());
+    }
+
+    @Test
+    void canonicalConstructorWithExplicitPromptGuidance() {
+        ModelCapability cap =
+                new ModelCapability(
+                        "gpt", "4o", 128_000, 4096, false, false,
+                        ToolVerbosity.STANDARD, null, "Custom guidance");
+        assertEquals("Custom guidance", cap.promptGuidance());
+    }
+
+    @Test
+    void defaultPromptGuidanceForCodexFamily() {
+        assertEquals(
+                "Always use tools to take action; do not describe what you would do.",
+                ModelCapability.defaultPromptGuidance("codex"));
+    }
+
+    @Test
+    void defaultPromptGuidanceForNullFamily() {
+        assertEquals("", ModelCapability.defaultPromptGuidance(null));
+    }
+
+    @Test
+    void defaultPromptGuidanceForGlmFamily() {
+        assertEquals("", ModelCapability.defaultPromptGuidance("glm"));
+    }
 }
