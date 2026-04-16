@@ -26,7 +26,10 @@ import java.io.File;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -92,6 +95,20 @@ public class BashTool implements ToolHandler {
             log.debug("Executing command: {}", cmd);
             Process process = pb.start();
 
+            // Schedule a watchdog to kill the process on timeout.
+            // This ensures the timeout is enforced even while we block reading output.
+            AtomicBoolean timedOut = new AtomicBoolean(false);
+            ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor();
+            watchdog.schedule(
+                    () -> {
+                        if (process.isAlive()) {
+                            timedOut.set(true);
+                            process.destroyForcibly();
+                        }
+                    },
+                    timeoutSec,
+                    TimeUnit.SECONDS);
+
             StringBuilder output = new StringBuilder();
             try (BufferedReader reader =
                     new BufferedReader(
@@ -103,11 +120,13 @@ public class BashTool implements ToolHandler {
                         output.append(line).append('\n');
                     }
                 }
+            } finally {
+                watchdog.shutdownNow();
             }
 
-            boolean finished = process.waitFor(timeoutSec, TimeUnit.SECONDS);
-            if (!finished) {
-                process.destroyForcibly();
+            process.waitFor(5, TimeUnit.SECONDS);
+
+            if (timedOut.get()) {
                 return new ToolResult(
                         "bash",
                         "Command timed out after " + timeoutSec + "s.\nPartial output:\n" + output,
