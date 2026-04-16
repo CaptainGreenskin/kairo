@@ -171,6 +171,14 @@ public class CompactionPipeline {
                         return Mono.empty();
                     }
 
+                    // Handle SKIP decision — skip compaction gracefully
+                    if (hookResult.shouldSkip()) {
+                        log.info(
+                                "Compaction skipped by hook: {}",
+                                hookResult.reason());
+                        return Mono.empty();
+                    }
+
                     PreCompactEvent preEvent = hookResult.event();
                     if (preEvent.cancelled()) {
                         log.info("Compaction cancelled by PreCompact hook");

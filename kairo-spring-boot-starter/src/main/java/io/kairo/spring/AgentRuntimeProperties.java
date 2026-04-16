@@ -15,6 +15,7 @@
  */
 package io.kairo.spring;
 
+import io.kairo.api.model.ModelConfig;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -91,10 +92,10 @@ public class AgentRuntimeProperties {
         private String baseUrl;
 
         /** Model name to use. */
-        private String modelName = "claude-sonnet-4-20250514";
+        private String modelName = ModelConfig.DEFAULT_MODEL;
 
         /** Maximum tokens for model responses. */
-        private int maxTokens = 8096;
+        private int maxTokens = ModelConfig.DEFAULT_MAX_TOKENS;
 
         /** Temperature for generation. */
         private double temperature = 0.7;

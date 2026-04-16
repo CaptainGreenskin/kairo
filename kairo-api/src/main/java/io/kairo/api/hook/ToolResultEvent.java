@@ -13,13 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.kairo.api.tracing;
+package io.kairo.api.hook;
+
+import io.kairo.api.tool.ToolResult;
+import java.time.Duration;
 
 /**
- * No-operation Tracer implementation. All span factories return {@link NoopSpan#INSTANCE}.
- * Uses default method implementations from {@link Tracer}.
+ * Event fired after each tool execution completes.
+ *
+ * @param toolName the name of the tool that was executed
+ * @param result the tool execution result
+ * @param duration the tool execution duration
+ * @param success whether the tool executed successfully
  */
-public final class NoopTracer implements Tracer {
-    public static final NoopTracer INSTANCE = new NoopTracer();
-    // All methods inherited from Tracer defaults (return NoopSpan.INSTANCE)
-}
+public record ToolResultEvent(
+        String toolName, ToolResult result, Duration duration, boolean success) {}

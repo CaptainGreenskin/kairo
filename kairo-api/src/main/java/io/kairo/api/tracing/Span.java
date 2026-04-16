@@ -16,10 +16,23 @@
 package io.kairo.api.tracing;
 
 /**
- * No-operation Tracer implementation. All span factories return {@link NoopSpan#INSTANCE}.
- * Uses default method implementations from {@link Tracer}.
+ * Represents a unit of work in a trace. Designed to map 1:1 to OpenTelemetry Span
+ * for zero-adapter bridging in v0.3.0.
+ *
+ * <p>Span only has generic operations (setAttribute, setStatus, end).
+ * Business-specific recording (tokens, tools, compaction) lives on {@link Tracer}
+ * as convenience methods that delegate to setAttribute.
  */
-public final class NoopTracer implements Tracer {
-    public static final NoopTracer INSTANCE = new NoopTracer();
-    // All methods inherited from Tracer defaults (return NoopSpan.INSTANCE)
+public interface Span {
+    String spanId();
+
+    String name();
+
+    Span parent();
+
+    void setAttribute(String key, Object value);
+
+    void setStatus(boolean success, String message);
+
+    void end();
 }
