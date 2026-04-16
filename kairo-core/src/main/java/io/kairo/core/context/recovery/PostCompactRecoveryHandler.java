@@ -15,7 +15,6 @@
  */
 package io.kairo.core.context.recovery;
 
-import io.kairo.api.context.McpInstructionProvider;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.skill.SkillDefinition;
@@ -36,10 +35,9 @@ import org.slf4j.LoggerFactory;
  * <ol>
  *   <li>Re-reads recently accessed files (up to 5 files, 5K tokens each)
  *   <li>Re-injects active skill instructions (5K tokens each)
- *   <li>Re-injects MCP server instructions (extensible)
  * </ol>
  *
- * <p>Total recovery budget: 50K tokens across all injections. Priority: files &gt; skills &gt; MCP.
+ * <p>Total recovery budget: 50K tokens across all injections. Priority: files &gt; skills.
  */
 public class PostCompactRecoveryHandler {
 
@@ -51,22 +49,18 @@ public class PostCompactRecoveryHandler {
 
     private final FileAccessTracker fileTracker;
     private final SkillRegistry skillRegistry; // nullable
-    private final McpInstructionProvider mcpProvider;
 
     /**
      * Create a new recovery handler.
      *
      * @param fileTracker tracks recently accessed files
      * @param skillRegistry the skill registry (may be null)
-     * @param mcpProvider the MCP instruction provider (may be null, defaults to noop)
      */
     public PostCompactRecoveryHandler(
             FileAccessTracker fileTracker,
-            SkillRegistry skillRegistry,
-            McpInstructionProvider mcpProvider) {
+            SkillRegistry skillRegistry) {
         this.fileTracker = fileTracker;
         this.skillRegistry = skillRegistry;
-        this.mcpProvider = mcpProvider != null ? mcpProvider : McpInstructionProvider.noop();
     }
 
     /**
@@ -133,26 +127,6 @@ public class PostCompactRecoveryHandler {
                     recoveryMessages.add(msg);
                     budgetUsed += estimateTokens(truncated);
                 }
-            }
-        }
-
-        // 3. MCP instruction re-injection (lowest priority)
-        if (budgetUsed < TOTAL_BUDGET) {
-            for (String instruction : mcpProvider.getActiveInstructions()) {
-                if (budgetUsed >= TOTAL_BUDGET) {
-                    break;
-                }
-                Msg msg =
-                        Msg.builder()
-                                .role(MsgRole.SYSTEM)
-                                .addContent(
-                                        new io.kairo.api.message.Content.TextContent(
-                                                "[MCP Recovery] " + instruction))
-                                .metadata("recovery", true)
-                                .metadata("recoveryType", "mcp")
-                                .build();
-                recoveryMessages.add(msg);
-                budgetUsed += estimateTokens(instruction);
             }
         }
 

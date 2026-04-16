@@ -204,6 +204,153 @@ class StreamingToolDetectorTest {
     }
 
     @Test
+    void handlesEmptyToolCallIdFromQwen() {
+        // Qwen/DashScope sends real ID only on START; DELTA and END have empty IDs
+        var chunks =
+                Flux.just(
+                        StreamChunk.toolUseStart("call_abc", "read_file"),
+                        StreamChunk.toolUseDelta("", "{\"path\":"),
+                        StreamChunk.toolUseDelta("", "\"/tmp/f\"}"),
+                        StreamChunk.toolUseEnd(""));
+
+        StepVerifier.create(detector.detect(chunks))
+                .assertNext(
+                        tool -> {
+                            assertEquals("call_abc", tool.toolCallId());
+                            assertEquals("read_file", tool.toolName());
+                            assertEquals("/tmp/f", tool.args().get("path"));
+                        })
+                .verifyComplete();
+    }
+
+    @Test
+    void handlesNullToolCallIdFromQwen() {
+        // Some providers send null instead of empty string
+        var chunks =
+                Flux.just(
+                        StreamChunk.toolUseStart("call_xyz", "grep"),
+                        StreamChunk.toolUseDelta(null, "{\"pattern\":\"err\"}"),
+                        StreamChunk.toolUseEnd(null));
+
+        StepVerifier.create(detector.detect(chunks))
+                .assertNext(
+                        tool -> {
+                            assertEquals("call_xyz", tool.toolCallId());
+                            assertEquals("grep", tool.toolName());
+                            assertEquals("err", tool.args().get("pattern"));
+                        })
+                .verifyComplete();
+    }
+
+    @Test
+    void handlesParallelToolCallsWithDuplicateEnds() {
+        // Simulates OpenAI-format provider behavior: index-transition emits END for tool 1,
+        // then flushRemainingTools emits END for ALL tools (including tool 1 again).
+        var chunks =
+                Flux.just(
+                        StreamChunk.toolUseStart("call_1", "read_file"),
+                        StreamChunk.toolUseDelta("call_1", "{\"path\":\"/a\"}"),
+                        StreamChunk.toolUseEnd("call_1"), // from index transition
+                        StreamChunk.toolUseStart("call_2", "grep"),
+                        StreamChunk.toolUseDelta("call_2", "{\"pattern\":\"err\"}"),
+                        StreamChunk.toolUseEnd("call_1"), // duplicate from flush
+                        StreamChunk.toolUseEnd("call_2")); // from flush
+
+        StepVerifier.create(detector.detect(chunks))
+                .assertNext(
+                        tool -> {
+                            assertEquals("call_1", tool.toolCallId());
+                            assertEquals("read_file", tool.toolName());
+                            assertEquals("/a", tool.args().get("path"));
+                        })
+                .assertNext(
+                        tool -> {
+                            assertEquals("call_2", tool.toolCallId());
+                            assertEquals("grep", tool.toolName());
+                            assertEquals("err", tool.args().get("pattern"));
+                        })
+                .verifyComplete();
+    }
+
+    @Test
+    void handlesThreeParallelToolCalls() {
+        // Three parallel tool calls, all flushed at end (triple duplicate ENDs)
+        var chunks =
+                Flux.just(
+                        StreamChunk.toolUseStart("c1", "tool_a"),
+                        StreamChunk.toolUseDelta("c1", "{\"x\":1}"),
+                        StreamChunk.toolUseEnd("c1"), // index transition
+                        StreamChunk.toolUseStart("c2", "tool_b"),
+                        StreamChunk.toolUseDelta("c2", "{\"y\":2}"),
+                        StreamChunk.toolUseEnd("c2"), // index transition
+                        StreamChunk.toolUseStart("c3", "tool_c"),
+                        StreamChunk.toolUseDelta("c3", "{\"z\":3}"),
+                        // flush emits END for all three (c1, c2 are duplicates)
+                        StreamChunk.toolUseEnd("c1"),
+                        StreamChunk.toolUseEnd("c2"),
+                        StreamChunk.toolUseEnd("c3"));
+
+        StepVerifier.create(detector.detect(chunks))
+                .assertNext(tool -> assertEquals("tool_a", tool.toolName()))
+                .assertNext(tool -> assertEquals("tool_b", tool.toolName()))
+                .assertNext(tool -> assertEquals("tool_c", tool.toolName()))
+                .verifyComplete();
+    }
+
+    @Test
+    void handlesParallelToolsWithEmptyIds() {
+        // Qwen sends ID only on START, DELTA/END have empty IDs.
+        // With parallel tools, resolve empty IDs to oldest active tool.
+        var chunks =
+                Flux.just(
+                        StreamChunk.toolUseStart("call_a", "read_file"),
+                        StreamChunk.toolUseDelta("", "{\"path\":\"/a\"}"),
+                        StreamChunk.toolUseEnd(""), // completes call_a (oldest active)
+                        StreamChunk.toolUseStart("call_b", "grep"),
+                        StreamChunk.toolUseDelta("", "{\"pattern\":\"err\"}"),
+                        StreamChunk.toolUseEnd("")); // completes call_b
+
+        StepVerifier.create(detector.detect(chunks))
+                .assertNext(
+                        tool -> {
+                            assertEquals("call_a", tool.toolCallId());
+                            assertEquals("read_file", tool.toolName());
+                        })
+                .assertNext(
+                        tool -> {
+                            assertEquals("call_b", tool.toolCallId());
+                            assertEquals("grep", tool.toolName());
+                        })
+                .verifyComplete();
+    }
+
+    @Test
+    void handlesStartToolWithEmptyName() {
+        // Qwen may send empty name — should not produce a tool call
+        var chunks =
+                Flux.just(
+                        StreamChunk.toolUseStart("call_ghost", ""),
+                        StreamChunk.toolUseDelta("call_ghost", "{}"),
+                        StreamChunk.toolUseEnd("call_ghost"));
+
+        StepVerifier.create(detector.detect(chunks))
+                .verifyComplete(); // no tool emitted
+    }
+
+    @Test
+    void handlesStartToolWithNullId() {
+        // startTool with null id should be ignored gracefully
+        var chunks =
+                Flux.just(
+                        StreamChunk.toolUseStart(null, "read_file"),
+                        StreamChunk.toolUseDelta(null, "{}"),
+                        StreamChunk.toolUseEnd(null));
+
+        StepVerifier.create(detector.detect(chunks))
+                .verifyComplete(); // no tool emitted
+    }
+
+    @Test
     void toolWithNoArgs() {
         var chunks =
                 Flux.just(

@@ -16,7 +16,8 @@
 package io.kairo.core.tool;
 
 import io.kairo.api.tool.*;
-import io.kairo.api.tracing.TracerRegistry;
+import io.kairo.api.tracing.NoopTracer;
+import io.kairo.api.tracing.Tracer;
 import io.kairo.core.plan.PlanModeViolationException;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import java.time.Duration;
@@ -46,6 +47,7 @@ public class DefaultToolExecutor implements ToolExecutor {
 
     private final DefaultToolRegistry registry;
     private final PermissionGuard permissionGuard;
+    private final Tracer tracer;
     private UserApprovalHandler approvalHandler;
     private volatile boolean planMode = false;
     private final Map<String, ToolPermission> toolPermissions = new ConcurrentHashMap<>();
@@ -58,8 +60,20 @@ public class DefaultToolExecutor implements ToolExecutor {
      * @param permissionGuard the permission guard
      */
     public DefaultToolExecutor(DefaultToolRegistry registry, PermissionGuard permissionGuard) {
+        this(registry, permissionGuard, null);
+    }
+
+    /**
+     * Create a new executor with the given registry, permission guard, and tracer.
+     *
+     * @param registry the tool registry
+     * @param permissionGuard the permission guard
+     * @param tracer the tracer (null defaults to NoopTracer)
+     */
+    public DefaultToolExecutor(DefaultToolRegistry registry, PermissionGuard permissionGuard, Tracer tracer) {
         this.registry = registry;
         this.permissionGuard = permissionGuard;
+        this.tracer = tracer != null ? tracer : new NoopTracer();
     }
 
     /**
@@ -141,7 +155,7 @@ public class DefaultToolExecutor implements ToolExecutor {
 
     @Override
     public Mono<ToolResult> execute(String toolName, Map<String, Object> input, Duration timeout) {
-        return TracerRegistry.get()
+        return tracer
                 .traceToolCall(toolName, input, () -> executeInternal(toolName, input, timeout));
     }
 

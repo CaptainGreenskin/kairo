@@ -97,6 +97,30 @@ public class DefaultHookChain implements HookChain {
         return fireEventWithResult(event, PostActing.class);
     }
 
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> Mono<HookResult<T>> firePreReasoningWithResult(T event) {
+        return fireEventWithResult(event, PreReasoning.class);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> Mono<HookResult<T>> firePostReasoningWithResult(T event) {
+        return fireEventWithResult(event, PostReasoning.class);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> Mono<HookResult<T>> firePreCompactWithResult(T event) {
+        return fireEventWithResult(event, PreCompact.class);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> Mono<HookResult<T>> firePostCompactWithResult(T event) {
+        return fireEventWithResult(event, PostCompact.class);
+    }
+
     /**
      * Fire an event through all handlers that have methods annotated with the given annotation.
      * Methods are sorted by their {@code order()} value and invoked sequentially. If the event has

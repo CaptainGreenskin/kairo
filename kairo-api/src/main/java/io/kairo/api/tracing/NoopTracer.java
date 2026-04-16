@@ -13,20 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.kairo.api.memory;
+package io.kairo.api.tracing;
 
-import reactor.core.publisher.Flux;
-
-/** Searches memory entries using semantic or keyword matching. */
-public interface MemorySearcher {
-
-    /**
-     * Search for memory entries matching a query within a scope.
-     *
-     * @param query the search query
-     * @param scope the scope to search within
-     * @param limit the maximum number of results to return
-     * @return a Flux of matching entries, ordered by relevance
-     */
-    Flux<MemoryEntry> search(String query, MemoryScope scope, int limit);
+/**
+ * No-operation tracer that silently discards all trace events.
+ * Used as default when no custom Tracer is configured.
+ */
+public final class NoopTracer implements Tracer {
+    // All methods use Tracer's default implementations (which are no-ops)
 }
