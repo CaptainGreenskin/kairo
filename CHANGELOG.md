@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-17
+
+### Added
+
+#### kairo-observability (new module)
+- `OTelTracer` — OpenTelemetry `Tracer` SPI implementation
+- `OTelSpan` — OpenTelemetry `Span` wrapper with `setAttribute`/`setStatus`/`end`
+- `GenAiSemanticAttributes` — OpenTelemetry GenAI semantic conventions (gen_ai.* namespace)
+- `OTelTracerFactory` — auto-configured factory for OTel SDK integration
+- OpenTelemetry SDK version: 1.44.1
+
+#### kairo-mcp
+- MCP SDK upgrade: 0.17.0 → 1.1.1
+- StreamableHTTP transport support (via MCP SDK native implementation)
+- HTTP authentication: `headers`, `queryParams`, `bearerToken` on `McpServerConfig`
+- Removed `@Experimental` annotation — MCP APIs are now stable
+
+#### kairo-spring-boot-starter
+- MCP auto-configuration with `kairo.mcp.*` property prefix
+- `KairoMcpProperties` with discriminator pattern for multi-server config
+- `McpAutoConfiguration` bean with conditional registration
+
+#### kairo-core
+- `CacheBreakDetector` in `AnthropicProvider` — prompt cache hit-ratio monitoring
+  - `cache.hit_ratio` and `cache.broken` span attributes for observability
+
+### Fixed
+- kairo-spring-boot-starter: `DefaultToolRegistry` cast bug in auto-configuration
+
+### Test Counts
+- Unit tests: 1,191 (v0.2.1: 1,099 → +92)
+- Integration tests: 170 (v0.2.1: 162 → +8)
+- Total: 1,361 (v0.2.1: 1,261 → +100)
+
 ## [0.1.0-SNAPSHOT] - 2026-04-15
 
 ### Added

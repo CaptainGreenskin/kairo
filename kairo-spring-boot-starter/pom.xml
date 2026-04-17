@@ -42,6 +42,12 @@
             <artifactId>kairo-multi-agent</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>io.kairo</groupId>
+            <artifactId>kairo-mcp</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
 
         <!-- Spring Boot Actuator (optional) -->
         <dependency>

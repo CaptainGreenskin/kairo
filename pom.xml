@@ -61,6 +61,7 @@
         <module>kairo-tools</module>
         <module>kairo-mcp</module>
         <module>kairo-multi-agent</module>
+        <module>kairo-observability</module>
         <module>kairo-spring-boot-starter</module>
         <module>kairo-examples</module>
     </modules>
@@ -82,7 +83,8 @@
         <slf4j.version>2.0.16</slf4j.version>
         <junit.version>5.11.4</junit.version>
         <jackson.version>2.18.2</jackson.version>
-        <mcp-sdk.version>0.17.0</mcp-sdk.version>
+        <mcp-sdk.version>1.1.1</mcp-sdk.version>
+        <opentelemetry.version>1.44.1</opentelemetry.version>
         <jacoco.line.threshold>0</jacoco.line.threshold>
     </properties>
 
@@ -160,10 +162,15 @@
                 <version>4.12.0</version>
                 <scope>test</scope>
             </dependency>
-            <!-- MCP SDK -->
+            <!-- MCP SDK (split into core + jackson2 for Jackson 2.x compatibility) -->
             <dependency>
                 <groupId>io.modelcontextprotocol.sdk</groupId>
-                <artifactId>mcp</artifactId>
+                <artifactId>mcp-core</artifactId>
+                <version>${mcp-sdk.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.modelcontextprotocol.sdk</groupId>
+                <artifactId>mcp-json-jackson2</artifactId>
                 <version>${mcp-sdk.version}</version>
             </dependency>
             <!-- Kairo MCP module -->

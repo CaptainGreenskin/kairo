@@ -141,11 +141,10 @@ public class AgentRuntimeAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public ToolExecutor toolExecutor(
-            ToolRegistry toolRegistry,
+            DefaultToolRegistry toolRegistry,
             PermissionGuard permissionGuard,
             GracefulShutdownManager gracefulShutdownManager) {
-        return new DefaultToolExecutor(
-                (DefaultToolRegistry) toolRegistry, permissionGuard, null, gracefulShutdownManager);
+        return new DefaultToolExecutor(toolRegistry, permissionGuard, null, gracefulShutdownManager);
     }
 
     // ---- Agent Factory ----

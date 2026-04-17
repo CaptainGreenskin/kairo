@@ -28,8 +28,10 @@ class McpContentConverterTest {
     @Test
     void convertsTextContent() {
         McpSchema.CallToolResult result =
-                new McpSchema.CallToolResult(
-                        List.of(new McpSchema.TextContent("Hello world")), false);
+                McpSchema.CallToolResult.builder()
+                        .content(List.of(new McpSchema.TextContent("Hello world")))
+                        .isError(false)
+                        .build();
         ToolResult tr = McpContentConverter.convert(result, "id1");
         assertEquals("Hello world", tr.content());
         assertFalse(tr.isError());
@@ -39,8 +41,10 @@ class McpContentConverterTest {
     @Test
     void convertsErrorResult() {
         McpSchema.CallToolResult result =
-                new McpSchema.CallToolResult(
-                        List.of(new McpSchema.TextContent("Something failed")), true);
+                McpSchema.CallToolResult.builder()
+                        .content(List.of(new McpSchema.TextContent("Something failed")))
+                        .isError(true)
+                        .build();
         ToolResult tr = McpContentConverter.convert(result, "id2");
         assertTrue(tr.isError());
         assertEquals("Something failed", tr.content());
@@ -49,9 +53,13 @@ class McpContentConverterTest {
     @Test
     void convertsImageContent() {
         McpSchema.CallToolResult result =
-                new McpSchema.CallToolResult(
-                        List.of(new McpSchema.ImageContent(null, "base64data", "image/png")),
-                        false);
+                McpSchema.CallToolResult.builder()
+                        .content(
+                                List.of(
+                                        new McpSchema.ImageContent(
+                                                null, "base64data", "image/png")))
+                        .isError(false)
+                        .build();
         ToolResult tr = McpContentConverter.convert(result, "id3");
         assertEquals("[image:image/png]", tr.content());
     }
@@ -59,7 +67,10 @@ class McpContentConverterTest {
     @Test
     void handlesEmptyResult() {
         McpSchema.CallToolResult result =
-                new McpSchema.CallToolResult(Collections.emptyList(), false);
+                McpSchema.CallToolResult.builder()
+                        .content(Collections.emptyList())
+                        .isError(false)
+                        .build();
         ToolResult tr = McpContentConverter.convert(result, "id4");
         assertEquals("", tr.content());
         assertFalse(tr.isError());
@@ -68,7 +79,7 @@ class McpContentConverterTest {
     @Test
     void handlesNullContent() {
         McpSchema.CallToolResult result =
-                new McpSchema.CallToolResult((java.util.List<McpSchema.Content>) null, false);
+                McpSchema.CallToolResult.builder().isError(false).build();
         ToolResult tr = McpContentConverter.convert(result, "id5");
         assertEquals("", tr.content());
     }
@@ -76,12 +87,14 @@ class McpContentConverterTest {
     @Test
     void handlesMultipleTextContents() {
         McpSchema.CallToolResult result =
-                new McpSchema.CallToolResult(
-                        List.of(
-                                new McpSchema.TextContent("line1"),
-                                new McpSchema.TextContent("line2"),
-                                new McpSchema.TextContent("line3")),
-                        false);
+                McpSchema.CallToolResult.builder()
+                        .content(
+                                List.of(
+                                        new McpSchema.TextContent("line1"),
+                                        new McpSchema.TextContent("line2"),
+                                        new McpSchema.TextContent("line3")))
+                        .isError(false)
+                        .build();
         ToolResult tr = McpContentConverter.convert(result, "id6");
         assertEquals("line1\nline2\nline3", tr.content());
     }

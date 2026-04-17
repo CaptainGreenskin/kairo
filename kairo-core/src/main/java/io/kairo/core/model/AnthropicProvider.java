@@ -36,6 +36,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -68,6 +69,7 @@ public class AnthropicProvider implements ModelProvider {
     private final ObjectMapper objectMapper;
     private final ComplexityEstimator complexityEstimator = new ComplexityEstimator();
     private final ToolDescriptionAdapter toolAdapter = new ToolDescriptionAdapter();
+    private final CacheBreakDetector cacheDetector = new CacheBreakDetector();
 
     /**
      * Create an AnthropicProvider with default settings.
@@ -182,6 +184,21 @@ public class AnthropicProvider implements ModelProvider {
                                                         failure.getMessage());
                                             }
                                         }))
+                .doOnNext(
+                        response -> {
+                            String sysPrompt = resolveSystemPrompt(messages, config);
+                            List<ToolDefinition> tools =
+                                    config.tools() != null ? config.tools() : List.of();
+                            CacheCheckResult cacheResult =
+                                    cacheDetector.check(
+                                            response.usage(), sysPrompt, tools);
+                            if (cacheResult.isCacheBroken()) {
+                                log.warn(
+                                        "Cache break detected: reasons={}, hitRatio={}",
+                                        cacheResult.reasons(),
+                                        String.format("%.2f", cacheResult.hitRatio()));
+                            }
+                        })
                 .timeout(DEFAULT_TIMEOUT);
     }
 
@@ -266,6 +283,41 @@ public class AnthropicProvider implements ModelProvider {
                             }
                         })
                 .timeout(DEFAULT_TIMEOUT);
+    }
+
+    /**
+     * Run cache break detection on a response and record results to a span.
+     *
+     * @param response the model response containing usage data
+     * @param systemPrompt the system prompt sent in this call
+     * @param tools the tool definitions sent in this call
+     * @param span the tracing span to record cache metrics on
+     * @return the cache check result
+     */
+    CacheCheckResult checkCacheAndRecord(
+            ModelResponse response,
+            String systemPrompt,
+            List<ToolDefinition> tools,
+            io.kairo.api.tracing.Span span) {
+        CacheCheckResult result = cacheDetector.check(response.usage(), systemPrompt, tools);
+        span.setAttribute("cache.hit_ratio", result.hitRatio());
+        span.setAttribute("cache.read_tokens", result.cacheReadTokens());
+        span.setAttribute("cache.creation_tokens", result.cacheCreationTokens());
+        if (result.isCacheBroken()) {
+            span.setAttribute("cache.broken", true);
+            span.setAttribute("cache.break_reasons", String.join(",", result.reasons()));
+        }
+        return result;
+    }
+
+    private static String resolveSystemPrompt(List<Msg> messages, ModelConfig config) {
+        String sp = config.systemPrompt();
+        if (sp != null && !sp.isBlank()) return sp;
+        return messages.stream()
+                .filter(m -> m.role() == MsgRole.SYSTEM)
+                .map(Msg::text)
+                .reduce((a, b) -> a + "\n" + b)
+                .orElse("");
     }
 
     // ---- Request building ----
@@ -965,6 +1017,115 @@ public class AnthropicProvider implements ModelProvider {
 
         public ApiException(String message, Throwable cause) {
             super(message, cause);
+        }
+    }
+
+    // ---- Cache break detection ----
+
+    /**
+     * Detects KV-cache breaks by comparing consecutive API call usage metrics. Tracks system prompt
+     * hash, tool schema hash, and call timestamps to diagnose why cache_read_tokens dropped.
+     */
+    static class CacheBreakDetector {
+        private long lastSystemPromptHash;
+        private long lastToolSchemaHash;
+        private int lastCacheReadTokens;
+        private Instant lastCallTime;
+        private boolean hasPreviousCall;
+
+        /** Allow injecting a custom clock for testing TTL expiry. */
+        private Instant nowOverride;
+
+        void setNowOverride(Instant now) {
+            this.nowOverride = now;
+        }
+
+        private Instant now() {
+            return nowOverride != null ? nowOverride : Instant.now();
+        }
+
+        CacheCheckResult check(
+                ModelResponse.Usage usage, String systemPrompt, List<ToolDefinition> tools) {
+            long currentSysHash = systemPrompt != null ? systemPrompt.hashCode() : 0;
+            long currentToolHash = tools != null ? tools.hashCode() : 0;
+            int currentCacheRead = usage.cacheReadTokens();
+
+            CacheCheckResult result =
+                    new CacheCheckResult(
+                            currentCacheRead, usage.cacheCreationTokens(), usage.inputTokens());
+
+            if (hasPreviousCall
+                    && lastCacheReadTokens > 0
+                    && currentCacheRead < lastCacheReadTokens * 0.95) {
+                if (currentSysHash != lastSystemPromptHash) {
+                    result.addReason("system_prompt_changed");
+                }
+                if (currentToolHash != lastToolSchemaHash) {
+                    result.addReason("tool_schema_changed");
+                }
+                if (lastCallTime != null
+                        && Duration.between(lastCallTime, now()).toMinutes() > 5) {
+                    result.addReason("ttl_expired");
+                }
+                result.setCacheBroken(true);
+            }
+
+            // Update state
+            lastSystemPromptHash = currentSysHash;
+            lastToolSchemaHash = currentToolHash;
+            lastCacheReadTokens = currentCacheRead;
+            lastCallTime = now();
+            hasPreviousCall = true;
+
+            return result;
+        }
+    }
+
+    /** Result of a cache break detection check. */
+    static class CacheCheckResult {
+        private final int cacheReadTokens;
+        private final int cacheCreationTokens;
+        private final int inputTokens;
+        private final List<String> reasons = new ArrayList<>();
+        private boolean cacheBroken;
+
+        CacheCheckResult(int cacheReadTokens, int cacheCreationTokens, int inputTokens) {
+            this.cacheReadTokens = cacheReadTokens;
+            this.cacheCreationTokens = cacheCreationTokens;
+            this.inputTokens = inputTokens;
+        }
+
+        double hitRatio() {
+            int total = cacheReadTokens + cacheCreationTokens;
+            return total == 0 ? 0.0 : (double) cacheReadTokens / total;
+        }
+
+        int cacheReadTokens() {
+            return cacheReadTokens;
+        }
+
+        int cacheCreationTokens() {
+            return cacheCreationTokens;
+        }
+
+        int inputTokens() {
+            return inputTokens;
+        }
+
+        boolean isCacheBroken() {
+            return cacheBroken;
+        }
+
+        List<String> reasons() {
+            return reasons;
+        }
+
+        void addReason(String reason) {
+            reasons.add(reason);
+        }
+
+        void setCacheBroken(boolean broken) {
+            this.cacheBroken = broken;
         }
     }
 }

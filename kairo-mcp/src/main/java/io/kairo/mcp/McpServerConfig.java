@@ -31,6 +31,8 @@ import java.util.Map;
  * @param url server URL for HTTP/SSE transports
  * @param env environment variables for stdio process
  * @param headers HTTP headers for HTTP/SSE transports
+ * @param queryParams query parameters appended to the HTTP/SSE URL
+ * @param bearerToken shorthand for setting an {@code Authorization: Bearer <token>} header
  * @param enableTools tool name whitelist (null = all tools enabled)
  * @param disableTools tool name blacklist
  * @param presetArgs preset arguments per tool name
@@ -43,6 +45,8 @@ public record McpServerConfig(
         String url,
         Map<String, String> env,
         Map<String, String> headers,
+        Map<String, String> queryParams,
+        String bearerToken,
         List<String> enableTools,
         List<String> disableTools,
         Map<String, Map<String, Object>> presetArgs,
@@ -64,6 +68,8 @@ public record McpServerConfig(
                 null,
                 Collections.emptyMap(),
                 Collections.emptyMap(),
+                Collections.emptyMap(),
+                null,
                 null,
                 null,
                 Collections.emptyMap(),
@@ -79,6 +85,8 @@ public record McpServerConfig(
                 url,
                 Collections.emptyMap(),
                 Collections.emptyMap(),
+                Collections.emptyMap(),
+                null,
                 null,
                 null,
                 Collections.emptyMap(),
@@ -94,6 +102,8 @@ public record McpServerConfig(
                 url,
                 Collections.emptyMap(),
                 Collections.emptyMap(),
+                Collections.emptyMap(),
+                null,
                 null,
                 null,
                 Collections.emptyMap(),
@@ -113,6 +123,8 @@ public record McpServerConfig(
         private String url;
         private Map<String, String> env = new HashMap<>();
         private Map<String, String> headers = new HashMap<>();
+        private Map<String, String> queryParams = new HashMap<>();
+        private String bearerToken;
         private List<String> enableTools;
         private List<String> disableTools;
         private Map<String, Map<String, Object>> presetArgs = new HashMap<>();
@@ -145,6 +157,17 @@ public record McpServerConfig(
 
         public Builder headers(Map<String, String> headers) {
             this.headers = new HashMap<>(headers);
+            return this;
+        }
+
+        public Builder queryParams(Map<String, String> queryParams) {
+            this.queryParams = new HashMap<>(queryParams);
+            return this;
+        }
+
+        /** Shorthand for setting an {@code Authorization: Bearer <token>} header. */
+        public Builder bearerToken(String bearerToken) {
+            this.bearerToken = bearerToken;
             return this;
         }
 
@@ -182,6 +205,8 @@ public record McpServerConfig(
                     url,
                     env,
                     headers,
+                    queryParams,
+                    bearerToken,
                     enableTools,
                     disableTools,
                     presetArgs,

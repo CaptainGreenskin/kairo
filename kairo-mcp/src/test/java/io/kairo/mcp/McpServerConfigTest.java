@@ -105,4 +105,57 @@ class McpServerConfigTest {
                 IllegalArgumentException.class,
                 () -> McpServerConfig.builder().name("test").build());
     }
+
+    @Test
+    void builderWithBearerToken() {
+        McpServerConfig config =
+                McpServerConfig.builder()
+                        .name("api")
+                        .transportType(McpServerConfig.TransportType.STREAMABLE_HTTP)
+                        .url("http://localhost:8080")
+                        .bearerToken("my-secret-token")
+                        .build();
+        assertEquals("my-secret-token", config.bearerToken());
+    }
+
+    @Test
+    void builderWithQueryParams() {
+        McpServerConfig config =
+                McpServerConfig.builder()
+                        .name("api")
+                        .transportType(McpServerConfig.TransportType.STREAMABLE_HTTP)
+                        .url("http://localhost:8080")
+                        .queryParams(Map.of("api_key", "abc123", "version", "v2"))
+                        .build();
+        assertEquals("abc123", config.queryParams().get("api_key"));
+        assertEquals("v2", config.queryParams().get("version"));
+    }
+
+    @Test
+    void builderWithBearerTokenAndCustomHeaders() {
+        McpServerConfig config =
+                McpServerConfig.builder()
+                        .name("api")
+                        .transportType(McpServerConfig.TransportType.STREAMABLE_HTTP)
+                        .url("http://localhost:8080")
+                        .bearerToken("token123")
+                        .headers(Map.of("X-Custom", "value"))
+                        .build();
+        assertEquals("token123", config.bearerToken());
+        assertEquals("value", config.headers().get("X-Custom"));
+    }
+
+    @Test
+    void staticFactoryConfigsHaveEmptyQueryParams() {
+        McpServerConfig stdio = McpServerConfig.stdio("fs", "cmd");
+        McpServerConfig http = McpServerConfig.streamableHttp("api", "http://localhost");
+        McpServerConfig sse = McpServerConfig.sse("events", "http://localhost");
+
+        assertTrue(stdio.queryParams().isEmpty());
+        assertNull(stdio.bearerToken());
+        assertTrue(http.queryParams().isEmpty());
+        assertNull(http.bearerToken());
+        assertTrue(sse.queryParams().isEmpty());
+        assertNull(sse.bearerToken());
+    }
 }

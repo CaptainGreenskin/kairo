@@ -250,25 +250,28 @@ ToolOutputSanitizer + 37 个新测试。
 
 > 主题：让 Kairo 融入外部生态。
 
-| Task | 说明 |
-|------|------|
-| MCP 集成完善 | kairo-mcp 模块正式发布，去掉 @Experimental 标记 |
-| MCP: StreamableHTTP 传输 | P0 — MCP 协议标准传输方式（无状态），当前只有 stdio/SSE |
-| MCP: HTTP header/queryParam | P0 — 企业 MCP Server 需要认证 token、代理配置 |
-| MCP: Elicitation 协议 | P1 — Server 向 Client 请求用户输入，和 Human-in-the-Loop 天然对齐 |
-| MCP: Sync 便利方法 | P2 — 非响应式用户友好，提供阻塞式 API 包装 |
-| MCP: Spring Boot 配置扩展 | P0 — AgentRuntimeProperties 补充 `kairo.mcp` 配置前缀，验证 Starter + MCP 集成 |
-| StructuredOutputHook | 用 `@PostReasoning` Hook 解析 LLM 输出为 Java POJO，作为内置 Hook 示例 |
-| OTel 集成 | `kairo-observability` 模块，`OTelTracer implements Tracer` |
-| SSE 事件流 | 订阅 Tracer 事件 → 转 SSE（依赖 v0.2.0 Tracer 的事件订阅能力） |
-| OpenAPI 工具自动注册 | 解析 OpenAPI spec → 自动生成 ToolDefinition |
-| Skill 远程加载 | `SkillRegistry.loadFromUrl()` |
-| AnthropicProvider 拆分 | HTTP 客户端 / API 网关 / 响应解析分离（内部可维护性） |
-| ProviderPresets 便利层 | 预设 Provider 配置（智谱 Coding Plan / GLM API / Qwen 等），一行代码接入 |
-| Span.addEvent + 确定性回放 | Span 接口加 `addEvent(name, snapshot)` 支持完整输入输出快照，串成可回放 timeline（对齐 OTel SpanEvent） |
-| Token Budget 降级策略 | 基于 v0.2.0 的 TokenBudgetManager SPI，实现 budget 耗尽时自动切便宜模型 |
-| ExecutionStrategy SPI（预留） | 预留接口，默认 ReAct。简单任务场景已可通过 `@PreReasoning` + `HookResult.SKIP` 覆盖 |
-| 记忆使用指导 | 配套 MemoryTool，在 system prompt 中加入记忆使用规范（什么值得持久化、什么不值得） |
+| Task | 说明 | 状态 |
+|------|------|------|
+| MCP 集成完善 | kairo-mcp 模块正式发布，去掉 @Experimental 标记 | ✅ 已完成 |
+| MCP: StreamableHTTP 传输 | P0 — MCP SDK 1.1.1 内置 StreamableHTTP（无状态） | ✅ 已完成 |
+| MCP: HTTP header/queryParam | P0 — 企业 MCP Server 认证（headers, queryParams, bearerToken） | ✅ 已完成 |
+| MCP: Elicitation 协议 | P1 — Server 向 Client 请求用户输入，和 Human-in-the-Loop 天然对齐 | ⬜ |
+| MCP: Sync 便利方法 | P2 — 非响应式用户友好，提供阻塞式 API 包装 | ⬜ |
+| MCP: Spring Boot 配置扩展 | P0 — `kairo.mcp.*` 配置前缀 + discriminator pattern | ✅ 已完成 |
+| StructuredOutputHook | 用 `@PostReasoning` Hook 解析 LLM 输出为 Java POJO，作为内置 Hook 示例 | ⬜ |
+| OTel 集成 | `kairo-observability` 模块：OTelTracer, OTelSpan, GenAiSemanticAttributes, OTelTracerFactory | ✅ 已完成 |
+| CacheBreakDetector | AnthropicProvider 缓存命中率监控（cache.hit_ratio, cache.broken span 属性） | ✅ 已完成 |
+| SSE 事件流 | 订阅 Tracer 事件 → 转 SSE（依赖 v0.2.0 Tracer 的事件订阅能力） | ⬜ |
+| OpenAPI 工具自动注册 | 解析 OpenAPI spec → 自动生成 ToolDefinition | ⬜ |
+| Skill 远程加载 | `SkillRegistry.loadFromUrl()` | ⬜ |
+| AnthropicProvider 拆分 | HTTP 客户端 / API 网关 / 响应解析分离（内部可维护性） | ⬜ |
+| ProviderPresets 便利层 | 预设 Provider 配置（智谱 Coding Plan / GLM API / Qwen 等），一行代码接入 | ⬜ |
+| Span.addEvent + 确定性回放 | Span 接口加 `addEvent(name, snapshot)` 支持完整输入输出快照，串成可回放 timeline（对齐 OTel SpanEvent） | ⬜ |
+| Token Budget 降级策略 | 基于 v0.2.0 的 TokenBudgetManager SPI，实现 budget 耗尽时自动切便宜模型 | ⬜ |
+| ExecutionStrategy SPI（预留） | 预留接口，默认 ReAct。简单任务场景已可通过 `@PreReasoning` + `HookResult.SKIP` 覆盖 | ⬜ |
+| 记忆使用指导 | 配套 MemoryTool，在 system prompt 中加入记忆使用规范（什么值得持久化、什么不值得） | ⬜ |
+
+**v0.3.0 P0 全部完成 ✅** — MCP 正式化 + OTel 集成 + CacheBreakDetector + Spring MCP 配置
 
 **MCP 设计决策：**
 - MCP 完全可选，`kairo-core` 对 `kairo-mcp` 零编译期依赖
@@ -366,5 +369,5 @@ kairo-mcp(@Exp)        kairo-mcp(@Exp)         kairo-mcp(正式)         kairo-m
 | v0.1.0 | 首次发布 | 补充 CI/BOM/Javadoc → Maven Central | 1-2 周 |
 | v0.2.0 | 骨架加固 | 异常层次 + ShutdownManager + 熔断 + 容错 + 性能基线 | 2-3 周 |
 | v0.2.1 | 重构 | DefaultReActAgent 拆分 | 1 周 |
-| v0.3.0 | 生态连接 | MCP 正式 + OTel + SSE + OpenAPI | 4-6 周 |
+| v0.3.0 | 生态连接 | MCP 正式 + OTel + CacheBreakDetector（P0 完成） | 4-6 周 |
 | v0.4.0 | 生产级 | 自我改进 + 多租户 + Memory 重设计 | 根据用户反馈 |

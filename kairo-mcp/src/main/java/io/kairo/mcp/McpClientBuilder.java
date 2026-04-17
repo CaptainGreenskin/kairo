@@ -15,20 +15,24 @@
  */
 package io.kairo.mcp;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.client.McpAsyncClient;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.client.transport.ServerParameters;
 import io.modelcontextprotocol.client.transport.StdioClientTransport;
-import io.modelcontextprotocol.json.McpJsonMapper;
+import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Fluent builder for creating MCP async clients that wraps the official MCP Java SDK.
@@ -64,6 +68,7 @@ public class McpClientBuilder {
     // HTTP fields
     private String httpUrl;
     private final Map<String, String> httpHeaders = new HashMap<>();
+    private final Map<String, String> httpQueryParams = new HashMap<>();
 
     private enum TransportType {
         STDIO,
@@ -98,6 +103,11 @@ public class McpClientBuilder {
         McpClientBuilder builder = create(config.name());
         builder.requestTimeout = config.requestTimeout();
 
+        // Apply bearer token first, then explicit headers (explicit headers take precedence)
+        if (config.bearerToken() != null && !config.bearerToken().isBlank()) {
+            builder.httpHeaders.put("Authorization", "Bearer " + config.bearerToken());
+        }
+
         switch (config.transportType()) {
             case STDIO -> {
                 if (config.command() == null || config.command().isEmpty()) {
@@ -118,12 +128,18 @@ public class McpClientBuilder {
                 if (config.headers() != null) {
                     builder.httpHeaders.putAll(config.headers());
                 }
+                if (config.queryParams() != null) {
+                    builder.httpQueryParams.putAll(config.queryParams());
+                }
                 builder.activeTransport = TransportType.STREAMABLE_HTTP;
             }
             case SSE -> {
                 builder.httpUrl = config.url();
                 if (config.headers() != null) {
                     builder.httpHeaders.putAll(config.headers());
+                }
+                if (config.queryParams() != null) {
+                    builder.httpQueryParams.putAll(config.queryParams());
                 }
                 builder.activeTransport = TransportType.SSE;
             }
@@ -156,6 +172,18 @@ public class McpClientBuilder {
     /** Adds an HTTP header (only applicable for HTTP/SSE transports). */
     public McpClientBuilder header(String key, String value) {
         this.httpHeaders.put(key, value);
+        return this;
+    }
+
+    /** Adds a query parameter (only applicable for HTTP/SSE transports). */
+    public McpClientBuilder queryParam(String key, String value) {
+        this.httpQueryParams.put(key, value);
+        return this;
+    }
+
+    /** Sets a bearer token as an {@code Authorization: Bearer <token>} header. */
+    public McpClientBuilder bearerToken(String token) {
+        this.httpHeaders.put("Authorization", "Bearer " + token);
         return this;
     }
 
@@ -212,12 +240,13 @@ public class McpClientBuilder {
         if (!stdioEnv.isEmpty()) {
             paramsBuilder.env(stdioEnv);
         }
-        return new StdioClientTransport(paramsBuilder.build(), McpJsonMapper.getDefault());
+        return new StdioClientTransport(paramsBuilder.build(), new JacksonMcpJsonMapper(new ObjectMapper()));
     }
 
     private McpClientTransport createStreamableHttpTransport() {
+        String resolvedUrl = appendQueryParams(httpUrl);
         HttpClientStreamableHttpTransport.Builder builder =
-                HttpClientStreamableHttpTransport.builder(httpUrl);
+                HttpClientStreamableHttpTransport.builder(resolvedUrl);
         if (!httpHeaders.isEmpty()) {
             builder.customizeRequest(requestBuilder -> httpHeaders.forEach(requestBuilder::header));
         }
@@ -225,11 +254,28 @@ public class McpClientBuilder {
     }
 
     private McpClientTransport createSseTransport() {
+        String resolvedUrl = appendQueryParams(httpUrl);
         HttpClientSseClientTransport.Builder builder =
-                HttpClientSseClientTransport.builder(httpUrl);
+                HttpClientSseClientTransport.builder(resolvedUrl);
         if (!httpHeaders.isEmpty()) {
             builder.customizeRequest(requestBuilder -> httpHeaders.forEach(requestBuilder::header));
         }
         return builder.build();
+    }
+
+    private String appendQueryParams(String baseUrl) {
+        if (httpQueryParams.isEmpty()) {
+            return baseUrl;
+        }
+        String queryString =
+                httpQueryParams.entrySet().stream()
+                        .map(
+                                e ->
+                                        URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8)
+                                                + "="
+                                                + URLEncoder.encode(
+                                                        e.getValue(), StandardCharsets.UTF_8))
+                        .collect(Collectors.joining("&"));
+        return baseUrl.contains("?") ? baseUrl + "&" + queryString : baseUrl + "?" + queryString;
     }
 }

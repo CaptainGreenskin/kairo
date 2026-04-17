@@ -15,7 +15,6 @@
  */
 package io.kairo.core.agent;
 
-import io.kairo.api.Experimental;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.context.ContextManager;
@@ -234,7 +233,6 @@ public class AgentBuilder {
      * @param args additional command arguments
      * @return this builder
      */
-    @Experimental("MCP integration is experimental; API may change before v0.3.0")
     public AgentBuilder mcpServer(String name, String command, String... args) {
         try {
             Class<?> configClass = Class.forName("io.kairo.mcp.McpServerConfig");
@@ -265,7 +263,6 @@ public class AgentBuilder {
      * @param mcpServerConfig the MCP server config
      * @return this builder
      */
-    @Experimental("MCP integration is experimental; API may change before v0.3.0")
     public AgentBuilder mcpServer(Object mcpServerConfig) {
         Objects.requireNonNull(mcpServerConfig, "mcpServerConfig must not be null");
         mcpServerConfigs.add(mcpServerConfig);
