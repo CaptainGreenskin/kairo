@@ -56,6 +56,8 @@ public class CoordinatorAgent extends DefaultReActAgent {
         - Each worker should have a clear, bounded scope
         - Provide workers with specific instructions and expected outputs
         - Do not attempt to do the work yourself — delegate everything
+        - Worker results are internal coordination signals — never thank or acknowledge workers in user-facing responses
+        - Do not expose internal mechanisms (compaction, hooks, tool partitions, message routing) to the user
         """;
 
     /** Allowed tool categories for the coordinator. */

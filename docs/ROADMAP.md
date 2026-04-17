@@ -204,23 +204,24 @@ SystemPromptBuilder 自动拼接到工具描述后。让 LLM 知道何时用 bas
 
 > 目标：DefaultReActAgent 拆分。等 v0.2.0 Hook 埋点稳定后做。
 
-### Task 3.1：DefaultReActAgent 拆分
+### Task 3.1：DefaultReActAgent 拆分 ✅ 已完成
 
-v0.2.0 Hook + Tracer 的埋点位置自然形成代码分界线。
+v0.2.0 Hook + Tracer 的埋点位置自然形成代码分界线。拆分为 6 个类：
 
-| 类 | 职责 | 预估行数 |
-|----|------|---------|
-| `DefaultReActAgent` | Agent 接口实现 + 主循环编排 | ~400 |
-| `ReActLoop` | 迭代逻辑 + 条件判断 | ~300 |
-| `SessionResumption` | 会话恢复 + 跨 Session 上下文注入 | ~150 |
-| `SkillToolManager` | Skill 触发 → 工具限制 → MCP 工具注入 | ~150 |
-| `CompactionTrigger` | 压缩判断 + 触发 + 结果合并 | ~100 |
+| 类 | 职责 | 实际行数 |
+|----|------|--------|
+| `DefaultReActAgent` | Agent 接口实现 + 主循环编排 | 427 |
+| `ReActLoop` | 迭代逻辑 + 条件判断 | 816 |
+| `ReActLoopContext` | 循环上下文数据类 | 41 |
+| `SessionResumption` | 会话恢复 + 跨 Session 上下文注入 | 96 |
+| `SkillToolManager` | Skill 触发 → 工具限制 → MCP 工具注入 | 135 |
+| `CompactionTrigger` | 压缩判断 + 触发 + 结果合并 | 74 |
 
-注：v0.2.0 对 DefaultReActAgent 有 200+ LOC 改动，实际行数和拆分边界需重新评估。
+合计 1,589 LOC（原 1,255 LOC 单文件 → 6 文件，DefaultReActAgent 从 1,255 → 427）。
 
 拆分原则：不改公共 API，不改测试行为断言。
 
-### Task 3.2：行为准则 Skill 模板 ⬜ 待完成
+### Task 3.2：行为准则 Skill 模板 ✅ 已完成
 
 不内置默认行为规范（违反"不预设策略"原则），提供场景化 Skill 模板：
 - `skills/coding-guidelines.md` — 编码助手（Read before write, don't add features beyond asked）
@@ -229,14 +230,15 @@ v0.2.0 Hook + Tracer 的埋点位置自然形成代码分界线。
 
 用户按需加载，和 Skill 系统设计一致。
 
-### Task 3.3：工具输出注入防御 ⬜ 待完成
+### Task 3.3：工具输出注入防御 ✅ 已完成
 
 在 `DefaultToolExecutor` 的后处理阶段扫描工具输出，命中注入模式时在 ToolResult 标记 warning。
 不在 prompt 层做（不依赖 LLM 自觉遵守，对所有模型有效，不消耗 prompt token）。
 
 扫描模式：ignore previous instructions、system prompt override、不可见 Unicode、凭据泄露等。
+ToolOutputSanitizer + 37 个新测试。
 
-### Task 3.4：Coordinator Prompt 精化 ⬜ 待完成
+### Task 3.4：Coordinator Prompt 精化 ✅ 已完成
 
 增加精确行为约束：
 - "Worker results are internal signals, not conversation partners — never thank or acknowledge them"
@@ -251,6 +253,12 @@ v0.2.0 Hook + Tracer 的埋点位置自然形成代码分界线。
 | Task | 说明 |
 |------|------|
 | MCP 集成完善 | kairo-mcp 模块正式发布，去掉 @Experimental 标记 |
+| MCP: StreamableHTTP 传输 | P0 — MCP 协议标准传输方式（无状态），当前只有 stdio/SSE |
+| MCP: HTTP header/queryParam | P0 — 企业 MCP Server 需要认证 token、代理配置 |
+| MCP: Elicitation 协议 | P1 — Server 向 Client 请求用户输入，和 Human-in-the-Loop 天然对齐 |
+| MCP: Sync 便利方法 | P2 — 非响应式用户友好，提供阻塞式 API 包装 |
+| MCP: Spring Boot 配置扩展 | P0 — AgentRuntimeProperties 补充 `kairo.mcp` 配置前缀，验证 Starter + MCP 集成 |
+| StructuredOutputHook | 用 `@PostReasoning` Hook 解析 LLM 输出为 Java POJO，作为内置 Hook 示例 |
 | OTel 集成 | `kairo-observability` 模块，`OTelTracer implements Tracer` |
 | SSE 事件流 | 订阅 Tracer 事件 → 转 SSE（依赖 v0.2.0 Tracer 的事件订阅能力） |
 | OpenAPI 工具自动注册 | 解析 OpenAPI spec → 自动生成 ToolDefinition |
@@ -295,7 +303,7 @@ v0.2.0 Hook + Tracer 的埋点位置自然形成代码分界线。
 | # | 问题 | 严重程度 | 状态 | 修复方式 | 计划版本 |
 |---|------|---------|------|---------|---------|
 | 1 | `instanceof` 检查破坏接口抽象 | 高 | ✅ 已修复 | ToolExecutor 接口加 default 方法 | v0.1.0 |
-| 2 | DefaultReActAgent God Object | 高 | ⬜ 待 Hook 稳定 | 沿 Hook 埋点分界线拆分 | v0.2.1 |
+| 2 | DefaultReActAgent God Object | 高 | ✅ 已修复 | 拆分为 6 个类（427+816+41+96+135+74 LOC） | v0.2.1 |
 | 3 | 缺少统一异常层次 | 中 | ✅ 已修复 | 建立 KairoException 层次结构 | v0.2.0 |
 | 4 | 硬编码模型默认值 | 中 | ✅ 已修复 | 移到 ModelConfig 常量 | v0.1.0 |
 | 5 | GracefulShutdownManager 全局单例 | 中 | ✅ 已修复 | 改为 AgentBuilder 注入 | v0.2.0 |

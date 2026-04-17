@@ -22,6 +22,7 @@ import io.kairo.core.plan.PlanModeViolationException;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -352,7 +353,8 @@ public class DefaultToolExecutor implements ToolExecutor {
                                                                                         + " system"
                                                                                         + " shutdown")));
                                         return Mono.firstWithSignal(execution, shutdownGuard)
-                                                .doOnNext(this::trackCircuitBreaker);
+                                                .doOnNext(this::trackCircuitBreaker)
+                                                .map(this::applySanitizer);
                                     });
                 });
     }
@@ -588,6 +590,34 @@ public class DefaultToolExecutor implements ToolExecutor {
     @Override
     public void resetCircuitBreaker(String toolName) {
         consecutiveFailures.remove(toolName);
+    }
+
+    /**
+     * Apply the {@link ToolOutputSanitizer} to a tool result and attach any warnings as metadata.
+     *
+     * <p>If the scan produces warnings, a new {@link ToolResult} is returned with an
+     * {@code "injection_warning"} metadata entry containing the warning list. The original result
+     * is returned unchanged when no warnings are found.
+     *
+     * @param result the original tool result
+     * @return the result, possibly enriched with warning metadata
+     */
+    private ToolResult applySanitizer(ToolResult result) {
+        if (result.isError()) {
+            return result;
+        }
+        var scanResult = ToolOutputSanitizer.scan(result.content());
+        if (!scanResult.hasWarnings()) {
+            return result;
+        }
+        log.warn(
+                "Tool '{}' output triggered {} injection warning(s): {}",
+                result.toolUseId(),
+                scanResult.warnings().size(),
+                scanResult.warnings());
+        var enrichedMetadata = new HashMap<>(result.metadata());
+        enrichedMetadata.put("injection_warning", scanResult.warnings());
+        return new ToolResult(result.toolUseId(), result.content(), result.isError(), enrichedMetadata);
     }
 
     /** Create an error {@link ToolResult}. */
