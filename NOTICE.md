@@ -14,9 +14,9 @@ open-source projects:
 - Project: [AgentScope Java](https://github.com/agentscope-ai/agentscope-java)
 - Copyright: 2024-2026 the original author or authors (Alibaba)
 - License: Apache License 2.0
-- Usage: Kairo's modular Maven structure, SPI interface design, Hook lifecycle
-  system, Skill system architecture, and Spring Boot starter patterns were
-  influenced by AgentScope Java's approach to agent-oriented programming.
+- Usage: Kairo's modular Maven structure and Hook lifecycle concept were
+  inspired by AgentScope's approach to agent-oriented programming architecture.
+  (No runtime dependency on AgentScope Java.)
 
 ### Claude Code (Anthropic)
 
@@ -27,12 +27,3 @@ open-source projects:
   read/write tool partitioning, plan mode isolation, and dangerous command
   pattern detection were inspired by design patterns from Anthropic's
   Claude Code.
-
-### Hermes Agent (Nous Research)
-
-- Project: [Hermes Agent](https://github.com/NousResearch/hermes-agent)
-- Copyright: 2025 Nous Research
-- License: MIT License
-- Usage: Kairo's Markdown-based skill system with frontmatter metadata parsing
-  and the skill trigger guard concept were influenced by Hermes Agent's
-  skills system and skills_guard implementation.

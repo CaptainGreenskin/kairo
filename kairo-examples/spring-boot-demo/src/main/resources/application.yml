@@ -1,0 +1,52 @@
+server:
+  port: 8080
+
+kairo:
+  model:
+    # Supported providers: anthropic, openai
+    provider: anthropic
+    # API key — reads from env var ANTHROPIC_API_KEY if not set here
+    # api-key: ${ANTHROPIC_API_KEY:}
+    model-name: claude-sonnet-4-20250514
+    max-tokens: 4096
+    temperature: 0.7
+
+  agent:
+    name: demo-agent
+    system-prompt: >
+      You are a helpful assistant integrated into a Spring Boot application via the Kairo framework.
+      Keep responses concise and helpful.
+    max-iterations: 10
+    timeout-seconds: 120
+    token-budget: 50000
+
+  tool:
+    # Enable/disable built-in tool categories
+    enable-file-tools: false
+    enable-exec-tools: false
+    enable-info-tools: false
+    enable-agent-tools: false
+
+  memory:
+    type: in-memory
+
+# Uncomment below to configure MCP servers via Spring properties:
+# kairo:
+#   mcp:
+#     servers:
+#       my-server:
+#         transport: HTTP
+#         http:
+#           url: http://localhost:3000/mcp
+#       local-tools:
+#         transport: STDIO
+#         stdio:
+#           command: npx
+#           args:
+#             - -y
+#             - @modelcontextprotocol/server-filesystem
+#             - /tmp
+
+logging:
+  level:
+    io.kairo: DEBUG

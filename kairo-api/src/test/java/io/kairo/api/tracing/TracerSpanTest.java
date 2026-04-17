@@ -48,6 +48,11 @@ class TracerSpanTest {
         assertDoesNotThrow(() -> span.setStatus(false, "error"));
         assertDoesNotThrow(span::end);
 
+        // addEvent default methods should be no-ops (no throw)
+        assertDoesNotThrow(() -> span.addEvent("test.event"));
+        assertDoesNotThrow(() -> span.addEvent("test.event", Map.of("key", "value")));
+        assertDoesNotThrow(() -> span.addEvent("test.event", Map.of()));
+
         // Verify return values
         assertEquals("", span.spanId());
         assertEquals("", span.name());

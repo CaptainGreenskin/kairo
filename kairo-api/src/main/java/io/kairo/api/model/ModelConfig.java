@@ -46,7 +46,8 @@ public record ModelConfig(
         List<String> fallbackModels,
         Integer thinkingBudget,
         ToolVerbosity toolVerbosity,
-        List<SystemPromptSegment> systemPromptSegments) {
+        List<SystemPromptSegment> systemPromptSegments,
+        Class<?> responseSchema) {
 
     /**
      * Default model name used when no model is explicitly configured.
@@ -111,6 +112,7 @@ public record ModelConfig(
                 fallbackModels,
                 thinkingBudget,
                 toolVerbosity,
+                null,
                 null);
     }
 
@@ -145,6 +147,7 @@ public record ModelConfig(
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -155,6 +158,36 @@ public record ModelConfig(
      * @param budgetTokens the token budget for thinking
      */
     public record ThinkingConfig(boolean enabled, int budgetTokens) {}
+
+    /**
+     * Backward-compatible constructor without {@code responseSchema}.
+     */
+    public ModelConfig(
+            String model,
+            int maxTokens,
+            double temperature,
+            List<ToolDefinition> tools,
+            ThinkingConfig thinking,
+            String systemPrompt,
+            Map<String, String> systemPromptParts,
+            List<String> fallbackModels,
+            Integer thinkingBudget,
+            ToolVerbosity toolVerbosity,
+            List<SystemPromptSegment> systemPromptSegments) {
+        this(
+                model,
+                maxTokens,
+                temperature,
+                tools,
+                thinking,
+                systemPrompt,
+                systemPromptParts,
+                fallbackModels,
+                thinkingBudget,
+                toolVerbosity,
+                systemPromptSegments,
+                null);
+    }
 
     /**
      * Create a new {@link Builder} for constructing a {@link ModelConfig}.
@@ -178,6 +211,7 @@ public record ModelConfig(
         private Integer thinkingBudget;
         private ToolVerbosity toolVerbosity;
         private List<SystemPromptSegment> systemPromptSegments;
+        private Class<?> responseSchema;
 
         private Builder() {}
 
@@ -331,6 +365,21 @@ public record ModelConfig(
         }
 
         /**
+         * Set the response schema class for structured output.
+         *
+         * <p>When set, the provider will constrain the model output to match the JSON schema
+         * derived from this class. Use {@link ModelResponse#contentAs(Class)} to deserialize
+         * the response.
+         *
+         * @param responseSchema the class whose JSON schema constrains the output, or null to disable
+         * @return this builder
+         */
+        public Builder responseSchema(Class<?> responseSchema) {
+            this.responseSchema = responseSchema;
+            return this;
+        }
+
+        /**
          * Build an immutable {@link ModelConfig} from the current builder state.
          *
          * @return the constructed config
@@ -349,7 +398,8 @@ public record ModelConfig(
                     fallbackModels != null ? List.copyOf(fallbackModels) : null,
                     thinkingBudget,
                     toolVerbosity,
-                    systemPromptSegments != null ? List.copyOf(systemPromptSegments) : null);
+                    systemPromptSegments != null ? List.copyOf(systemPromptSegments) : null,
+                    responseSchema);
         }
     }
 }

@@ -20,6 +20,7 @@ import io.kairo.api.skill.SkillDefinition;
 import io.kairo.api.skill.SkillRegistry;
 import io.kairo.api.skill.TriggerGuard;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -28,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -40,29 +42,45 @@ import reactor.core.scheduler.Schedulers;
  * Default implementation of {@link SkillRegistry}.
  *
  * <p>Maintains an in-memory registry of skills backed by a {@link ConcurrentHashMap}. Supports
- * loading skills from local files and remote URLs.
+ * loading skills from local files, remote URLs (with TTL caching), and classpath resources.
  */
 public class DefaultSkillRegistry implements SkillRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultSkillRegistry.class);
 
+    /** Default TTL for URL-loaded skill cache entries (1 hour). */
+    private static final Duration DEFAULT_URL_CACHE_TTL = Duration.ofHours(1);
+
     private final ConcurrentHashMap<String, SkillDefinition> skills = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, CacheEntry> urlCache = new ConcurrentHashMap<>();
     private final TriggerGuard triggerGuard;
     private final SkillMarkdownParser parser;
+    private final Duration urlCacheTtl;
 
-    /** Create a registry with a default {@link DefaultTriggerGuard}. */
+    /** Create a registry with a default {@link DefaultTriggerGuard} and default TTL. */
     public DefaultSkillRegistry() {
         this(new DefaultTriggerGuard());
     }
 
     /**
-     * Create a registry with a custom trigger guard.
+     * Create a registry with a custom trigger guard and default TTL.
      *
      * @param triggerGuard the trigger guard for activation decisions
      */
     public DefaultSkillRegistry(TriggerGuard triggerGuard) {
+        this(triggerGuard, DEFAULT_URL_CACHE_TTL);
+    }
+
+    /**
+     * Create a registry with a custom trigger guard and custom cache TTL.
+     *
+     * @param triggerGuard the trigger guard for activation decisions
+     * @param urlCacheTtl the TTL for URL-loaded skill cache entries
+     */
+    public DefaultSkillRegistry(TriggerGuard triggerGuard, Duration urlCacheTtl) {
         this.triggerGuard = triggerGuard;
         this.parser = new SkillMarkdownParser();
+        this.urlCacheTtl = urlCacheTtl;
     }
 
     /**
@@ -119,33 +137,104 @@ public class DefaultSkillRegistry implements SkillRegistry {
 
     @Override
     public Mono<SkillDefinition> loadFromUrl(String url) {
-        return Mono.fromCallable(
+        return Mono.defer(
                         () -> {
-                            HttpClient client =
-                                    HttpClient.newBuilder()
-                                            .connectTimeout(Duration.ofSeconds(10))
-                                            .build();
-                            HttpRequest request =
-                                    HttpRequest.newBuilder()
-                                            .uri(URI.create(url))
-                                            .timeout(Duration.ofSeconds(30))
-                                            .GET()
-                                            .build();
-
-                            HttpResponse<String> response =
-                                    client.send(request, HttpResponse.BodyHandlers.ofString());
-                            if (response.statusCode() != 200) {
-                                throw new IOException(
-                                        "Failed to download skill from "
-                                                + url
-                                                + ": HTTP "
-                                                + response.statusCode());
+                            // Check TTL cache first
+                            CacheEntry cached = urlCache.get(url);
+                            if (cached != null && !cached.isExpired(urlCacheTtl)) {
+                                log.debug("URL cache hit for: {}", url);
+                                return Mono.just(cached.skill());
                             }
 
-                            SkillDefinition skill = parser.parse(response.body());
-                            register(skill);
-                            return skill;
+                            return Mono.fromCallable(
+                                            () -> {
+                                                log.debug("Fetching skill from URL: {}", url);
+                                                HttpClient client =
+                                                        HttpClient.newBuilder()
+                                                                .connectTimeout(
+                                                                        Duration.ofSeconds(10))
+                                                                .build();
+                                                HttpRequest request =
+                                                        HttpRequest.newBuilder()
+                                                                .uri(URI.create(url))
+                                                                .timeout(Duration.ofSeconds(30))
+                                                                .GET()
+                                                                .build();
+
+                                                HttpResponse<String> response =
+                                                        client.send(
+                                                                request,
+                                                                HttpResponse.BodyHandlers
+                                                                        .ofString());
+                                                if (response.statusCode() != 200) {
+                                                    throw new IOException(
+                                                            "Failed to download skill from "
+                                                                    + url
+                                                                    + ": HTTP "
+                                                                    + response.statusCode());
+                                                }
+
+                                                SkillDefinition skill =
+                                                        parser.parse(response.body());
+                                                register(skill);
+
+                                                // Update cache
+                                                urlCache.put(url, new CacheEntry(skill));
+                                                log.debug(
+                                                        "Cached skill '{}' from URL: {}",
+                                                        skill.name(),
+                                                        url);
+                                                return skill;
+                                            })
+                                    .subscribeOn(Schedulers.boundedElastic());
+                        });
+    }
+
+    @Override
+    public Mono<SkillDefinition> loadFromClasspath(String resourcePath) {
+        return Mono.fromCallable(
+                        () -> {
+                            InputStream is =
+                                    getClass().getClassLoader().getResourceAsStream(resourcePath);
+                            if (is == null) {
+                                throw new IOException(
+                                        "Classpath resource not found: " + resourcePath);
+                            }
+                            try (is) {
+                                String content = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                                SkillDefinition skill = parser.parse(content);
+                                register(skill);
+                                return skill;
+                            }
                         })
                 .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /**
+     * Get the current size of the URL cache.
+     *
+     * @return number of cached entries
+     */
+    int urlCacheSize() {
+        return urlCache.size();
+    }
+
+    /**
+     * Clear the URL cache. Useful for testing or forcing re-fetch.
+     */
+    void clearUrlCache() {
+        urlCache.clear();
+    }
+
+    /** Internal cache entry holding a skill and its load timestamp. */
+    record CacheEntry(SkillDefinition skill, Instant loadedAt) {
+
+        CacheEntry(SkillDefinition skill) {
+            this(skill, Instant.now());
+        }
+
+        boolean isExpired(Duration ttl) {
+            return Instant.now().isAfter(loadedAt.plus(ttl));
+        }
     }
 }

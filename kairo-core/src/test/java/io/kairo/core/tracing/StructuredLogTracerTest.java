@@ -21,6 +21,7 @@ import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.tracing.Span;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -129,5 +130,62 @@ class StructuredLogTracerTest {
         assertDoesNotThrow(iterSpan::end);
         agentSpan.setStatus(true, "completed");
         assertDoesNotThrow(agentSpan::end);
+    }
+
+    @Test
+    @DisplayName("addEvent records event with attributes on StructuredLogSpan")
+    void span_addEventWithAttributes() {
+        Msg input = Msg.of(MsgRole.USER, "test");
+        Span span = tracer.startAgentSpan("myAgent", input);
+
+        span.addEvent("model.request", Map.of("model", "gpt-4", "tokens", 100));
+
+        StructuredLogTracer.StructuredLogSpan logSpan =
+                (StructuredLogTracer.StructuredLogSpan) span;
+        List<Map<String, Object>> events = logSpan.events();
+        assertEquals(1, events.size());
+        assertEquals("model.request", events.get(0).get("name"));
+        assertNotNull(events.get(0).get("timestamp"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> attrs = (Map<String, Object>) events.get(0).get("attributes");
+        assertEquals("gpt-4", attrs.get("model"));
+        assertEquals(100, attrs.get("tokens"));
+        assertDoesNotThrow(span::end);
+    }
+
+    @Test
+    @DisplayName("addEvent without attributes records event without attributes key")
+    void span_addEventWithoutAttributes() {
+        Msg input = Msg.of(MsgRole.USER, "test");
+        Span span = tracer.startAgentSpan("myAgent", input);
+
+        span.addEvent("simple.event");
+
+        StructuredLogTracer.StructuredLogSpan logSpan =
+                (StructuredLogTracer.StructuredLogSpan) span;
+        List<Map<String, Object>> events = logSpan.events();
+        assertEquals(1, events.size());
+        assertEquals("simple.event", events.get(0).get("name"));
+        assertFalse(events.get(0).containsKey("attributes"));
+        assertDoesNotThrow(span::end);
+    }
+
+    @Test
+    @DisplayName("multiple addEvent calls accumulate events")
+    void span_multipleAddEvents() {
+        Msg input = Msg.of(MsgRole.USER, "test");
+        Span span = tracer.startAgentSpan("myAgent", input);
+
+        span.addEvent("event1");
+        span.addEvent("event2", Map.of("key", "val"));
+        span.addEvent("event3");
+
+        StructuredLogTracer.StructuredLogSpan logSpan =
+                (StructuredLogTracer.StructuredLogSpan) span;
+        assertEquals(3, logSpan.events().size());
+        assertEquals("event1", logSpan.events().get(0).get("name"));
+        assertEquals("event2", logSpan.events().get(1).get("name"));
+        assertEquals("event3", logSpan.events().get(2).get("name"));
+        assertDoesNotThrow(span::end);
     }
 }

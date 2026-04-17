@@ -15,6 +15,8 @@
  */
 package io.kairo.spring;
 
+import io.kairo.mcp.AutoApproveElicitationHandler;
+import io.kairo.mcp.ElicitationHandler;
 import io.kairo.mcp.McpClientRegistry;
 import io.kairo.mcp.McpServerConfig;
 import java.util.ArrayList;
@@ -42,6 +44,12 @@ import org.springframework.context.annotation.Bean;
 public class McpAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(McpAutoConfiguration.class);
+
+    @Bean
+    @ConditionalOnMissingBean
+    public ElicitationHandler defaultElicitationHandler() {
+        return new AutoApproveElicitationHandler();
+    }
 
     @Bean
     @ConditionalOnMissingBean

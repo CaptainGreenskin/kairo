@@ -170,9 +170,8 @@ mvn exec:java -pl kairo-examples \
 
 Kairo 受到以下开源项目的启发：
 
-- [AgentScope Java](https://github.com/agentscope-ai/agentscope-java)（Apache 2.0，阿里巴巴）— Kairo 的模块化架构、SPI 接口设计、Hook 生命周期系统和 Spring Boot 集成模式受到 AgentScope Java 的影响。
+- [AgentScope Java](https://github.com/agentscope-ai/agentscope-java)（Apache 2.0，阿里巴巴）— Kairo 的模块化 Maven 结构和 Hook 生命周期概念受到 AgentScope 的 Agent 式编程架构方法的启发。（无运行时依赖 AgentScope Java。）
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code)（Anthropic）— Kairo 的三态权限模型（allow/ask/deny）、上下文压缩策略、读写工具分区和计划模式隔离受到 Anthropic Claude Code 设计模式的启发。
-- [Hermes Agent](https://github.com/NousResearch/hermes-agent)（MIT，Nous Research）— Kairo 的 Markdown 技能系统（frontmatter 元数据解析）和触发守卫概念受到 Hermes Agent 技能系统的影响。
 
 Kairo 在此基础上做出了原创贡献，包括 OS 隐喻架构、多级上下文压缩管道、带反污染设计的技能系统，以及深度 Anthropic Prompt Caching 集成。
 

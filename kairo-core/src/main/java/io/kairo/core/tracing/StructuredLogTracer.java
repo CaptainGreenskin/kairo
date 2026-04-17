@@ -20,6 +20,8 @@ import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -66,6 +68,7 @@ public class StructuredLogTracer implements Tracer {
         private final Map<String, Object> attributes = new ConcurrentHashMap<>();
         private boolean success = true;
         private String statusMessage;
+        private final List<Map<String, Object>> events = new ArrayList<>();
 
         StructuredLogSpan(String type, String name, Span parent) {
             this.id = UUID.randomUUID().toString().substring(0, 8);
@@ -100,6 +103,26 @@ public class StructuredLogTracer implements Tracer {
         public void setStatus(boolean success, String message) {
             this.success = success;
             this.statusMessage = message;
+        }
+
+        @Override
+        public void addEvent(String name, Map<String, Object> attributes) {
+            Map<String, Object> event = new ConcurrentHashMap<>();
+            event.put("type", "event");
+            event.put("spanId", id);
+            event.put("name", name);
+            event.put("timestamp", Instant.now().toString());
+            if (attributes != null && !attributes.isEmpty()) {
+                event.put("attributes", attributes);
+            }
+            events.add(event);
+            log.info("[Event] {} | spanId={} | attrs={}", name, id,
+                    attributes != null && !attributes.isEmpty() ? attributes : "{}");
+        }
+
+        /** Returns recorded events for testing. */
+        List<Map<String, Object>> events() {
+            return events;
         }
 
         @Override

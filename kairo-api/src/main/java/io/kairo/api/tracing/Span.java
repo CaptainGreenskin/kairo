@@ -15,6 +15,8 @@
  */
 package io.kairo.api.tracing;
 
+import java.util.Map;
+
 /**
  * Represents a unit of work in a trace. Designed to map 1:1 to OpenTelemetry Span for zero-adapter
  * bridging in v0.3.0.
@@ -35,4 +37,24 @@ public interface Span {
     void setStatus(boolean success, String message);
 
     void end();
+
+    /**
+     * Record a timestamped event on this span.
+     * Events enable deterministic replay by capturing full input/output snapshots.
+     *
+     * @param name event name (e.g., "model.request", "tool.result", "compaction.before")
+     * @param attributes event attributes (key-value pairs)
+     */
+    default void addEvent(String name, Map<String, Object> attributes) {
+        // no-op by default — implementations override
+    }
+
+    /**
+     * Record a simple named event without attributes.
+     *
+     * @param name event name
+     */
+    default void addEvent(String name) {
+        addEvent(name, Map.of());
+    }
 }

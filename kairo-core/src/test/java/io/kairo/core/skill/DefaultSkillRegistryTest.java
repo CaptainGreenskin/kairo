@@ -23,10 +23,14 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
+import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.MockWebServer;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import reactor.test.StepVerifier;
@@ -35,6 +39,21 @@ class DefaultSkillRegistryTest {
 
     private DefaultSkillRegistry registry;
     private boolean yamlAvailable;
+
+    private static final String VALID_SKILL_MARKDOWN =
+            """
+            ---
+            name: remote-skill
+            version: 1.0.0
+            category: CODE
+            triggers:
+              - "review code"
+              - "/review"
+            ---
+            # Remote Skill
+
+            Instructions for the remote skill.
+            """;
 
     @BeforeEach
     void setUp() {
@@ -58,6 +77,8 @@ class DefaultSkillRegistryTest {
     private SkillDefinition skill(String name, SkillCategory category) {
         return new SkillDefinition(name, "1.0.0", "desc", "instructions", List.of(), category);
     }
+
+    // ── Basic registry operations ──
 
     @Test
     @DisplayName("Register and lookup skill by name")
@@ -137,45 +158,6 @@ class DefaultSkillRegistryTest {
     }
 
     @Test
-    @DisplayName("loadFromFile reads file and delegates to parser")
-    void testLoadFromFile(@TempDir Path tempDir) throws IOException {
-        Assumptions.assumeTrue(yamlAvailable, "Skipping: jackson-dataformat-yaml version mismatch");
-
-        String markdown =
-                """
-                ---
-                name: file-skill
-                version: 1.0.0
-                category: CODE
-                ---
-                # File Skill
-
-                This skill was loaded from a file.
-                """;
-
-        Path skillFile = tempDir.resolve("skill.md");
-        Files.writeString(skillFile, markdown, StandardCharsets.UTF_8);
-
-        StepVerifier.create(registry.loadFromFile(skillFile))
-                .assertNext(
-                        skill -> {
-                            assertEquals("file-skill", skill.name());
-                            assertEquals(SkillCategory.CODE, skill.category());
-                        })
-                .verifyComplete();
-
-        assertTrue(registry.get("file-skill").isPresent());
-    }
-
-    @Test
-    @DisplayName("loadFromFile with non-existent file emits error")
-    void testLoadFromMissingFile(@TempDir Path tempDir) {
-        Path missing = tempDir.resolve("nonexistent.md");
-
-        StepVerifier.create(registry.loadFromFile(missing)).expectError(IOException.class).verify();
-    }
-
-    @Test
     @DisplayName("triggerGuard() returns the configured guard")
     void testTriggerGuardAccessor() {
         assertNotNull(registry.triggerGuard());
@@ -192,5 +174,319 @@ class DefaultSkillRegistryTest {
     @DisplayName("listByCategory on empty registry returns empty")
     void testEmptyListByCategory() {
         assertTrue(registry.listByCategory(SkillCategory.CODE).isEmpty());
+    }
+
+    // ── loadFromFile ──
+
+    @Nested
+    @DisplayName("loadFromFile")
+    class LoadFromFileTests {
+
+        @Test
+        @DisplayName("reads file and delegates to parser")
+        void testLoadFromFile(@TempDir Path tempDir) throws IOException {
+            Assumptions.assumeTrue(
+                    yamlAvailable, "Skipping: jackson-dataformat-yaml version mismatch");
+
+            Path skillFile = tempDir.resolve("skill.md");
+            Files.writeString(skillFile, VALID_SKILL_MARKDOWN, StandardCharsets.UTF_8);
+
+            StepVerifier.create(registry.loadFromFile(skillFile))
+                    .assertNext(
+                            skill -> {
+                                assertEquals("remote-skill", skill.name());
+                                assertEquals("1.0.0", skill.version());
+                                assertEquals(SkillCategory.CODE, skill.category());
+                                assertTrue(skill.hasInstructions());
+                            })
+                    .verifyComplete();
+
+            assertTrue(registry.get("remote-skill").isPresent());
+        }
+
+        @Test
+        @DisplayName("non-existent file emits error")
+        void testLoadFromMissingFile(@TempDir Path tempDir) {
+            Path missing = tempDir.resolve("nonexistent.md");
+
+            StepVerifier.create(registry.loadFromFile(missing))
+                    .expectError(IOException.class)
+                    .verify();
+        }
+
+        @Test
+        @DisplayName("malformed markdown emits error")
+        void testLoadFromMalformedFile(@TempDir Path tempDir) throws IOException {
+            Assumptions.assumeTrue(
+                    yamlAvailable, "Skipping: jackson-dataformat-yaml version mismatch");
+
+            Path bad = tempDir.resolve("bad.md");
+            Files.writeString(bad, "no front matter here", StandardCharsets.UTF_8);
+
+            StepVerifier.create(registry.loadFromFile(bad))
+                    .expectError(IllegalArgumentException.class)
+                    .verify();
+        }
+    }
+
+    // ── loadFromUrl ──
+
+    @Nested
+    @DisplayName("loadFromUrl")
+    class LoadFromUrlTests {
+
+        @Test
+        @DisplayName("loads skill from HTTP 200 response")
+        void testLoadFromUrl() throws Exception {
+            Assumptions.assumeTrue(
+                    yamlAvailable, "Skipping: jackson-dataformat-yaml version mismatch");
+
+            try (MockWebServer server = new MockWebServer()) {
+                server.enqueue(
+                        new MockResponse()
+                                .setResponseCode(200)
+                                .addHeader("Content-Type", "text/markdown")
+                                .setBody(VALID_SKILL_MARKDOWN));
+                server.start();
+
+                String url = server.url("/skills/remote-skill.md").toString();
+
+                StepVerifier.create(registry.loadFromUrl(url))
+                        .assertNext(
+                                skill -> {
+                                    assertEquals("remote-skill", skill.name());
+                                    assertEquals("1.0.0", skill.version());
+                                    assertEquals(SkillCategory.CODE, skill.category());
+                                    assertTrue(skill.hasInstructions());
+                                })
+                        .verifyComplete();
+
+                assertTrue(registry.get("remote-skill").isPresent());
+                assertEquals(1, registry.urlCacheSize());
+            }
+        }
+
+        @Test
+        @DisplayName("HTTP 404 emits IOException")
+        void testLoadFromUrl404() throws Exception {
+            try (MockWebServer server = new MockWebServer()) {
+                server.enqueue(new MockResponse().setResponseCode(404).setBody("Not Found"));
+                server.start();
+
+                String url = server.url("/missing.md").toString();
+
+                StepVerifier.create(registry.loadFromUrl(url))
+                        .expectErrorMatches(
+                                e ->
+                                        e instanceof IOException
+                                                && e.getMessage().contains("HTTP 404"))
+                        .verify();
+            }
+        }
+
+        @Test
+        @DisplayName("HTTP 500 emits IOException")
+        void testLoadFromUrl500() throws Exception {
+            try (MockWebServer server = new MockWebServer()) {
+                server.enqueue(
+                        new MockResponse().setResponseCode(500).setBody("Server Error"));
+                server.start();
+
+                String url = server.url("/error.md").toString();
+
+                StepVerifier.create(registry.loadFromUrl(url))
+                        .expectErrorMatches(
+                                e ->
+                                        e instanceof IOException
+                                                && e.getMessage().contains("HTTP 500"))
+                        .verify();
+            }
+        }
+
+        @Test
+        @DisplayName("malformed response body emits error")
+        void testLoadFromUrlMalformedBody() throws Exception {
+            try (MockWebServer server = new MockWebServer()) {
+                server.enqueue(
+                        new MockResponse()
+                                .setResponseCode(200)
+                                .setBody("not a valid skill markdown"));
+                server.start();
+
+                String url = server.url("/bad.md").toString();
+
+                StepVerifier.create(registry.loadFromUrl(url))
+                        .expectError(IllegalArgumentException.class)
+                        .verify();
+            }
+        }
+
+        @Test
+        @DisplayName("invalid URL emits error")
+        void testLoadFromInvalidUrl() {
+            StepVerifier.create(registry.loadFromUrl("not-a-url"))
+                    .expectError()
+                    .verify();
+        }
+    }
+
+    // ── loadFromClasspath ──
+
+    @Nested
+    @DisplayName("loadFromClasspath")
+    class LoadFromClasspathTests {
+
+        @Test
+        @DisplayName("loads skill from classpath resource")
+        void testLoadFromClasspath() {
+            Assumptions.assumeTrue(
+                    yamlAvailable, "Skipping: jackson-dataformat-yaml version mismatch");
+
+            StepVerifier.create(registry.loadFromClasspath("test-skill.md"))
+                    .assertNext(
+                            skill -> {
+                                assertEquals("test-skill", skill.name());
+                                assertEquals("2.0.0", skill.version());
+                                assertEquals(SkillCategory.CODE, skill.category());
+                                assertTrue(skill.hasInstructions());
+                                assertTrue(skill.isConditional());
+                                assertTrue(skill.hasToolRestrictions());
+                                assertEquals(List.of("**/*Test.java"), skill.pathPatterns());
+                                assertEquals(List.of("run_tests"), skill.requiredTools());
+                                assertEquals("macos", skill.platform());
+                                assertEquals(5, skill.matchScore());
+                                assertEquals(
+                                        List.of("run_tests", "read_file"), skill.allowedTools());
+                            })
+                    .verifyComplete();
+
+            assertTrue(registry.get("test-skill").isPresent());
+        }
+
+        @Test
+        @DisplayName("missing classpath resource emits IOException")
+        void testLoadFromClasspathMissing() {
+            StepVerifier.create(registry.loadFromClasspath("nonexistent-skill.md"))
+                    .expectErrorMatches(
+                            e ->
+                                    e instanceof IOException
+                                            && e.getMessage().contains("Classpath resource not found"))
+                    .verify();
+        }
+    }
+
+    // ── TTL Cache ──
+
+    @Nested
+    @DisplayName("URL TTL Cache")
+    class UrlCacheTests {
+
+        @Test
+        @DisplayName("second loadFromUrl returns cached result without HTTP call")
+        void testCacheHit() throws Exception {
+            Assumptions.assumeTrue(
+                    yamlAvailable, "Skipping: jackson-dataformat-yaml version mismatch");
+
+            try (MockWebServer server = new MockWebServer()) {
+                // Only enqueue ONE response — second call should use cache
+                server.enqueue(
+                        new MockResponse()
+                                .setResponseCode(200)
+                                .setBody(VALID_SKILL_MARKDOWN));
+                server.start();
+
+                String url = server.url("/cached-skill.md").toString();
+
+                // First call — fetches from server
+                StepVerifier.create(registry.loadFromUrl(url))
+                        .assertNext(s -> assertEquals("remote-skill", s.name()))
+                        .verifyComplete();
+
+                assertEquals(1, registry.urlCacheSize());
+
+                // Second call — should use cache (no second enqueued response)
+                StepVerifier.create(registry.loadFromUrl(url))
+                        .assertNext(s -> assertEquals("remote-skill", s.name()))
+                        .verifyComplete();
+
+                // Only one request was made to the server
+                assertEquals(1, server.getRequestCount());
+            }
+        }
+
+        @Test
+        @DisplayName("cache entry expires after TTL and re-fetches")
+        void testCacheExpiry() throws Exception {
+            Assumptions.assumeTrue(
+                    yamlAvailable, "Skipping: jackson-dataformat-yaml version mismatch");
+
+            // Use a zero-duration TTL so entries expire immediately
+            DefaultSkillRegistry shortTtlRegistry =
+                    new DefaultSkillRegistry(new DefaultTriggerGuard(), Duration.ZERO);
+
+            try (MockWebServer server = new MockWebServer()) {
+                // Enqueue two responses for the two fetches
+                server.enqueue(
+                        new MockResponse()
+                                .setResponseCode(200)
+                                .setBody(VALID_SKILL_MARKDOWN));
+                server.enqueue(
+                        new MockResponse()
+                                .setResponseCode(200)
+                                .setBody(VALID_SKILL_MARKDOWN));
+                server.start();
+
+                String url = server.url("/expiring-skill.md").toString();
+
+                // First call
+                StepVerifier.create(shortTtlRegistry.loadFromUrl(url))
+                        .assertNext(s -> assertEquals("remote-skill", s.name()))
+                        .verifyComplete();
+
+                // Second call — TTL=0 means immediately expired, should re-fetch
+                StepVerifier.create(shortTtlRegistry.loadFromUrl(url))
+                        .assertNext(s -> assertEquals("remote-skill", s.name()))
+                        .verifyComplete();
+
+                // Two requests were made
+                assertEquals(2, server.getRequestCount());
+            }
+        }
+
+        @Test
+        @DisplayName("clearUrlCache empties the cache")
+        void testClearCache() throws Exception {
+            Assumptions.assumeTrue(
+                    yamlAvailable, "Skipping: jackson-dataformat-yaml version mismatch");
+
+            try (MockWebServer server = new MockWebServer()) {
+                server.enqueue(
+                        new MockResponse()
+                                .setResponseCode(200)
+                                .setBody(VALID_SKILL_MARKDOWN));
+                server.enqueue(
+                        new MockResponse()
+                                .setResponseCode(200)
+                                .setBody(VALID_SKILL_MARKDOWN));
+                server.start();
+
+                String url = server.url("/clear-test.md").toString();
+
+                StepVerifier.create(registry.loadFromUrl(url))
+                        .assertNext(s -> assertNotNull(s))
+                        .verifyComplete();
+
+                assertEquals(1, registry.urlCacheSize());
+                registry.clearUrlCache();
+                assertEquals(0, registry.urlCacheSize());
+
+                // After clearing, the next call re-fetches
+                StepVerifier.create(registry.loadFromUrl(url))
+                        .assertNext(s -> assertNotNull(s))
+                        .verifyComplete();
+
+                assertEquals(2, server.getRequestCount());
+            }
+        }
     }
 }

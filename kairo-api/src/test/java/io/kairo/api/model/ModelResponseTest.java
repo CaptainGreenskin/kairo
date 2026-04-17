@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.message.Content;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class ModelResponseTest {
@@ -58,5 +59,67 @@ class ModelResponseTest {
         assertNotNull(ModelResponse.StopReason.valueOf("TOOL_USE"));
         assertNotNull(ModelResponse.StopReason.valueOf("MAX_TOKENS"));
         assertNotNull(ModelResponse.StopReason.valueOf("STOP_SEQUENCE"));
+    }
+
+    @Test
+    void contentAsDeserializesJson() {
+        String json = "{\"name\":\"Alice\",\"age\":30}";
+        ModelResponse response = new ModelResponse(
+                "r1", List.of(new Content.TextContent(json)),
+                new ModelResponse.Usage(0, 0, 0, 0),
+                ModelResponse.StopReason.END_TURN, "model");
+
+        TestPojo result = response.contentAs(TestPojo.class);
+        assertEquals("Alice", result.name);
+        assertEquals(30, result.age);
+    }
+
+    @Test
+    void contentAsThrowsOnNoTextContent() {
+        ModelResponse response = new ModelResponse(
+                "r1", List.of(),
+                new ModelResponse.Usage(0, 0, 0, 0),
+                ModelResponse.StopReason.END_TURN, "model");
+
+        assertThrows(IllegalStateException.class, () -> response.contentAs(TestPojo.class));
+    }
+
+    @Test
+    void contentAsThrowsOnInvalidJson() {
+        ModelResponse response = new ModelResponse(
+                "r1", List.of(new Content.TextContent("not json")),
+                new ModelResponse.Usage(0, 0, 0, 0),
+                ModelResponse.StopReason.END_TURN, "model");
+
+        assertThrows(IllegalStateException.class, () -> response.contentAs(TestPojo.class));
+    }
+
+    @Test
+    void contentAsOptionalReturnsOnSuccess() {
+        String json = "{\"name\":\"Bob\",\"age\":25}";
+        ModelResponse response = new ModelResponse(
+                "r1", List.of(new Content.TextContent(json)),
+                new ModelResponse.Usage(0, 0, 0, 0),
+                ModelResponse.StopReason.END_TURN, "model");
+
+        Optional<TestPojo> result = response.contentAsOptional(TestPojo.class);
+        assertTrue(result.isPresent());
+        assertEquals("Bob", result.get().name);
+    }
+
+    @Test
+    void contentAsOptionalReturnsEmptyOnFailure() {
+        ModelResponse response = new ModelResponse(
+                "r1", List.of(new Content.TextContent("invalid")),
+                new ModelResponse.Usage(0, 0, 0, 0),
+                ModelResponse.StopReason.END_TURN, "model");
+
+        Optional<TestPojo> result = response.contentAsOptional(TestPojo.class);
+        assertTrue(result.isEmpty());
+    }
+
+    public static class TestPojo {
+        public String name;
+        public int age;
     }
 }

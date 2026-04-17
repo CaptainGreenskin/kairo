@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.kairo</groupId>
+        <groupId>io.github.captaingreenskin</groupId>
         <artifactId>kairo-parent</artifactId>
         <version>${revision}</version>
     </parent>
@@ -28,22 +28,22 @@
 
         <!-- Kairo -->
         <dependency>
-            <groupId>io.kairo</groupId>
+            <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-core</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.kairo</groupId>
+            <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-tools</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.kairo</groupId>
+            <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-multi-agent</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.kairo</groupId>
+            <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-mcp</artifactId>
             <version>${project.version}</version>
             <optional>true</optional>

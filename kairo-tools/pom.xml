@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.kairo</groupId>
+        <groupId>io.github.captaingreenskin</groupId>
         <artifactId>kairo-parent</artifactId>
         <version>${revision}</version>
     </parent>
@@ -16,17 +16,17 @@
 
     <dependencies>
         <dependency>
-            <groupId>io.kairo</groupId>
+            <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-api</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.kairo</groupId>
+            <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-core</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.kairo</groupId>
+            <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-multi-agent</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -37,6 +37,10 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.swagger.parser.v3</groupId>
+            <artifactId>swagger-parser</artifactId>
         </dependency>
 
         <!-- Test -->

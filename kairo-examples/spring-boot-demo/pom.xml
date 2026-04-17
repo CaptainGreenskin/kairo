@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.0</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>io.github.captaingreenskin.examples</groupId>
+    <artifactId>spring-boot-demo</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <name>Kairo Spring Boot Demo</name>
+    <description>Demo Spring Boot application showcasing Kairo framework integration</description>
+
+    <properties>
+        <java.version>17</java.version>
+        <kairo.version>0.1.0-SNAPSHOT</kairo.version>
+    </properties>
+
+    <dependencies>
+        <!-- Kairo Spring Boot Starter (brings in kairo-core, kairo-tools, kairo-multi-agent, kairo-mcp) -->
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-spring-boot-starter</artifactId>
+            <version>${kairo.version}</version>
+        </dependency>
+
+        <!-- Kairo MCP -->
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-mcp</artifactId>
+            <version>${kairo.version}</version>
+        </dependency>
+
+        <!-- Kairo Observability (optional) -->
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-observability</artifactId>
+            <version>${kairo.version}</version>
+        </dependency>
+
+        <!-- Spring Boot Web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

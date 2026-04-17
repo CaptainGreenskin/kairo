@@ -25,6 +25,7 @@ import io.modelcontextprotocol.client.transport.StdioClientTransport;
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
+import java.util.function.Function;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -69,6 +70,9 @@ public class McpClientBuilder {
     private String httpUrl;
     private final Map<String, String> httpHeaders = new HashMap<>();
     private final Map<String, String> httpQueryParams = new HashMap<>();
+
+    // Elicitation handler
+    private ElicitationHandler elicitationHandler;
 
     private enum TransportType {
         STDIO,
@@ -206,6 +210,41 @@ public class McpClientBuilder {
     }
 
     /**
+     * Sets the elicitation handler for MCP server elicitation requests.
+     *
+     * <p>If not set, an {@link AutoApproveElicitationHandler} is used by default.
+     *
+     * @param handler the elicitation handler
+     * @return this builder
+     */
+    public McpClientBuilder onElicitation(ElicitationHandler handler) {
+        this.elicitationHandler = handler;
+        return this;
+    }
+
+    /**
+     * Builds a blocking synchronous client with the default timeout of 30 seconds.
+     *
+     * <p>The returned {@link McpSyncClient} wraps the async client and calls {@code .block()}
+     * on every method. Do NOT use in reactive pipelines.
+     *
+     * @return a synchronous MCP client
+     */
+    public McpSyncClient buildSync() {
+        return new McpSyncClient(build());
+    }
+
+    /**
+     * Builds a blocking synchronous client with a custom timeout.
+     *
+     * @param timeout the maximum duration to block on each call
+     * @return a synchronous MCP client
+     */
+    public McpSyncClient buildSync(Duration timeout) {
+        return new McpSyncClient(build(), timeout);
+    }
+
+    /**
      * Builds and returns the {@link McpAsyncClient} (not yet initialized).
      *
      * @return the MCP async client
@@ -217,10 +256,44 @@ public class McpClientBuilder {
         McpClientTransport transport = createTransport();
         McpSchema.Implementation clientInfo =
                 new McpSchema.Implementation(CLIENT_NAME, CLIENT_VERSION);
+
+        // Use AutoApproveElicitationHandler as default if no handler is set
+        ElicitationHandler effectiveHandler =
+                elicitationHandler != null
+                        ? elicitationHandler
+                        : new AutoApproveElicitationHandler();
+
+        // Adapt Kairo ElicitationHandler to MCP SDK Function
+        Function<McpSchema.ElicitRequest, reactor.core.publisher.Mono<McpSchema.ElicitResult>>
+                sdkHandler =
+                        sdkRequest -> {
+                            ElicitationRequest kairoRequest =
+                                    new ElicitationRequest(
+                                            sdkRequest.message(),
+                                            sdkRequest.requestedSchema());
+                            return effectiveHandler
+                                    .handle(kairoRequest)
+                                    .map(
+                                            kairoResponse -> {
+                                                McpSchema.ElicitResult.Action sdkAction =
+                                                        switch (kairoResponse.action()) {
+                                                            case ACCEPT -> McpSchema.ElicitResult
+                                                                    .Action.ACCEPT;
+                                                            case DECLINE -> McpSchema.ElicitResult
+                                                                    .Action.DECLINE;
+                                                            case CANCEL -> McpSchema.ElicitResult
+                                                                    .Action.CANCEL;
+                                                        };
+                                                return new McpSchema.ElicitResult(
+                                                        sdkAction, kairoResponse.data());
+                                            });
+                        };
+
         return McpClient.async(transport)
                 .requestTimeout(requestTimeout)
                 .initializationTimeout(initTimeout)
                 .clientInfo(clientInfo)
+                .elicitation(sdkHandler)
                 .build();
     }
 

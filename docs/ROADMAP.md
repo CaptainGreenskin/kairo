@@ -255,23 +255,27 @@ ToolOutputSanitizer + 37 个新测试。
 | MCP 集成完善 | kairo-mcp 模块正式发布，去掉 @Experimental 标记 | ✅ 已完成 |
 | MCP: StreamableHTTP 传输 | P0 — MCP SDK 1.1.1 内置 StreamableHTTP（无状态） | ✅ 已完成 |
 | MCP: HTTP header/queryParam | P0 — 企业 MCP Server 认证（headers, queryParams, bearerToken） | ✅ 已完成 |
-| MCP: Elicitation 协议 | P1 — Server 向 Client 请求用户输入，和 Human-in-the-Loop 天然对齐 | ⬜ |
-| MCP: Sync 便利方法 | P2 — 非响应式用户友好，提供阻塞式 API 包装 | ⬜ |
+| MCP: Elicitation 协议 | P1 — Server 向 Client 请求用户输入，和 Human-in-the-Loop 天然对齐 | ✅ 已完成 |
+| MCP: Sync 便利方法 | P2 — 非响应式用户友好，提供阻塞式 API 包装 | ✅ 已完成 |
 | MCP: Spring Boot 配置扩展 | P0 — `kairo.mcp.*` 配置前缀 + discriminator pattern | ✅ 已完成 |
-| StructuredOutputHook | 用 `@PostReasoning` Hook 解析 LLM 输出为 Java POJO，作为内置 Hook 示例 | ⬜ |
+| Structured Output | `ModelConfig.responseSchema()` + `ModelResponse.contentAs()` — 原生 API 结构化输出（OpenAI response_format, Anthropic prompt injection + parse） | ✅ 已完成 |
 | OTel 集成 | `kairo-observability` 模块：OTelTracer, OTelSpan, GenAiSemanticAttributes, OTelTracerFactory | ✅ 已完成 |
 | CacheBreakDetector | AnthropicProvider 缓存命中率监控（cache.hit_ratio, cache.broken span 属性） | ✅ 已完成 |
-| SSE 事件流 | 订阅 Tracer 事件 → 转 SSE（依赖 v0.2.0 Tracer 的事件订阅能力） | ⬜ |
-| OpenAPI 工具自动注册 | 解析 OpenAPI spec → 自动生成 ToolDefinition | ⬜ |
-| Skill 远程加载 | `SkillRegistry.loadFromUrl()` | ⬜ |
-| AnthropicProvider 拆分 | HTTP 客户端 / API 网关 / 响应解析分离（内部可维护性） | ⬜ |
-| ProviderPresets 便利层 | 预设 Provider 配置（智谱 Coding Plan / GLM API / Qwen 等），一行代码接入 | ⬜ |
-| Span.addEvent + 确定性回放 | Span 接口加 `addEvent(name, snapshot)` 支持完整输入输出快照，串成可回放 timeline（对齐 OTel SpanEvent） | ⬜ |
-| Token Budget 降级策略 | 基于 v0.2.0 的 TokenBudgetManager SPI，实现 budget 耗尽时自动切便宜模型 | ⬜ |
-| ExecutionStrategy SPI（预留） | 预留接口，默认 ReAct。简单任务场景已可通过 `@PreReasoning` + `HookResult.SKIP` 覆盖 | ⬜ |
-| 记忆使用指导 | 配套 MemoryTool，在 system prompt 中加入记忆使用规范（什么值得持久化、什么不值得） | ⬜ |
+| SSE 事件流 | 订阅 Tracer 事件 → 转 SSE（依赖 v0.2.0 Tracer 的事件订阅能力） | ⬜ → v0.4.0 |
+| OpenAPI 工具自动注册 | 解析 OpenAPI spec → 自动生成 ToolDefinition（swagger-parser 2.1.22） | ✅ 已完成 |
+| Skill 远程加载 | `loadFromClasspath()` + URL TTL cache（configurable, default 1hr） | ✅ 已完成 |
+| AnthropicProvider 拆分 | AnthropicHttpClient + AnthropicResponseParser + AnthropicProvider，ModelProviderException 共享 | ✅ 已完成 |
+| ProviderPresets 便利层 | anthropic/openai/qwen/glm/deepseek factory methods，一行代码接入 | ✅ 已完成 |
+| Span.addEvent + 确定性回放 | Span 接口加 `addEvent(name, snapshot)` — API default no-op, OTelSpan delegation, StructuredLogSpan JSON logging | ✅ 已完成 |
+| Token Budget 降级策略 | 基于 v0.2.0 的 TokenBudgetManager SPI，实现 budget 耗尽时自动切便宜模型 | ⬜ → v0.4.0 |
+| ExecutionStrategy SPI（预留） | 预留接口，默认 ReAct。简单任务场景已可通过 `@PreReasoning` + `HookResult.SKIP` 覆盖 | ⬜ → v0.4.0 |
+| 记忆使用指导 | 配套 MemoryTool，在 system prompt 中加入记忆使用规范（什么值得持久化、什么不值得） | ⬜ → v0.4.0 |
 
 **v0.3.0 P0 全部完成 ✅** — MCP 正式化 + OTel 集成 + CacheBreakDetector + Spring MCP 配置
+
+**v0.3.1 全部完成 ✅** — AnthropicProvider 拆分 + Structured Output + MCP Elicitation + OpenAPI Tools + ProviderPresets + Skill Remote Loading + MCP Sync API + Span.addEvent()
+
+**Deferred to v0.4.0:** SSE Event Stream, Token Budget Degradation, ExecutionStrategy SPI, Memory Usage Guidance
 
 **MCP 设计决策：**
 - MCP 完全可选，`kairo-core` 对 `kairo-mcp` 零编译期依赖
@@ -313,7 +317,7 @@ ToolOutputSanitizer + 37 个新测试。
 | 6 | 构造函数依赖具体类 | 中 | ✅ 已修复 | 参数类型改为 HookChain 接口 | v0.1.0 |
 | 7 | TracerRegistry 全局静态单例 | 中 | ✅ 已修复 | 改为 AgentBuilder.tracer() 注入 | v0.1.0 |
 | 8 | `.block()` 在响应式链中 | 低 | ⬜ | 改用 flatMap | v0.2.0+ |
-| 9 | AnthropicProvider 973 行 | 低 | ⬜ | 拆分为 Client/Gateway/Parser | v0.3.0 |
+| 9 | AnthropicProvider 973 行 | 低 | ✅ 已修复 | 拆分为 AnthropicHttpClient + AnthropicResponseParser + AnthropicProvider | v0.3.1 |
 | 10 | MemoryScope 维度设计偏差 | 低 | ⬜ | 等做 Memory 检索时重设计 | v0.4.0 |
 
 ---
@@ -370,4 +374,5 @@ kairo-mcp(@Exp)        kairo-mcp(@Exp)         kairo-mcp(正式)         kairo-m
 | v0.2.0 | 骨架加固 | 异常层次 + ShutdownManager + 熔断 + 容错 + 性能基线 | 2-3 周 |
 | v0.2.1 | 重构 | DefaultReActAgent 拆分 | 1 周 |
 | v0.3.0 | 生态连接 | MCP 正式 + OTel + CacheBreakDetector（P0 完成） | 4-6 周 |
+| v0.3.1 | 延迟项清理 | AnthropicProvider 拆分 + Structured Output + MCP Elicitation + OpenAPI + ProviderPresets + Skill Remote + Sync API + Span.addEvent() | 1 周 |
 | v0.4.0 | 生产级 | 自我改进 + 多租户 + Memory 重设计 | 根据用户反馈 |

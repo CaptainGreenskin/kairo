@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.kairo</groupId>
+        <groupId>io.github.captaingreenskin</groupId>
         <artifactId>kairo-parent</artifactId>
         <version>${revision}</version>
     </parent>
@@ -14,19 +14,26 @@
     <name>Kairo — Examples</name>
     <description>Example applications showcasing Kairo features and usage patterns</description>
 
+    <properties>
+        <maven.deploy.skip>true</maven.deploy.skip>
+        <maven.install.skip>true</maven.install.skip>
+        <gpg.skip>true</gpg.skip>
+        <central-publishing.skipPublishing>true</central-publishing.skipPublishing>
+    </properties>
+
     <dependencies>
         <dependency>
-            <groupId>io.kairo</groupId>
+            <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-core</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.kairo</groupId>
+            <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-tools</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.kairo</groupId>
+            <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-multi-agent</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -59,6 +66,13 @@
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.5.0</version>
+            </plugin>
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <configuration>
+                    <skipPublishing>true</skipPublishing>
+                </configuration>
             </plugin>
         </plugins>
     </build>

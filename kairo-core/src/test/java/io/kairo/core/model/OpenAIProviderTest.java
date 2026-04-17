@@ -157,7 +157,7 @@ class OpenAIProviderTest {
         StepVerifier.create(provider.call(List.of(Msg.of(MsgRole.USER, "hi")), simpleConfig()))
                 .expectErrorMatches(
                         e ->
-                                e instanceof AnthropicProvider.ApiException
+                                e instanceof ModelProviderException.ApiException
                                         && e.getMessage().contains("500"))
                 .verify();
     }
@@ -294,5 +294,38 @@ class OpenAIProviderTest {
         RecordedRequest req = customServer.takeRequest();
         assertEquals("/chat/completions", req.getPath());
         customServer.shutdown();
+    }
+
+    @Test
+    void structuredOutputAddsResponseFormat() throws Exception {
+        String response =
+                """
+                {"id":"r","model":"m","choices":[{"message":{"content":"{}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}
+                """;
+        server.enqueue(
+                new MockResponse().setBody(response).setHeader("Content-Type", "application/json"));
+
+        ModelConfig config =
+                ModelConfig.builder()
+                        .model("gpt-4o")
+                        .maxTokens(1024)
+                        .responseSchema(StructuredTestOutput.class)
+                        .build();
+        provider.call(List.of(Msg.of(MsgRole.USER, "test")), config).block();
+
+        RecordedRequest req = server.takeRequest();
+        JsonNode body = mapper.readTree(req.getBody().readUtf8());
+        JsonNode responseFormat = body.path("response_format");
+        assertEquals("json_schema", responseFormat.path("type").asText());
+        JsonNode jsonSchema = responseFormat.path("json_schema");
+        assertEquals("StructuredTestOutput", jsonSchema.path("name").asText());
+        assertTrue(jsonSchema.path("strict").asBoolean());
+        assertTrue(jsonSchema.has("schema"));
+        assertEquals("object", jsonSchema.path("schema").path("type").asText());
+    }
+
+    static class StructuredTestOutput {
+        public String answer;
+        public int confidence;
     }
 }

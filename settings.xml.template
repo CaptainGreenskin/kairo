@@ -1,0 +1,20 @@
+<settings>
+  <servers>
+    <server>
+      <id>central</id>
+      <username>${env.SONATYPE_USERNAME}</username>
+      <password>${env.SONATYPE_PASSWORD}</password>
+    </server>
+  </servers>
+  <profiles>
+    <profile>
+      <id>gpg</id>
+      <properties>
+        <gpg.keyname>YOUR_GPG_KEY_ID</gpg.keyname>
+      </properties>
+    </profile>
+  </profiles>
+  <activeProfiles>
+    <activeProfile>gpg</activeProfile>
+  </activeProfiles>
+</settings>

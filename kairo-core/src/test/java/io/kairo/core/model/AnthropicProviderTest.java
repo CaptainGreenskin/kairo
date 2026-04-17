@@ -208,7 +208,7 @@ class AnthropicProviderTest {
                             // After retries exhausted, the error is wrapped in
                             // RetryExhaustedException
                             Throwable cause = e.getCause() != null ? e.getCause() : e;
-                            return cause instanceof AnthropicProvider.ApiException
+                            return cause instanceof ModelProviderException.ApiException
                                     && cause.getMessage().contains("server error");
                         })
                 .verify();
@@ -301,5 +301,34 @@ class AnthropicProviderTest {
         assertEquals(50, resp.usage().outputTokens());
         assertEquals(80, resp.usage().cacheReadTokens());
         assertEquals(20, resp.usage().cacheCreationTokens());
+    }
+
+    @Test
+    void structuredOutputInjectsSchemaIntoSystemPrompt() throws Exception {
+        String response =
+                """
+                {"id":"r","model":"m","content":[{"type":"text","text":"{}"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}
+                """;
+        server.enqueue(
+                new MockResponse().setBody(response).setHeader("Content-Type", "application/json"));
+
+        ModelConfig config =
+                ModelConfig.builder()
+                        .model("claude-sonnet-4-20250514")
+                        .maxTokens(1024)
+                        .responseSchema(StructuredTestOutput.class)
+                        .build();
+        provider.call(List.of(Msg.of(MsgRole.USER, "test")), config).block();
+
+        RecordedRequest req = server.takeRequest();
+        JsonNode body = mapper.readTree(req.getBody().readUtf8());
+        String system = body.path("system").asText();
+        assertTrue(system.contains("JSON"), "System prompt should contain JSON schema instruction");
+        assertTrue(system.contains("schema"), "System prompt should mention schema");
+    }
+
+    static class StructuredTestOutput {
+        public String answer;
+        public int confidence;
     }
 }

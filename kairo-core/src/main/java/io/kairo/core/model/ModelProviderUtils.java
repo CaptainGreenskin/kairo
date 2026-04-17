@@ -103,4 +103,19 @@ public final class ModelProviderUtils {
         return body.replaceAll(
                 "(?i)(bearer|api[_-]?key|authorization)[\"':\\s]*[\"']?[\\w\\-\\.]+", "$1: ***");
     }
+
+    /**
+     * Parse the Retry-After header value to seconds.
+     *
+     * @param retryAfter the raw Retry-After header value
+     * @return the parsed seconds, or null if the value is absent or unparseable
+     */
+    public static Long parseRetryAfter(String retryAfter) {
+        if (retryAfter == null || retryAfter.isBlank()) return null;
+        try {
+            return Long.parseLong(retryAfter.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
 }

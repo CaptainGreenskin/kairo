@@ -16,7 +16,9 @@
 package io.kairo.api.model;
 
 import io.kairo.api.message.Content;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Response from a model invocation.
@@ -29,6 +31,47 @@ import java.util.List;
  */
 public record ModelResponse(
         String id, List<Content> contents, Usage usage, StopReason stopReason, String model) {
+
+    private static final ObjectMapper SHARED_MAPPER = new ObjectMapper();
+
+    /**
+     * Deserialize the first text content block as the given type using Jackson.
+     *
+     * @param <T> the target type
+     * @param type the class to deserialize into
+     * @return the deserialized object
+     * @throws IllegalStateException if no text content is found or JSON parsing fails
+     */
+    public <T> T contentAs(Class<T> type) {
+        String text = contents.stream()
+                .filter(Content.TextContent.class::isInstance)
+                .map(c -> ((Content.TextContent) c).text())
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "No text content found in response to deserialize as " + type.getSimpleName()));
+        try {
+            return SHARED_MAPPER.readValue(text, type);
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "Failed to parse response text as " + type.getSimpleName() + ": " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Deserialize the first text content block as the given type, returning an empty Optional
+     * on failure instead of throwing.
+     *
+     * @param <T> the target type
+     * @param type the class to deserialize into
+     * @return an Optional containing the deserialized object, or empty if parsing fails
+     */
+    public <T> Optional<T> contentAsOptional(Class<T> type) {
+        try {
+            return Optional.of(contentAs(type));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
 
     /**
      * Token usage statistics for a model call.

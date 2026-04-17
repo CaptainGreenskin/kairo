@@ -31,10 +31,7 @@ import io.kairo.api.model.ModelResponse;
 import io.kairo.api.model.StreamChunk;
 import io.kairo.api.model.ToolVerbosity;
 import io.kairo.api.tool.ToolDefinition;
-import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -59,14 +56,14 @@ import reactor.core.publisher.Sinks;
 public class AnthropicProvider implements ModelProvider {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicProvider.class);
-    private static final String ANTHROPIC_VERSION = "2023-06-01";
     private static final String DEFAULT_BASE_URL = "https://api.anthropic.com";
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(120);
 
     private final String apiKey;
-    private final HttpClient httpClient;
     private final String baseUrl;
     private final ObjectMapper objectMapper;
+    private final AnthropicHttpClient anthropicHttpClient;
+    private final AnthropicResponseParser responseParser;
     private final ComplexityEstimator complexityEstimator = new ComplexityEstimator();
     private final ToolDescriptionAdapter toolAdapter = new ToolDescriptionAdapter();
     private final CacheBreakDetector cacheDetector = new CacheBreakDetector();
@@ -102,8 +99,9 @@ public class AnthropicProvider implements ModelProvider {
         ModelProviderUtils.validateBaseUrl(baseUrl, "Anthropic");
         this.apiKey = apiKey;
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
-        this.httpClient = httpClient;
         this.objectMapper = ModelProviderUtils.createObjectMapper();
+        this.anthropicHttpClient = new AnthropicHttpClient(httpClient, this.baseUrl, apiKey);
+        this.responseParser = new AnthropicResponseParser(this.objectMapper);
     }
 
     @Override
@@ -114,46 +112,15 @@ public class AnthropicProvider implements ModelProvider {
     @Override
     public Mono<ModelResponse> call(List<Msg> messages, ModelConfig config) {
         return Mono.fromCallable(() -> buildRequestBody(messages, config, false))
+                .flatMap(anthropicHttpClient::sendRequest)
                 .flatMap(
                         body -> {
-                            HttpRequest request = buildHttpRequest(body);
-                            return Mono.fromFuture(
-                                    () ->
-                                            httpClient.sendAsync(
-                                                    request, HttpResponse.BodyHandlers.ofString()));
-                        })
-                .flatMap(
-                        response -> {
-                            if (response.statusCode() == 429) {
-                                // Parse Retry-After header (like claude-code-best)
-                                String retryAfter =
-                                        response.headers().firstValue("retry-after").orElse(null);
-                                return Mono.error(
-                                        new RateLimitException(
-                                                "Anthropic API rate limited (429)",
-                                                parseRetryAfter(retryAfter)));
-                            }
-                            if (response.statusCode() >= 500) {
-                                return Mono.error(
-                                        new ApiException(
-                                                "Anthropic API server error: HTTP "
-                                                        + response.statusCode()
-                                                        + " - "
-                                                        + response.body()));
-                            }
-                            if (response.statusCode() != 200) {
-                                return Mono.error(
-                                        new ApiException(
-                                                "Anthropic API error: HTTP "
-                                                        + response.statusCode()
-                                                        + " - "
-                                                        + response.body()));
-                            }
                             try {
-                                return Mono.just(parseResponse(response.body()));
+                                return Mono.just(responseParser.parseResponse(body));
                             } catch (Exception e) {
                                 return Mono.error(
-                                        new ApiException("Failed to parse Anthropic response", e));
+                                        new ModelProviderException.ApiException(
+                                                "Failed to parse Anthropic response", e));
                             }
                         })
                 .retryWhen(
@@ -162,15 +129,18 @@ public class AnthropicProvider implements ModelProvider {
                                 .jitter(0.25)
                                 .filter(
                                         e ->
-                                                e instanceof RateLimitException
-                                                        || e instanceof ApiException
+                                                e instanceof ModelProviderException.RateLimitException
+                                                        || e instanceof ModelProviderException.ApiException
                                                                 && e.getMessage() != null
                                                                 && e.getMessage()
                                                                         .contains("server error"))
                                 .doBeforeRetry(
                                         signal -> {
                                             Throwable failure = signal.failure();
-                                            if (failure instanceof RateLimitException rle
+                                            if (failure
+                                                            instanceof
+                                                            ModelProviderException.RateLimitException
+                                                                    rle
                                                     && rle.getRetryAfterSeconds() != null) {
                                                 log.warn(
                                                         "Rate limited, retry {} (server suggests"
@@ -208,21 +178,19 @@ public class AnthropicProvider implements ModelProvider {
                         () -> {
                             try {
                                 String body = buildRequestBody(messages, config, true);
-                                HttpRequest request = buildHttpRequest(body);
 
                                 Sinks.Many<ModelResponse> sink =
                                         Sinks.many().unicast().onBackpressureBuffer();
 
-                                httpClient
-                                        .sendAsync(
-                                                request,
-                                                HttpResponse.BodyHandlers.fromLineSubscriber(
-                                                        new SseLineSubscriber(sink, objectMapper)))
+                                anthropicHttpClient
+                                        .sendStreamingRequest(
+                                                body,
+                                                new SseLineSubscriber(sink, objectMapper))
                                         .whenComplete(
                                                 (resp, err) -> {
                                                     if (err != null) {
                                                         sink.tryEmitError(
-                                                                new ApiException(
+                                                                new ModelProviderException.ApiException(
                                                                         "Streaming request failed",
                                                                         err));
                                                     }
@@ -231,7 +199,8 @@ public class AnthropicProvider implements ModelProvider {
                                 return sink.asFlux();
                             } catch (Exception e) {
                                 return Flux.error(
-                                        new ApiException("Failed to build streaming request", e));
+                                        new ModelProviderException.ApiException(
+                                                "Failed to build streaming request", e));
                             }
                         })
                 .timeout(DEFAULT_TIMEOUT);
@@ -253,17 +222,14 @@ public class AnthropicProvider implements ModelProvider {
                         () -> {
                             try {
                                 String body = buildRequestBody(messages, config, true);
-                                HttpRequest request = buildHttpRequest(body);
 
                                 Sinks.Many<StreamChunk> sink =
                                         Sinks.many().unicast().onBackpressureBuffer();
 
-                                httpClient
-                                        .sendAsync(
-                                                request,
-                                                HttpResponse.BodyHandlers.fromLineSubscriber(
-                                                        new RawSseLineSubscriber(
-                                                                sink, objectMapper)))
+                                anthropicHttpClient
+                                        .sendStreamingRequest(
+                                                body,
+                                                new RawSseLineSubscriber(sink, objectMapper))
                                         .whenComplete(
                                                 (resp, err) -> {
                                                     if (err != null) {
@@ -279,7 +245,8 @@ public class AnthropicProvider implements ModelProvider {
                                 return sink.asFlux();
                             } catch (Exception e) {
                                 return Flux.error(
-                                        new ApiException("Failed to build streaming request", e));
+                                        new ModelProviderException.ApiException(
+                                                "Failed to build streaming request", e));
                             }
                         })
                 .timeout(DEFAULT_TIMEOUT);
@@ -322,17 +289,6 @@ public class AnthropicProvider implements ModelProvider {
 
     // ---- Request building ----
 
-    private HttpRequest buildHttpRequest(String jsonBody) {
-        return HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/v1/messages"))
-                .header("Content-Type", "application/json")
-                .header("x-api-key", apiKey)
-                .header("anthropic-version", ANTHROPIC_VERSION)
-                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                .timeout(DEFAULT_TIMEOUT)
-                .build();
-    }
-
     /**
      * Build the Anthropic Messages API request body.
      *
@@ -364,6 +320,16 @@ public class AnthropicProvider implements ModelProvider {
                             .reduce((a, b) -> a + "\n" + b)
                             .orElse(null);
         }
+
+        // Structured output: inject JSON schema constraint into system prompt
+        if (config.responseSchema() != null) {
+            String schemaJson = JsonSchemaGenerator.generateSchema(
+                    config.responseSchema(), objectMapper).toString();
+            String schemaInstruction = "\n\nYou MUST respond with valid JSON matching this schema: "
+                    + schemaJson + "\nDo NOT include any text outside the JSON object.";
+            systemPrompt = (systemPrompt != null ? systemPrompt : "") + schemaInstruction;
+        }
+
         // Priority 1: Multi-segment system prompt
         if (config.systemPromptSegments() != null && !config.systemPromptSegments().isEmpty()) {
             ArrayNode systemArray = objectMapper.createArrayNode();
@@ -569,82 +535,11 @@ public class AnthropicProvider implements ModelProvider {
         return node;
     }
 
-    // ---- Response parsing ----
+    // ---- Response parsing (delegated to AnthropicResponseParser) ----
 
-    /** Parse a non-streaming Anthropic API response. */
+    /** Parse a non-streaming Anthropic API response. Delegates to {@link AnthropicResponseParser}. */
     ModelResponse parseResponse(String responseBody) throws JsonProcessingException {
-        JsonNode root = objectMapper.readTree(responseBody);
-        String id = root.path("id").asText();
-        String model = root.path("model").asText();
-
-        // Parse content blocks
-        List<Content> contents = new ArrayList<>();
-        JsonNode contentNode = root.path("content");
-        if (contentNode.isArray()) {
-            for (JsonNode block : contentNode) {
-                Content c = parseContentBlock(block);
-                if (c != null) contents.add(c);
-            }
-        }
-
-        // Parse stop reason
-        ModelResponse.StopReason stopReason =
-                parseStopReason(root.path("stop_reason").asText(null));
-
-        // Parse usage
-        ModelResponse.Usage usage = parseUsage(root.path("usage"));
-
-        return new ModelResponse(id, contents, usage, stopReason, model);
-    }
-
-    private Content parseContentBlock(JsonNode block) {
-        String type = block.path("type").asText();
-        return switch (type) {
-            case "text" -> new Content.TextContent(block.path("text").asText());
-            case "thinking" -> new Content.ThinkingContent(block.path("thinking").asText(), 0);
-            case "tool_use" -> {
-                Map<String, Object> input =
-                        objectMapper.convertValue(
-                                block.path("input"),
-                                objectMapper
-                                        .getTypeFactory()
-                                        .constructMapType(
-                                                HashMap.class, String.class, Object.class));
-                yield new Content.ToolUseContent(
-                        block.path("id").asText(),
-                        block.path("name").asText(),
-                        input != null ? input : Map.of());
-            }
-            default -> {
-                log.debug("Unknown content block type: {}", type);
-                yield null;
-            }
-        };
-    }
-
-    private ModelResponse.StopReason parseStopReason(String reason) {
-        if (reason == null) return null;
-        return switch (reason) {
-            case "end_turn" -> ModelResponse.StopReason.END_TURN;
-            case "tool_use" -> ModelResponse.StopReason.TOOL_USE;
-            case "max_tokens" -> ModelResponse.StopReason.MAX_TOKENS;
-            case "stop_sequence" -> ModelResponse.StopReason.STOP_SEQUENCE;
-            default -> {
-                log.debug("Unknown stop reason: {}", reason);
-                yield ModelResponse.StopReason.END_TURN;
-            }
-        };
-    }
-
-    private ModelResponse.Usage parseUsage(JsonNode usageNode) {
-        if (usageNode.isMissingNode()) {
-            return new ModelResponse.Usage(0, 0, 0, 0);
-        }
-        return new ModelResponse.Usage(
-                usageNode.path("input_tokens").asInt(0),
-                usageNode.path("output_tokens").asInt(0),
-                usageNode.path("cache_read_input_tokens").asInt(0),
-                usageNode.path("cache_creation_input_tokens").asInt(0));
+        return responseParser.parseResponse(responseBody);
     }
 
     // ---- SSE stream parsing ----
@@ -986,31 +881,26 @@ public class AnthropicProvider implements ModelProvider {
 
     /** Parse the Retry-After header value to seconds. */
     private static Long parseRetryAfter(String retryAfter) {
-        if (retryAfter == null || retryAfter.isBlank()) return null;
-        try {
-            return Long.parseLong(retryAfter.trim());
-        } catch (NumberFormatException e) {
-            return null;
-        }
+        return ModelProviderUtils.parseRetryAfter(retryAfter);
     }
 
-    /** Thrown when the API returns a 429 rate limit response. */
-    public static class RateLimitException extends RuntimeException {
-        private final Long retryAfterSeconds;
-
+    /**
+     * Thrown when the API returns a 429 rate limit response.
+     *
+     * @deprecated Use {@link ModelProviderException.RateLimitException} directly.
+     */
+    public static class RateLimitException extends ModelProviderException.RateLimitException {
         public RateLimitException(String message, Long retryAfterSeconds) {
-            super(message);
-            this.retryAfterSeconds = retryAfterSeconds;
-        }
-
-        /** Server-suggested retry delay in seconds, or null if not provided. */
-        public Long getRetryAfterSeconds() {
-            return retryAfterSeconds;
+            super(message, retryAfterSeconds);
         }
     }
 
-    /** General API error. */
-    public static class ApiException extends RuntimeException {
+    /**
+     * General API error.
+     *
+     * @deprecated Use {@link ModelProviderException.ApiException} directly.
+     */
+    public static class ApiException extends ModelProviderException.ApiException {
         public ApiException(String message) {
             super(message);
         }

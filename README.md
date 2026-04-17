@@ -170,9 +170,8 @@ Look for issues labeled [`good first issue`](https://github.com/CaptainGreenskin
 
 Kairo was inspired by the following open-source projects:
 
-- [AgentScope Java](https://github.com/agentscope-ai/agentscope-java) (Apache 2.0, Alibaba) — Kairo's modular architecture, SPI interface design, Hook lifecycle system, and Spring Boot integration patterns were influenced by AgentScope Java's agent-oriented programming approach.
+- [AgentScope Java](https://github.com/agentscope-ai/agentscope-java) (Apache 2.0, Alibaba) — Kairo's modular Maven structure and Hook lifecycle concept were inspired by AgentScope's approach to agent-oriented programming architecture. (No runtime dependency on AgentScope Java.)
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (Anthropic) — Kairo's three-state permission model (allow/ask/deny), context compaction strategy, read/write tool partitioning, and plan mode isolation were inspired by design patterns from Anthropic's Claude Code.
-- [Hermes Agent](https://github.com/NousResearch/hermes-agent) (MIT, Nous Research) — Kairo's Markdown-based skill system with frontmatter metadata and trigger guard concept were influenced by Hermes Agent's skills system.
 
 Kairo extends these ideas with original contributions including the OS metaphor architecture, multi-stage context compaction pipeline, Skill system with anti-contamination design, and deep Anthropic prompt caching integration.
 

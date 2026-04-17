@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-04-17 — Deferred Items Cleanup
+
+### Refactoring
+- **AnthropicProvider decomposition**: Split 1132 LOC into AnthropicProvider + AnthropicHttpClient + AnthropicResponseParser
+- **ModelProviderException**: Shared RateLimitException + ApiException (no longer coupled to AnthropicProvider)
+- **ModelProviderUtils**: Added parseRetryAfter() shared utility
+
+### New Features
+- **Structured Output**: `ModelConfig.responseSchema(Class<?>)` + `ModelResponse.contentAs(Class<T>)` — native API enforcement (OpenAI response_format, Anthropic prompt injection + parse)
+- **JsonSchemaGenerator**: Class-to-JSON-Schema via reflection (records, POJOs, primitives, enums)
+- **ProviderPresets**: Factory methods for Anthropic, OpenAI, Qwen, GLM, DeepSeek
+- **MCP Elicitation Protocol**: `ElicitationHandler` SPI + `AutoApproveElicitationHandler` default + Spring Boot auto-config
+- **OpenAPI Tool Registration**: `OpenApiToolRegistrar` parses OpenAPI 3.x → ToolDefinition (swagger-parser 2.1.22)
+- **Skill Remote Loading**: `loadFromClasspath()` + URL TTL cache (configurable, default 1hr)
+- **MCP Sync API**: `McpSyncClient` blocking wrapper + `McpClientBuilder.buildSync()`
+- **Span.addEvent()**: Event recording for deterministic replay (OTel delegation + StructuredLogSpan JSON)
+
+### Test Counts
+- Unit tests: 1,320 (v0.3.0: 1,191 → +129)
+- Integration tests: 170 (v0.3.0: 170 → +0)
+- Total: 1,490 (v0.3.0: 1,361 → +129), 0 failures
+
 ## [0.3.0] - 2026-04-17
 
 ### Added

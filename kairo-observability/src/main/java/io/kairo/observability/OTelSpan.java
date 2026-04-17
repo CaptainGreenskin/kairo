@@ -17,6 +17,7 @@ package io.kairo.observability;
 
 import io.kairo.api.tracing.Span;
 import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.StatusCode;
 import java.util.Map;
 
@@ -98,6 +99,32 @@ class OTelSpan implements Span {
             otelSpan.setStatus(StatusCode.OK, message != null ? message : "");
         } else {
             otelSpan.setStatus(StatusCode.ERROR, message != null ? message : "");
+        }
+    }
+
+    @Override
+    public void addEvent(String name, Map<String, Object> attributes) {
+        if (attributes == null || attributes.isEmpty()) {
+            otelSpan.addEvent(name);
+        } else {
+            var builder = Attributes.builder();
+            for (var entry : attributes.entrySet()) {
+                Object val = entry.getValue();
+                if (val instanceof String s) {
+                    builder.put(AttributeKey.stringKey(entry.getKey()), s);
+                } else if (val instanceof Long l) {
+                    builder.put(AttributeKey.longKey(entry.getKey()), l);
+                } else if (val instanceof Integer i) {
+                    builder.put(AttributeKey.longKey(entry.getKey()), i.longValue());
+                } else if (val instanceof Double d) {
+                    builder.put(AttributeKey.doubleKey(entry.getKey()), d);
+                } else if (val instanceof Boolean b) {
+                    builder.put(AttributeKey.booleanKey(entry.getKey()), b);
+                } else {
+                    builder.put(AttributeKey.stringKey(entry.getKey()), String.valueOf(val));
+                }
+            }
+            otelSpan.addEvent(name, builder.build());
         }
     }
 

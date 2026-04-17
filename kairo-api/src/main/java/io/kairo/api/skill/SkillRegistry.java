@@ -68,4 +68,16 @@ public interface SkillRegistry {
      * @return a Mono emitting the loaded skill
      */
     Mono<SkillDefinition> loadFromUrl(String url);
+
+    /**
+     * Load a skill definition from a classpath resource.
+     *
+     * <p>Useful for bundled skills shipped inside JARs.
+     *
+     * @param resourcePath the classpath resource path (e.g. "skills/code-review.md")
+     * @return a Mono emitting the loaded skill
+     */
+    default Mono<SkillDefinition> loadFromClasspath(String resourcePath) {
+        return Mono.error(new UnsupportedOperationException("loadFromClasspath not implemented"));
+    }
 }

@@ -182,7 +182,7 @@ class ToolApiTest {
     @Test
     void toolCategoryValues() {
         ToolCategory[] values = ToolCategory.values();
-        assertEquals(8, values.length);
+        assertEquals(9, values.length);
         assertNotNull(ToolCategory.valueOf("FILE_AND_CODE"));
         assertNotNull(ToolCategory.valueOf("EXECUTION"));
         assertNotNull(ToolCategory.valueOf("INFORMATION"));
@@ -191,5 +191,6 @@ class ToolApiTest {
         assertNotNull(ToolCategory.valueOf("SCHEDULING"));
         assertNotNull(ToolCategory.valueOf("SKILL"));
         assertNotNull(ToolCategory.valueOf("GENERAL"));
+        assertNotNull(ToolCategory.valueOf("EXTERNAL"));
     }
 }

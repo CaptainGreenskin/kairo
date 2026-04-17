@@ -21,9 +21,11 @@ import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.data.EventData;
 import io.opentelemetry.sdk.trace.data.SpanData;
 import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -283,6 +285,97 @@ class OTelSpanTest {
         span.end();
         assertEquals(1, exporter.getFinishedSpanItems().size());
         assertEquals("test-span", exporter.getFinishedSpanItems().get(0).getName());
+    }
+
+    // --- addEvent ---
+
+    @Test
+    void addEventWithoutAttributes() {
+        OTelSpan span = createSpan("test-span");
+        span.addEvent("model.request");
+        SpanData data = endAndGetSpan(span);
+        List<EventData> events = data.getEvents();
+        assertEquals(1, events.size());
+        assertEquals("model.request", events.get(0).getName());
+        assertTrue(events.get(0).getAttributes().isEmpty());
+    }
+
+    @Test
+    void addEventWithStringAttribute() {
+        OTelSpan span = createSpan("test-span");
+        span.addEvent("tool.result", Map.of("output", "success"));
+        SpanData data = endAndGetSpan(span);
+        List<EventData> events = data.getEvents();
+        assertEquals(1, events.size());
+        assertEquals("tool.result", events.get(0).getName());
+        assertEquals("success", events.get(0).getAttributes().get(AttributeKey.stringKey("output")));
+    }
+
+    @Test
+    void addEventWithVariousValueTypes() {
+        OTelSpan span = createSpan("test-span");
+        span.addEvent("multi.type", Map.of(
+                "str", "hello",
+                "lng", 42L,
+                "dbl", 3.14,
+                "bool", true
+        ));
+        SpanData data = endAndGetSpan(span);
+        EventData event = data.getEvents().get(0);
+        assertEquals("hello", event.getAttributes().get(AttributeKey.stringKey("str")));
+        assertEquals(42L, event.getAttributes().get(AttributeKey.longKey("lng")));
+        assertEquals(3.14, event.getAttributes().get(AttributeKey.doubleKey("dbl")));
+        assertEquals(true, event.getAttributes().get(AttributeKey.booleanKey("bool")));
+    }
+
+    @Test
+    void addEventWithIntegerConvertsToLong() {
+        OTelSpan span = createSpan("test-span");
+        span.addEvent("int.event", Map.of("count", 7));
+        SpanData data = endAndGetSpan(span);
+        EventData event = data.getEvents().get(0);
+        assertEquals(7L, event.getAttributes().get(AttributeKey.longKey("count")));
+    }
+
+    @Test
+    void addEventWithNullAttributes() {
+        OTelSpan span = createSpan("test-span");
+        span.addEvent("null.attrs", null);
+        SpanData data = endAndGetSpan(span);
+        assertEquals(1, data.getEvents().size());
+        assertEquals("null.attrs", data.getEvents().get(0).getName());
+    }
+
+    @Test
+    void addEventWithEmptyAttributes() {
+        OTelSpan span = createSpan("test-span");
+        span.addEvent("empty.attrs", Map.of());
+        SpanData data = endAndGetSpan(span);
+        assertEquals(1, data.getEvents().size());
+        assertEquals("empty.attrs", data.getEvents().get(0).getName());
+        assertTrue(data.getEvents().get(0).getAttributes().isEmpty());
+    }
+
+    @Test
+    void addMultipleEvents() {
+        OTelSpan span = createSpan("test-span");
+        span.addEvent("event1");
+        span.addEvent("event2", Map.of("key", "val"));
+        span.addEvent("event3");
+        SpanData data = endAndGetSpan(span);
+        assertEquals(3, data.getEvents().size());
+        assertEquals("event1", data.getEvents().get(0).getName());
+        assertEquals("event2", data.getEvents().get(1).getName());
+        assertEquals("event3", data.getEvents().get(2).getName());
+    }
+
+    @Test
+    void addEventWithNonStandardObjectUsesToString() {
+        OTelSpan span = createSpan("test-span");
+        span.addEvent("obj.event", Map.of("list", List.of(1, 2, 3)));
+        SpanData data = endAndGetSpan(span);
+        EventData event = data.getEvents().get(0);
+        assertEquals("[1, 2, 3]", event.getAttributes().get(AttributeKey.stringKey("list")));
     }
 
     private OTelSpan createSpan(String name) {

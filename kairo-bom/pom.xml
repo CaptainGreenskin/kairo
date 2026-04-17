@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.kairo</groupId>
+        <groupId>io.github.captaingreenskin</groupId>
         <artifactId>kairo-parent</artifactId>
         <version>${revision}</version>
         <relativePath>../pom.xml</relativePath>
@@ -20,37 +20,37 @@
     <dependencyManagement>
         <dependencies>
             <dependency>
-                <groupId>io.kairo</groupId>
+                <groupId>io.github.captaingreenskin</groupId>
                 <artifactId>kairo-api</artifactId>
                 <version>${revision}</version>
             </dependency>
             <dependency>
-                <groupId>io.kairo</groupId>
+                <groupId>io.github.captaingreenskin</groupId>
                 <artifactId>kairo-core</artifactId>
                 <version>${revision}</version>
             </dependency>
             <dependency>
-                <groupId>io.kairo</groupId>
+                <groupId>io.github.captaingreenskin</groupId>
                 <artifactId>kairo-tools</artifactId>
                 <version>${revision}</version>
             </dependency>
             <dependency>
-                <groupId>io.kairo</groupId>
+                <groupId>io.github.captaingreenskin</groupId>
                 <artifactId>kairo-mcp</artifactId>
                 <version>${revision}</version>
             </dependency>
             <dependency>
-                <groupId>io.kairo</groupId>
+                <groupId>io.github.captaingreenskin</groupId>
                 <artifactId>kairo-multi-agent</artifactId>
                 <version>${revision}</version>
             </dependency>
             <dependency>
-                <groupId>io.kairo</groupId>
+                <groupId>io.github.captaingreenskin</groupId>
                 <artifactId>kairo-observability</artifactId>
                 <version>${revision}</version>
             </dependency>
             <dependency>
-                <groupId>io.kairo</groupId>
+                <groupId>io.github.captaingreenskin</groupId>
                 <artifactId>kairo-spring-boot-starter</artifactId>
                 <version>${revision}</version>
             </dependency>

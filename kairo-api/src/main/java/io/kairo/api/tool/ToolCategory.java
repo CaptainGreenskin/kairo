@@ -40,5 +40,8 @@ public enum ToolCategory {
     SKILL,
 
     /** General-purpose tools. */
-    GENERAL
+    GENERAL,
+
+    /** External tools loaded from OpenAPI specs or other external sources. */
+    EXTERNAL
 }

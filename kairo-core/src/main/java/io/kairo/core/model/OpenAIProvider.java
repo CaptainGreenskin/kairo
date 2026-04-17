@@ -146,20 +146,14 @@ public class OpenAIProvider implements ModelProvider {
                             if (response.statusCode() == 429) {
                                 String retryAfter =
                                         response.headers().firstValue("retry-after").orElse(null);
-                                Long retryAfterSec = null;
-                                if (retryAfter != null) {
-                                    try {
-                                        retryAfterSec = Long.parseLong(retryAfter.trim());
-                                    } catch (NumberFormatException ignored) {
-                                    }
-                                }
                                 return Mono.error(
-                                        new AnthropicProvider.RateLimitException(
-                                                "OpenAI API rate limited (429)", retryAfterSec));
+                                        new ModelProviderException.RateLimitException(
+                                                "OpenAI API rate limited (429)",
+                                                ModelProviderUtils.parseRetryAfter(retryAfter)));
                             }
                             if (response.statusCode() != 200) {
                                 return Mono.error(
-                                        new AnthropicProvider.ApiException(
+                                        new ModelProviderException.ApiException(
                                                 "OpenAI API error: HTTP "
                                                         + response.statusCode()
                                                         + " - "
@@ -170,13 +164,13 @@ public class OpenAIProvider implements ModelProvider {
                                 return Mono.just(parseResponse(response.body()));
                             } catch (Exception e) {
                                 return Mono.error(
-                                        new AnthropicProvider.ApiException(
+                                        new ModelProviderException.ApiException(
                                                 "Failed to parse OpenAI response", e));
                             }
                         })
                 .retryWhen(
                         reactor.util.retry.Retry.backoff(3, Duration.ofSeconds(1))
-                                .filter(AnthropicProvider.RateLimitException.class::isInstance))
+                                .filter(ModelProviderException.RateLimitException.class::isInstance))
                 .timeout(DEFAULT_TIMEOUT);
     }
 
@@ -201,7 +195,7 @@ public class OpenAIProvider implements ModelProvider {
                                                 (resp, err) -> {
                                                     if (err != null) {
                                                         sink.tryEmitError(
-                                                                new AnthropicProvider.ApiException(
+                                                                new ModelProviderException.ApiException(
                                                                         "Streaming request failed",
                                                                         err));
                                                     }
@@ -210,7 +204,7 @@ public class OpenAIProvider implements ModelProvider {
                                 return sink.asFlux();
                             } catch (Exception e) {
                                 return Flux.error(
-                                        new AnthropicProvider.ApiException(
+                                        new ModelProviderException.ApiException(
                                                 "Failed to build streaming request", e));
                             }
                         })
@@ -259,7 +253,7 @@ public class OpenAIProvider implements ModelProvider {
                                 return sink.asFlux();
                             } catch (Exception e) {
                                 return Flux.error(
-                                        new AnthropicProvider.ApiException(
+                                        new ModelProviderException.ApiException(
                                                 "Failed to build streaming request", e));
                             }
                         })
@@ -333,6 +327,17 @@ public class OpenAIProvider implements ModelProvider {
             for (ToolDefinition tool : toolsToSerialize) {
                 toolsNode.add(convertTool(tool));
             }
+        }
+
+        // Structured output: use native response_format with json_schema
+        if (config.responseSchema() != null) {
+            ObjectNode responseFormat = root.putObject("response_format");
+            responseFormat.put("type", "json_schema");
+            ObjectNode jsonSchema = responseFormat.putObject("json_schema");
+            jsonSchema.put("name", config.responseSchema().getSimpleName());
+            jsonSchema.put("strict", true);
+            jsonSchema.set("schema",
+                    JsonSchemaGenerator.generateSchema(config.responseSchema(), objectMapper));
         }
 
         return objectMapper.writeValueAsString(root);

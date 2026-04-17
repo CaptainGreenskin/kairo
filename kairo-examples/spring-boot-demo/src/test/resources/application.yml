@@ -1,0 +1,26 @@
+# Test configuration — provides a dummy API key so that auto-configuration
+# can create beans without requiring a real provider key.
+kairo:
+  model:
+    provider: anthropic
+    api-key: sk-test-dummy-key-for-context-load
+    model-name: claude-sonnet-4-20250514
+
+  agent:
+    name: test-agent
+    system-prompt: You are a test agent.
+    max-iterations: 5
+    timeout-seconds: 30
+    token-budget: 10000
+
+  tool:
+    enable-file-tools: false
+    enable-exec-tools: false
+    enable-info-tools: false
+    enable-agent-tools: false
+
+  memory:
+    type: in-memory
+
+server:
+  port: 0
