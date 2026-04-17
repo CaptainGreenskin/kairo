@@ -196,6 +196,7 @@ public class AgentRuntimeAutoConfiguration {
                         .model(modelProvider)
                         .tools(toolRegistry)
                         .toolExecutor(toolExecutor)
+                        .modelName(properties.getModel().getModelName())
                         .systemPrompt(agentProps.getSystemPrompt())
                         .maxIterations(agentProps.getMaxIterations())
                         .timeout(Duration.ofSeconds(agentProps.getTimeoutSeconds()))

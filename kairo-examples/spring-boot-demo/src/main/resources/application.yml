@@ -3,15 +3,25 @@ server:
 
 kairo:
   model:
+    # ---------------------------------------------------------------
+    # Model Provider Configuration
+    # ---------------------------------------------------------------
     # Supported providers: anthropic, openai
-    provider: anthropic
-    # API key — reads from env var ANTHROPIC_API_KEY if not set here
-    # api-key: ${ANTHROPIC_API_KEY:}
-    model-name: claude-sonnet-4-20250514
+    # Use 'openai' for any OpenAI-compatible API (Qwen, GLM, DeepSeek, etc.)
+    provider: openai
+    # API key — reads from env var QWEN_API_KEY (or set your provider's key)
+    api-key: ${QWEN_API_KEY:}
+    # Qwen (DashScope) OpenAI-compatible endpoint
+    base-url: https://dashscope.aliyuncs.com/compatible-mode
+    model-name: qwen-plus
     max-tokens: 4096
     temperature: 0.7
 
   agent:
+    # ---------------------------------------------------------------
+    # Default Agent Configuration
+    # ---------------------------------------------------------------
+    # Used by ChatController and StructuredOutputController
     name: demo-agent
     system-prompt: >
       You are a helpful assistant integrated into a Spring Boot application via the Kairo framework.
@@ -21,14 +31,36 @@ kairo:
     token-budget: 50000
 
   tool:
-    # Enable/disable built-in tool categories
+    # ---------------------------------------------------------------
+    # Built-in Tool Categories
+    # ---------------------------------------------------------------
+    # Enable/disable built-in tool categories.
+    # CustomToolController registers its own tools (WeatherTool, CalculatorTool)
+    # via classpath scanning, independent of these flags.
     enable-file-tools: false
     enable-exec-tools: false
     enable-info-tools: false
     enable-agent-tools: false
 
   memory:
+    # ---------------------------------------------------------------
+    # Memory / Session Configuration
+    # ---------------------------------------------------------------
+    # SessionChatController uses in-memory ConcurrentHashMap for sessions.
+    # The framework-level memory store below is used by the default agent.
     type: in-memory
+
+# ---------------------------------------------------------------
+# Multi-Provider Configuration (ModelSwitchController)
+# ---------------------------------------------------------------
+# ModelSwitchController creates providers on-demand from env vars.
+# Set any of these to enable additional providers at runtime:
+#   ANTHROPIC_API_KEY   — Anthropic (Claude)
+#   OPENAI_API_KEY      — OpenAI (GPT)
+#   QWEN_API_KEY        — Qwen via DashScope
+#   DASHSCOPE_API_KEY   — Qwen via DashScope (alternative)
+#   ZHIPU_API_KEY       — GLM (Zhipu AI)
+#   DEEPSEEK_API_KEY    — DeepSeek
 
 # Uncomment below to configure MCP servers via Spring properties:
 # kairo:

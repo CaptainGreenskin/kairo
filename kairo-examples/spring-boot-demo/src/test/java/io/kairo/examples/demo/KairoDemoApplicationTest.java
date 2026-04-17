@@ -124,6 +124,7 @@ class KairoDemoApplicationTest {
                         .systemPrompt("You are a custom agent built programmatically.")
                         .maxIterations(5)
                         .tokenBudget(10000)
+                        .modelName("test-model")
                         .shutdownManager(shutdownManager)
                         .build();
 
@@ -135,5 +136,40 @@ class KairoDemoApplicationTest {
     void controllersAreRegistered() {
         assertThat(context.getBean(ChatController.class)).isNotNull();
         assertThat(context.getBean(StructuredOutputController.class)).isNotNull();
+    }
+
+    @Test
+    void streamingChatControllerIsRegistered() {
+        assertThat(context.getBean(StreamingChatController.class)).isNotNull();
+    }
+
+    @Test
+    void sessionChatControllerIsRegistered() {
+        assertThat(context.getBean(SessionChatController.class)).isNotNull();
+    }
+
+    @Test
+    void modelSwitchControllerIsRegistered() {
+        assertThat(context.getBean(ModelSwitchController.class)).isNotNull();
+    }
+
+    @Test
+    void customToolControllerIsRegistered() {
+        assertThat(context.getBean(CustomToolController.class)).isNotNull();
+    }
+
+    @Test
+    void hookDemoControllerIsRegistered() {
+        assertThat(context.getBean(HookDemoController.class)).isNotNull();
+    }
+
+    @Test
+    void multiAgentControllerIsRegistered() {
+        assertThat(context.getBean(MultiAgentController.class)).isNotNull();
+    }
+
+    @Test
+    void permissionGuardControllerIsRegistered() {
+        assertThat(context.getBean(PermissionGuardController.class)).isNotNull();
     }
 }

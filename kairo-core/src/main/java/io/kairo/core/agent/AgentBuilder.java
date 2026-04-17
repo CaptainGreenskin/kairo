@@ -70,6 +70,7 @@ public class AgentBuilder {
     private SessionManager sessionManager;
     private UserApprovalHandler approvalHandler;
     private Tracer tracer;
+    private boolean streamingEnabled = false;
     private GracefulShutdownManager shutdownManager;
     private final List<Object> mcpServerConfigs = new ArrayList<>();
 
@@ -128,7 +129,12 @@ public class AgentBuilder {
         return this;
     }
 
-    /** Set the model name (e.g. "glm-4-plus", "gpt-4o"). */
+    /**
+     * Set the model name (e.g. "glm-4-plus", "gpt-4o").
+     *
+     * <p>This is a <strong>required</strong> parameter. The builder will throw
+     * {@link IllegalStateException} at {@link #build()} time if not set.
+     */
     public AgentBuilder modelName(String modelName) {
         if (modelName == null || modelName.isBlank()) {
             throw new IllegalArgumentException("modelName cannot be null or blank");
@@ -224,6 +230,20 @@ public class AgentBuilder {
     }
 
     /**
+     * Enable or disable streaming responses from the model provider.
+     *
+     * <p>When enabled, the agent receives tokens in real-time as they are generated. Streaming
+     * automatically falls back to non-streaming if the provider doesn't support it.
+     *
+     * @param enabled true to enable streaming, false to disable (default: false)
+     * @return this builder
+     */
+    public AgentBuilder streaming(boolean enabled) {
+        this.streamingEnabled = enabled;
+        return this;
+    }
+
+    /**
      * Add a stdio-based MCP server configuration.
      *
      * <p>Requires {@code kairo-mcp} on the classpath at runtime.
@@ -291,7 +311,11 @@ public class AgentBuilder {
         GracefulShutdownManager sm =
                 shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
 
-        return new DefaultReActAgent(config, toolExecutor, hookChain, sm);
+        DefaultReActAgent agent = new DefaultReActAgent(config, toolExecutor, hookChain, sm);
+        if (streamingEnabled) {
+            agent.setStreamingEnabled(true);
+        }
+        return agent;
     }
 
     /**
@@ -335,6 +359,11 @@ public class AgentBuilder {
     private AgentConfig buildConfig() {
         Objects.requireNonNull(name, "Agent name must not be null");
         Objects.requireNonNull(modelProvider, "ModelProvider must not be null");
+
+        if (modelName == null || modelName.isBlank()) {
+            throw new IllegalStateException("modelName is required. Call .modelName(\"your-model\") before .build(). "
+                    + "Example: AgentBuilder.create().name(\"my-agent\").model(provider).modelName(\"gpt-4o\").build()");
+        }
 
         if (maxIterations <= 0) {
             throw new IllegalArgumentException(

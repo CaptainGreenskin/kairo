@@ -63,6 +63,7 @@ class CoordinatorAgentTest {
                         .name("coord")
                         .modelProvider(mockProvider)
                         .toolRegistry(registry)
+                        .modelName("test-model")
                         .build();
 
         CoordinatorConfig coordConfig = CoordinatorConfig.of(baseConfig);
@@ -88,7 +89,7 @@ class CoordinatorAgentTest {
     void toolFiltering_emptyRegistry_noError() {
         // With null tool registry
         AgentConfig baseConfig =
-                AgentConfig.builder().name("coord-null").modelProvider(mockProvider).build();
+                AgentConfig.builder().name("coord-null").modelProvider(mockProvider).modelName("test-model").build();
 
         CoordinatorConfig coordConfig = CoordinatorConfig.of(baseConfig);
         CoordinatorAgent agent = new CoordinatorAgent(coordConfig);
@@ -99,6 +100,7 @@ class CoordinatorAgentTest {
                 AgentConfig.builder()
                         .name("coord-empty")
                         .modelProvider(mockProvider)
+                        .modelName("test-model")
                         .toolRegistry(new DefaultToolRegistry())
                         .build();
 
@@ -113,7 +115,7 @@ class CoordinatorAgentTest {
     @Test
     void systemPrompt_containsCoordinatorInstructions() {
         AgentConfig baseConfig =
-                AgentConfig.builder().name("coord").modelProvider(mockProvider).build();
+                AgentConfig.builder().name("coord").modelProvider(mockProvider).modelName("test-model").build();
 
         CoordinatorConfig coordConfig = CoordinatorConfig.of(baseConfig);
         CoordinatorAgent agent = new CoordinatorAgent(coordConfig);
@@ -136,6 +138,7 @@ class CoordinatorAgentTest {
                 AgentConfig.builder()
                         .name("coord")
                         .modelProvider(mockProvider)
+                        .modelName("test-model")
                         .systemPrompt(userPrompt)
                         .build();
 
@@ -156,7 +159,7 @@ class CoordinatorAgentTest {
     @Test
     void requirePlanBeforeDispatch_addsInstruction() {
         AgentConfig baseConfig =
-                AgentConfig.builder().name("coord").modelProvider(mockProvider).build();
+                AgentConfig.builder().name("coord").modelProvider(mockProvider).modelName("test-model").build();
 
         // With requirePlanBeforeDispatch=true (default via CoordinatorConfig.of)
         CoordinatorConfig coordConfig = CoordinatorConfig.of(baseConfig);
@@ -181,7 +184,7 @@ class CoordinatorAgentTest {
     @Test
     void config_maxConcurrentWorkers_validation() {
         AgentConfig baseConfig =
-                AgentConfig.builder().name("coord").modelProvider(mockProvider).build();
+                AgentConfig.builder().name("coord").modelProvider(mockProvider).modelName("test-model").build();
 
         assertThrows(
                 IllegalArgumentException.class,
@@ -197,7 +200,7 @@ class CoordinatorAgentTest {
     @Test
     void config_factoryMethods() {
         AgentConfig baseConfig =
-                AgentConfig.builder().name("coord").modelProvider(mockProvider).build();
+                AgentConfig.builder().name("coord").modelProvider(mockProvider).modelName("test-model").build();
 
         // CoordinatorConfig.of(baseConfig) — defaults
         CoordinatorConfig defaultConfig = CoordinatorConfig.of(baseConfig);
@@ -217,7 +220,7 @@ class CoordinatorAgentTest {
 
         // of() with worker templates
         AgentConfig workerConfig =
-                AgentConfig.builder().name("worker").modelProvider(mockProvider).build();
+                AgentConfig.builder().name("worker").modelProvider(mockProvider).modelName("test-model").build();
         CoordinatorConfig withWorkers = CoordinatorConfig.of(baseConfig, List.of(workerConfig));
         assertEquals(1, withWorkers.workerTemplates().size());
     }
@@ -225,7 +228,7 @@ class CoordinatorAgentTest {
     @Test
     void buildCoordinator_fromAgentBuilder() {
         CoordinatorAgent agent =
-                AgentBuilder.create().name("coord").model(mockProvider).buildCoordinator();
+                AgentBuilder.create().name("coord").model(mockProvider).modelName("test-model").buildCoordinator();
 
         assertNotNull(agent);
         assertInstanceOf(CoordinatorAgent.class, agent);
@@ -241,6 +244,7 @@ class CoordinatorAgentTest {
                 AgentBuilder.create()
                         .name("coord-custom")
                         .model(mockProvider)
+                        .modelName("test-model")
                         .buildCoordinator(3, false);
 
         assertNotNull(agent);

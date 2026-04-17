@@ -46,6 +46,7 @@ class AgentContextIntegrationTest {
                 AgentBuilder.create()
                         .name("test-agent")
                         .model(provider)
+                        .modelName("test-model")
                         .contextManager(contextManager)
                         .memoryStore(memoryStore)
                         .sessionId("session-123")
@@ -95,7 +96,7 @@ class AgentContextIntegrationTest {
         ModelProvider provider = mock(ModelProvider.class);
         when(provider.name()).thenReturn("mock");
 
-        Agent agent = AgentBuilder.create().name("simple-agent").model(provider).build();
+        Agent agent = AgentBuilder.create().name("simple-agent").model(provider).modelName("test-model").build();
 
         assertNotNull(agent);
         assertEquals("simple-agent", agent.name());
@@ -192,6 +193,7 @@ class AgentContextIntegrationTest {
                 AgentBuilder.create()
                         .name("ctx-agent")
                         .model(provider)
+                        .modelName("test-model")
                         .contextManager(contextManager)
                         .build();
 

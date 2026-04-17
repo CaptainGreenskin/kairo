@@ -47,10 +47,16 @@ import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 
 /**
- * {@link ModelProvider} implementation for OpenAI Chat Completions API.
+ * {@link ModelProvider} implementation for the OpenAI Chat Completions API.
  *
- * <p>Supports OpenAI and all compatible APIs (DeepSeek, Together, Groq, etc.) through configurable
- * base URL.
+ * <p>Supports OpenAI and all OpenAI-compatible APIs (DashScope/Qwen, Azure OpenAI, DeepSeek,
+ * Together, Groq, GLM, etc.) through a configurable base URL and chat completions path.
+ *
+ * <p>The final request URL is constructed as {@code baseUrl + chatCompletionsPath}. See the
+ * individual constructors for details on how each parameter affects URL construction.
+ *
+ * @see io.kairo.spring.boot.AgentRuntimeAutoConfiguration AgentRuntimeAutoConfiguration — Spring
+ *     Boot auto-configuration that creates an OpenAIProvider using the 2-arg constructor
  */
 public class OpenAIProvider implements ModelProvider {
 
@@ -77,19 +83,60 @@ public class OpenAIProvider implements ModelProvider {
     /**
      * Create an OpenAIProvider with a custom base URL for compatible APIs.
      *
-     * @param apiKey the API key
-     * @param baseUrl the base URL (e.g. "https://api.deepseek.com")
+     * <p>This constructor auto-appends {@code /v1/chat/completions} to the provided {@code baseUrl}.
+     * Therefore, the {@code baseUrl} should <strong>not</strong> include {@code /v1} — otherwise the
+     * final URL will contain a duplicated path segment (e.g. {@code /v1/v1/chat/completions}).
+     *
+     * <p><strong>Examples:</strong>
+     * <pre>{@code
+     * // For OpenAI:
+     * new OpenAIProvider("sk-xxx", "https://api.openai.com")
+     * // → calls https://api.openai.com/v1/chat/completions
+     *
+     * // For DashScope (Qwen):
+     * new OpenAIProvider("sk-xxx", "https://dashscope.aliyuncs.com/compatible-mode")
+     * // → calls https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+     *
+     * // For DeepSeek:
+     * new OpenAIProvider("sk-xxx", "https://api.deepseek.com")
+     * // → calls https://api.deepseek.com/v1/chat/completions
+     * }</pre>
+     *
+     * @param apiKey  the API key for authentication
+     * @param baseUrl the base URL of the API provider (must <em>not</em> end with {@code /v1})
+     * @see #OpenAIProvider(String, String, String) for specifying a custom chat completions path
      */
     public OpenAIProvider(String apiKey, String baseUrl) {
         this(apiKey, baseUrl, "/v1/chat/completions");
     }
 
     /**
-     * Create an OpenAIProvider with a custom base URL and chat completions path.
+     * Create an OpenAIProvider with a custom base URL and an explicit chat completions path.
      *
-     * @param apiKey the API key
-     * @param baseUrl the base URL (e.g. "https://open.bigmodel.cn/api/paas/v4")
-     * @param chatCompletionsPath the path for chat completions (e.g. "/chat/completions")
+     * <p>Unlike the {@linkplain #OpenAIProvider(String, String) 2-arg constructor}, this constructor
+     * does <strong>not</strong> auto-append {@code /v1/chat/completions}. Instead, it uses the
+     * provided {@code chatCompletionsPath} as-is, which is useful when the API provider does not
+     * follow the standard {@code /v1/chat/completions} convention.
+     *
+     * <p>The final URL is: {@code baseUrl + chatCompletionsPath}.
+     *
+     * <p><strong>Examples:</strong>
+     * <pre>{@code
+     * // For DashScope with explicit path:
+     * new OpenAIProvider("sk-xxx",
+     *     "https://dashscope.aliyuncs.com/compatible-mode/v1", "/chat/completions")
+     * // → calls https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+     *
+     * // For GLM (Zhipu AI):
+     * new OpenAIProvider("sk-xxx",
+     *     "https://open.bigmodel.cn/api/paas/v4", "/chat/completions")
+     * // → calls https://open.bigmodel.cn/api/paas/v4/chat/completions
+     * }</pre>
+     *
+     * @param apiKey              the API key for authentication
+     * @param baseUrl             the base URL of the API provider (may include version path segments)
+     * @param chatCompletionsPath the path appended to {@code baseUrl} for chat completions
+     *                            (e.g. {@code "/chat/completions"})
      */
     public OpenAIProvider(String apiKey, String baseUrl, String chatCompletionsPath) {
         this(

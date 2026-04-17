@@ -9,17 +9,31 @@ Kairo is a Java Agent OS — a complete runtime for AI agents with smart context
 
 ## Add Dependency
 
+Use the BOM to manage all Kairo module versions:
+
 ```xml
-<dependency>
-    <groupId>io.kairo</groupId>
-    <artifactId>kairo-core</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
-</dependency>
-<dependency>
-    <groupId>io.kairo</groupId>
-    <artifactId>kairo-tools</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
-</dependency>
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.github.captainreenskin</groupId>
+            <artifactId>kairo-bom</artifactId>
+            <version>0.1.0</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
+<dependencies>
+    <dependency>
+        <groupId>io.github.captainreenskin</groupId>
+        <artifactId>kairo-core</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>io.github.captainreenskin</groupId>
+        <artifactId>kairo-tools</artifactId>
+    </dependency>
+</dependencies>
 ```
 
 ## Your First Agent (5 minutes)
@@ -66,6 +80,7 @@ public class MyFirstAgent {
             .toolExecutor(executor)
             .systemPrompt("You are a helpful coding assistant.")
             .maxIterations(10)
+            .streaming(true)
             .build();
 
         // 5. Run it
@@ -74,6 +89,56 @@ public class MyFirstAgent {
     }
 }
 ```
+
+## Spring Boot Integration
+
+Add the starter and configure via YAML — no boilerplate required:
+
+```xml
+<dependency>
+    <groupId>io.github.captainreenskin</groupId>
+    <artifactId>kairo-spring-boot-starter</artifactId>
+</dependency>
+<!-- Tools are optional — only add what you need -->
+<dependency>
+    <groupId>io.github.captainreenskin</groupId>
+    <artifactId>kairo-tools</artifactId>
+</dependency>
+```
+
+```yaml
+# application.yml
+kairo:
+  model:
+    provider: anthropic        # or: openai
+    api-key: ${ANTHROPIC_API_KEY}
+    model-name: claude-sonnet-4-20250514
+  tool:
+    enable-file-tools: true
+    enable-exec-tools: true
+  agent:
+    name: my-agent
+    max-iterations: 20
+```
+
+```java
+@RestController
+public class ChatController {
+
+    private final Agent agent;
+
+    public ChatController(Agent agent) {
+        this.agent = agent;
+    }
+
+    @PostMapping("/chat")
+    public String chat(@RequestBody String message) {
+        return agent.call(MsgBuilder.user(message)).block().getTextContent();
+    }
+}
+```
+
+See the [Spring Boot demo](../kairo-examples/spring-boot-demo/) for complete examples including streaming, structured output, hooks, and custom tools.
 
 ## Adding Tools
 
@@ -98,45 +163,56 @@ registry.registerTool(AskUserTool.class); // Request user input
 
 Tools are auto-partitioned: `READ_ONLY` tools run in parallel, `WRITE` and `SYSTEM_CHANGE` tools run serially.
 
+You can also register all tools in a package at once:
+
+```java
+registry.scan("io.kairo.tools.file");   // All file tools
+registry.scan("io.kairo.tools.exec");   // All execution tools
+```
+
 ## Model Configuration
 
 Kairo supports multiple model providers through a unified interface:
 
 ```java
-// GLM (Zhipu AI)
-export GLM_API_KEY=your-key
-OpenAIProvider glm = new OpenAIProvider(apiKey, "https://open.bigmodel.cn/api/paas/v4", "/chat/completions");
-// modelName: "glm-4-plus"
-
-// Qwen (Alibaba)
-export QWEN_API_KEY=your-key
-OpenAIProvider qwen = new OpenAIProvider(apiKey, "https://dashscope.aliyuncs.com/compatible-mode/v1", "/chat/completions");
-// modelName: "qwen-plus"
-
-// Claude (Anthropic — native API)
+// Anthropic (native API)
 AnthropicProvider claude = new AnthropicProvider(System.getenv("ANTHROPIC_API_KEY"));
 // modelName: "claude-sonnet-4-20250514"
 
+// GLM (Zhipu AI — OpenAI-compatible)
+OpenAIProvider glm = new OpenAIProvider(
+    System.getenv("GLM_API_KEY"),
+    "https://open.bigmodel.cn/api/paas/v4",
+    "/chat/completions");
+// modelName: "glm-4-plus"
+
+// Qwen (Alibaba — OpenAI-compatible)
+OpenAIProvider qwen = new OpenAIProvider(
+    System.getenv("QWEN_API_KEY"),
+    "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "/chat/completions");
+// modelName: "qwen-plus"
+
 // GPT-4o (OpenAI)
-OpenAIProvider gpt = new OpenAIProvider(apiKey, "https://api.openai.com/v1", "/chat/completions");
+OpenAIProvider gpt = new OpenAIProvider(
+    System.getenv("OPENAI_API_KEY"),
+    "https://api.openai.com/v1",
+    "/chat/completions");
 // modelName: "gpt-4o"
 ```
 
 ## Enabling Streaming
 
-Enable streaming for real-time token output (supported by GLM, Qwen, Claude, GPT):
+Enable streaming for real-time token output:
 
 ```java
 Agent agent = AgentBuilder.create()
     .name("streaming-agent")
     .model(provider)
+    .modelName("gpt-4o")
+    .streaming(true)              // <-- enables streaming
     // ... other config ...
     .build();
-
-// Enable streaming on the agent instance
-if (agent instanceof DefaultReActAgent reactAgent) {
-    reactAgent.setStreamingEnabled(true);
-}
 ```
 
 Streaming automatically falls back to non-streaming if the provider doesn't support it.
@@ -149,6 +225,7 @@ Persist agent sessions to disk so state survives restarts:
 Agent agent = AgentBuilder.create()
     .name("persistent-agent")
     .model(provider)
+    .modelName("glm-4-plus")
     .tools(registry)
     .toolExecutor(executor)
     .systemPrompt("You are a helpful assistant.")
@@ -177,16 +254,6 @@ Kairo handles errors automatically with multi-layer recovery:
 - **`server_error`** — Retry up to 3 times, then fallback to next model
 - **`max_output_tokens`** — Automatically continues the response
 
-Configure fallback models for resilience:
-
-```java
-ModelConfig config = ModelConfig.builder()
-    .model("glm-4-plus")
-    .maxTokens(4096)
-    .fallbackModels(List.of("qwen-plus", "gpt-4o"))
-    .build();
-```
-
 ## Running the Demo
 
 ```bash
@@ -196,22 +263,51 @@ cd kairo
 mvn clean install
 
 # Mock mode (no API key needed)
-mvn exec:java -pl kairo-examples -Dexec.mainClass="io.kairo.demo.AgentDemo" -Dexec.args="--mock"
+mvn exec:java -pl kairo-examples \
+  -Dexec.mainClass="io.kairo.examples.quickstart.AgentExample" \
+  -Dexec.args="--mock"
 
-# Qwen mode
+# GLM mode (requires GLM_API_KEY)
+export GLM_API_KEY=your-key
+mvn exec:java -pl kairo-examples \
+  -Dexec.mainClass="io.kairo.examples.quickstart.AgentExample" \
+  -Dexec.args="--glm"
+
+# Qwen mode (requires QWEN_API_KEY)
 export QWEN_API_KEY=your-key
-mvn exec:java -pl kairo-examples -Dexec.mainClass="io.kairo.demo.AgentDemo" -Dexec.args="--qwen"
+mvn exec:java -pl kairo-examples \
+  -Dexec.mainClass="io.kairo.examples.quickstart.AgentExample" \
+  -Dexec.args="--qwen"
 
-# Full toolset demo (requires Qwen API key)
-mvn exec:java -pl kairo-examples -Dexec.mainClass="io.kairo.demo.FullToolsetDemo"
+# Anthropic mode (requires ANTHROPIC_API_KEY)
+export ANTHROPIC_API_KEY=your-key
+mvn exec:java -pl kairo-examples \
+  -Dexec.mainClass="io.kairo.examples.quickstart.AgentExample"
+
+# Full toolset demo (requires QWEN_API_KEY)
+mvn exec:java -pl kairo-examples \
+  -Dexec.mainClass="io.kairo.examples.quickstart.FullToolsetExample"
 
 # Multi-agent demo (no API key needed)
-mvn exec:java -pl kairo-examples -Dexec.mainClass="io.kairo.demo.MultiAgentDemo"
+mvn exec:java -pl kairo-examples \
+  -Dexec.mainClass="io.kairo.examples.multiagent.MultiAgentExample"
+
+# Session demo (no API key needed)
+mvn exec:java -pl kairo-examples \
+  -Dexec.mainClass="io.kairo.examples.session.SessionExample"
+
+# Skill demo (requires QWEN_API_KEY)
+mvn exec:java -pl kairo-examples \
+  -Dexec.mainClass="io.kairo.examples.skills.SkillExample"
+
+# Spring Boot demo (requires ANTHROPIC_API_KEY or OPENAI_API_KEY)
+cd kairo-examples/spring-boot-demo
+mvn spring-boot:run
 ```
 
 ## Next Steps
 
-- Browse [kairo-examples](../kairo-examples/src/main/java/io/kairo/demo/) for complete runnable examples
+- Browse [kairo-examples](../kairo-examples/src/main/java/io/kairo/examples/) for complete runnable examples
 - Explore the [API module](../kairo-api/) for all extension points and SPI interfaces
 - Check [kairo-tools](../kairo-tools/) for the full built-in tool catalog
 - See [kairo-multi-agent](../kairo-multi-agent/) for Task, Team, and MessageBus orchestration

@@ -157,6 +157,7 @@ class CoordinatorIntegrationTest {
                         .name("coordinator")
                         .modelProvider(provider)
                         .toolRegistry(registry)
+                        .modelName("test-model")
                         .maxIterations(5)
                         .build();
 

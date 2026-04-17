@@ -152,6 +152,7 @@ public class AgentExample {
                         .systemPrompt(
                                 "You are a helpful coding assistant. Use the provided tools to complete tasks.")
                         .maxIterations(20)
+                        .modelName("mock-model")
                         .hook(loggingHook)
                         .contextManager(contextManager) // optional: enables auto-compaction
                         .build();
@@ -204,6 +205,7 @@ public class AgentExample {
                         .systemPrompt(
                                 "You are a helpful coding assistant. Use the provided tools to complete tasks step by step.")
                         .maxIterations(20)
+                        .modelName("claude-sonnet-4-20250514")
                         .hook(loggingHook)
                         .build();
 

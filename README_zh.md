@@ -12,7 +12,6 @@
   <a href="https://github.com/CaptainGreenskin/kairo/actions"><img src="https://github.com/CaptainGreenskin/kairo/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License" />
   <img src="https://img.shields.io/badge/JDK-17%2B-orange" alt="JDK 17+" />
-  <img src="https://img.shields.io/badge/version-0.1.0--SNAPSHOT-yellow" alt="Version" />
   <img src="https://img.shields.io/badge/reactive-Project%20Reactor-green" alt="Reactor" />
 </p>
 
@@ -37,10 +36,12 @@
 ## 架构
 
 ```
-kairo-parent (0.1.0-SNAPSHOT)
+kairo-parent
+├── kairo-bom                  — BOM 依赖版本管理
 ├── kairo-api                  — SPI 接口层（零实现依赖）
 ├── kairo-core                 — 核心运行时（ReAct 引擎、压缩管道、模型提供者）
 ├── kairo-tools                — 内置工具集（21 个工具）
+├── kairo-mcp                  — MCP 协议集成 (@Experimental)
 ├── kairo-multi-agent          — 多 Agent 编排（TaskBoard、TeamScheduler）
 ├── kairo-spring-boot-starter  — Spring Boot 自动装配
 └── kairo-examples             — 示例应用
@@ -63,6 +64,35 @@ kairo-parent (0.1.0-SNAPSHOT)
 
 **环境要求：** JDK 17+, Maven 3.8+
 
+### 1. 添加依赖
+
+```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.github.captainreenskin</groupId>
+            <artifactId>kairo-bom</artifactId>
+            <version>0.1.0</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
+<dependencies>
+    <dependency>
+        <groupId>io.github.captainreenskin</groupId>
+        <artifactId>kairo-core</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>io.github.captainreenskin</groupId>
+        <artifactId>kairo-tools</artifactId>
+    </dependency>
+</dependencies>
+```
+
+### 2. 编写你的第一个 Agent
+
 ```java
 // 1. 注册工具
 DefaultToolRegistry registry = new DefaultToolRegistry();
@@ -81,15 +111,50 @@ AnthropicProvider provider = new AnthropicProvider(System.getenv("ANTHROPIC_API_
 Agent agent = AgentBuilder.create()
     .name("coding-agent")
     .model(provider)
+    .modelName("claude-sonnet-4-20250514")
     .tools(registry)
     .toolExecutor(executor)
     .systemPrompt("You are a helpful coding assistant.")
     .maxIterations(20)
+    .streaming(true)
     .build();
 
 // 5. 执行
 Msg result = agent.call(MsgBuilder.user("创建一个 HelloWorld.java 并编译运行")).block();
 ```
+
+### 3. Spring Boot 集成
+
+添加 starter 依赖，通过 `application.yml` 配置：
+
+```xml
+<dependency>
+    <groupId>io.github.captainreenskin</groupId>
+    <artifactId>kairo-spring-boot-starter</artifactId>
+</dependency>
+```
+
+```yaml
+kairo:
+  model:
+    provider: anthropic
+    api-key: ${ANTHROPIC_API_KEY}
+  tool:
+    enable-file-tools: true
+    enable-exec-tools: true
+```
+
+```java
+@Autowired
+Agent agent;
+
+@PostMapping("/chat")
+public String chat(@RequestBody String message) {
+    return agent.call(MsgBuilder.user(message)).block().getTextContent();
+}
+```
+
+五行配置，Agent 即可使用。
 
 ## 模型支持
 
@@ -116,40 +181,46 @@ mvn clean install
 
 # 仅运行测试
 mvn test
+```
 
-# 运行演示（Mock 模式，无需 API Key）
+### 运行演示
+
+```bash
+# Mock 模式（无需 API Key）
 mvn exec:java -pl kairo-examples \
-  -Dexec.mainClass="io.kairo.demo.AgentDemo" \
+  -Dexec.mainClass="io.kairo.examples.quickstart.AgentExample" \
   -Dexec.args="--mock"
 
-# 运行演示（千问模式，需要 QWEN_API_KEY）
+# GLM 模式（需要 GLM_API_KEY）
+export GLM_API_KEY=your-key
+mvn exec:java -pl kairo-examples \
+  -Dexec.mainClass="io.kairo.examples.quickstart.AgentExample" \
+  -Dexec.args="--glm"
+
+# Qwen 模式（需要 QWEN_API_KEY）
 export QWEN_API_KEY=your-key
 mvn exec:java -pl kairo-examples \
-  -Dexec.mainClass="io.kairo.demo.AgentDemo" \
+  -Dexec.mainClass="io.kairo.examples.quickstart.AgentExample" \
   -Dexec.args="--qwen"
+
+# Anthropic 模式（需要 ANTHROPIC_API_KEY）
+export ANTHROPIC_API_KEY=your-key
+mvn exec:java -pl kairo-examples \
+  -Dexec.mainClass="io.kairo.examples.quickstart.AgentExample"
 ```
 
 更多 Demo：
 
 | Demo | 需要 API Key | 测试内容 |
 |------|-------------|---------|
-| `AgentDemo --mock` | 否 | 基础 ReAct 循环（Mock 模型） |
-| `AgentDemo --qwen` | 千问 | 真实 LLM 的 ReAct 循环 |
-| `FullToolsetDemo` | 千问 | 全部 6 个工具：read, write, edit, glob, grep, bash |
-| `SkillDemo` | 千问 | 技能系统：列出、加载和使用 Markdown 技能 |
-| `MultiAgentDemo` | 否 | TaskBoard DAG 依赖追踪 + MessageBus 发布/订阅 |
-| `SessionDemo` | 否 | FileMemoryStore + SessionSerializer 序列化往返 |
-
-## 项目状态
-
-| 指标 | 数值 |
-|-----|------|
-| 版本 | 0.1.0-SNAPSHOT |
-| 源码文件 | 188 个（22K+ 行） |
-| 测试文件 | 98 个（17K+ 行） |
-| 代码风格 | Spotless + Google Java Format (AOSP) |
-| 覆盖率 | JaCoCo |
-| 许可证 | Apache 2.0 |
+| `AgentExample --mock` | 否 | 基础 ReAct 循环（Mock 模型） |
+| `AgentExample --glm` | GLM | GLM-4-Plus 的 ReAct 循环 |
+| `AgentExample --qwen` | Qwen | Qwen-Plus 的 ReAct 循环 |
+| `FullToolsetExample` | Qwen | 全部 6 个工具：read, write, edit, glob, grep, bash |
+| `SkillExample` | Qwen | 技能系统：列出、加载和使用 Markdown 技能 |
+| `MultiAgentExample` | 否 | TaskBoard DAG 依赖追踪 + MessageBus 发布/订阅 |
+| `SessionExample` | 否 | FileMemoryStore + SessionSerializer 序列化往返 |
+| Spring Boot Demo | 是 | REST API、流式输出、结构化输出、Hook、MCP |
 
 ## 贡献
 

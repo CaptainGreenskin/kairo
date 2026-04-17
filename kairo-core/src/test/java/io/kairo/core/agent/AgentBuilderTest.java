@@ -57,7 +57,7 @@ class AgentBuilderTest {
     @Test
     void buildWithMinimalRequired() {
         ModelProvider provider = mock(ModelProvider.class);
-        Agent agent = AgentBuilder.create().name("minimal").model(provider).build();
+        Agent agent = AgentBuilder.create().name("minimal").model(provider).modelName("test-model").build();
         assertNotNull(agent);
         assertEquals("minimal", agent.name());
     }
@@ -66,12 +66,12 @@ class AgentBuilderTest {
     void missingNameThrows() {
         ModelProvider provider = mock(ModelProvider.class);
         assertThrows(
-                NullPointerException.class, () -> AgentBuilder.create().model(provider).build());
+                NullPointerException.class, () -> AgentBuilder.create().model(provider).modelName("test-model").build());
     }
 
     @Test
     void missingModelProviderThrows() {
-        assertThrows(NullPointerException.class, () -> AgentBuilder.create().name("test").build());
+        assertThrows(NullPointerException.class, () -> AgentBuilder.create().name("test").modelName("test-model").build());
     }
 
     @Test
@@ -79,7 +79,7 @@ class AgentBuilderTest {
         ModelProvider provider = mock(ModelProvider.class);
         assertThrows(
                 IllegalArgumentException.class,
-                () -> AgentBuilder.create().name("test").model(provider).maxIterations(0).build());
+                () -> AgentBuilder.create().name("test").model(provider).modelName("test-model").maxIterations(0).build());
     }
 
     @Test
@@ -87,13 +87,13 @@ class AgentBuilderTest {
         ModelProvider provider = mock(ModelProvider.class);
         assertThrows(
                 IllegalArgumentException.class,
-                () -> AgentBuilder.create().name("test").model(provider).tokenBudget(-1).build());
+                () -> AgentBuilder.create().name("test").model(provider).modelName("test-model").tokenBudget(-1).build());
     }
 
     @Test
     void nullHookIgnored() {
         ModelProvider provider = mock(ModelProvider.class);
-        Agent agent = AgentBuilder.create().name("test").model(provider).hook(null).build();
+        Agent agent = AgentBuilder.create().name("test").model(provider).modelName("test-model").hook(null).build();
         assertNotNull(agent);
     }
 
@@ -112,5 +112,16 @@ class AgentBuilderTest {
                         .modelName("model");
         assertNotNull(builder);
         assertNotNull(builder.build());
+    }
+
+    @Test
+    void buildWithoutModelNameThrows() {
+        ModelProvider provider = mock(ModelProvider.class);
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> AgentBuilder.create()
+                        .name("test")
+                        .model(provider)
+                        .build());
+        assertTrue(ex.getMessage().contains("modelName is required"));
     }
 }

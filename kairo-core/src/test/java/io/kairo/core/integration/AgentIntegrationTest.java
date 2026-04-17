@@ -273,6 +273,7 @@ class AgentIntegrationTest {
                         .toolExecutor(executor)
                         .systemPrompt("You are a test assistant.")
                         .maxIterations(10)
+                        .modelName("test-model")
                         .build();
 
         // Act
@@ -356,6 +357,7 @@ class AgentIntegrationTest {
                         .toolExecutor(executor)
                         .systemPrompt("You are a test assistant.")
                         .maxIterations(20)
+                        .modelName("test-model")
                         .build();
 
         // Act
@@ -387,6 +389,7 @@ class AgentIntegrationTest {
                         .model(provider)
                         .systemPrompt("Test")
                         .maxIterations(10)
+                        .modelName("test-model")
                         .build();
 
         // Act
@@ -656,6 +659,7 @@ class AgentIntegrationTest {
                         .model(provider)
                         .systemPrompt("Test")
                         .maxIterations(10)
+                        .modelName("test-model")
                         .build();
 
         // Act
@@ -765,6 +769,7 @@ class AgentIntegrationTest {
                         .toolExecutor(executor)
                         .systemPrompt("Test multi-iteration")
                         .maxIterations(10)
+                        .modelName("test-model")
                         .build();
 
         // Act
@@ -812,6 +817,7 @@ class AgentIntegrationTest {
                         .toolExecutor(executor)
                         .systemPrompt("Test")
                         .maxIterations(3) // Limit to 3 iterations
+                        .modelName("test-model")
                         .build();
 
         // Act

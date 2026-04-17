@@ -124,8 +124,7 @@ public class DefaultReActAgent implements Agent {
         this.shutdownManager = shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
 
         // Initialize token budget manager from model name
-        String modelId =
-                config.modelName() != null ? config.modelName() : ModelConfig.DEFAULT_MODEL;
+        String modelId = config.modelName();
         this.tokenBudgetManager = TokenBudgetManager.forModel(modelId);
 
         // Build system prompt including tool overview and session memory
@@ -395,7 +394,7 @@ public class DefaultReActAgent implements Agent {
 
     /** Build the {@link ModelConfig} for this iteration's LLM call. */
     private ModelConfig buildModelConfig() {
-        String model = config.modelName() != null ? config.modelName() : ModelConfig.DEFAULT_MODEL;
+        String model = config.modelName();
         ModelConfig.Builder builder =
                 ModelConfig.builder()
                         .model(model)

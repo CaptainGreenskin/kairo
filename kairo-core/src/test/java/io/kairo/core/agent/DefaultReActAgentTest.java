@@ -64,6 +64,7 @@ class DefaultReActAgentTest {
                 .name("test-agent")
                 .modelProvider(modelProvider)
                 .toolRegistry(toolRegistry)
+                .modelName("test-model")
                 .maxIterations(10)
                 .timeout(Duration.ofSeconds(30))
                 .tokenBudget(100_000);

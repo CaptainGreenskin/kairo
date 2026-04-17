@@ -22,6 +22,7 @@ import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -37,29 +38,34 @@ import org.springframework.web.bind.annotation.RestController;
  * <pre>{@code
  * curl -X POST http://localhost:8080/extract \
  *   -H "Content-Type: application/json" \
- *   -d '{"text": "John Doe is a 30-year-old software engineer from San Francisco."}'
+ *   -d '{"message": "John Doe is a 30-year-old software engineer from San Francisco."}'
  * }</pre>
  */
 @RestController
 public class StructuredOutputController {
 
     private final ModelProvider modelProvider;
+    private final String modelName;
 
-    public StructuredOutputController(ModelProvider modelProvider) {
+    public StructuredOutputController(
+            ModelProvider modelProvider,
+            @Value("${kairo.model.model-name:qwen-plus}") String modelName) {
         this.modelProvider = modelProvider;
+        this.modelName = modelName;
     }
 
     @PostMapping("/extract")
     public ResponseEntity<PersonInfo> extract(@RequestBody ExtractRequest request) {
         ModelConfig config =
                 ModelConfig.builder()
+                        .model(modelName)
                         .systemPrompt(
                                 "Extract structured person information from the given text. "
                                         + "Return valid JSON matching the requested schema.")
                         .responseSchema(PersonInfo.class)
                         .build();
 
-        Msg userMsg = Msg.of(MsgRole.USER, request.text());
+        Msg userMsg = Msg.of(MsgRole.USER, request.message());
         ModelResponse response = modelProvider.call(List.of(userMsg), config).block();
 
         if (response == null) {
@@ -71,7 +77,7 @@ public class StructuredOutputController {
     }
 
     /** Request body for the extract endpoint. */
-    public record ExtractRequest(String text) {}
+    public record ExtractRequest(String message) {}
 
     /** Structured output schema — the LLM will return JSON matching this shape. */
     public record PersonInfo(

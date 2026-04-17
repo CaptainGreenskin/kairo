@@ -12,7 +12,6 @@
   <a href="https://github.com/CaptainGreenskin/kairo/actions"><img src="https://github.com/CaptainGreenskin/kairo/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License" />
   <img src="https://img.shields.io/badge/JDK-17%2B-orange" alt="JDK 17+" />
-  <img src="https://img.shields.io/badge/version-0.1.0--SNAPSHOT-yellow" alt="Version" />
   <img src="https://img.shields.io/badge/reactive-Project%20Reactor-green" alt="Reactor" />
 </p>
 
@@ -37,10 +36,12 @@ Kairo is built on Project Reactor for fully reactive, non-blocking execution and
 ## Architecture
 
 ```
-kairo-parent (0.1.0-SNAPSHOT)
+kairo-parent
+├── kairo-bom                  — BOM for dependency version management
 ├── kairo-api                  — SPI interface layer (zero implementation dependencies)
 ├── kairo-core                 — Core runtime (ReAct engine, compaction, model providers)
 ├── kairo-tools                — Built-in tool suite (21 tools)
+├── kairo-mcp                  — MCP protocol integration (@Experimental)
 ├── kairo-multi-agent          — Multi-agent orchestration (TaskBoard, TeamScheduler)
 ├── kairo-spring-boot-starter  — Spring Boot auto-configuration
 └── kairo-examples             — Example applications
@@ -63,6 +64,35 @@ kairo-parent (0.1.0-SNAPSHOT)
 
 **Requirements:** JDK 17+, Maven 3.8+
 
+### 1. Add Dependency
+
+```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.github.captainreenskin</groupId>
+            <artifactId>kairo-bom</artifactId>
+            <version>0.1.0</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
+<dependencies>
+    <dependency>
+        <groupId>io.github.captainreenskin</groupId>
+        <artifactId>kairo-core</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>io.github.captainreenskin</groupId>
+        <artifactId>kairo-tools</artifactId>
+    </dependency>
+</dependencies>
+```
+
+### 2. Write Your First Agent
+
 ```java
 // 1. Register tools
 DefaultToolRegistry registry = new DefaultToolRegistry();
@@ -81,15 +111,50 @@ AnthropicProvider provider = new AnthropicProvider(System.getenv("ANTHROPIC_API_
 Agent agent = AgentBuilder.create()
     .name("coding-agent")
     .model(provider)
+    .modelName("claude-sonnet-4-20250514")
     .tools(registry)
     .toolExecutor(executor)
     .systemPrompt("You are a helpful coding assistant.")
     .maxIterations(20)
+    .streaming(true)
     .build();
 
 // 5. Run
 Msg result = agent.call(MsgBuilder.user("Create a HelloWorld.java, compile and run it.")).block();
 ```
+
+### 3. Spring Boot Integration
+
+Add the starter dependency and configure via `application.yml`:
+
+```xml
+<dependency>
+    <groupId>io.github.captainreenskin</groupId>
+    <artifactId>kairo-spring-boot-starter</artifactId>
+</dependency>
+```
+
+```yaml
+kairo:
+  model:
+    provider: anthropic
+    api-key: ${ANTHROPIC_API_KEY}
+  tool:
+    enable-file-tools: true
+    enable-exec-tools: true
+```
+
+```java
+@Autowired
+Agent agent;
+
+@PostMapping("/chat")
+public String chat(@RequestBody String message) {
+    return agent.call(MsgBuilder.user(message)).block().getTextContent();
+}
+```
+
+That's it — five lines of YAML and the agent is ready.
 
 ## Model Support
 
@@ -116,40 +181,46 @@ mvn clean install
 
 # Run tests only
 mvn test
+```
 
-# Run demo (mock mode, no API key needed)
+### Running the Demos
+
+```bash
+# Mock mode (no API key needed)
 mvn exec:java -pl kairo-examples \
-  -Dexec.mainClass="io.kairo.demo.AgentDemo" \
+  -Dexec.mainClass="io.kairo.examples.quickstart.AgentExample" \
   -Dexec.args="--mock"
 
-# Run demo with Qwen (requires QWEN_API_KEY)
+# GLM mode (requires GLM_API_KEY)
+export GLM_API_KEY=your-key
+mvn exec:java -pl kairo-examples \
+  -Dexec.mainClass="io.kairo.examples.quickstart.AgentExample" \
+  -Dexec.args="--glm"
+
+# Qwen mode (requires QWEN_API_KEY)
 export QWEN_API_KEY=your-key
 mvn exec:java -pl kairo-examples \
-  -Dexec.mainClass="io.kairo.demo.AgentDemo" \
+  -Dexec.mainClass="io.kairo.examples.quickstart.AgentExample" \
   -Dexec.args="--qwen"
+
+# Anthropic mode (requires ANTHROPIC_API_KEY)
+export ANTHROPIC_API_KEY=your-key
+mvn exec:java -pl kairo-examples \
+  -Dexec.mainClass="io.kairo.examples.quickstart.AgentExample"
 ```
 
 More demos available:
 
 | Demo | API Key | What it tests |
 |------|---------|---------------|
-| `AgentDemo --mock` | No | Basic ReAct loop with mock model |
-| `AgentDemo --qwen` | Qwen | ReAct loop with real LLM |
-| `FullToolsetDemo` | Qwen | All 6 tools: read, write, edit, glob, grep, bash |
-| `SkillDemo` | Qwen | Skill system: list, load, and use Markdown skills |
-| `MultiAgentDemo` | No | TaskBoard DAG tracking + MessageBus pub/sub |
-| `SessionDemo` | No | FileMemoryStore + SessionSerializer round-trip |
-
-## Project Status
-
-| Metric | Value |
-|--------|-------|
-| Version | 0.1.0-SNAPSHOT |
-| Source files | 188 (22K+ lines) |
-| Test files | 98 (17K+ lines) |
-| Code Style | Spotless + Google Java Format (AOSP) |
-| Coverage | JaCoCo |
-| License | Apache 2.0 |
+| `AgentExample --mock` | No | Basic ReAct loop with mock model |
+| `AgentExample --glm` | GLM | ReAct loop with GLM-4-Plus |
+| `AgentExample --qwen` | Qwen | ReAct loop with Qwen-Plus |
+| `FullToolsetExample` | Qwen | All 6 tools: read, write, edit, glob, grep, bash |
+| `SkillExample` | Qwen | Skill system: list, load, and use Markdown skills |
+| `MultiAgentExample` | No | TaskBoard DAG tracking + MessageBus pub/sub |
+| `SessionExample` | No | FileMemoryStore + SessionSerializer round-trip |
+| Spring Boot Demo | Yes | REST API, streaming, structured output, hooks, MCP |
 
 ## Contributing
 
