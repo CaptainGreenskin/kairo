@@ -263,4 +263,53 @@ class DanglingToolCallRecoveryTest {
         assertDoesNotThrow(() -> loop.recoverDanglingToolCalls());
         assertTrue(loop.getHistory().isEmpty());
     }
+
+    // ==================== EDGE CASE TESTS ====================
+
+    @Test
+    void testErrorMessageContainsInterrupted() {
+        ReActLoop loop = createLoop();
+
+        Msg userMsg = Msg.of(MsgRole.USER, "do something");
+        Msg assistantMsg =
+                MsgBuilder.create()
+                        .role(MsgRole.ASSISTANT)
+                        .toolUse("tc-check", "read_file", Map.of("path", "test.txt"))
+                        .build();
+
+        loop.injectMessages(List.of(userMsg, assistantMsg));
+        loop.recoverDanglingToolCalls();
+
+        List<Msg> history = loop.getHistory();
+        Msg injected = history.get(2);
+        Content.ToolResultContent trc = (Content.ToolResultContent) injected.contents().get(0);
+
+        // Verify the error message contains "interrupted"
+        assertTrue(trc.content().toLowerCase().contains("interrupted"),
+                "Error message should contain 'interrupted' but was: " + trc.content());
+    }
+
+    @Test
+    void testRecoveredToolUseIdMatchesDanglingCall() {
+        ReActLoop loop = createLoop();
+
+        String danglingId = "tc-unique-12345";
+        Msg userMsg = Msg.of(MsgRole.USER, "run task");
+        Msg assistantMsg =
+                MsgBuilder.create()
+                        .role(MsgRole.ASSISTANT)
+                        .toolUse(danglingId, "execute", Map.of("cmd", "ls"))
+                        .build();
+
+        loop.injectMessages(List.of(userMsg, assistantMsg));
+        loop.recoverDanglingToolCalls();
+
+        List<Msg> history = loop.getHistory();
+        Msg injected = history.get(2);
+        Content.ToolResultContent trc = (Content.ToolResultContent) injected.contents().get(0);
+
+        // The recovered ToolResult's toolUseId must match the original dangling call ID
+        assertEquals(danglingId, trc.toolUseId(),
+                "Recovered ToolResult toolUseId must match the dangling call ID");
+    }
 }

@@ -325,4 +325,72 @@ class CompactionTriggerFlushTest {
         verify(memoryStore, times(1)).save(captor.capture());
         assertEquals("valid content", captor.getValue().content());
     }
+
+    // ==================== EDGE CASE TESTS ====================
+
+    @Test
+    @DisplayName("All flushed MemoryEntries have scope=SESSION")
+    void testFlushedEntryScopeAlwaysSession() {
+        when(contextManager.needsCompaction(anyList())).thenReturn(true);
+        when(contextManager.compactMessages(anyList()))
+                .thenReturn(Mono.just(List.of(normalMsg("summary"))));
+
+        Msg v1 = verbatimMsg("fact one");
+        Msg v2 = verbatimMsg("fact two");
+        Msg v3 = verbatimMsg("fact three");
+        List<Msg> history = List.of(v1, v2, v3);
+
+        CompactionTrigger trigger =
+                new CompactionTrigger(contextManager, reactLoop, memoryStore, null);
+
+        StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
+
+        ArgumentCaptor<MemoryEntry> captor = ArgumentCaptor.forClass(MemoryEntry.class);
+        verify(memoryStore, times(3)).save(captor.capture());
+
+        captor.getAllValues().forEach(entry ->
+                assertEquals(MemoryScope.SESSION, entry.scope(),
+                        "Every flushed entry must have SESSION scope"));
+    }
+
+    @Test
+    @DisplayName("All flushed MemoryEntries have verbatim=true")
+    void testFlushedEntryVerbatimAlwaysTrue() {
+        when(contextManager.needsCompaction(anyList())).thenReturn(true);
+        when(contextManager.compactMessages(anyList()))
+                .thenReturn(Mono.just(List.of(normalMsg("summary"))));
+
+        Msg v1 = verbatimMsg("important A");
+        Msg v2 = verbatimMsg("important B");
+        List<Msg> history = List.of(v1, v2);
+
+        CompactionTrigger trigger =
+                new CompactionTrigger(contextManager, reactLoop, memoryStore, null);
+
+        StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
+
+        ArgumentCaptor<MemoryEntry> captor = ArgumentCaptor.forClass(MemoryEntry.class);
+        verify(memoryStore, times(2)).save(captor.capture());
+
+        captor.getAllValues().forEach(entry ->
+                assertTrue(entry.verbatim(), "Every flushed entry must have verbatim=true"));
+    }
+
+    @Test
+    @DisplayName("Empty conversation history triggers no flush and no errors")
+    void testEmptyHistoryNoFlush() {
+        when(contextManager.needsCompaction(anyList())).thenReturn(true);
+        when(contextManager.compactMessages(anyList()))
+                .thenReturn(Mono.just(List.of()));
+
+        List<Msg> history = List.of();
+
+        CompactionTrigger trigger =
+                new CompactionTrigger(contextManager, reactLoop, memoryStore, null);
+
+        StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
+
+        // No save calls since no important messages exist
+        verify(memoryStore, never()).save(any());
+    }
 }

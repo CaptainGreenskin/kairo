@@ -199,6 +199,51 @@ class ModelCircuitBreakerTest {
         assertTrue(ex.getMessage().contains("broken-model"));
     }
 
+    // ==================== EDGE CASE TESTS ====================
+
+    @Test
+    void testGetStateReturnsCurrentState() {
+        var breaker = new ModelCircuitBreaker("state-test", 2, Duration.ofMillis(50));
+
+        // Initially CLOSED
+        assertEquals(ModelCircuitBreaker.State.CLOSED, breaker.getState());
+
+        // After threshold failures -> OPEN
+        breaker.recordFailure();
+        breaker.recordFailure();
+        assertEquals(ModelCircuitBreaker.State.OPEN, breaker.getState());
+
+        // After timeout -> HALF_OPEN (triggered by allowCall)
+        sleep(100);
+        breaker.allowCall();
+        assertEquals(ModelCircuitBreaker.State.HALF_OPEN, breaker.getState());
+
+        // After success -> CLOSED again
+        breaker.recordSuccess();
+        assertEquals(ModelCircuitBreaker.State.CLOSED, breaker.getState());
+    }
+
+    @Test
+    void testRapidAlternatingSuccessFailure() {
+        var breaker = new ModelCircuitBreaker("rapid-test", 3, Duration.ofSeconds(60));
+
+        // Rapidly alternate success and failure
+        for (int i = 0; i < 100; i++) {
+            breaker.recordFailure();
+            breaker.recordSuccess(); // resets failure count
+        }
+
+        // After alternating, success always resets count, so should remain CLOSED
+        assertEquals(ModelCircuitBreaker.State.CLOSED, breaker.getState());
+        assertTrue(breaker.allowCall());
+
+        // Now do consecutive failures to prove state is not corrupted
+        breaker.recordFailure();
+        breaker.recordFailure();
+        breaker.recordFailure();
+        assertEquals(ModelCircuitBreaker.State.OPEN, breaker.getState());
+    }
+
     private void sleep(long millis) {
         try {
             Thread.sleep(millis);

