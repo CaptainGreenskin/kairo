@@ -28,11 +28,13 @@ import io.kairo.api.model.ClassifiedError;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
+import io.kairo.core.model.ApiErrorClassifierImpl;
 import io.kairo.core.model.ModelFallbackManager;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
@@ -296,5 +298,194 @@ class ErrorRecoveryStrategyTest {
     @Test
     void fallbackManagerAccessor() {
         assertSame(fallbackManager, strategy.fallbackManager());
+    }
+
+    // ---- New: end-to-end error recovery tests ----
+
+    @Test
+    void retriesOnRateLimitError() {
+        List<Msg> messages = List.of(Msg.of(MsgRole.USER, "hello"));
+
+        ModelResponse successResponse =
+                new ModelResponse(
+                        "resp-ok",
+                        List.of(new Content.TextContent("Success after rate limit")),
+                        new ModelResponse.Usage(10, 5, 0, 0),
+                        ModelResponse.StopReason.END_TURN,
+                        "test-model");
+
+        AtomicInteger callCount = new AtomicInteger(0);
+        when(modelProvider.call(any(), any()))
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.getAndIncrement();
+                            if (n == 0) {
+                                return Mono.error(
+                                        new RuntimeException(
+                                                "429 rate limited. Retry after 1 seconds"));
+                            }
+                            return Mono.just(successResponse);
+                        });
+
+        Mono<ModelResponse> result = strategy.callModelWithRecovery(messages, modelConfig, 0);
+
+        StepVerifier.create(result)
+                .assertNext(
+                        resp -> {
+                            assertEquals("resp-ok", resp.id());
+                            assertTrue(
+                                    resp.contents().get(0) instanceof Content.TextContent tc
+                                            && tc.text().contains("Success after rate limit"));
+                        })
+                .verifyComplete();
+
+        assertEquals(2, callCount.get(), "Provider should have been called exactly twice");
+    }
+
+    @Test
+    void retriesOnServerError() {
+        List<Msg> messages = List.of(Msg.of(MsgRole.USER, "hello"));
+
+        ModelResponse successResponse =
+                new ModelResponse(
+                        "resp-ok",
+                        List.of(new Content.TextContent("Recovered from server error")),
+                        new ModelResponse.Usage(10, 5, 0, 0),
+                        ModelResponse.StopReason.END_TURN,
+                        "test-model");
+
+        AtomicInteger callCount = new AtomicInteger(0);
+        when(modelProvider.call(any(), any()))
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.getAndIncrement();
+                            if (n == 0) {
+                                return Mono.error(
+                                        new RuntimeException("500 internal server error"));
+                            }
+                            return Mono.just(successResponse);
+                        });
+
+        Mono<ModelResponse> result = strategy.callModelWithRecovery(messages, modelConfig, 0);
+
+        StepVerifier.create(result)
+                .assertNext(resp -> assertEquals("resp-ok", resp.id()))
+                .verifyComplete();
+
+        assertTrue(callCount.get() >= 2, "Provider should have been called at least twice");
+    }
+
+    @Test
+    void fallsBackOnMaxRetriesExceeded() {
+        List<Msg> messages = List.of(Msg.of(MsgRole.USER, "hello"));
+
+        // Always fail with server error
+        when(modelProvider.call(any(), any()))
+                .thenReturn(Mono.error(new RuntimeException("500 internal server error")));
+
+        Mono<ModelResponse> result = strategy.callModelWithRecovery(messages, modelConfig, 0);
+
+        StepVerifier.create(result)
+                .expectErrorMatches(
+                        e ->
+                                e instanceof RuntimeException
+                                        && e.getMessage().contains("500 internal server error"))
+                .verify(Duration.ofSeconds(30));
+    }
+
+    @Test
+    void classifiesTransientVsPermanentErrors() {
+        ApiErrorClassifierImpl classifier = new ApiErrorClassifierImpl();
+
+        // 429 = RATE_LIMITED (transient/retryable)
+        ClassifiedError rateLimited = classifier.classify(new RuntimeException("429 too many requests"));
+        assertEquals(ApiErrorType.RATE_LIMITED, rateLimited.type());
+
+        // 400 = UNKNOWN (permanent, not retryable by classifier)
+        ClassifiedError badRequest = classifier.classify(new RuntimeException("400 bad request"));
+        assertEquals(
+                ApiErrorType.UNKNOWN,
+                badRequest.type(),
+                "400 bad request should be classified as UNKNOWN (permanent)");
+
+        // 500 = SERVER_ERROR (transient/retryable)
+        ClassifiedError serverError =
+                classifier.classify(new RuntimeException("500 internal server error"));
+        assertEquals(ApiErrorType.SERVER_ERROR, serverError.type());
+
+        // 401 = AUTHENTICATION_ERROR (permanent)
+        ClassifiedError authError = classifier.classify(new RuntimeException("401 unauthorized"));
+        assertEquals(ApiErrorType.AUTHENTICATION_ERROR, authError.type());
+
+        // Already-classified ApiException should pass through
+        ApiException apiEx =
+                new ApiException(ApiErrorType.BUDGET_EXCEEDED, "Budget exceeded", Map.of());
+        ClassifiedError budget = classifier.classify(apiEx);
+        assertEquals(ApiErrorType.BUDGET_EXCEEDED, budget.type());
+    }
+
+    @Test
+    void noRetryOnPermanentError() {
+        List<Msg> messages = List.of(Msg.of(MsgRole.USER, "hello"));
+
+        // 401 authentication error is permanent — should not retry
+        ApiException authError =
+                new ApiException(
+                        ApiErrorType.AUTHENTICATION_ERROR, "Invalid API key", Map.of());
+        when(modelProvider.call(any(), any())).thenReturn(Mono.error(authError));
+
+        Mono<ModelResponse> result = strategy.callModelWithRecovery(messages, modelConfig, 0);
+
+        StepVerifier.create(result)
+                .expectErrorMatches(
+                        e ->
+                                e instanceof ApiException
+                                        && ((ApiException) e).getErrorType()
+                                                == ApiErrorType.AUTHENTICATION_ERROR)
+                .verify(Duration.ofSeconds(5));
+
+        // Should only be called once — no retry on permanent error
+        verify(modelProvider, times(1)).call(any(), any());
+    }
+
+    @Test
+    void exponentialBackoffBetweenRetries() {
+        List<Msg> messages = List.of(Msg.of(MsgRole.USER, "hello"));
+
+        ModelResponse successResponse =
+                new ModelResponse(
+                        "resp-ok",
+                        List.of(new Content.TextContent("ok")),
+                        new ModelResponse.Usage(10, 5, 0, 0),
+                        ModelResponse.StopReason.END_TURN,
+                        "test-model");
+
+        // Fail twice with server error, then succeed
+        AtomicInteger callCount = new AtomicInteger(0);
+        when(modelProvider.call(any(), any()))
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.getAndIncrement();
+                            if (n < 2) {
+                                return Mono.error(
+                                        new RuntimeException("500 internal server error"));
+                            }
+                            return Mono.just(successResponse);
+                        });
+
+        long start = System.currentTimeMillis();
+        Mono<ModelResponse> result = strategy.callModelWithRecovery(messages, modelConfig, 0);
+
+        StepVerifier.create(result)
+                .assertNext(resp -> assertEquals("resp-ok", resp.id()))
+                .verifyComplete();
+
+        long elapsed = System.currentTimeMillis() - start;
+        assertTrue(callCount.get() >= 3, "Should have been called at least 3 times");
+        // Exponential backoff: 1s (2^0) + 2s (2^1) = 3s minimum
+        // Allow some slack but verify there was meaningful delay
+        assertTrue(
+                elapsed >= 2000,
+                "Exponential backoff should have caused at least 2s delay, but was " + elapsed + "ms");
     }
 }
