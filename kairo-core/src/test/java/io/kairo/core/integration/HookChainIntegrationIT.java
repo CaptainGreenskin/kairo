@@ -23,16 +23,12 @@ import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelConfig;
-import io.kairo.api.model.ModelResponse;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.core.hook.DefaultHookChain;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -230,7 +226,8 @@ class HookChainIntegrationIT {
         SkipHandler handler = new SkipHandler();
         chain.register(handler);
 
-        PreActingEvent event = new PreActingEvent("stub_read", Map.of("path", "/tmp/test.txt"), false);
+        PreActingEvent event =
+                new PreActingEvent("stub_read", Map.of("path", "/tmp/test.txt"), false);
 
         StepVerifier.create(chain.firePreActingWithResult(event))
                 .assertNext(
@@ -253,7 +250,8 @@ class HookChainIntegrationIT {
         AbortHandler handler = new AbortHandler();
         chain.register(handler);
 
-        PreActingEvent event = new PreActingEvent("stub_bash", Map.of("command", "echo hello"), false);
+        PreActingEvent event =
+                new PreActingEvent("stub_bash", Map.of("command", "echo hello"), false);
 
         StepVerifier.create(chain.firePreActingWithResult(event))
                 .assertNext(
@@ -302,7 +300,8 @@ class HookChainIntegrationIT {
         ModifyHandler handler = new ModifyHandler(modifiedInput);
         chain.register(handler);
 
-        PreActingEvent event = new PreActingEvent("stub_read", Map.of("path", "/original/path.txt"), false);
+        PreActingEvent event =
+                new PreActingEvent("stub_read", Map.of("path", "/original/path.txt"), false);
 
         StepVerifier.create(chain.firePreActingWithResult(event))
                 .assertNext(
@@ -329,7 +328,8 @@ class HookChainIntegrationIT {
         AbortHandler abortHandler = new AbortHandler();
         chain.register(abortHandler);
 
-        PreActingEvent event = new PreActingEvent("stub_read", Map.of("path", "/tmp/test.txt"), false);
+        PreActingEvent event =
+                new PreActingEvent("stub_read", Map.of("path", "/tmp/test.txt"), false);
 
         StepVerifier.create(chain.firePreActingWithResult(event))
                 .assertNext(
@@ -386,12 +386,14 @@ class HookChainIntegrationIT {
         chain.register(injectHandler);
         chain.register(skipHandler);
 
-        PreActingEvent event = new PreActingEvent("stub_read", Map.of("path", "/tmp/test.txt"), false);
+        PreActingEvent event =
+                new PreActingEvent("stub_read", Map.of("path", "/tmp/test.txt"), false);
 
         StepVerifier.create(chain.firePreActingWithResult(event))
                 .assertNext(
                         result -> {
-                            assertTrue(injectHandler.called, "InjectHandler should have been called");
+                            assertTrue(
+                                    injectHandler.called, "InjectHandler should have been called");
                             assertTrue(skipHandler.called, "SkipHandler should have been called");
                             assertEquals(HookResult.Decision.SKIP, result.decision());
                             assertTrue(result.shouldSkip());
@@ -468,7 +470,8 @@ class HookChainIntegrationIT {
         PostActingResultTracker tracker = new PostActingResultTracker();
         chain.register(tracker);
 
-        ToolResult result = new ToolResult("tu-1", "file contents", false, Map.of("path", "/tmp/test.txt"));
+        ToolResult result =
+                new ToolResult("tu-1", "file contents", false, Map.of("path", "/tmp/test.txt"));
         PostActingEvent event = new PostActingEvent("stub_read", result);
 
         StepVerifier.create(chain.firePostActing(event))

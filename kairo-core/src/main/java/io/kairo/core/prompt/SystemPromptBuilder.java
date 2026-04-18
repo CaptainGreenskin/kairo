@@ -361,10 +361,7 @@ public class SystemPromptBuilder {
         for (Map.Entry<ToolCategory, List<ToolDefinition>> entry : grouped.entrySet()) {
             sb.append("### ").append(entry.getKey().name()).append("\n");
             for (ToolDefinition tool : entry.getValue()) {
-                sb.append("- **")
-                        .append(tool.name())
-                        .append("**: ")
-                        .append(tool.description());
+                sb.append("- **").append(tool.name()).append("**: ").append(tool.description());
                 if (tool.usageGuidance() != null && !tool.usageGuidance().isBlank()) {
                     sb.append("\n\n  Usage guidance: ").append(tool.usageGuidance());
                 }

@@ -19,6 +19,7 @@ import io.kairo.api.memory.MemoryEntry;
 import io.kairo.api.memory.MemoryScope;
 import io.kairo.api.memory.MemoryStore;
 import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -53,6 +54,21 @@ public class InMemoryStore implements MemoryStore {
         return Flux.fromIterable(entries.values())
                 .filter(e -> e.scope() == scope)
                 .filter(e -> matchesQuery(e, lowerQuery));
+    }
+
+    @Override
+    public Flux<MemoryEntry> search(String query, MemoryScope scope, List<String> tags) {
+        if (tags == null || tags.isEmpty()) {
+            return search(query, scope);
+        }
+        String lowerQuery = query.toLowerCase();
+        return Flux.fromIterable(entries.values())
+                .filter(
+                        e ->
+                                e.scope() == scope
+                                        && matchesQuery(e, lowerQuery)
+                                        && e.tags() != null
+                                        && tags.stream().allMatch(tag -> e.tags().contains(tag)));
     }
 
     @Override

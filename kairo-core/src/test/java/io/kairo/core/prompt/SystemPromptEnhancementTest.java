@@ -118,8 +118,7 @@ class SystemPromptEnhancementTest {
     void backwardCompatToolDefinitionStillWorks() {
         // 5-param constructor
         ToolDefinition def5 =
-                new ToolDefinition(
-                        "tool_a", "desc", ToolCategory.GENERAL, null, Object.class);
+                new ToolDefinition("tool_a", "desc", ToolCategory.GENERAL, null, Object.class);
         assertEquals("", def5.usageGuidance());
         assertEquals(ToolSideEffect.READ_ONLY, def5.sideEffect());
 
@@ -132,7 +131,12 @@ class SystemPromptEnhancementTest {
         // 7-param constructor
         ToolDefinition def7 =
                 new ToolDefinition(
-                        "tool_c", "desc", ToolCategory.GENERAL, null, Object.class, null,
+                        "tool_c",
+                        "desc",
+                        ToolCategory.GENERAL,
+                        null,
+                        Object.class,
+                        null,
                         ToolSideEffect.SYSTEM_CHANGE);
         assertEquals("", def7.usageGuidance());
         assertEquals(ToolSideEffect.SYSTEM_CHANGE, def7.sideEffect());
@@ -161,8 +165,14 @@ class SystemPromptEnhancementTest {
     void geminiModelGuidanceInjectedIntoPrompt() {
         ModelCapability gemini =
                 new ModelCapability(
-                        "gemini", "1.5-pro", 1_000_000, 8192, false, false,
-                        ToolVerbosity.STANDARD, null);
+                        "gemini",
+                        "1.5-pro",
+                        1_000_000,
+                        8192,
+                        false,
+                        false,
+                        ToolVerbosity.STANDARD,
+                        null);
 
         String prompt =
                 SystemPromptBuilder.create()
@@ -177,8 +187,14 @@ class SystemPromptEnhancementTest {
     void claudeModelNoGuidanceInjected() {
         ModelCapability claude =
                 new ModelCapability(
-                        "claude", "sonnet", 200_000, 8192, true, true,
-                        ToolVerbosity.STANDARD, null);
+                        "claude",
+                        "sonnet",
+                        200_000,
+                        8192,
+                        true,
+                        true,
+                        ToolVerbosity.STANDARD,
+                        null);
 
         String prompt =
                 SystemPromptBuilder.create()
@@ -192,9 +208,7 @@ class SystemPromptEnhancementTest {
     @Test
     void noModelCapabilityNoGuidance() {
         String prompt =
-                SystemPromptBuilder.create()
-                        .section("identity", "You are a helper.")
-                        .build();
+                SystemPromptBuilder.create().section("identity", "You are a helper.").build();
 
         assertFalse(prompt.contains("model-guidance"));
         assertFalse(prompt.contains("Model-guidance"));
@@ -204,8 +218,14 @@ class SystemPromptEnhancementTest {
     void customPromptGuidanceOverridesDefault() {
         ModelCapability custom =
                 new ModelCapability(
-                        "gpt", "4o", 128_000, 4096, false, false,
-                        ToolVerbosity.STANDARD, (io.kairo.api.model.IntRange) null,
+                        "gpt",
+                        "4o",
+                        128_000,
+                        4096,
+                        false,
+                        false,
+                        ToolVerbosity.STANDARD,
+                        (io.kairo.api.model.IntRange) null,
                         "My custom model guidance");
 
         String prompt =
@@ -227,9 +247,7 @@ class SystemPromptEnhancementTest {
                         "gpt", "4o", 128_000, 4096, false, false, ToolVerbosity.STANDARD, null);
 
         SystemPromptBuilder builder =
-                SystemPromptBuilder.create()
-                        .forModel(gpt)
-                        .section("identity", "You are a helper.");
+                SystemPromptBuilder.create().forModel(gpt).section("identity", "You are a helper.");
 
         // Build twice — guidance should appear only once
         SystemPromptResult result = builder.buildResult();

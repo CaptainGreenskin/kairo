@@ -40,8 +40,8 @@ import reactor.core.publisher.Mono;
 /**
  * Integration tests for session persistence functionality.
  *
- * <p>Tests cover save/load round-trips, state preservation, error handling, concurrent access,
- * and edge cases like large histories and corrupted data.
+ * <p>Tests cover save/load round-trips, state preservation, error handling, concurrent access, and
+ * edge cases like large histories and corrupted data.
  */
 @Tag("integration")
 class SessionPersistenceIT {
@@ -50,7 +50,8 @@ class SessionPersistenceIT {
     //  Helper: create test snapshot
     // ================================
 
-    private SessionSnapshot createSnapshot(String sessionId, int turnCount, List<Map<String, Object>> messages) {
+    private SessionSnapshot createSnapshot(
+            String sessionId, int turnCount, List<Map<String, Object>> messages) {
         return new SessionSnapshot(
                 sessionId,
                 Instant.now(),
@@ -101,12 +102,13 @@ class SessionPersistenceIT {
         newUserMsg.put("content", "Continuing conversation");
         continuedMessages.add(newUserMsg);
 
-        SessionSnapshot updated = new SessionSnapshot(
-                sessionId,
-                loaded.createdAt(),
-                loaded.turnCount() + 1,
-                continuedMessages,
-                loaded.agentState());
+        SessionSnapshot updated =
+                new SessionSnapshot(
+                        sessionId,
+                        loaded.createdAt(),
+                        loaded.turnCount() + 1,
+                        continuedMessages,
+                        loaded.agentState());
 
         manager.saveSession(sessionId, updated).block(Duration.ofSeconds(5));
         SessionSnapshot reloaded = manager.loadSession(sessionId).block(Duration.ofSeconds(5));
@@ -149,13 +151,18 @@ class SessionPersistenceIT {
         // Arrange
         SessionManager manager = new SessionManager(tempDir);
         String sessionId = "test-state-" + UUID.randomUUID();
-        Map<String, Object> agentState = Map.of(
-                "planMode", true,
-                "iteration", 7,
-                "model", "claude-sonnet-4",
-                "customFlag", "test-value");
-        SessionSnapshot original = new SessionSnapshot(
-                sessionId, Instant.now(), 3, createMessages(6), agentState);
+        Map<String, Object> agentState =
+                Map.of(
+                        "planMode",
+                        true,
+                        "iteration",
+                        7,
+                        "model",
+                        "claude-sonnet-4",
+                        "customFlag",
+                        "test-value");
+        SessionSnapshot original =
+                new SessionSnapshot(sessionId, Instant.now(), 3, createMessages(6), agentState);
 
         // Act
         manager.saveSession(sessionId, original).block(Duration.ofSeconds(5));
@@ -178,12 +185,13 @@ class SessionPersistenceIT {
         // Arrange
         SessionManager manager = new SessionManager(tempDir);
         String sessionId = "test-tokens-" + UUID.randomUUID();
-        Map<String, Object> agentState = Map.of(
-                "totalInputTokens", 15000,
-                "totalOutputTokens", 8000,
-                "currentTurnTokens", 500);
-        SessionSnapshot original = new SessionSnapshot(
-                sessionId, Instant.now(), 5, createMessages(10), agentState);
+        Map<String, Object> agentState =
+                Map.of(
+                        "totalInputTokens", 15000,
+                        "totalOutputTokens", 8000,
+                        "currentTurnTokens", 500);
+        SessionSnapshot original =
+                new SessionSnapshot(sessionId, Instant.now(), 5, createMessages(10), agentState);
 
         // Act
         manager.saveSession(sessionId, original).block(Duration.ofSeconds(5));
@@ -259,7 +267,8 @@ class SessionPersistenceIT {
     // ================================
 
     @Test
-    void concurrentSaveAndRestore_noRaceCondition(@TempDir Path tempDir) throws InterruptedException {
+    void concurrentSaveAndRestore_noRaceCondition(@TempDir Path tempDir)
+            throws InterruptedException {
         // Arrange
         SessionManager manager = new SessionManager(tempDir);
         String sessionId = "concurrent-" + UUID.randomUUID();
@@ -272,25 +281,28 @@ class SessionPersistenceIT {
         // Act: multiple threads save and load concurrently
         for (int i = 0; i < threadCount; i++) {
             final int iteration = i;
-            executor.submit(() -> {
-                try {
-                    startLatch.await();
-                    List<Map<String, Object>> messages = createMessages(iteration + 1);
-                    SessionSnapshot snapshot = createSnapshot(sessionId, iteration + 1, messages);
-                    manager.saveSession(sessionId, snapshot).block(Duration.ofSeconds(5));
+            executor.submit(
+                    () -> {
+                        try {
+                            startLatch.await();
+                            List<Map<String, Object>> messages = createMessages(iteration + 1);
+                            SessionSnapshot snapshot =
+                                    createSnapshot(sessionId, iteration + 1, messages);
+                            manager.saveSession(sessionId, snapshot).block(Duration.ofSeconds(5));
 
-                    SessionSnapshot loaded = manager.loadSession(sessionId).block(Duration.ofSeconds(5));
-                    if (loaded != null) {
-                        assertNotNull(loaded.sessionId());
-                    }
-                } catch (Exception e) {
-                    synchronized (exceptions) {
-                        exceptions.add(e);
-                    }
-                } finally {
-                    doneLatch.countDown();
-                }
-            });
+                            SessionSnapshot loaded =
+                                    manager.loadSession(sessionId).block(Duration.ofSeconds(5));
+                            if (loaded != null) {
+                                assertNotNull(loaded.sessionId());
+                            }
+                        } catch (Exception e) {
+                            synchronized (exceptions) {
+                                exceptions.add(e);
+                            }
+                        } finally {
+                            doneLatch.countDown();
+                        }
+                    });
         }
 
         // Start all threads simultaneously
@@ -333,7 +345,9 @@ class SessionPersistenceIT {
         assertEquals("user", loaded.messages().get(0).get("role"));
         assertEquals("Message 0", loaded.messages().get(0).get("content"));
         assertEquals("assistant", loaded.messages().get(messageCount - 1).get("role"));
-        assertEquals("Message " + (messageCount - 1), loaded.messages().get(messageCount - 1).get("content"));
+        assertEquals(
+                "Message " + (messageCount - 1),
+                loaded.messages().get(messageCount - 1).get("content"));
     }
 
     // ================================

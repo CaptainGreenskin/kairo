@@ -42,8 +42,7 @@ public final class ElicitationResponse {
      */
     public ElicitationResponse(ElicitationAction action, Map<String, Object> data) {
         this.action = Objects.requireNonNull(action, "action must not be null");
-        this.data =
-                data != null ? Collections.unmodifiableMap(data) : Collections.emptyMap();
+        this.data = data != null ? Collections.unmodifiableMap(data) : Collections.emptyMap();
     }
 
     /**

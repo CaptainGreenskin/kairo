@@ -20,14 +20,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.multiagent.team.InProcessMessageBus;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -53,8 +50,7 @@ class MessageBusIntegrationIT {
     void pointToPoint_sendAndPollMultipleMessages() {
         // Send 5 messages from A to B
         for (int i = 0; i < 5; i++) {
-            bus.send("agent-A", "agent-B", Msg.of(MsgRole.USER, "msg-" + i))
-                    .block();
+            bus.send("agent-A", "agent-B", Msg.of(MsgRole.USER, "msg-" + i)).block();
         }
 
         List<Msg> polled = bus.poll("agent-B");

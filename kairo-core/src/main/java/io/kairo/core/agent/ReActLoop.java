@@ -62,6 +62,7 @@ class ReActLoop {
     private final AtomicLong totalTokensUsed;
     private final Supplier<ModelConfig> modelConfigSupplier;
     private volatile boolean streamingEnabled = false;
+    private final AtomicBoolean danglingRecoveryDone = new AtomicBoolean(false);
     private CompactionTrigger compactionTrigger; // set after construction
 
     /**
@@ -125,6 +126,11 @@ class ReActLoop {
 
     /** The core ReAct loop. Uses {@code Mono.defer()} for stack-safe recursion. */
     Mono<Msg> runLoop() {
+        // Recover dangling tool calls once per runLoop() invocation
+        if (danglingRecoveryDone.compareAndSet(false, true)) {
+            recoverDanglingToolCalls();
+        }
+
         return Mono.defer(
                 () -> {
                     // Check if interrupted
@@ -206,7 +212,8 @@ class ReActLoop {
                                         // Handle cancelled event (backward compat)
                                         if (pre.cancelled()) {
                                             log.info(
-                                                    "Agent '{}' reasoning cancelled by hook", ctx.agentName());
+                                                    "Agent '{}' reasoning cancelled by hook",
+                                                    ctx.agentName());
                                             return Mono.<Msg>just(
                                                     buildFinalResponse(
                                                             "Processing cancelled by hook."));
@@ -304,10 +311,11 @@ class ReActLoop {
                                                             conversationHistory, effectiveConfig);
                                         } else {
                                             responseMono =
-                                                    ctx.errorRecovery().callModelWithRecovery(
-                                                            conversationHistory,
-                                                            effectiveConfig,
-                                                            0);
+                                                    ctx.errorRecovery()
+                                                            .callModelWithRecovery(
+                                                                    conversationHistory,
+                                                                    effectiveConfig,
+                                                                    0);
                                         }
 
                                         return responseMono.flatMap(
@@ -317,8 +325,9 @@ class ReActLoop {
 
                                                     // Track token usage
                                                     if (response.usage() != null) {
-                                                        ctx.tokenBudgetManager().updateFromApiUsage(
-                                                                response.usage());
+                                                        ctx.tokenBudgetManager()
+                                                                .updateFromApiUsage(
+                                                                        response.usage());
                                                         totalTokensUsed.addAndGet(
                                                                 (long)
                                                                                 response.usage()
@@ -664,6 +673,90 @@ class ReActLoop {
                         });
     }
 
+    // ---- Dangling Tool Call Recovery ----
+
+    /**
+     * Scan the conversation history and inject error ToolResults for any ASSISTANT tool_use blocks
+     * that lack corresponding TOOL result messages. This handles both interrupt recovery (agent was
+     * interrupted mid-tool-execution) and session resumption (history loaded from storage with
+     * incomplete tool calls).
+     *
+     * <p>Runs once per {@link #runLoop()} invocation, before the first iteration.
+     */
+    void recoverDanglingToolCalls() {
+        if (conversationHistory.isEmpty()) {
+            return;
+        }
+
+        // Find the last ASSISTANT message by scanning from the end
+        int lastAssistantIdx = -1;
+        for (int i = conversationHistory.size() - 1; i >= 0; i--) {
+            if (conversationHistory.get(i).role() == MsgRole.ASSISTANT) {
+                lastAssistantIdx = i;
+                break;
+            }
+        }
+
+        if (lastAssistantIdx < 0) {
+            return;
+        }
+
+        Msg lastAssistant = conversationHistory.get(lastAssistantIdx);
+
+        // Extract tool_use IDs from the ASSISTANT message
+        List<String> toolCallIds =
+                lastAssistant.contents().stream()
+                        .filter(Content.ToolUseContent.class::isInstance)
+                        .map(Content.ToolUseContent.class::cast)
+                        .map(Content.ToolUseContent::toolId)
+                        .toList();
+
+        if (toolCallIds.isEmpty()) {
+            return;
+        }
+
+        // Collect tool_use IDs that already have matching TOOL result messages
+        Set<String> answeredIds = new HashSet<>();
+        for (int i = lastAssistantIdx + 1; i < conversationHistory.size(); i++) {
+            Msg msg = conversationHistory.get(i);
+            if (msg.role() == MsgRole.TOOL) {
+                for (Content c : msg.contents()) {
+                    if (c instanceof Content.ToolResultContent trc) {
+                        answeredIds.add(trc.toolUseId());
+                    }
+                }
+            }
+        }
+
+        // Find dangling (unanswered) tool call IDs
+        List<String> danglingIds =
+                toolCallIds.stream().filter(id -> !answeredIds.contains(id)).toList();
+
+        if (danglingIds.isEmpty()) {
+            return;
+        }
+
+        log.warn(
+                "Agent '{}' recovering {} dangling tool call(s): {}",
+                ctx.agentName(),
+                danglingIds.size(),
+                danglingIds);
+
+        // Build and inject an error TOOL message for each dangling call
+        List<ToolResult> errorResults =
+                danglingIds.stream()
+                        .map(
+                                id ->
+                                        new ToolResult(
+                                                id,
+                                                "Tool call interrupted \u2014 no result available",
+                                                true,
+                                                Map.of()))
+                        .toList();
+        Msg toolMsg = buildToolResultMsg(errorResults);
+        conversationHistory.add(toolMsg);
+    }
+
     // ---- Streaming Execution ----
 
     /**
@@ -709,8 +802,8 @@ class ReActLoop {
                                 if (toolResults.isEmpty()) {
                                     // No tools detected — stream was text-only
                                     // Fall back to non-streaming to get a proper ModelResponse
-                                    return ctx.errorRecovery().callModelWithRecovery(
-                                            messages, modelConfig, 0);
+                                    return ctx.errorRecovery()
+                                            .callModelWithRecovery(messages, modelConfig, 0);
                                 }
                                 log.debug(
                                         "Streaming execution completed {} tool results",
@@ -745,7 +838,8 @@ class ReActLoop {
 
     /** Convert a {@link ModelResponse} into an assistant {@link Msg}. */
     private Msg convertResponseToMsg(ModelResponse response) {
-        MsgBuilder builder = MsgBuilder.create().role(MsgRole.ASSISTANT).sourceAgentId(ctx.agentId());
+        MsgBuilder builder =
+                MsgBuilder.create().role(MsgRole.ASSISTANT).sourceAgentId(ctx.agentId());
 
         for (Content content : response.contents()) {
             if (content instanceof Content.TextContent tc) {
@@ -788,7 +882,11 @@ class ReActLoop {
 
     /** Build a final text response message. */
     private Msg buildFinalResponse(String text) {
-        return MsgBuilder.create().role(MsgRole.ASSISTANT).sourceAgentId(ctx.agentId()).text(text).build();
+        return MsgBuilder.create()
+                .role(MsgRole.ASSISTANT)
+                .sourceAgentId(ctx.agentId())
+                .text(text)
+                .build();
     }
 
     /** Apply skill_load tool restrictions from tool results. */

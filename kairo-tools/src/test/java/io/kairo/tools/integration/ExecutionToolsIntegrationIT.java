@@ -85,8 +85,7 @@ class ExecutionToolsIntegrationIT {
     @Test
     void bashTool_longOutput_handledCorrectly() {
         // Generate many lines of output
-        ToolResult result =
-                bashTool.execute(Map.of("command", "seq 1 5000"));
+        ToolResult result = bashTool.execute(Map.of("command", "seq 1 5000"));
 
         assertFalse(result.isError());
         // Should contain first and last lines
@@ -97,8 +96,7 @@ class ExecutionToolsIntegrationIT {
     @Test
     void bashTool_stderrCaptured() {
         // BashTool uses redirectErrorStream(true), so stderr merges into stdout
-        ToolResult result =
-                bashTool.execute(Map.of("command", "echo error_msg >&2"));
+        ToolResult result = bashTool.execute(Map.of("command", "echo error_msg >&2"));
 
         // stderr is redirected to stdout, so content should contain it
         assertTrue(result.content().contains("error_msg"));
@@ -107,8 +105,7 @@ class ExecutionToolsIntegrationIT {
     @Test
     void bashTool_workingDirectory_respected(@TempDir Path tempDir) {
         ToolResult result =
-                bashTool.execute(
-                        Map.of("command", "pwd", "workingDirectory", tempDir.toString()));
+                bashTool.execute(Map.of("command", "pwd", "workingDirectory", tempDir.toString()));
 
         assertFalse(result.isError());
         assertTrue(result.content().trim().contains(tempDir.getFileName().toString()));

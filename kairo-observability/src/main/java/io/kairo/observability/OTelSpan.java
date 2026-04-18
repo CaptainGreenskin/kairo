@@ -24,25 +24,26 @@ import java.util.Map;
 /**
  * OpenTelemetry-backed implementation of the Kairo {@link Span} interface.
  *
- * <p>Package-private — users create spans via {@link OTelTracer}, not directly.
- * Kairo semantic attribute keys are mapped to OpenTelemetry GenAI semantic
- * convention attribute keys before being set on the underlying OTel span.
+ * <p>Package-private — users create spans via {@link OTelTracer}, not directly. Kairo semantic
+ * attribute keys are mapped to OpenTelemetry GenAI semantic convention attribute keys before being
+ * set on the underlying OTel span.
  */
 class OTelSpan implements Span {
 
     // Kairo key → OTel attribute key mapping
-    private static final Map<String, String> ATTRIBUTE_KEY_MAP = Map.ofEntries(
-            Map.entry("token.input", "gen_ai.usage.input_tokens"),
-            Map.entry("token.output", "gen_ai.usage.output_tokens"),
-            Map.entry("token.cache_read", "gen_ai.usage.cache_read_tokens"),
-            Map.entry("token.cache_write", "gen_ai.usage.cache_creation_tokens"),
-            Map.entry("tool.name", "gen_ai.tool.name"),
-            Map.entry("tool.success", "gen_ai.tool.success"),
-            Map.entry("tool.duration_ms", "gen_ai.tool.duration_ms"),
-            Map.entry("exception.type", "exception.type"),
-            Map.entry("exception.message", "exception.message"),
-            Map.entry("compaction.strategy", "gen_ai.compaction.strategy"),
-            Map.entry("compaction.tokens_saved", "gen_ai.compaction.tokens_saved"));
+    private static final Map<String, String> ATTRIBUTE_KEY_MAP =
+            Map.ofEntries(
+                    Map.entry("token.input", "gen_ai.usage.input_tokens"),
+                    Map.entry("token.output", "gen_ai.usage.output_tokens"),
+                    Map.entry("token.cache_read", "gen_ai.usage.cache_read_tokens"),
+                    Map.entry("token.cache_write", "gen_ai.usage.cache_creation_tokens"),
+                    Map.entry("tool.name", "gen_ai.tool.name"),
+                    Map.entry("tool.success", "gen_ai.tool.success"),
+                    Map.entry("tool.duration_ms", "gen_ai.tool.duration_ms"),
+                    Map.entry("exception.type", "exception.type"),
+                    Map.entry("exception.message", "exception.message"),
+                    Map.entry("compaction.strategy", "gen_ai.compaction.strategy"),
+                    Map.entry("compaction.tokens_saved", "gen_ai.compaction.tokens_saved"));
 
     private final io.opentelemetry.api.trace.Span otelSpan;
     private final String spanName;

@@ -15,6 +15,7 @@
  */
 package io.kairo.core.tool;
 
+import io.kairo.api.tool.PermissionDecision;
 import io.kairo.api.tool.PermissionGuard;
 import io.kairo.api.tool.ToolCategory;
 import java.nio.file.Path;
@@ -165,6 +166,89 @@ public class DefaultPermissionGuard implements PermissionGuard {
             if (val != null) return val.toString();
         }
         return null;
+    }
+
+    @Override
+    public Mono<PermissionDecision> checkPermissionDetail(
+            String toolName, Map<String, Object> input) {
+        // Check shell commands for bash/exec/monitor tools
+        if ("bash".equals(toolName) || "monitor".equals(toolName)) {
+            return checkShellCommandDetail(input);
+        }
+
+        // Check file paths for write/edit tools
+        if ("write".equals(toolName) || "edit".equals(toolName)) {
+            return checkFilePathDetail(input);
+        }
+
+        return Mono.just(PermissionDecision.allow());
+    }
+
+    @Override
+    public Mono<PermissionDecision> checkPermissionDetail(
+            String toolName, ToolCategory category, Map<String, Object> input) {
+        // Category-based checks
+        if (category == ToolCategory.EXECUTION) {
+            return checkShellCommandDetail(input);
+        }
+        if (category == ToolCategory.FILE_AND_CODE) {
+            if (toolName.toLowerCase().contains("write")
+                    || toolName.toLowerCase().contains("edit")) {
+                return checkFilePathDetail(input);
+            }
+        }
+        return checkPermissionDetail(toolName, input);
+    }
+
+    private Mono<PermissionDecision> checkShellCommandDetail(Map<String, Object> input) {
+        Object commandObj = input.get("command");
+        if (commandObj == null) {
+            return Mono.just(PermissionDecision.allow());
+        }
+        String command = commandObj.toString();
+        for (Pattern pattern : dangerousPatterns) {
+            if (pattern.matcher(command).find()) {
+                log.warn(
+                        "Blocked dangerous command matching pattern [{}]: {}",
+                        pattern.pattern(),
+                        command);
+                return Mono.just(
+                        PermissionDecision.deny(
+                                "Blocked by dangerous command pattern: " + pattern.pattern(),
+                                "dangerous-command"));
+            }
+        }
+        return Mono.just(PermissionDecision.allow());
+    }
+
+    private Mono<PermissionDecision> checkFilePathDetail(Map<String, Object> input) {
+        String path = extractPath(input);
+        if (path == null) {
+            return Mono.just(PermissionDecision.allow());
+        }
+
+        String normalizedPath;
+        try {
+            normalizedPath = Path.of(path).normalize().toString();
+        } catch (Exception e) {
+            log.warn("Invalid file path: {}", path);
+            return Mono.just(PermissionDecision.deny("Invalid file path: " + path, "invalid-path"));
+        }
+
+        for (Pattern pattern : sensitivePathPatterns) {
+            if (pattern.matcher(normalizedPath).find()) {
+                log.warn(
+                        "Blocked write to sensitive path matching [{}]: {} (normalized: {})",
+                        pattern.pattern(),
+                        path,
+                        normalizedPath);
+                return Mono.just(
+                        PermissionDecision.deny(
+                                "Blocked by sensitive path pattern: " + pattern.pattern(),
+                                "sensitive-path"));
+            }
+        }
+        return Mono.just(PermissionDecision.allow());
     }
 
     @Override

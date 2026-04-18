@@ -18,6 +18,7 @@ package io.kairo.core.agent;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.agent.AgentState;
+import io.kairo.api.context.ContextManager;
 import io.kairo.api.hook.*;
 import io.kairo.api.hook.HookChain;
 import io.kairo.api.message.Msg;
@@ -27,7 +28,6 @@ import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tracing.NoopTracer;
 import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
-import io.kairo.api.context.ContextManager;
 import io.kairo.core.context.TokenBudgetManager;
 import io.kairo.core.model.ModelFallbackManager;
 import io.kairo.core.prompt.SystemPromptBuilder;
@@ -91,6 +91,7 @@ public class DefaultReActAgent implements Agent {
 
     /** Collaborators extracted in Step 1B. */
     private final SessionResumption sessionResumption;
+
     private final SkillToolManager skillToolManager;
     private final CompactionTrigger compactionTrigger;
 
@@ -121,7 +122,8 @@ public class DefaultReActAgent implements Agent {
         this.tracer = config.tracer() != null ? config.tracer() : new NoopTracer();
 
         // Initialize shutdown manager
-        this.shutdownManager = shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
+        this.shutdownManager =
+                shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
 
         // Initialize token budget manager from model name
         String modelId = config.modelName();
@@ -174,7 +176,9 @@ public class DefaultReActAgent implements Agent {
         // Step 1B collaborators
         this.sessionResumption = new SessionResumption(config, this.reactLoop);
         this.skillToolManager = new SkillToolManager(config, toolExecutor);
-        this.compactionTrigger = new CompactionTrigger(this.contextManager, this.reactLoop);
+        this.compactionTrigger =
+                new CompactionTrigger(
+                        this.contextManager, this.reactLoop, config.memoryStore(), null);
         this.reactLoop.setCompactionTrigger(this.compactionTrigger);
     }
 
@@ -228,7 +232,8 @@ public class DefaultReActAgent implements Agent {
 
                     sessionStartTime = Instant.now();
 
-                    return sessionResumption.loadSessionIfConfigured()
+                    return sessionResumption
+                            .loadSessionIfConfigured()
                             .then(skillToolManager.initMcpIfConfigured())
                             .then(
                                     Mono.defer(
@@ -326,9 +331,9 @@ public class DefaultReActAgent implements Agent {
      * Enable or disable streaming tool execution.
      *
      * <p>When enabled, the agent will use the provider's {@code streamRaw()} method to receive raw
-     * streaming chunks, detect tool_use blocks incrementally via
-     * {@link io.kairo.core.model.StreamingToolDetector}, and dispatch READ_ONLY tools eagerly
-     * before the full response completes.
+     * streaming chunks, detect tool_use blocks incrementally via {@link
+     * io.kairo.core.model.StreamingToolDetector}, and dispatch READ_ONLY tools eagerly before the
+     * full response completes.
      *
      * @param enabled true to enable streaming execution, false to use the default path
      */

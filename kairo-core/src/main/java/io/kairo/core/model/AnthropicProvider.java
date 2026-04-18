@@ -129,8 +129,14 @@ public class AnthropicProvider implements ModelProvider {
                                 .jitter(0.25)
                                 .filter(
                                         e ->
-                                                e instanceof ModelProviderException.RateLimitException
-                                                        || e instanceof ModelProviderException.ApiException
+                                                e
+                                                                instanceof
+                                                                ModelProviderException
+                                                                        .RateLimitException
+                                                        || e
+                                                                        instanceof
+                                                                        ModelProviderException
+                                                                                .ApiException
                                                                 && e.getMessage() != null
                                                                 && e.getMessage()
                                                                         .contains("server error"))
@@ -139,7 +145,8 @@ public class AnthropicProvider implements ModelProvider {
                                             Throwable failure = signal.failure();
                                             if (failure
                                                             instanceof
-                                                            ModelProviderException.RateLimitException
+                                                            ModelProviderException
+                                                                            .RateLimitException
                                                                     rle
                                                     && rle.getRetryAfterSeconds() != null) {
                                                 log.warn(
@@ -160,8 +167,7 @@ public class AnthropicProvider implements ModelProvider {
                             List<ToolDefinition> tools =
                                     config.tools() != null ? config.tools() : List.of();
                             CacheCheckResult cacheResult =
-                                    cacheDetector.check(
-                                            response.usage(), sysPrompt, tools);
+                                    cacheDetector.check(response.usage(), sysPrompt, tools);
                             if (cacheResult.isCacheBroken()) {
                                 log.warn(
                                         "Cache break detected: reasons={}, hitRatio={}",
@@ -184,13 +190,13 @@ public class AnthropicProvider implements ModelProvider {
 
                                 anthropicHttpClient
                                         .sendStreamingRequest(
-                                                body,
-                                                new SseLineSubscriber(sink, objectMapper))
+                                                body, new SseLineSubscriber(sink, objectMapper))
                                         .whenComplete(
                                                 (resp, err) -> {
                                                     if (err != null) {
                                                         sink.tryEmitError(
-                                                                new ModelProviderException.ApiException(
+                                                                new ModelProviderException
+                                                                        .ApiException(
                                                                         "Streaming request failed",
                                                                         err));
                                                     }
@@ -228,8 +234,7 @@ public class AnthropicProvider implements ModelProvider {
 
                                 anthropicHttpClient
                                         .sendStreamingRequest(
-                                                body,
-                                                new RawSseLineSubscriber(sink, objectMapper))
+                                                body, new RawSseLineSubscriber(sink, objectMapper))
                                         .whenComplete(
                                                 (resp, err) -> {
                                                     if (err != null) {
@@ -323,10 +328,13 @@ public class AnthropicProvider implements ModelProvider {
 
         // Structured output: inject JSON schema constraint into system prompt
         if (config.responseSchema() != null) {
-            String schemaJson = JsonSchemaGenerator.generateSchema(
-                    config.responseSchema(), objectMapper).toString();
-            String schemaInstruction = "\n\nYou MUST respond with valid JSON matching this schema: "
-                    + schemaJson + "\nDo NOT include any text outside the JSON object.";
+            String schemaJson =
+                    JsonSchemaGenerator.generateSchema(config.responseSchema(), objectMapper)
+                            .toString();
+            String schemaInstruction =
+                    "\n\nYou MUST respond with valid JSON matching this schema: "
+                            + schemaJson
+                            + "\nDo NOT include any text outside the JSON object.";
             systemPrompt = (systemPrompt != null ? systemPrompt : "") + schemaInstruction;
         }
 
@@ -537,7 +545,9 @@ public class AnthropicProvider implements ModelProvider {
 
     // ---- Response parsing (delegated to AnthropicResponseParser) ----
 
-    /** Parse a non-streaming Anthropic API response. Delegates to {@link AnthropicResponseParser}. */
+    /**
+     * Parse a non-streaming Anthropic API response. Delegates to {@link AnthropicResponseParser}.
+     */
     ModelResponse parseResponse(String responseBody) throws JsonProcessingException {
         return responseParser.parseResponse(responseBody);
     }
@@ -953,8 +963,7 @@ public class AnthropicProvider implements ModelProvider {
                 if (currentToolHash != lastToolSchemaHash) {
                     result.addReason("tool_schema_changed");
                 }
-                if (lastCallTime != null
-                        && Duration.between(lastCallTime, now()).toMinutes() > 5) {
+                if (lastCallTime != null && Duration.between(lastCallTime, now()).toMinutes() > 5) {
                     result.addReason("ttl_expired");
                 }
                 result.setCacheBroken(true);

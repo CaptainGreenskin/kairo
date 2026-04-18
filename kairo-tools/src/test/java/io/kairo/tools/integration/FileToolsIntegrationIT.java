@@ -154,8 +154,7 @@ class FileToolsIntegrationIT {
 
     @Test
     void writeFile_withSubdirectories_createsParentDirs() {
-        String filePath =
-                tempDir.resolve("a/b/c/deep_file.txt").toString();
+        String filePath = tempDir.resolve("a/b/c/deep_file.txt").toString();
 
         ToolResult result =
                 writeTool.execute(Map.of("path", filePath, "content", "nested content"));
@@ -174,8 +173,7 @@ class FileToolsIntegrationIT {
         Path file2 = tempDir.resolve("main.java");
         Files.writeString(file2, "public static void main(String[] args) {\n}\n");
 
-        ToolResult result =
-                grepTool.execute(Map.of("pattern", "TODO", "path", tempDir.toString()));
+        ToolResult result = grepTool.execute(Map.of("pattern", "TODO", "path", tempDir.toString()));
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("TODO"));
@@ -236,8 +234,7 @@ class FileToolsIntegrationIT {
         Files.writeString(tempDir.resolve("readme.md"), "# Readme");
 
         ToolResult result =
-                globTool.execute(
-                        Map.of("pattern", "**/*.java", "path", tempDir.toString()));
+                globTool.execute(Map.of("pattern", "**/*.java", "path", tempDir.toString()));
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("one.java"));
@@ -250,8 +247,7 @@ class FileToolsIntegrationIT {
     void globTool_nonExistentDir_returnsError() {
         String missing = tempDir.resolve("nonexistent_dir").toString();
 
-        ToolResult result =
-                globTool.execute(Map.of("pattern", "**/*", "path", missing));
+        ToolResult result = globTool.execute(Map.of("pattern", "**/*", "path", missing));
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("Not a directory"));
@@ -262,8 +258,7 @@ class FileToolsIntegrationIT {
         Files.writeString(tempDir.resolve("only.txt"), "data");
 
         ToolResult result =
-                globTool.execute(
-                        Map.of("pattern", "**/*.xml", "path", tempDir.toString()));
+                globTool.execute(Map.of("pattern", "**/*.xml", "path", tempDir.toString()));
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("No files matched"));
@@ -333,8 +328,7 @@ class FileToolsIntegrationIT {
         String original = "Line 1\nLine 2\nLine 3\n";
 
         // Write
-        ToolResult writeResult =
-                writeTool.execute(Map.of("path", filePath, "content", original));
+        ToolResult writeResult = writeTool.execute(Map.of("path", filePath, "content", original));
         assertFalse(writeResult.isError());
 
         // Read
@@ -350,32 +344,32 @@ class FileToolsIntegrationIT {
         // Write several files
         writeTool.execute(
                 Map.of(
-                        "path", tempDir.resolve("src/Main.java").toString(),
-                        "content", "public class Main { // entry point }"));
+                        "path",
+                        tempDir.resolve("src/Main.java").toString(),
+                        "content",
+                        "public class Main { // entry point }"));
         writeTool.execute(
                 Map.of(
-                        "path", tempDir.resolve("src/Helper.java").toString(),
-                        "content", "public class Helper { // utility }"));
+                        "path",
+                        tempDir.resolve("src/Helper.java").toString(),
+                        "content",
+                        "public class Helper { // utility }"));
         writeTool.execute(
                 Map.of(
-                        "path", tempDir.resolve("docs/readme.md").toString(),
-                        "content", "# Documentation"));
+                        "path",
+                        tempDir.resolve("docs/readme.md").toString(),
+                        "content",
+                        "# Documentation"));
 
         // Glob should find Java files
         ToolResult globResult =
-                globTool.execute(
-                        Map.of(
-                                "pattern", "**/*.java",
-                                "path", tempDir.toString()));
+                globTool.execute(Map.of("pattern", "**/*.java", "path", tempDir.toString()));
         assertFalse(globResult.isError());
         assertEquals(2, globResult.metadata().get("count"));
 
         // Grep should find the entry point comment
         ToolResult grepResult =
-                grepTool.execute(
-                        Map.of(
-                                "pattern", "entry point",
-                                "path", tempDir.toString()));
+                grepTool.execute(Map.of("pattern", "entry point", "path", tempDir.toString()));
         assertFalse(grepResult.isError());
         assertTrue(grepResult.content().contains("Main.java"));
     }

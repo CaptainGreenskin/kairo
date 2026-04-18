@@ -51,22 +51,27 @@ class GenAiSemanticAttributesTest {
 
     @Test
     void usageInputTokensKeyNameCorrect() {
-        assertEquals("gen_ai.usage.input_tokens", GenAiSemanticAttributes.USAGE_INPUT_TOKENS.getKey());
+        assertEquals(
+                "gen_ai.usage.input_tokens", GenAiSemanticAttributes.USAGE_INPUT_TOKENS.getKey());
     }
 
     @Test
     void usageOutputTokensKeyNameCorrect() {
-        assertEquals("gen_ai.usage.output_tokens", GenAiSemanticAttributes.USAGE_OUTPUT_TOKENS.getKey());
+        assertEquals(
+                "gen_ai.usage.output_tokens", GenAiSemanticAttributes.USAGE_OUTPUT_TOKENS.getKey());
     }
 
     @Test
     void usageCacheReadTokensKeyNameCorrect() {
-        assertEquals("gen_ai.usage.cache_read_tokens", GenAiSemanticAttributes.USAGE_CACHE_READ_TOKENS.getKey());
+        assertEquals(
+                "gen_ai.usage.cache_read_tokens",
+                GenAiSemanticAttributes.USAGE_CACHE_READ_TOKENS.getKey());
     }
 
     @Test
     void usageCacheCreationTokensKeyNameCorrect() {
-        assertEquals("gen_ai.usage.cache_creation_tokens",
+        assertEquals(
+                "gen_ai.usage.cache_creation_tokens",
                 GenAiSemanticAttributes.USAGE_CACHE_CREATION_TOKENS.getKey());
     }
 
@@ -97,17 +102,21 @@ class GenAiSemanticAttributesTest {
 
     @Test
     void messageCountKeyCorrect() {
-        assertEquals("gen_ai.request.message_count", GenAiSemanticAttributes.MESSAGE_COUNT.getKey());
+        assertEquals(
+                "gen_ai.request.message_count", GenAiSemanticAttributes.MESSAGE_COUNT.getKey());
     }
 
     @Test
     void compactionStrategyKeyCorrect() {
-        assertEquals("gen_ai.compaction.strategy", GenAiSemanticAttributes.COMPACTION_STRATEGY.getKey());
+        assertEquals(
+                "gen_ai.compaction.strategy", GenAiSemanticAttributes.COMPACTION_STRATEGY.getKey());
     }
 
     @Test
     void compactionTokensSavedKeyCorrect() {
-        assertEquals("gen_ai.compaction.tokens_saved", GenAiSemanticAttributes.COMPACTION_TOKENS_SAVED.getKey());
+        assertEquals(
+                "gen_ai.compaction.tokens_saved",
+                GenAiSemanticAttributes.COMPACTION_TOKENS_SAVED.getKey());
     }
 
     @Test
@@ -142,27 +151,38 @@ class GenAiSemanticAttributesTest {
 
     @Test
     void kairoKeyToOTelReturnsCorrectValues() {
-        assertSame(GenAiSemanticAttributes.USAGE_INPUT_TOKENS,
+        assertSame(
+                GenAiSemanticAttributes.USAGE_INPUT_TOKENS,
                 GenAiSemanticAttributes.kairoKeyToOTel("token.input"));
-        assertSame(GenAiSemanticAttributes.USAGE_OUTPUT_TOKENS,
+        assertSame(
+                GenAiSemanticAttributes.USAGE_OUTPUT_TOKENS,
                 GenAiSemanticAttributes.kairoKeyToOTel("token.output"));
-        assertSame(GenAiSemanticAttributes.USAGE_CACHE_READ_TOKENS,
+        assertSame(
+                GenAiSemanticAttributes.USAGE_CACHE_READ_TOKENS,
                 GenAiSemanticAttributes.kairoKeyToOTel("token.cache_read"));
-        assertSame(GenAiSemanticAttributes.USAGE_CACHE_CREATION_TOKENS,
+        assertSame(
+                GenAiSemanticAttributes.USAGE_CACHE_CREATION_TOKENS,
                 GenAiSemanticAttributes.kairoKeyToOTel("token.cache_write"));
-        assertSame(GenAiSemanticAttributes.TOOL_NAME,
+        assertSame(
+                GenAiSemanticAttributes.TOOL_NAME,
                 GenAiSemanticAttributes.kairoKeyToOTel("tool.name"));
-        assertSame(GenAiSemanticAttributes.TOOL_SUCCESS,
+        assertSame(
+                GenAiSemanticAttributes.TOOL_SUCCESS,
                 GenAiSemanticAttributes.kairoKeyToOTel("tool.success"));
-        assertSame(GenAiSemanticAttributes.TOOL_DURATION_MS,
+        assertSame(
+                GenAiSemanticAttributes.TOOL_DURATION_MS,
                 GenAiSemanticAttributes.kairoKeyToOTel("tool.duration_ms"));
-        assertSame(GenAiSemanticAttributes.EXCEPTION_TYPE,
+        assertSame(
+                GenAiSemanticAttributes.EXCEPTION_TYPE,
                 GenAiSemanticAttributes.kairoKeyToOTel("exception.type"));
-        assertSame(GenAiSemanticAttributes.EXCEPTION_MESSAGE,
+        assertSame(
+                GenAiSemanticAttributes.EXCEPTION_MESSAGE,
                 GenAiSemanticAttributes.kairoKeyToOTel("exception.message"));
-        assertSame(GenAiSemanticAttributes.COMPACTION_STRATEGY,
+        assertSame(
+                GenAiSemanticAttributes.COMPACTION_STRATEGY,
                 GenAiSemanticAttributes.kairoKeyToOTel("compaction.strategy"));
-        assertSame(GenAiSemanticAttributes.COMPACTION_TOKENS_SAVED,
+        assertSame(
+                GenAiSemanticAttributes.COMPACTION_TOKENS_SAVED,
                 GenAiSemanticAttributes.kairoKeyToOTel("compaction.tokens_saved"));
     }
 
@@ -174,7 +194,8 @@ class GenAiSemanticAttributesTest {
     @Test
     void allMappingsIsUnmodifiable() {
         Map<String, AttributeKey<?>> mappings = GenAiSemanticAttributes.allMappings();
-        assertThrows(UnsupportedOperationException.class,
+        assertThrows(
+                UnsupportedOperationException.class,
                 () -> mappings.put("new.key", AttributeKey.stringKey("test")));
     }
 }

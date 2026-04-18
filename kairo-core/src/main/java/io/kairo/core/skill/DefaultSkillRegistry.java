@@ -138,56 +138,53 @@ public class DefaultSkillRegistry implements SkillRegistry {
     @Override
     public Mono<SkillDefinition> loadFromUrl(String url) {
         return Mono.defer(
-                        () -> {
-                            // Check TTL cache first
-                            CacheEntry cached = urlCache.get(url);
-                            if (cached != null && !cached.isExpired(urlCacheTtl)) {
-                                log.debug("URL cache hit for: {}", url);
-                                return Mono.just(cached.skill());
-                            }
+                () -> {
+                    // Check TTL cache first
+                    CacheEntry cached = urlCache.get(url);
+                    if (cached != null && !cached.isExpired(urlCacheTtl)) {
+                        log.debug("URL cache hit for: {}", url);
+                        return Mono.just(cached.skill());
+                    }
 
-                            return Mono.fromCallable(
-                                            () -> {
-                                                log.debug("Fetching skill from URL: {}", url);
-                                                HttpClient client =
-                                                        HttpClient.newBuilder()
-                                                                .connectTimeout(
-                                                                        Duration.ofSeconds(10))
-                                                                .build();
-                                                HttpRequest request =
-                                                        HttpRequest.newBuilder()
-                                                                .uri(URI.create(url))
-                                                                .timeout(Duration.ofSeconds(30))
-                                                                .GET()
-                                                                .build();
+                    return Mono.fromCallable(
+                                    () -> {
+                                        log.debug("Fetching skill from URL: {}", url);
+                                        HttpClient client =
+                                                HttpClient.newBuilder()
+                                                        .connectTimeout(Duration.ofSeconds(10))
+                                                        .build();
+                                        HttpRequest request =
+                                                HttpRequest.newBuilder()
+                                                        .uri(URI.create(url))
+                                                        .timeout(Duration.ofSeconds(30))
+                                                        .GET()
+                                                        .build();
 
-                                                HttpResponse<String> response =
-                                                        client.send(
-                                                                request,
-                                                                HttpResponse.BodyHandlers
-                                                                        .ofString());
-                                                if (response.statusCode() != 200) {
-                                                    throw new IOException(
-                                                            "Failed to download skill from "
-                                                                    + url
-                                                                    + ": HTTP "
-                                                                    + response.statusCode());
-                                                }
+                                        HttpResponse<String> response =
+                                                client.send(
+                                                        request,
+                                                        HttpResponse.BodyHandlers.ofString());
+                                        if (response.statusCode() != 200) {
+                                            throw new IOException(
+                                                    "Failed to download skill from "
+                                                            + url
+                                                            + ": HTTP "
+                                                            + response.statusCode());
+                                        }
 
-                                                SkillDefinition skill =
-                                                        parser.parse(response.body());
-                                                register(skill);
+                                        SkillDefinition skill = parser.parse(response.body());
+                                        register(skill);
 
-                                                // Update cache
-                                                urlCache.put(url, new CacheEntry(skill));
-                                                log.debug(
-                                                        "Cached skill '{}' from URL: {}",
-                                                        skill.name(),
-                                                        url);
-                                                return skill;
-                                            })
-                                    .subscribeOn(Schedulers.boundedElastic());
-                        });
+                                        // Update cache
+                                        urlCache.put(url, new CacheEntry(skill));
+                                        log.debug(
+                                                "Cached skill '{}' from URL: {}",
+                                                skill.name(),
+                                                url);
+                                        return skill;
+                                    })
+                            .subscribeOn(Schedulers.boundedElastic());
+                });
     }
 
     @Override
@@ -201,7 +198,8 @@ public class DefaultSkillRegistry implements SkillRegistry {
                                         "Classpath resource not found: " + resourcePath);
                             }
                             try (is) {
-                                String content = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                                String content =
+                                        new String(is.readAllBytes(), StandardCharsets.UTF_8);
                                 SkillDefinition skill = parser.parse(content);
                                 register(skill);
                                 return skill;
@@ -219,9 +217,7 @@ public class DefaultSkillRegistry implements SkillRegistry {
         return urlCache.size();
     }
 
-    /**
-     * Clear the URL cache. Useful for testing or forcing re-fetch.
-     */
+    /** Clear the URL cache. Useful for testing or forcing re-fetch. */
     void clearUrlCache() {
         urlCache.clear();
     }

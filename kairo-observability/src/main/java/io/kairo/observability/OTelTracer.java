@@ -26,19 +26,19 @@ import java.util.Objects;
  * OpenTelemetry-backed implementation of the Kairo {@link Tracer} interface.
  *
  * <p>Wraps an {@link io.opentelemetry.api.trace.Tracer} to produce real OTel spans with proper
- * parent-child relationships, enabling export to any OTel-compatible backend (Jaeger, Zipkin,
- * OTLP collectors, etc.).
+ * parent-child relationships, enabling export to any OTel-compatible backend (Jaeger, Zipkin, OTLP
+ * collectors, etc.).
  *
- * <p>Span factory methods create {@link OTelSpan} instances that map Kairo semantic attribute
- * keys to OpenTelemetry GenAI semantic conventions. Business convenience methods
- * ({@link #recordTokenUsage}, {@link #recordToolResult}, {@link #recordCompaction}) use the
- * default implementations from the {@link Tracer} interface, which delegate to
- * {@link Span#setAttribute}.
+ * <p>Span factory methods create {@link OTelSpan} instances that map Kairo semantic attribute keys
+ * to OpenTelemetry GenAI semantic conventions. Business convenience methods ({@link
+ * #recordTokenUsage}, {@link #recordToolResult}, {@link #recordCompaction}) use the default
+ * implementations from the {@link Tracer} interface, which delegate to {@link Span#setAttribute}.
  *
- * <p><strong>Thread safety:</strong> This class is safe for concurrent use. The underlying
- * OTel tracer and span operations are thread-safe by contract.
+ * <p><strong>Thread safety:</strong> This class is safe for concurrent use. The underlying OTel
+ * tracer and span operations are thread-safe by contract.
  *
  * <p><strong>Usage example:</strong>
+ *
  * <pre>{@code
  * OpenTelemetry otel = GlobalOpenTelemetry.get();
  * Tracer tracer = new OTelTracer(otel.getTracer("kairo"));
@@ -67,14 +67,13 @@ public class OTelTracer implements Tracer {
     /**
      * {@inheritDoc}
      *
-     * <p>Creates a root OTel span named {@code "agent:<agentName>"} with the
-     * {@code agent.name} attribute set.
+     * <p>Creates a root OTel span named {@code "agent:<agentName>"} with the {@code agent.name}
+     * attribute set.
      */
     @Override
     public Span startAgentSpan(String agentName, Msg input) {
-        io.opentelemetry.api.trace.Span otelSpan = otelTracer
-                .spanBuilder("agent:" + agentName)
-                .startSpan();
+        io.opentelemetry.api.trace.Span otelSpan =
+                otelTracer.spanBuilder("agent:" + agentName).startSpan();
         OTelSpan span = new OTelSpan(otelSpan, "agent:" + agentName, null);
         span.setAttribute("agent.name", agentName);
         return span;
@@ -115,17 +114,13 @@ public class OTelTracer implements Tracer {
         return startChildSpan(parent, "tool:" + toolName);
     }
 
-    /**
-     * Creates a child OTel span linked to the given parent span via OTel context propagation.
-     */
+    /** Creates a child OTel span linked to the given parent span via OTel context propagation. */
     private Span startChildSpan(Span parent, String spanName) {
         OTelSpan otelParent = (parent instanceof OTelSpan) ? (OTelSpan) parent : null;
         io.opentelemetry.api.trace.Span otelSpan;
         if (otelParent != null) {
             Context parentContext = Context.current().with(otelParent.otelSpan());
-            otelSpan = otelTracer.spanBuilder(spanName)
-                    .setParent(parentContext)
-                    .startSpan();
+            otelSpan = otelTracer.spanBuilder(spanName).setParent(parentContext).startSpan();
         } else {
             otelSpan = otelTracer.spanBuilder(spanName).startSpan();
         }

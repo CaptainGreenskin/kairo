@@ -46,8 +46,15 @@ public record ToolDefinition(
             ToolCategory category,
             JsonSchema inputSchema,
             Class<?> implementationClass) {
-        this(name, description, category, inputSchema, implementationClass, null,
-                ToolSideEffect.READ_ONLY, "");
+        this(
+                name,
+                description,
+                category,
+                inputSchema,
+                implementationClass,
+                null,
+                ToolSideEffect.READ_ONLY,
+                "");
     }
 
     /** Backward-compatible constructor without sideEffect and usageGuidance. */
@@ -58,8 +65,15 @@ public record ToolDefinition(
             JsonSchema inputSchema,
             Class<?> implementationClass,
             Duration timeout) {
-        this(name, description, category, inputSchema, implementationClass, timeout,
-                ToolSideEffect.READ_ONLY, "");
+        this(
+                name,
+                description,
+                category,
+                inputSchema,
+                implementationClass,
+                timeout,
+                ToolSideEffect.READ_ONLY,
+                "");
     }
 
     /** Backward-compatible constructor without usageGuidance. */
@@ -71,7 +85,14 @@ public record ToolDefinition(
             Class<?> implementationClass,
             Duration timeout,
             ToolSideEffect sideEffect) {
-        this(name, description, category, inputSchema, implementationClass, timeout,
-                sideEffect, "");
+        this(
+                name,
+                description,
+                category,
+                inputSchema,
+                implementationClass,
+                timeout,
+                sideEffect,
+                "");
     }
 }

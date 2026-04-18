@@ -15,9 +15,7 @@
  */
 package io.kairo.api.exception;
 
-/**
- * Base exception for model provider errors such as rate limiting, timeouts, and API failures.
- */
+/** Base exception for model provider errors such as rate limiting, timeouts, and API failures. */
 public class ModelException extends KairoException {
 
     /**

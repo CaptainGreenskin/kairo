@@ -64,10 +64,13 @@ class ModelResponseTest {
     @Test
     void contentAsDeserializesJson() {
         String json = "{\"name\":\"Alice\",\"age\":30}";
-        ModelResponse response = new ModelResponse(
-                "r1", List.of(new Content.TextContent(json)),
-                new ModelResponse.Usage(0, 0, 0, 0),
-                ModelResponse.StopReason.END_TURN, "model");
+        ModelResponse response =
+                new ModelResponse(
+                        "r1",
+                        List.of(new Content.TextContent(json)),
+                        new ModelResponse.Usage(0, 0, 0, 0),
+                        ModelResponse.StopReason.END_TURN,
+                        "model");
 
         TestPojo result = response.contentAs(TestPojo.class);
         assertEquals("Alice", result.name);
@@ -76,20 +79,26 @@ class ModelResponseTest {
 
     @Test
     void contentAsThrowsOnNoTextContent() {
-        ModelResponse response = new ModelResponse(
-                "r1", List.of(),
-                new ModelResponse.Usage(0, 0, 0, 0),
-                ModelResponse.StopReason.END_TURN, "model");
+        ModelResponse response =
+                new ModelResponse(
+                        "r1",
+                        List.of(),
+                        new ModelResponse.Usage(0, 0, 0, 0),
+                        ModelResponse.StopReason.END_TURN,
+                        "model");
 
         assertThrows(IllegalStateException.class, () -> response.contentAs(TestPojo.class));
     }
 
     @Test
     void contentAsThrowsOnInvalidJson() {
-        ModelResponse response = new ModelResponse(
-                "r1", List.of(new Content.TextContent("not json")),
-                new ModelResponse.Usage(0, 0, 0, 0),
-                ModelResponse.StopReason.END_TURN, "model");
+        ModelResponse response =
+                new ModelResponse(
+                        "r1",
+                        List.of(new Content.TextContent("not json")),
+                        new ModelResponse.Usage(0, 0, 0, 0),
+                        ModelResponse.StopReason.END_TURN,
+                        "model");
 
         assertThrows(IllegalStateException.class, () -> response.contentAs(TestPojo.class));
     }
@@ -97,10 +106,13 @@ class ModelResponseTest {
     @Test
     void contentAsOptionalReturnsOnSuccess() {
         String json = "{\"name\":\"Bob\",\"age\":25}";
-        ModelResponse response = new ModelResponse(
-                "r1", List.of(new Content.TextContent(json)),
-                new ModelResponse.Usage(0, 0, 0, 0),
-                ModelResponse.StopReason.END_TURN, "model");
+        ModelResponse response =
+                new ModelResponse(
+                        "r1",
+                        List.of(new Content.TextContent(json)),
+                        new ModelResponse.Usage(0, 0, 0, 0),
+                        ModelResponse.StopReason.END_TURN,
+                        "model");
 
         Optional<TestPojo> result = response.contentAsOptional(TestPojo.class);
         assertTrue(result.isPresent());
@@ -109,10 +121,13 @@ class ModelResponseTest {
 
     @Test
     void contentAsOptionalReturnsEmptyOnFailure() {
-        ModelResponse response = new ModelResponse(
-                "r1", List.of(new Content.TextContent("invalid")),
-                new ModelResponse.Usage(0, 0, 0, 0),
-                ModelResponse.StopReason.END_TURN, "model");
+        ModelResponse response =
+                new ModelResponse(
+                        "r1",
+                        List.of(new Content.TextContent("invalid")),
+                        new ModelResponse.Usage(0, 0, 0, 0),
+                        ModelResponse.StopReason.END_TURN,
+                        "model");
 
         Optional<TestPojo> result = response.contentAsOptional(TestPojo.class);
         assertTrue(result.isEmpty());

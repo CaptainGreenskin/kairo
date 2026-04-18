@@ -79,11 +79,18 @@ public class DefaultTaskBoard implements TaskBoard {
             int attempt = count.incrementAndGet();
             if (attempt < maxRetries) {
                 task.setStatus(TaskStatus.PENDING);
-                log.info("Task #{} failed (attempt {}/{}), requeuing to PENDING", taskId, attempt, maxRetries);
+                log.info(
+                        "Task #{} failed (attempt {}/{}), requeuing to PENDING",
+                        taskId,
+                        attempt,
+                        maxRetries);
                 return task;
             } else {
                 task.setStatus(TaskStatus.ABANDONED);
-                log.warn("Task #{} failed after {} retries, marking as ABANDONED", taskId, maxRetries);
+                log.warn(
+                        "Task #{} failed after {} retries, marking as ABANDONED",
+                        taskId,
+                        maxRetries);
                 return task;
             }
         }

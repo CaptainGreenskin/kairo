@@ -30,7 +30,6 @@ import io.kairo.multiagent.task.PlanBuilder;
 import io.kairo.multiagent.team.CoordinatorScheduler;
 import io.kairo.multiagent.team.DefaultTeamManager;
 import io.kairo.multiagent.team.DefaultTeamScheduler;
-import io.kairo.multiagent.team.InProcessMessageBus;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -380,9 +379,7 @@ class MultiAgentOrchestrationIT {
 
         // All tasks should be completed
         long completedCount =
-                taskBoard.list().stream()
-                        .filter(t -> t.status() == TaskStatus.COMPLETED)
-                        .count();
+                taskBoard.list().stream().filter(t -> t.status() == TaskStatus.COMPLETED).count();
         assertEquals(threadCount * tasksPerThread, completedCount);
     }
 

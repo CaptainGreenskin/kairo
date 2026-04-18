@@ -47,8 +47,8 @@ import reactor.test.StepVerifier;
 /**
  * Unit tests for {@link ReActLoop} — the core ReAct iteration engine.
  *
- * <p>All tests use mock {@link ModelProvider} and {@link ToolExecutor};
- * no real API keys are required.
+ * <p>All tests use mock {@link ModelProvider} and {@link ToolExecutor}; no real API keys are
+ * required.
  */
 class ReActLoopTest {
 
@@ -107,7 +107,8 @@ class ReActLoopTest {
                         .tools(List.of())
                         .build();
 
-        return new ReActLoop(ctx, interrupted, currentIteration, totalTokensUsed, () -> modelConfig);
+        return new ReActLoop(
+                ctx, interrupted, currentIteration, totalTokensUsed, () -> modelConfig);
     }
 
     private ReActLoop createDefaultLoop() {
@@ -125,7 +126,8 @@ class ReActLoopTest {
     }
 
     // -- Helper: build a tool-call ModelResponse --
-    private ModelResponse toolCallResponse(String toolId, String toolName, Map<String, Object> input) {
+    private ModelResponse toolCallResponse(
+            String toolId, String toolName, Map<String, Object> input) {
         return new ModelResponse(
                 "resp-tool",
                 List.of(new Content.ToolUseContent(toolId, toolName, input)),
@@ -151,13 +153,15 @@ class ReActLoopTest {
         // First call: model returns a tool_call; second call: model returns final text
         AtomicInteger callCount = new AtomicInteger(0);
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
-                .thenAnswer(inv -> {
-                    int n = callCount.incrementAndGet();
-                    if (n == 1) {
-                        return Mono.just(toolCallResponse("tc-1", "search", Map.of("q", "hello")));
-                    }
-                    return Mono.just(textResponse("Search complete."));
-                });
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(
+                                        toolCallResponse("tc-1", "search", Map.of("q", "hello")));
+                            }
+                            return Mono.just(textResponse("Search complete."));
+                        });
 
         when(toolExecutor.execute(eq("search"), any()))
                 .thenReturn(Mono.just(new ToolResult("tc-1", "found 3 results", false, Map.of())));
@@ -166,10 +170,11 @@ class ReActLoopTest {
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "search hello")));
 
         StepVerifier.create(loop.runLoop())
-                .assertNext(msg -> {
-                    assertEquals(MsgRole.ASSISTANT, msg.role());
-                    assertTrue(msg.text().contains("Search complete."));
-                })
+                .assertNext(
+                        msg -> {
+                            assertEquals(MsgRole.ASSISTANT, msg.role());
+                            assertTrue(msg.text().contains("Search complete."));
+                        })
                 .verifyComplete();
 
         // Verify tool was executed
@@ -190,10 +195,11 @@ class ReActLoopTest {
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "What is 2+2?")));
 
         StepVerifier.create(loop.runLoop())
-                .assertNext(msg -> {
-                    assertEquals(MsgRole.ASSISTANT, msg.role());
-                    assertTrue(msg.text().contains("Direct answer."));
-                })
+                .assertNext(
+                        msg -> {
+                            assertEquals(MsgRole.ASSISTANT, msg.role());
+                            assertTrue(msg.text().contains("Direct answer."));
+                        })
                 .verifyComplete();
 
         // Tool executor should never be called
@@ -216,10 +222,11 @@ class ReActLoopTest {
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "loop")));
 
         StepVerifier.create(loop.runLoop())
-                .assertNext(msg -> {
-                    assertEquals(MsgRole.ASSISTANT, msg.role());
-                    assertTrue(msg.text().contains("maximum iteration limit"));
-                })
+                .assertNext(
+                        msg -> {
+                            assertEquals(MsgRole.ASSISTANT, msg.role());
+                            assertTrue(msg.text().contains("maximum iteration limit"));
+                        })
                 .verifyComplete();
 
         // Should have called model exactly maxIterations times (2)
@@ -233,13 +240,14 @@ class ReActLoopTest {
         // Provider throws on first call, succeeds on retry (ErrorRecoveryStrategy handles retry)
         AtomicInteger callCount = new AtomicInteger(0);
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
-                .thenAnswer(inv -> {
-                    int n = callCount.incrementAndGet();
-                    if (n == 1) {
-                        return Mono.error(new RuntimeException("Transient API error"));
-                    }
-                    return Mono.just(textResponse("Recovered successfully."));
-                });
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.error(new RuntimeException("Transient API error"));
+                            }
+                            return Mono.just(textResponse("Recovered successfully."));
+                        });
 
         ReActLoop loop = createDefaultLoop();
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "test")));
@@ -258,15 +266,24 @@ class ReActLoopTest {
         // Model returns two tool calls at once, then a final text response
         AtomicInteger callCount = new AtomicInteger(0);
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
-                .thenAnswer(inv -> {
-                    int n = callCount.incrementAndGet();
-                    if (n == 1) {
-                        return Mono.just(multiToolCallResponse(List.of(
-                                new Content.ToolUseContent("tc-1", "read", Map.of("file", "a.txt")),
-                                new Content.ToolUseContent("tc-2", "read", Map.of("file", "b.txt")))));
-                    }
-                    return Mono.just(textResponse("Both files read."));
-                });
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(
+                                        multiToolCallResponse(
+                                                List.of(
+                                                        new Content.ToolUseContent(
+                                                                "tc-1",
+                                                                "read",
+                                                                Map.of("file", "a.txt")),
+                                                        new Content.ToolUseContent(
+                                                                "tc-2",
+                                                                "read",
+                                                                Map.of("file", "b.txt")))));
+                            }
+                            return Mono.just(textResponse("Both files read."));
+                        });
 
         when(toolExecutor.execute(eq("read"), any()))
                 .thenReturn(Mono.just(new ToolResult("tc-x", "file content", false, Map.of())));
@@ -275,10 +292,11 @@ class ReActLoopTest {
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "read files")));
 
         StepVerifier.create(loop.runLoop())
-                .assertNext(msg -> {
-                    assertEquals(MsgRole.ASSISTANT, msg.role());
-                    assertTrue(msg.text().contains("Both files read."));
-                })
+                .assertNext(
+                        msg -> {
+                            assertEquals(MsgRole.ASSISTANT, msg.role());
+                            assertTrue(msg.text().contains("Both files read."));
+                        })
                 .verifyComplete();
 
         // Tool executor called twice (once per tool call)
@@ -292,13 +310,14 @@ class ReActLoopTest {
         // Tool returns empty content — loop should handle gracefully
         AtomicInteger callCount = new AtomicInteger(0);
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
-                .thenAnswer(inv -> {
-                    int n = callCount.incrementAndGet();
-                    if (n == 1) {
-                        return Mono.just(toolCallResponse("tc-1", "empty_tool", Map.of()));
-                    }
-                    return Mono.just(textResponse("Handled empty result."));
-                });
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(toolCallResponse("tc-1", "empty_tool", Map.of()));
+                            }
+                            return Mono.just(textResponse("Handled empty result."));
+                        });
 
         when(toolExecutor.execute(eq("empty_tool"), any()))
                 .thenReturn(Mono.just(new ToolResult("tc-1", "", false, Map.of())));
@@ -307,10 +326,11 @@ class ReActLoopTest {
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "test empty")));
 
         StepVerifier.create(loop.runLoop())
-                .assertNext(msg -> {
-                    assertEquals(MsgRole.ASSISTANT, msg.role());
-                    assertTrue(msg.text().contains("Handled empty result."));
-                })
+                .assertNext(
+                        msg -> {
+                            assertEquals(MsgRole.ASSISTANT, msg.role());
+                            assertTrue(msg.text().contains("Handled empty result."));
+                        })
                 .verifyComplete();
     }
 
@@ -321,13 +341,15 @@ class ReActLoopTest {
         // ToolExecutor throws exception — ReActLoop catches it and continues
         AtomicInteger callCount = new AtomicInteger(0);
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
-                .thenAnswer(inv -> {
-                    int n = callCount.incrementAndGet();
-                    if (n == 1) {
-                        return Mono.just(toolCallResponse("tc-1", "failing_tool", Map.of()));
-                    }
-                    return Mono.just(textResponse("Recovered from tool error."));
-                });
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(
+                                        toolCallResponse("tc-1", "failing_tool", Map.of()));
+                            }
+                            return Mono.just(textResponse("Recovered from tool error."));
+                        });
 
         when(toolExecutor.execute(eq("failing_tool"), any()))
                 .thenReturn(Mono.error(new RuntimeException("Tool crashed")));
@@ -336,10 +358,11 @@ class ReActLoopTest {
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "use failing tool")));
 
         StepVerifier.create(loop.runLoop())
-                .assertNext(msg -> {
-                    assertEquals(MsgRole.ASSISTANT, msg.role());
-                    assertTrue(msg.text().contains("Recovered from tool error."));
-                })
+                .assertNext(
+                        msg -> {
+                            assertEquals(MsgRole.ASSISTANT, msg.role());
+                            assertTrue(msg.text().contains("Recovered from tool error."));
+                        })
                 .verifyComplete();
 
         // History should contain the error tool result
@@ -355,16 +378,18 @@ class ReActLoopTest {
         // Verify that after a tool call, the history contains the tool result
         AtomicInteger callCount = new AtomicInteger(0);
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
-                .thenAnswer(inv -> {
-                    int n = callCount.incrementAndGet();
-                    if (n == 1) {
-                        return Mono.just(toolCallResponse("tc-1", "info", Map.of("key", "val")));
-                    }
-                    // Verify that messages passed to model include the tool result
-                    List<Msg> msgs = inv.getArgument(0);
-                    assertTrue(msgs.stream().anyMatch(m -> m.role() == MsgRole.TOOL));
-                    return Mono.just(textResponse("Done."));
-                });
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(
+                                        toolCallResponse("tc-1", "info", Map.of("key", "val")));
+                            }
+                            // Verify that messages passed to model include the tool result
+                            List<Msg> msgs = inv.getArgument(0);
+                            assertTrue(msgs.stream().anyMatch(m -> m.role() == MsgRole.TOOL));
+                            return Mono.just(textResponse("Done."));
+                        });
 
         when(toolExecutor.execute(eq("info"), any()))
                 .thenReturn(Mono.just(new ToolResult("tc-1", "info result data", false, Map.of())));
@@ -389,7 +414,8 @@ class ReActLoopTest {
 
     @Test
     void testStreamingModeFallsBackForNonStreamingProvider() {
-        // Enable streaming but provider does not support streamRaw — should fall back to non-streaming
+        // Enable streaming but provider does not support streamRaw — should fall back to
+        // non-streaming
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
                 .thenReturn(Mono.just(textResponse("Streamed (fallback).")));
 
@@ -398,10 +424,11 @@ class ReActLoopTest {
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "stream test")));
 
         StepVerifier.create(loop.runLoop())
-                .assertNext(msg -> {
-                    assertEquals(MsgRole.ASSISTANT, msg.role());
-                    assertTrue(msg.text().contains("Streamed (fallback)."));
-                })
+                .assertNext(
+                        msg -> {
+                            assertEquals(MsgRole.ASSISTANT, msg.role());
+                            assertTrue(msg.text().contains("Streamed (fallback)."));
+                        })
                 .verifyComplete();
 
         assertTrue(loop.isStreamingEnabled());
@@ -445,14 +472,17 @@ class ReActLoopTest {
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
                 .thenReturn(Mono.just(textResponse("No tools needed.")));
 
-        ReActLoop loop = new ReActLoop(ctx, interrupted, currentIteration, totalTokensUsed, () -> modelConfig);
+        ReActLoop loop =
+                new ReActLoop(
+                        ctx, interrupted, currentIteration, totalTokensUsed, () -> modelConfig);
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "simple question")));
 
         StepVerifier.create(loop.runLoop())
-                .assertNext(msg -> {
-                    assertEquals(MsgRole.ASSISTANT, msg.role());
-                    assertTrue(msg.text().contains("No tools needed."));
-                })
+                .assertNext(
+                        msg -> {
+                            assertEquals(MsgRole.ASSISTANT, msg.role());
+                            assertTrue(msg.text().contains("No tools needed."));
+                        })
                 .verifyComplete();
     }
 
@@ -493,22 +523,27 @@ class ReActLoopTest {
 
         AtomicInteger callCount = new AtomicInteger(0);
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
-                .thenAnswer(inv -> {
-                    int n = callCount.incrementAndGet();
-                    if (n == 1) {
-                        return Mono.just(toolCallResponse("tc-1", "missing_tool", Map.of()));
-                    }
-                    return Mono.just(textResponse("Handled missing executor."));
-                });
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(
+                                        toolCallResponse("tc-1", "missing_tool", Map.of()));
+                            }
+                            return Mono.just(textResponse("Handled missing executor."));
+                        });
 
-        ReActLoop loop = new ReActLoop(ctx, interrupted, currentIteration, totalTokensUsed, () -> modelConfig);
+        ReActLoop loop =
+                new ReActLoop(
+                        ctx, interrupted, currentIteration, totalTokensUsed, () -> modelConfig);
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "call tool")));
 
         StepVerifier.create(loop.runLoop())
-                .assertNext(msg -> {
-                    assertEquals(MsgRole.ASSISTANT, msg.role());
-                    assertTrue(msg.text().contains("Handled missing executor."));
-                })
+                .assertNext(
+                        msg -> {
+                            assertEquals(MsgRole.ASSISTANT, msg.role());
+                            assertTrue(msg.text().contains("Handled missing executor."));
+                        })
                 .verifyComplete();
 
         // History should contain the tool error result
@@ -524,12 +559,13 @@ class ReActLoopTest {
         ReActLoop loop = createLoop(10, 50); // tokenBudget=50
 
         // First call returns a tool call with high usage
-        ModelResponse bigResponse = new ModelResponse(
-                "resp-big",
-                List.of(new Content.ToolUseContent("tc-1", "heavy", Map.of())),
-                new ModelResponse.Usage(30, 30, 0, 0), // total=60 > budget=50
-                ModelResponse.StopReason.TOOL_USE,
-                "test-model");
+        ModelResponse bigResponse =
+                new ModelResponse(
+                        "resp-big",
+                        List.of(new Content.ToolUseContent("tc-1", "heavy", Map.of())),
+                        new ModelResponse.Usage(30, 30, 0, 0), // total=60 > budget=50
+                        ModelResponse.StopReason.TOOL_USE,
+                        "test-model");
 
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
                 .thenReturn(Mono.just(bigResponse));
@@ -539,10 +575,11 @@ class ReActLoopTest {
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "heavy task")));
 
         StepVerifier.create(loop.runLoop())
-                .assertNext(msg -> {
-                    assertEquals(MsgRole.ASSISTANT, msg.role());
-                    assertTrue(msg.text().contains("token budget"));
-                })
+                .assertNext(
+                        msg -> {
+                            assertEquals(MsgRole.ASSISTANT, msg.role());
+                            assertTrue(msg.text().contains("token budget"));
+                        })
                 .verifyComplete();
     }
 
@@ -556,11 +593,11 @@ class ReActLoopTest {
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "should not run")));
 
         StepVerifier.create(loop.runLoop())
-                .expectErrorMatches(e ->
-                        e instanceof AgentInterruptedException
-                                && e.getMessage().contains("interrupted"))
+                .expectErrorMatches(
+                        e ->
+                                e instanceof AgentInterruptedException
+                                        && e.getMessage().contains("interrupted"))
                 .verify();
-
 
         // Model should never be called
         verifyNoInteractions(modelProvider);
@@ -573,9 +610,8 @@ class ReActLoopTest {
         ReActLoop loop = createDefaultLoop();
 
         // injectMessages adds to history
-        loop.injectMessages(List.of(
-                Msg.of(MsgRole.USER, "msg1"),
-                Msg.of(MsgRole.ASSISTANT, "msg2")));
+        loop.injectMessages(
+                List.of(Msg.of(MsgRole.USER, "msg1"), Msg.of(MsgRole.ASSISTANT, "msg2")));
         assertEquals(2, loop.getHistory().size());
 
         // replaceHistory replaces all

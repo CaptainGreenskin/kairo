@@ -398,7 +398,8 @@ class ErrorRecoveryStrategyTest {
         ApiErrorClassifierImpl classifier = new ApiErrorClassifierImpl();
 
         // 429 = RATE_LIMITED (transient/retryable)
-        ClassifiedError rateLimited = classifier.classify(new RuntimeException("429 too many requests"));
+        ClassifiedError rateLimited =
+                classifier.classify(new RuntimeException("429 too many requests"));
         assertEquals(ApiErrorType.RATE_LIMITED, rateLimited.type());
 
         // 400 = UNKNOWN (permanent, not retryable by classifier)
@@ -430,8 +431,7 @@ class ErrorRecoveryStrategyTest {
 
         // 401 authentication error is permanent — should not retry
         ApiException authError =
-                new ApiException(
-                        ApiErrorType.AUTHENTICATION_ERROR, "Invalid API key", Map.of());
+                new ApiException(ApiErrorType.AUTHENTICATION_ERROR, "Invalid API key", Map.of());
         when(modelProvider.call(any(), any())).thenReturn(Mono.error(authError));
 
         Mono<ModelResponse> result = strategy.callModelWithRecovery(messages, modelConfig, 0);
@@ -486,6 +486,8 @@ class ErrorRecoveryStrategyTest {
         // Allow some slack but verify there was meaningful delay
         assertTrue(
                 elapsed >= 2000,
-                "Exponential backoff should have caused at least 2s delay, but was " + elapsed + "ms");
+                "Exponential backoff should have caused at least 2s delay, but was "
+                        + elapsed
+                        + "ms");
     }
 }

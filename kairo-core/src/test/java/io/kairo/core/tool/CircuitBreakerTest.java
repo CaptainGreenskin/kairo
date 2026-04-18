@@ -193,11 +193,9 @@ class CircuitBreakerTest {
         DefaultToolExecutor executor = executorWithThreshold(2);
 
         registerToolHandler(
-                "tool_a",
-                input -> new ToolResult("tool_a", "Error: fail a", true, Map.of()));
+                "tool_a", input -> new ToolResult("tool_a", "Error: fail a", true, Map.of()));
         registerToolHandler(
-                "tool_b",
-                input -> new ToolResult("tool_b", "Error: fail b", true, Map.of()));
+                "tool_b", input -> new ToolResult("tool_b", "Error: fail b", true, Map.of()));
 
         // Trigger circuit breaker for both tools
         for (int i = 0; i < 2; i++) {
@@ -233,8 +231,7 @@ class CircuitBreakerTest {
     void customThresholdWorks() {
         DefaultToolExecutor executor = executorWithThreshold(5);
         registerToolHandler(
-                "custom",
-                input -> new ToolResult("custom", "Error: fail", true, Map.of()));
+                "custom", input -> new ToolResult("custom", "Error: fail", true, Map.of()));
 
         // 4 failures should NOT trigger circuit breaker
         for (int i = 0; i < 4; i++) {
@@ -272,11 +269,9 @@ class CircuitBreakerTest {
         DefaultToolExecutor executor = executorWithThreshold(2);
 
         registerToolHandler(
-                "tool_x",
-                input -> new ToolResult("tool_x", "Error: fail x", true, Map.of()));
+                "tool_x", input -> new ToolResult("tool_x", "Error: fail x", true, Map.of()));
         registerToolHandler(
-                "tool_y",
-                input -> new ToolResult("tool_y", "success y", false, Map.of()));
+                "tool_y", input -> new ToolResult("tool_y", "success y", false, Map.of()));
 
         // Fail tool_x twice
         for (int i = 0; i < 2; i++) {
@@ -303,8 +298,7 @@ class CircuitBreakerTest {
 
         registerToolHandler(
                 "default_thresh",
-                input ->
-                        new ToolResult("default_thresh", "Error: fail", true, Map.of()));
+                input -> new ToolResult("default_thresh", "Error: fail", true, Map.of()));
 
         // 3 failures should NOT be circuit-broken (they execute normally)
         for (int i = 0; i < 3; i++) {

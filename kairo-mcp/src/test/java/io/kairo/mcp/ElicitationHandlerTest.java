@@ -48,14 +48,17 @@ class ElicitationHandlerTest {
         ElicitationHandler handler =
                 request -> {
                     captured.set(request);
-                    return Mono.just(
-                            ElicitationResponse.accept(Map.of("name", "Alice")));
+                    return Mono.just(ElicitationResponse.accept(Map.of("name", "Alice")));
                 };
 
         ElicitationRequest request =
                 new ElicitationRequest(
                         "Enter your name",
-                        Map.of("type", "object", "properties", Map.of("name", Map.of("type", "string"))));
+                        Map.of(
+                                "type",
+                                "object",
+                                "properties",
+                                Map.of("name", Map.of("type", "string"))));
 
         StepVerifier.create(handler.handle(request))
                 .assertNext(
@@ -123,8 +126,7 @@ class ElicitationHandlerTest {
 
     @Test
     void builderUsesDefaultHandlerWhenNoneSet() throws Exception {
-        McpClientBuilder builder =
-                McpClientBuilder.create("test").stdioTransport("echo", "hello");
+        McpClientBuilder builder = McpClientBuilder.create("test").stdioTransport("echo", "hello");
 
         // When no handler is set, field should be null (default is applied in build())
         Field field = McpClientBuilder.class.getDeclaredField("elicitationHandler");
@@ -139,8 +141,7 @@ class ElicitationHandlerTest {
 
     @Test
     void builderWithCustomHandlerBuildsClient() {
-        ElicitationHandler handler =
-                request -> Mono.just(ElicitationResponse.accept(Map.of()));
+        ElicitationHandler handler = request -> Mono.just(ElicitationResponse.accept(Map.of()));
 
         McpAsyncClient client =
                 McpClientBuilder.create("test")

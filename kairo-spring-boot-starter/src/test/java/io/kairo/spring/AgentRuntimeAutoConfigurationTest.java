@@ -32,27 +32,26 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-/**
- * Tests for {@link AgentRuntimeAutoConfiguration}.
- */
+/** Tests for {@link AgentRuntimeAutoConfiguration}. */
 class AgentRuntimeAutoConfigurationTest {
 
-    private static final ModelProvider NOOP_PROVIDER = new ModelProvider() {
-        @Override
-        public Mono<ModelResponse> call(List<Msg> messages, ModelConfig config) {
-            return Mono.empty();
-        }
+    private static final ModelProvider NOOP_PROVIDER =
+            new ModelProvider() {
+                @Override
+                public Mono<ModelResponse> call(List<Msg> messages, ModelConfig config) {
+                    return Mono.empty();
+                }
 
-        @Override
-        public Flux<ModelResponse> stream(List<Msg> messages, ModelConfig config) {
-            return Flux.empty();
-        }
+                @Override
+                public Flux<ModelResponse> stream(List<Msg> messages, ModelConfig config) {
+                    return Flux.empty();
+                }
 
-        @Override
-        public String name() {
-            return "noop";
-        }
-    };
+                @Override
+                public String name() {
+                    return "noop";
+                }
+            };
 
     private final ApplicationContextRunner runner =
             new ApplicationContextRunner()
@@ -62,30 +61,34 @@ class AgentRuntimeAutoConfigurationTest {
     @Test
     void defaultAgentUsesConfiguredModelName() {
         runner.withPropertyValues("kairo.model.model-name=test-model-name")
-                .run(context -> {
-                    assertThat(context).hasSingleBean(Agent.class);
-                    Agent agent = context.getBean(Agent.class);
-                    assertThat(agent).isInstanceOf(DefaultReActAgent.class);
+                .run(
+                        context -> {
+                            assertThat(context).hasSingleBean(Agent.class);
+                            Agent agent = context.getBean(Agent.class);
+                            assertThat(agent).isInstanceOf(DefaultReActAgent.class);
 
-                    // Use reflection to access the private config field and verify modelName
-                    Field configField = DefaultReActAgent.class.getDeclaredField("config");
-                    configField.setAccessible(true);
-                    AgentConfig config = (AgentConfig) configField.get(agent);
-                    assertThat(config.modelName()).isEqualTo("test-model-name");
-                });
+                            // Use reflection to access the private config field and verify
+                            // modelName
+                            Field configField = DefaultReActAgent.class.getDeclaredField("config");
+                            configField.setAccessible(true);
+                            AgentConfig config = (AgentConfig) configField.get(agent);
+                            assertThat(config.modelName()).isEqualTo("test-model-name");
+                        });
     }
 
     @Test
     void defaultAgentUsesDefaultModelNameWhenNotConfigured() {
-        runner.run(context -> {
-            assertThat(context).hasSingleBean(Agent.class);
-            Agent agent = context.getBean(Agent.class);
+        runner.run(
+                context -> {
+                    assertThat(context).hasSingleBean(Agent.class);
+                    Agent agent = context.getBean(Agent.class);
 
-            Field configField = DefaultReActAgent.class.getDeclaredField("config");
-            configField.setAccessible(true);
-            AgentConfig config = (AgentConfig) configField.get(agent);
-            // Default should be the ModelConfig.DEFAULT_MODEL value (claude-sonnet-4-20250514)
-            assertThat(config.modelName()).isEqualTo("claude-sonnet-4-20250514");
-        });
+                    Field configField = DefaultReActAgent.class.getDeclaredField("config");
+                    configField.setAccessible(true);
+                    AgentConfig config = (AgentConfig) configField.get(agent);
+                    // Default should be the ModelConfig.DEFAULT_MODEL value
+                    // (claude-sonnet-4-20250514)
+                    assertThat(config.modelName()).isEqualTo("claude-sonnet-4-20250514");
+                });
     }
 }

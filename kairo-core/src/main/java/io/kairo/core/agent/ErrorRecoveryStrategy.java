@@ -15,6 +15,7 @@
  */
 package io.kairo.core.agent;
 
+import io.kairo.api.context.ContextManager;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ApiErrorType;
@@ -23,9 +24,10 @@ import io.kairo.api.model.ClassifiedError;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
-import io.kairo.api.context.ContextManager;
 import io.kairo.core.message.MsgBuilder;
 import io.kairo.core.model.ApiErrorClassifierImpl;
+import io.kairo.core.model.CircuitBreakerOpenException;
+import io.kairo.core.model.ModelCircuitBreaker;
 import io.kairo.core.model.ModelFallbackManager;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -53,6 +55,7 @@ public class ErrorRecoveryStrategy {
     private final ModelFallbackManager fallbackManager;
     private final ModelProvider modelProvider;
     private final ContextManager contextManager; // nullable
+    private final ModelCircuitBreaker circuitBreaker; // nullable
 
     /**
      * Create a new error recovery strategy.
@@ -65,9 +68,26 @@ public class ErrorRecoveryStrategy {
             ModelProvider modelProvider,
             ContextManager contextManager,
             ModelFallbackManager fallbackManager) {
+        this(modelProvider, contextManager, fallbackManager, null);
+    }
+
+    /**
+     * Create a new error recovery strategy with circuit breaker support.
+     *
+     * @param modelProvider the model provider to use for retries
+     * @param contextManager the context manager for compaction (nullable)
+     * @param fallbackManager the fallback manager for model fallback
+     * @param circuitBreaker the circuit breaker for model calls (nullable)
+     */
+    public ErrorRecoveryStrategy(
+            ModelProvider modelProvider,
+            ContextManager contextManager,
+            ModelFallbackManager fallbackManager,
+            ModelCircuitBreaker circuitBreaker) {
         this.modelProvider = modelProvider;
         this.contextManager = contextManager;
         this.fallbackManager = fallbackManager;
+        this.circuitBreaker = circuitBreaker;
     }
 
     /**
@@ -86,8 +106,19 @@ public class ErrorRecoveryStrategy {
      */
     public Mono<ModelResponse> callModelWithRecovery(
             List<Msg> messages, ModelConfig modelConfig, int retryCount) {
+        // Circuit breaker check: reject immediately if open
+        if (circuitBreaker != null && !circuitBreaker.allowCall()) {
+            return Mono.error(new CircuitBreakerOpenException(circuitBreaker.getModelId()));
+        }
+
         return modelProvider
                 .call(messages, modelConfig)
+                .doOnNext(
+                        response -> {
+                            if (circuitBreaker != null) {
+                                circuitBreaker.recordSuccess();
+                            }
+                        })
                 .onErrorResume(
                         error -> {
                             if (retryCount >= MAX_RETRY_ATTEMPTS) {
@@ -104,6 +135,14 @@ public class ErrorRecoveryStrategy {
                                     classified.message(),
                                     retryCount + 1,
                                     MAX_RETRY_ATTEMPTS);
+
+                            // Record transient failures in circuit breaker
+                            if (circuitBreaker != null) {
+                                if (classified.type() == ApiErrorType.SERVER_ERROR
+                                        || classified.type() == ApiErrorType.RATE_LIMITED) {
+                                    circuitBreaker.recordFailure();
+                                }
+                            }
 
                             return switch (classified.type()) {
                                 case PROMPT_TOO_LONG ->

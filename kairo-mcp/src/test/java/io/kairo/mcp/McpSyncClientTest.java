@@ -27,16 +27,13 @@ class McpSyncClientTest {
 
     @Test
     void constructorRejectsNullDelegate() {
-        assertThrows(
-                IllegalArgumentException.class, () -> new McpSyncClient(null));
+        assertThrows(IllegalArgumentException.class, () -> new McpSyncClient(null));
     }
 
     @Test
     void constructorRejectsNullTimeout() {
         McpAsyncClient asyncClient = createAsyncClient();
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new McpSyncClient(asyncClient, null));
+        assertThrows(IllegalArgumentException.class, () -> new McpSyncClient(asyncClient, null));
     }
 
     @Test
@@ -73,9 +70,7 @@ class McpSyncClientTest {
     @Test
     void builderBuildSyncCreatesClient() {
         McpSyncClient client =
-                McpClientBuilder.create("test")
-                        .stdioTransport("echo", "hello")
-                        .buildSync();
+                McpClientBuilder.create("test").stdioTransport("echo", "hello").buildSync();
         assertNotNull(client);
         assertNotNull(client.getDelegate());
         assertEquals(Duration.ofSeconds(30), client.getDefaultTimeout());
@@ -85,9 +80,7 @@ class McpSyncClientTest {
     void builderBuildSyncWithTimeoutCreatesClient() {
         Duration timeout = Duration.ofMinutes(2);
         McpSyncClient client =
-                McpClientBuilder.create("test")
-                        .stdioTransport("echo", "hello")
-                        .buildSync(timeout);
+                McpClientBuilder.create("test").stdioTransport("echo", "hello").buildSync(timeout);
         assertNotNull(client);
         assertNotNull(client.getDelegate());
         assertEquals(timeout, client.getDefaultTimeout());
@@ -96,8 +89,7 @@ class McpSyncClientTest {
     @Test
     void builderBuildSyncRequiresTransport() {
         assertThrows(
-                IllegalStateException.class,
-                () -> McpClientBuilder.create("test").buildSync());
+                IllegalStateException.class, () -> McpClientBuilder.create("test").buildSync());
     }
 
     @Test
@@ -111,13 +103,9 @@ class McpSyncClientTest {
     void buildSyncDelegateMatchesBuildResult() {
         // buildSync() should wrap the same type of client that build() returns
         McpAsyncClient directClient =
-                McpClientBuilder.create("test")
-                        .stdioTransport("echo", "hello")
-                        .build();
+                McpClientBuilder.create("test").stdioTransport("echo", "hello").build();
         McpSyncClient syncClient =
-                McpClientBuilder.create("test2")
-                        .stdioTransport("echo", "hello")
-                        .buildSync();
+                McpClientBuilder.create("test2").stdioTransport("echo", "hello").buildSync();
         // Both should produce non-null clients of the same type
         assertNotNull(directClient);
         assertNotNull(syncClient.getDelegate());
@@ -127,9 +115,7 @@ class McpSyncClientTest {
     @Test
     void implementsAutoCloseable() {
         McpSyncClient client =
-                McpClientBuilder.create("test")
-                        .stdioTransport("echo", "hello")
-                        .buildSync();
+                McpClientBuilder.create("test").stdioTransport("echo", "hello").buildSync();
         // Verify McpSyncClient implements AutoCloseable (can be used in try-with-resources)
         assertTrue(client instanceof AutoCloseable);
     }
@@ -137,8 +123,6 @@ class McpSyncClientTest {
     // --- Helper ---
 
     private static McpAsyncClient createAsyncClient() {
-        return McpClientBuilder.create("test-helper")
-                .stdioTransport("echo", "hello")
-                .build();
+        return McpClientBuilder.create("test-helper").stdioTransport("echo", "hello").build();
     }
 }

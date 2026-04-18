@@ -15,10 +15,7 @@
  */
 package io.kairo.observability;
 
-/**
- * Marker class for kairo-observability module.
- * OpenTelemetry integration for Kairo Agent OS.
- */
+/** Marker class for kairo-observability module. OpenTelemetry integration for Kairo Agent OS. */
 public final class KairoObservability {
     private KairoObservability() {}
 

@@ -15,9 +15,6 @@
  */
 package io.kairo.tools.openapi;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -25,13 +22,15 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * HTTP tool executor for OpenAPI-registered endpoints.
  *
- * <p>Dispatches HTTP requests based on the registered method, path template, and parameters.
- * Path parameters are substituted into the URL template, query parameters are appended, and
- * request body is sent as JSON for non-GET methods.
+ * <p>Dispatches HTTP requests based on the registered method, path template, and parameters. Path
+ * parameters are substituted into the URL template, query parameters are appended, and request body
+ * is sent as JSON for non-GET methods.
  */
 public final class OpenApiHttpTool {
 
@@ -48,9 +47,7 @@ public final class OpenApiHttpTool {
      * @param baseUrl the base URL of the API (e.g., "https://api.example.com")
      */
     public OpenApiHttpTool(String baseUrl) {
-        this(baseUrl, HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .build());
+        this(baseUrl, HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build());
     }
 
     /** Visible for testing. */
@@ -62,11 +59,11 @@ public final class OpenApiHttpTool {
     /**
      * Execute an HTTP call based on the OpenAPI tool registration.
      *
-     * @param method      HTTP method (GET, POST, etc.)
+     * @param method HTTP method (GET, POST, etc.)
      * @param pathTemplate path template with {param} placeholders
-     * @param parameters   merged parameters (path, query, body fields)
-     * @param pathParams   names of path parameters (for substitution)
-     * @param queryParams  names of query parameters (appended to URL)
+     * @param parameters merged parameters (path, query, body fields)
+     * @param pathParams names of path parameters (for substitution)
+     * @param queryParams names of query parameters (appended to URL)
      * @return the HTTP response body as a string
      */
     public String execute(

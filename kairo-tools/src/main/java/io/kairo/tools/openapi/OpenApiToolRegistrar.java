@@ -30,25 +30,25 @@ import io.swagger.v3.oas.models.parameters.RequestBody;
 import io.swagger.v3.parser.OpenAPIV3Parser;
 import io.swagger.v3.parser.core.models.ParseOptions;
 import io.swagger.v3.parser.core.models.SwaggerParseResult;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Parses OpenAPI 3.x specifications and registers each endpoint as a {@link ToolDefinition}.
  *
  * <p>Each path+method combination becomes a tool with:
+ *
  * <ul>
- *   <li><b>name</b> — {@code operationId} or generated fallback ({@code method_path})</li>
- *   <li><b>category</b> — {@link ToolCategory#EXTERNAL}</li>
- *   <li><b>sideEffect</b> — mapped from HTTP method</li>
- *   <li><b>inputSchema</b> — merged path, query parameters, and request body</li>
+ *   <li><b>name</b> — {@code operationId} or generated fallback ({@code method_path})
+ *   <li><b>category</b> — {@link ToolCategory#EXTERNAL}
+ *   <li><b>sideEffect</b> — mapped from HTTP method
+ *   <li><b>inputSchema</b> — merged path, query parameters, and request body
  * </ul>
  */
 public final class OpenApiToolRegistrar {
@@ -108,15 +108,11 @@ public final class OpenApiToolRegistrar {
     private static OpenAPI parseSpec(String location) {
         ParseOptions options = new ParseOptions();
         options.setResolve(true);
-        SwaggerParseResult result =
-                new OpenAPIV3Parser().readLocation(location, null, options);
+        SwaggerParseResult result = new OpenAPIV3Parser().readLocation(location, null, options);
         OpenAPI openApi = result.getOpenAPI();
         if (openApi == null) {
             throw new IllegalArgumentException(
-                    "Failed to parse OpenAPI spec at "
-                            + location
-                            + ": "
-                            + result.getMessages());
+                    "Failed to parse OpenAPI spec at " + location + ": " + result.getMessages());
         }
         return openApi;
     }
@@ -230,10 +226,8 @@ public final class OpenApiToolRegistrar {
             if (jsonMedia != null && jsonMedia.getSchema() != null) {
                 Schema<?> bodySchema = jsonMedia.getSchema();
                 // Flatten top-level object properties into the main schema
-                if ("object".equals(bodySchema.getType())
-                        && bodySchema.getProperties() != null) {
-                    for (Map.Entry<String, Schema> entry :
-                            bodySchema.getProperties().entrySet()) {
+                if ("object".equals(bodySchema.getType()) && bodySchema.getProperties() != null) {
+                    for (Map.Entry<String, Schema> entry : bodySchema.getProperties().entrySet()) {
                         properties.put(entry.getKey(), convertSchema(entry.getValue()));
                     }
                     if (bodySchema.getRequired() != null) {

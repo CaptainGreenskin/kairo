@@ -96,7 +96,12 @@ class AgentContextIntegrationTest {
         ModelProvider provider = mock(ModelProvider.class);
         when(provider.name()).thenReturn("mock");
 
-        Agent agent = AgentBuilder.create().name("simple-agent").model(provider).modelName("test-model").build();
+        Agent agent =
+                AgentBuilder.create()
+                        .name("simple-agent")
+                        .model(provider)
+                        .modelName("test-model")
+                        .build();
 
         assertNotNull(agent);
         assertEquals("simple-agent", agent.name());

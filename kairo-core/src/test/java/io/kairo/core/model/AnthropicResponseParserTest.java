@@ -24,12 +24,12 @@ import org.junit.jupiter.api.Test;
 
 class AnthropicResponseParserTest {
 
-    private final AnthropicResponseParser parser =
-            new AnthropicResponseParser(new ObjectMapper());
+    private final AnthropicResponseParser parser = new AnthropicResponseParser(new ObjectMapper());
 
     @Test
     void parseTextResponse() throws Exception {
-        String json = """
+        String json =
+                """
                 {
                   "id": "msg_123",
                   "model": "claude-sonnet-4-20250514",
@@ -51,7 +51,8 @@ class AnthropicResponseParserTest {
 
     @Test
     void parseThinkingResponse() throws Exception {
-        String json = """
+        String json =
+                """
                 {
                   "id": "msg_456",
                   "model": "claude-sonnet-4-20250514",
@@ -66,13 +67,15 @@ class AnthropicResponseParserTest {
         ModelResponse resp = parser.parseResponse(json);
         assertEquals(2, resp.contents().size());
         assertInstanceOf(Content.ThinkingContent.class, resp.contents().get(0));
-        assertEquals("Let me think...", ((Content.ThinkingContent) resp.contents().get(0)).thinking());
+        assertEquals(
+                "Let me think...", ((Content.ThinkingContent) resp.contents().get(0)).thinking());
         assertEquals("The answer is 42.", ((Content.TextContent) resp.contents().get(1)).text());
     }
 
     @Test
     void parseToolUseResponse() throws Exception {
-        String json = """
+        String json =
+                """
                 {
                   "id": "msg_789",
                   "model": "claude-sonnet-4-20250514",
@@ -98,7 +101,8 @@ class AnthropicResponseParserTest {
 
     @Test
     void parseCacheUsage() throws Exception {
-        String json = """
+        String json =
+                """
                 {
                   "id": "msg_cache",
                   "model": "m",
@@ -122,14 +126,16 @@ class AnthropicResponseParserTest {
         assertEquals(ModelResponse.StopReason.END_TURN, parser.parseStopReason("end_turn"));
         assertEquals(ModelResponse.StopReason.TOOL_USE, parser.parseStopReason("tool_use"));
         assertEquals(ModelResponse.StopReason.MAX_TOKENS, parser.parseStopReason("max_tokens"));
-        assertEquals(ModelResponse.StopReason.STOP_SEQUENCE, parser.parseStopReason("stop_sequence"));
+        assertEquals(
+                ModelResponse.StopReason.STOP_SEQUENCE, parser.parseStopReason("stop_sequence"));
         assertEquals(ModelResponse.StopReason.END_TURN, parser.parseStopReason("unknown"));
         assertNull(parser.parseStopReason(null));
     }
 
     @Test
     void parseMissingUsage() throws Exception {
-        String json = """
+        String json =
+                """
                 {
                   "id": "msg_no_usage",
                   "model": "m",

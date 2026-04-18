@@ -67,7 +67,11 @@ class AgentToolsIntegrationIT {
     void taskCreate_addsToTaskBoard() {
         ToolResult result =
                 taskCreateTool.execute(
-                        Map.of("subject", "Implement feature X", "description", "Build the X module"));
+                        Map.of(
+                                "subject",
+                                "Implement feature X",
+                                "description",
+                                "Build the X module"));
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("Created task"));
@@ -193,7 +197,8 @@ class AgentToolsIntegrationIT {
     void taskUpdate_toCompleted_unblocksDependents() {
         // Create parent and child tasks with dependency
         ToolResult parentResult =
-                taskCreateTool.execute(Map.of("subject", "Setup DB", "description", "database setup"));
+                taskCreateTool.execute(
+                        Map.of("subject", "Setup DB", "description", "database setup"));
         ToolResult childResult =
                 taskCreateTool.execute(
                         Map.of("subject", "Run migrations", "description", "apply migrations"));

@@ -51,26 +51,25 @@ class AutoConfigurationIT {
 
     private final ApplicationContextRunner runner =
             new ApplicationContextRunner()
-                    .withConfiguration(
-                            AutoConfigurations.of(AgentRuntimeAutoConfiguration.class));
+                    .withConfiguration(AutoConfigurations.of(AgentRuntimeAutoConfiguration.class));
 
     // ---- Auto-configuration activation ----
 
     @Test
     void autoConfigurationActivatesWhenAgentClassOnClasspath() {
-        runner.withPropertyValues(
-                        "kairo.model.provider=anthropic", "kairo.model.api-key=test-key")
-                .run(context -> {
-                    assertThat(context).hasSingleBean(AgentRuntimeProperties.class);
-                    assertThat(context).hasSingleBean(ToolRegistry.class);
-                    assertThat(context).hasSingleBean(PermissionGuard.class);
-                    assertThat(context).hasSingleBean(ToolExecutor.class);
-                    assertThat(context).hasSingleBean(AgentFactory.class);
-                    assertThat(context).hasSingleBean(MemoryStore.class);
-                    assertThat(context).hasSingleBean(GracefulShutdownManager.class);
-                    assertThat(context).hasSingleBean(ModelProvider.class);
-                    assertThat(context).hasSingleBean(Agent.class);
-                });
+        runner.withPropertyValues("kairo.model.provider=anthropic", "kairo.model.api-key=test-key")
+                .run(
+                        context -> {
+                            assertThat(context).hasSingleBean(AgentRuntimeProperties.class);
+                            assertThat(context).hasSingleBean(ToolRegistry.class);
+                            assertThat(context).hasSingleBean(PermissionGuard.class);
+                            assertThat(context).hasSingleBean(ToolExecutor.class);
+                            assertThat(context).hasSingleBean(AgentFactory.class);
+                            assertThat(context).hasSingleBean(MemoryStore.class);
+                            assertThat(context).hasSingleBean(GracefulShutdownManager.class);
+                            assertThat(context).hasSingleBean(ModelProvider.class);
+                            assertThat(context).hasSingleBean(Agent.class);
+                        });
     }
 
     // ---- Property binding ----
@@ -83,14 +82,16 @@ class AutoConfigurationIT {
                         "kairo.model.model-name=claude-test",
                         "kairo.model.max-tokens=4096",
                         "kairo.model.temperature=0.5")
-                .run(context -> {
-                    AgentRuntimeProperties props = context.getBean(AgentRuntimeProperties.class);
-                    assertThat(props.getModel().getProvider()).isEqualTo("anthropic");
-                    assertThat(props.getModel().getApiKey()).isEqualTo("sk-test-123");
-                    assertThat(props.getModel().getModelName()).isEqualTo("claude-test");
-                    assertThat(props.getModel().getMaxTokens()).isEqualTo(4096);
-                    assertThat(props.getModel().getTemperature()).isEqualTo(0.5);
-                });
+                .run(
+                        context -> {
+                            AgentRuntimeProperties props =
+                                    context.getBean(AgentRuntimeProperties.class);
+                            assertThat(props.getModel().getProvider()).isEqualTo("anthropic");
+                            assertThat(props.getModel().getApiKey()).isEqualTo("sk-test-123");
+                            assertThat(props.getModel().getModelName()).isEqualTo("claude-test");
+                            assertThat(props.getModel().getMaxTokens()).isEqualTo(4096);
+                            assertThat(props.getModel().getTemperature()).isEqualTo(0.5);
+                        });
     }
 
     @Test
@@ -102,14 +103,16 @@ class AutoConfigurationIT {
                         "kairo.agent.max-iterations=100",
                         "kairo.agent.timeout-seconds=3600",
                         "kairo.agent.token-budget=500000")
-                .run(context -> {
-                    AgentRuntimeProperties props = context.getBean(AgentRuntimeProperties.class);
-                    assertThat(props.getAgent().getName()).isEqualTo("custom-agent");
-                    assertThat(props.getAgent().getSystemPrompt()).isEqualTo("Be helpful");
-                    assertThat(props.getAgent().getMaxIterations()).isEqualTo(100);
-                    assertThat(props.getAgent().getTimeoutSeconds()).isEqualTo(3600);
-                    assertThat(props.getAgent().getTokenBudget()).isEqualTo(500000);
-                });
+                .run(
+                        context -> {
+                            AgentRuntimeProperties props =
+                                    context.getBean(AgentRuntimeProperties.class);
+                            assertThat(props.getAgent().getName()).isEqualTo("custom-agent");
+                            assertThat(props.getAgent().getSystemPrompt()).isEqualTo("Be helpful");
+                            assertThat(props.getAgent().getMaxIterations()).isEqualTo(100);
+                            assertThat(props.getAgent().getTimeoutSeconds()).isEqualTo(3600);
+                            assertThat(props.getAgent().getTokenBudget()).isEqualTo(500000);
+                        });
     }
 
     @Test
@@ -120,13 +123,15 @@ class AutoConfigurationIT {
                         "kairo.tool.enable-exec-tools=false",
                         "kairo.tool.enable-info-tools=false",
                         "kairo.tool.enable-agent-tools=true")
-                .run(context -> {
-                    AgentRuntimeProperties props = context.getBean(AgentRuntimeProperties.class);
-                    assertThat(props.getTool().isEnableFileTools()).isFalse();
-                    assertThat(props.getTool().isEnableExecTools()).isFalse();
-                    assertThat(props.getTool().isEnableInfoTools()).isFalse();
-                    assertThat(props.getTool().isEnableAgentTools()).isTrue();
-                });
+                .run(
+                        context -> {
+                            AgentRuntimeProperties props =
+                                    context.getBean(AgentRuntimeProperties.class);
+                            assertThat(props.getTool().isEnableFileTools()).isFalse();
+                            assertThat(props.getTool().isEnableExecTools()).isFalse();
+                            assertThat(props.getTool().isEnableInfoTools()).isFalse();
+                            assertThat(props.getTool().isEnableAgentTools()).isTrue();
+                        });
     }
 
     // ---- Conditional bean creation ----
@@ -134,20 +139,22 @@ class AutoConfigurationIT {
     @Test
     void defaultAnthropicProviderCreatedWhenProviderNotSpecified() {
         runner.withPropertyValues("kairo.model.api-key=test-key")
-                .run(context -> {
-                    assertThat(context).hasSingleBean(ModelProvider.class);
-                    assertThat(context.getBean(ModelProvider.class))
-                            .isInstanceOf(AnthropicProvider.class);
-                });
+                .run(
+                        context -> {
+                            assertThat(context).hasSingleBean(ModelProvider.class);
+                            assertThat(context.getBean(ModelProvider.class))
+                                    .isInstanceOf(AnthropicProvider.class);
+                        });
     }
 
     @Test
     void defaultMemoryStoreIsInMemory() {
         runner.withPropertyValues("kairo.model.api-key=test-key")
-                .run(context -> {
-                    assertThat(context.getBean(MemoryStore.class))
-                            .isInstanceOf(InMemoryStore.class);
-                });
+                .run(
+                        context -> {
+                            assertThat(context.getBean(MemoryStore.class))
+                                    .isInstanceOf(InMemoryStore.class);
+                        });
     }
 
     @Test
@@ -156,38 +163,39 @@ class AutoConfigurationIT {
                         "kairo.model.api-key=test-key",
                         "kairo.memory.type=file",
                         "kairo.memory.file-store-path=/tmp/kairo-test-memory")
-                .run(context -> {
-                    assertThat(context.getBean(MemoryStore.class))
-                            .isInstanceOf(FileMemoryStore.class);
-                });
+                .run(
+                        context -> {
+                            assertThat(context.getBean(MemoryStore.class))
+                                    .isInstanceOf(FileMemoryStore.class);
+                        });
     }
 
     @Test
     void coreBeansAreCorrectImplementationTypes() {
         runner.withPropertyValues("kairo.model.api-key=test-key")
-                .run(context -> {
-                    assertThat(context.getBean(ToolRegistry.class))
-                            .isInstanceOf(DefaultToolRegistry.class);
-                    assertThat(context.getBean(PermissionGuard.class))
-                            .isInstanceOf(DefaultPermissionGuard.class);
-                    assertThat(context.getBean(ToolExecutor.class))
-                            .isInstanceOf(DefaultToolExecutor.class);
-                    assertThat(context.getBean(AgentFactory.class))
-                            .isInstanceOf(DefaultAgentFactory.class);
-                });
+                .run(
+                        context -> {
+                            assertThat(context.getBean(ToolRegistry.class))
+                                    .isInstanceOf(DefaultToolRegistry.class);
+                            assertThat(context.getBean(PermissionGuard.class))
+                                    .isInstanceOf(DefaultPermissionGuard.class);
+                            assertThat(context.getBean(ToolExecutor.class))
+                                    .isInstanceOf(DefaultToolExecutor.class);
+                            assertThat(context.getBean(AgentFactory.class))
+                                    .isInstanceOf(DefaultAgentFactory.class);
+                        });
     }
 
     // ---- Default agent configuration ----
 
     @Test
     void defaultAgentUsesConfiguredProperties() {
-        runner.withPropertyValues(
-                        "kairo.model.api-key=test-key",
-                        "kairo.agent.name=my-bot")
-                .run(context -> {
-                    Agent agent = context.getBean(Agent.class);
-                    assertThat(agent.name()).isEqualTo("my-bot");
-                });
+        runner.withPropertyValues("kairo.model.api-key=test-key", "kairo.agent.name=my-bot")
+                .run(
+                        context -> {
+                            Agent agent = context.getBean(Agent.class);
+                            assertThat(agent.name()).isEqualTo("my-bot");
+                        });
     }
 
     // ---- Custom bean override ----
@@ -195,25 +203,27 @@ class AutoConfigurationIT {
     @Test
     void userDefinedModelProviderTakesPrecedence() {
         runner.withUserConfiguration(CustomModelProviderConfig.class)
-                .run(context -> {
-                    assertThat(context).hasSingleBean(ModelProvider.class);
-                    // The user-defined bean should be used, not the auto-configured one
-                    assertThat(context.getBean(ModelProvider.class))
-                            .isSameAs(CustomModelProviderConfig.CUSTOM_PROVIDER);
-                });
+                .run(
+                        context -> {
+                            assertThat(context).hasSingleBean(ModelProvider.class);
+                            // The user-defined bean should be used, not the auto-configured one
+                            assertThat(context.getBean(ModelProvider.class))
+                                    .isSameAs(CustomModelProviderConfig.CUSTOM_PROVIDER);
+                        });
     }
 
     @Test
     void actuatorAutoConfigurationNotActiveWithoutActuator() {
         runner.withPropertyValues("kairo.model.api-key=test-key")
-                .run(context -> {
-                    // AgentActuatorAutoConfiguration requires Endpoint class
-                    // In this test, Actuator IS on the classpath (from starter-test),
-                    // but AgentActuatorAutoConfiguration is not registered
-                    assertThat(context)
-                            .doesNotHaveBean(
-                                    AgentActuatorAutoConfiguration.AgentEndpoint.class);
-                });
+                .run(
+                        context -> {
+                            // AgentActuatorAutoConfiguration requires Endpoint class
+                            // In this test, Actuator IS on the classpath (from starter-test),
+                            // but AgentActuatorAutoConfiguration is not registered
+                            assertThat(context)
+                                    .doesNotHaveBean(
+                                            AgentActuatorAutoConfiguration.AgentEndpoint.class);
+                        });
     }
 
     // ---- Test configuration classes ----

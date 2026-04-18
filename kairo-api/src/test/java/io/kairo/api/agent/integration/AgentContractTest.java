@@ -117,11 +117,8 @@ class AgentContractTest {
         AgentState[] values = AgentState.values();
         assertEquals(5, values.length);
 
-        Set<String> names =
-                Arrays.stream(values).map(Enum::name).collect(Collectors.toSet());
-        assertEquals(
-                Set.of("IDLE", "RUNNING", "SUSPENDED", "COMPLETED", "FAILED"),
-                names);
+        Set<String> names = Arrays.stream(values).map(Enum::name).collect(Collectors.toSet());
+        assertEquals(Set.of("IDLE", "RUNNING", "SUSPENDED", "COMPLETED", "FAILED"), names);
     }
 
     @Test
@@ -140,9 +137,7 @@ class AgentContractTest {
     @DisplayName("TaskStatus contains all expected values including ABANDONED")
     void taskStatus_completenessIncludingAbandoned() {
         Set<String> names =
-                Arrays.stream(TaskStatus.values())
-                        .map(Enum::name)
-                        .collect(Collectors.toSet());
+                Arrays.stream(TaskStatus.values()).map(Enum::name).collect(Collectors.toSet());
 
         Set<String> expected =
                 Set.of("PENDING", "IN_PROGRESS", "COMPLETED", "FAILED", "CANCELLED", "ABANDONED");
@@ -189,9 +184,7 @@ class AgentContractTest {
     @Test
     @DisplayName("AgentConfig builder requires modelProvider")
     void agentConfig_requiresModelProvider() {
-        assertThrows(
-                NullPointerException.class,
-                () -> AgentConfig.builder().name("test").build());
+        assertThrows(NullPointerException.class, () -> AgentConfig.builder().name("test").build());
     }
 
     @Test
@@ -223,6 +216,7 @@ class AgentContractTest {
                         .build();
 
         assertThrows(UnsupportedOperationException.class, () -> config.hooks().add(null));
-        assertThrows(UnsupportedOperationException.class, () -> config.mcpServerConfigs().add(null));
+        assertThrows(
+                UnsupportedOperationException.class, () -> config.mcpServerConfigs().add(null));
     }
 }

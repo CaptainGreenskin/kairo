@@ -74,8 +74,7 @@ public record ModelCapability(
         return switch (modelFamily.toLowerCase(java.util.Locale.ROOT)) {
             case "gpt", "codex" ->
                     "Always use tools to take action; do not describe what you would do.";
-            case "gemini" ->
-                    "Use absolute paths; read files before modifying them.";
+            case "gemini" -> "Use absolute paths; read files before modifying them.";
             default -> "";
         };
     }

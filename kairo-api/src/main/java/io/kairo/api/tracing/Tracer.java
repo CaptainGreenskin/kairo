@@ -22,19 +22,19 @@ import java.util.Map;
 /**
  * Tracing interface for observing agent execution.
  *
- * <p>Uses a {@link Span} model aligned with OpenTelemetry semantics for easy bridging
- * to production observability backends. Span factory methods create parent-child
- * relationships that mirror the agent's reasoning/acting loop structure.
+ * <p>Uses a {@link Span} model aligned with OpenTelemetry semantics for easy bridging to production
+ * observability backends. Span factory methods create parent-child relationships that mirror the
+ * agent's reasoning/acting loop structure.
  *
- * <p>Business convenience methods ({@link #recordTokenUsage}, {@link #recordToolResult},
- * {@link #recordCompaction}) delegate to {@link Span#setAttribute} with semantic
- * convention keys, so implementations only need to override the span factories.
+ * <p>Business convenience methods ({@link #recordTokenUsage}, {@link #recordToolResult}, {@link
+ * #recordCompaction}) delegate to {@link Span#setAttribute} with semantic convention keys, so
+ * implementations only need to override the span factories.
  *
- * <p>The default implementation returns {@link NoopSpan#INSTANCE} for all span factories,
- * making this interface safe to use without a tracing backend configured.
+ * <p>The default implementation returns {@link NoopSpan#INSTANCE} for all span factories, making
+ * this interface safe to use without a tracing backend configured.
  *
- * <p><strong>Thread safety:</strong> Implementations must be safe for concurrent use;
- * spans from parallel tool executions may be recorded simultaneously.
+ * <p><strong>Thread safety:</strong> Implementations must be safe for concurrent use; spans from
+ * parallel tool executions may be recorded simultaneously.
  *
  * @see Span
  * @see NoopSpan

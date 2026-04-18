@@ -50,12 +50,12 @@ import reactor.core.publisher.Mono;
 /**
  * Performance integration tests for the Kairo agent framework.
  *
- * <p>Absorbs and extends the former {@code PerformanceBaselineTest}. All thresholds are intentionally
- * very loose — the goal is to catch 10x regressions (catastrophic performance bugs), not to
- * micro-benchmark. Every test uses MOCK providers; no real API calls are made.
+ * <p>Absorbs and extends the former {@code PerformanceBaselineTest}. All thresholds are
+ * intentionally very loose — the goal is to catch 10x regressions (catastrophic performance bugs),
+ * not to micro-benchmark. Every test uses MOCK providers; no real API calls are made.
  *
- * <p>Run with: {@code mvn test -pl kairo-core -Dgroups=integration} or
- * {@code mvn test -pl kairo-core -Dgroups=performance}
+ * <p>Run with: {@code mvn test -pl kairo-core -Dgroups=integration} or {@code mvn test -pl
+ * kairo-core -Dgroups=performance}
  */
 @Tag("integration")
 @Tag("performance")
@@ -76,8 +76,7 @@ class AgentPerformanceIT {
                         Object.class);
         registry.register(echoTool);
         registry.registerInstance(
-                "echo",
-                (ToolHandler) input -> new ToolResult("echo", "result", false, Map.of()));
+                "echo", (ToolHandler) input -> new ToolResult("echo", "result", false, Map.of()));
         return registry;
     }
 
@@ -101,8 +100,8 @@ class AgentPerformanceIT {
     }
 
     /**
-     * Creates a mock provider that alternates between tool calls and text responses.
-     * Odd calls return a tool use for "echo"; even calls return an END_TURN text response.
+     * Creates a mock provider that alternates between tool calls and text responses. Odd calls
+     * return a tool use for "echo"; even calls return an END_TURN text response.
      */
     private ModelProvider alternatingMockProvider(AtomicInteger callCount, int maxToolCalls) {
         ModelProvider provider = mock(ModelProvider.class);
@@ -209,7 +208,9 @@ class AgentPerformanceIT {
                             .role(i % 2 == 0 ? MsgRole.USER : MsgRole.ASSISTANT)
                             .addContent(
                                     new Content.TextContent(
-                                            "Message number " + i + " with some content to process."))
+                                            "Message number "
+                                                    + i
+                                                    + " with some content to process."))
                             .tokenCount(50)
                             .build());
         }
@@ -222,8 +223,7 @@ class AgentPerformanceIT {
                     }
 
                     @Override
-                    public Mono<CompactionResult> compact(
-                            List<Msg> msgs, CompactionConfig cfg) {
+                    public Mono<CompactionResult> compact(List<Msg> msgs, CompactionConfig cfg) {
                         BoundaryMarker marker =
                                 new BoundaryMarker(
                                         Instant.now(),
@@ -232,8 +232,7 @@ class AgentPerformanceIT {
                                         msgs.size() / 2,
                                         msgs.size() * 25);
                         List<Msg> compacted = msgs.subList(0, Math.max(1, msgs.size() / 2));
-                        return Mono.just(
-                                new CompactionResult(compacted, msgs.size() * 25, marker));
+                        return Mono.just(new CompactionResult(compacted, msgs.size() * 25, marker));
                     }
 
                     @Override
@@ -251,8 +250,7 @@ class AgentPerformanceIT {
         CompactionConfig config = new CompactionConfig(100_000, true, null);
 
         long startNanos = System.nanoTime();
-        CompactionResult result =
-                pipeline.execute(messages, Set.of(), 0.90f, config).block();
+        CompactionResult result = pipeline.execute(messages, Set.of(), 0.90f, config).block();
         long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
 
         assertNotNull(result, "Compaction should produce a result");
@@ -275,9 +273,9 @@ class AgentPerformanceIT {
     /**
      * Measures throughput of the token estimation heuristic over 10,000+ estimations.
      *
-     * <p>Threshold: 1 second. The estimator is a simple char-count heuristic (~4 chars/token),
-     * so each call should be sub-microsecond. The 1s threshold catches regressions like
-     * accidentally adding network calls or expensive parsing.
+     * <p>Threshold: 1 second. The estimator is a simple char-count heuristic (~4 chars/token), so
+     * each call should be sub-microsecond. The 1s threshold catches regressions like accidentally
+     * adding network calls or expensive parsing.
      */
     @Test
     void tokenEstimation_throughput_acceptable() {
@@ -342,8 +340,8 @@ class AgentPerformanceIT {
     /**
      * Launches 10 mock agents concurrently and verifies all complete without deadlock.
      *
-     * <p>Threshold: 30 seconds total. Each agent does a single mock call, so the real time
-     * should be well under 5s. The 30s timeout catches deadlock or thread-starvation bugs.
+     * <p>Threshold: 30 seconds total. Each agent does a single mock call, so the real time should
+     * be well under 5s. The 30s timeout catches deadlock or thread-starvation bugs.
      */
     @Test
     void concurrentAgents_10Parallel_noDeadlock() throws Exception {
@@ -355,24 +353,25 @@ class AgentPerformanceIT {
 
         for (int i = 0; i < numAgents; i++) {
             final int id = i;
-            pool.submit(() -> {
-                try {
-                    startGate.await(); // wait for all threads to be ready
-                    ModelProvider provider = textOnlyMockProvider();
-                    DefaultToolRegistry registry = createRegistryWithEchoTool();
-                    DefaultHookChain hookChain = new DefaultHookChain();
-                    DefaultReActAgent agent = buildAgent(provider, registry, hookChain, 5);
+            pool.submit(
+                    () -> {
+                        try {
+                            startGate.await(); // wait for all threads to be ready
+                            ModelProvider provider = textOnlyMockProvider();
+                            DefaultToolRegistry registry = createRegistryWithEchoTool();
+                            DefaultHookChain hookChain = new DefaultHookChain();
+                            DefaultReActAgent agent = buildAgent(provider, registry, hookChain, 5);
 
-                    Msg result =
-                            agent.call(Msg.of(MsgRole.USER, "Concurrent task " + id))
-                                    .block(Duration.ofSeconds(15));
-                    assertNotNull(result, "Agent " + id + " should return a response");
-                } catch (Throwable t) {
-                    errors.add(t);
-                } finally {
-                    doneGate.countDown();
-                }
-            });
+                            Msg result =
+                                    agent.call(Msg.of(MsgRole.USER, "Concurrent task " + id))
+                                            .block(Duration.ofSeconds(15));
+                            assertNotNull(result, "Agent " + id + " should return a response");
+                        } catch (Throwable t) {
+                            errors.add(t);
+                        } finally {
+                            doneGate.countDown();
+                        }
+                    });
         }
 
         startGate.countDown(); // release all threads simultaneously
@@ -392,8 +391,8 @@ class AgentPerformanceIT {
      * Builds a 1000-message context and verifies the agent handles it gracefully.
      *
      * <p>Threshold: 10 seconds. We feed 1000 messages into a mock agent's context to stress-test
-     * message list handling, token counting, and memory allocation. The test only checks that
-     * the operation completes without OOM or timeout — no micro-benchmarks.
+     * message list handling, token counting, and memory allocation. The test only checks that the
+     * operation completes without OOM or timeout — no micro-benchmarks.
      */
     @Test
     void largeConversation_1000Messages_handlesGracefully() {
@@ -405,8 +404,11 @@ class AgentPerformanceIT {
                     Msg.builder()
                             .id("msg-" + i)
                             .role(i % 2 == 0 ? MsgRole.USER : MsgRole.ASSISTANT)
-                            .addContent(new Content.TextContent(
-                                    "Message " + i + " with content to fill the context window."))
+                            .addContent(
+                                    new Content.TextContent(
+                                            "Message "
+                                                    + i
+                                                    + " with content to fill the context window."))
                             .tokenCount(30)
                             .build());
         }
@@ -502,8 +504,7 @@ class AgentPerformanceIT {
 
         // Warm up: execute the tool a few times
         for (int w = 0; w < 10; w++) {
-            executor.executeSingle(new ToolInvocation("echo", Map.of("text", "warmup")))
-                    .block();
+            executor.executeSingle(new ToolInvocation("echo", Map.of("text", "warmup"))).block();
         }
 
         // Measure 1000 tool executions (each includes circuit breaker check)
@@ -511,8 +512,7 @@ class AgentPerformanceIT {
         int executions = 1000;
         for (int i = 0; i < executions; i++) {
             ToolResult result =
-                    executor.executeSingle(
-                                    new ToolInvocation("echo", Map.of("text", "test-" + i)))
+                    executor.executeSingle(new ToolInvocation("echo", Map.of("text", "test-" + i)))
                             .block();
             assertNotNull(result);
             assertFalse(result.isError(), "Tool should succeed: " + result.content());
@@ -537,8 +537,8 @@ class AgentPerformanceIT {
     /**
      * Runs 50 agent iterations and checks that memory delta is bounded (not growing linearly).
      *
-     * <p>Threshold: memory growth < 50MB over 50 iterations. Each iteration uses a fresh mock
-     * call that returns immediately, so memory should plateau after warmup. A linear growth pattern
+     * <p>Threshold: memory growth < 50MB over 50 iterations. Each iteration uses a fresh mock call
+     * that returns immediately, so memory should plateau after warmup. A linear growth pattern
      * would indicate a leak (e.g., unbounded message list, unclosed resources).
      */
     @Test

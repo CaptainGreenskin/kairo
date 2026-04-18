@@ -23,21 +23,23 @@ import io.opentelemetry.api.OpenTelemetry;
  * Factory for creating {@link OTelTracer} instances with auto-detection and graceful fallback.
  *
  * <p>Two creation strategies are supported:
+ *
  * <ul>
- *   <li>{@link #create()} — auto-detects the OTel SDK via
- *       {@link io.opentelemetry.api.GlobalOpenTelemetry#get() GlobalOpenTelemetry.get()}.
- *       If the SDK is not on the classpath or not configured, falls back to
- *       {@link NoopTracer#INSTANCE}.</li>
+ *   <li>{@link #create()} — auto-detects the OTel SDK via {@link
+ *       io.opentelemetry.api.GlobalOpenTelemetry#get() GlobalOpenTelemetry.get()}. If the SDK is
+ *       not on the classpath or not configured, falls back to {@link NoopTracer#INSTANCE}.
  *   <li>{@link #create(OpenTelemetry)} — uses a caller-provided {@link OpenTelemetry} instance,
- *       giving full control over SDK configuration.</li>
+ *       giving full control over SDK configuration.
  * </ul>
  *
  * <p><strong>Usage example (auto-detect):</strong>
+ *
  * <pre>{@code
  * Tracer tracer = OTelTracerFactory.create();
  * }</pre>
  *
  * <p><strong>Usage example (user-provided SDK):</strong>
+ *
  * <pre>{@code
  * SdkTracerProvider tp = SdkTracerProvider.builder()
  *     .addSpanProcessor(BatchSpanProcessor.builder(exporter).build())

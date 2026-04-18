@@ -69,19 +69,29 @@ class ModelCapabilityTest {
     void backwardCompatConstructorDeriveGeminiPromptGuidance() {
         ModelCapability cap =
                 new ModelCapability(
-                        "gemini", "1.5-pro", 1_000_000, 8192, false, false,
-                        ToolVerbosity.STANDARD, null);
-        assertEquals(
-                "Use absolute paths; read files before modifying them.",
-                cap.promptGuidance());
+                        "gemini",
+                        "1.5-pro",
+                        1_000_000,
+                        8192,
+                        false,
+                        false,
+                        ToolVerbosity.STANDARD,
+                        null);
+        assertEquals("Use absolute paths; read files before modifying them.", cap.promptGuidance());
     }
 
     @Test
     void backwardCompatConstructorClaudeNoGuidance() {
         ModelCapability cap =
                 new ModelCapability(
-                        "claude", "sonnet", 200_000, 8192, true, true,
-                        ToolVerbosity.STANDARD, new IntRange(1024, 8192));
+                        "claude",
+                        "sonnet",
+                        200_000,
+                        8192,
+                        true,
+                        true,
+                        ToolVerbosity.STANDARD,
+                        new IntRange(1024, 8192));
         assertEquals("", cap.promptGuidance());
     }
 
@@ -89,8 +99,15 @@ class ModelCapabilityTest {
     void canonicalConstructorWithExplicitPromptGuidance() {
         ModelCapability cap =
                 new ModelCapability(
-                        "gpt", "4o", 128_000, 4096, false, false,
-                        ToolVerbosity.STANDARD, null, "Custom guidance");
+                        "gpt",
+                        "4o",
+                        128_000,
+                        4096,
+                        false,
+                        false,
+                        ToolVerbosity.STANDARD,
+                        null,
+                        "Custom guidance");
         assertEquals("Custom guidance", cap.promptGuidance());
     }
 

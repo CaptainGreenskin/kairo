@@ -37,16 +37,24 @@ class SystemPromptBuilderTest {
 
     private static ToolDefinition tool(String name, String description, ToolCategory category) {
         return new ToolDefinition(
-                name, description, category,
-                new JsonSchema("object", null, null, null), Object.class);
+                name,
+                description,
+                category,
+                new JsonSchema("object", null, null, null),
+                Object.class);
     }
 
     private static ToolDefinition toolWithGuidance(
             String name, String description, ToolCategory category, String guidance) {
         return new ToolDefinition(
-                name, description, category,
-                new JsonSchema("object", null, null, null), Object.class,
-                null, null, guidance);
+                name,
+                description,
+                category,
+                new JsonSchema("object", null, null, null),
+                Object.class,
+                null,
+                null,
+                guidance);
     }
 
     private DefaultToolRegistry registryWith(ToolDefinition... tools) {
@@ -59,25 +67,34 @@ class SystemPromptBuilderTest {
 
     private static ModelCapability conciseModel() {
         return new ModelCapability(
-                "claude", "haiku", 200_000, 4096, false, true,
-                ToolVerbosity.CONCISE, null, "");
+                "claude", "haiku", 200_000, 4096, false, true, ToolVerbosity.CONCISE, null, "");
     }
 
     private static ModelCapability standardModel() {
         return new ModelCapability(
-                "claude", "sonnet", 200_000, 8192, true, true,
-                ToolVerbosity.STANDARD, new IntRange(1024, 8192), "");
+                "claude",
+                "sonnet",
+                200_000,
+                8192,
+                true,
+                true,
+                ToolVerbosity.STANDARD,
+                new IntRange(1024, 8192),
+                "");
     }
 
     private static ModelCapability gptModel() {
         return new ModelCapability(
-                "gpt", "4o", 128_000, 4096, false, false,
-                ToolVerbosity.STANDARD, null);
+                "gpt", "4o", 128_000, 4096, false, false, ToolVerbosity.STANDARD, null);
     }
 
     private static SkillDefinition skill(String name, String description, String instructions) {
         return new SkillDefinition(
-                name, "1.0", description, instructions, List.of("trigger:" + name),
+                name,
+                "1.0",
+                description,
+                instructions,
+                List.of("trigger:" + name),
                 SkillCategory.GENERAL);
     }
 
@@ -85,13 +102,14 @@ class SystemPromptBuilderTest {
 
     @Test
     void testStaticDynamicSeparation() {
-        SystemPromptResult result = SystemPromptBuilder.create()
-                .section("identity", "You are a helpful assistant.")
-                .section("rules", "Always be concise.")
-                .dynamicBoundary()
-                .section("context", "Working directory: /home/user")
-                .section("status", "Git branch: main")
-                .buildResult();
+        SystemPromptResult result =
+                SystemPromptBuilder.create()
+                        .section("identity", "You are a helpful assistant.")
+                        .section("rules", "Always be concise.")
+                        .dynamicBoundary()
+                        .section("context", "Working directory: /home/user")
+                        .section("status", "Git branch: main")
+                        .buildResult();
 
         // Static prefix should contain identity and rules
         assertTrue(result.staticPrefix().contains("You are a helpful assistant."));
@@ -117,11 +135,12 @@ class SystemPromptBuilderTest {
 
     @Test
     void testDynamicBoundaryPosition() {
-        SystemPromptBuilder builder = SystemPromptBuilder.create()
-                .section("s1", "Static section one")
-                .section("s2", "Static section two")
-                .dynamicBoundary()
-                .section("d1", "Dynamic section one");
+        SystemPromptBuilder builder =
+                SystemPromptBuilder.create()
+                        .section("s1", "Static section one")
+                        .section("s2", "Static section two")
+                        .dynamicBoundary()
+                        .section("d1", "Dynamic section one");
 
         List<SystemPromptBuilder.PromptSection> sections = builder.sections();
 
@@ -132,10 +151,11 @@ class SystemPromptBuilderTest {
 
     @Test
     void testDynamicBoundaryAtStart() {
-        SystemPromptResult result = SystemPromptBuilder.create()
-                .dynamicBoundary()
-                .section("ctx", "Everything is dynamic")
-                .buildResult();
+        SystemPromptResult result =
+                SystemPromptBuilder.create()
+                        .dynamicBoundary()
+                        .section("ctx", "Everything is dynamic")
+                        .buildResult();
 
         assertTrue(result.staticPrefix().isEmpty());
         assertTrue(result.dynamicSuffix().contains("Everything is dynamic"));
@@ -145,14 +165,16 @@ class SystemPromptBuilderTest {
 
     @Test
     void testToolOverviewInjection() {
-        DefaultToolRegistry registry = registryWith(
-                tool("read_file", "Read a file from disk", ToolCategory.FILE_AND_CODE),
-                tool("web_search", "Search the web", ToolCategory.INFORMATION));
+        DefaultToolRegistry registry =
+                registryWith(
+                        tool("read_file", "Read a file from disk", ToolCategory.FILE_AND_CODE),
+                        tool("web_search", "Search the web", ToolCategory.INFORMATION));
 
-        String prompt = SystemPromptBuilder.create()
-                .section("identity", "You are an assistant.")
-                .addToolOverview(registry)
-                .build();
+        String prompt =
+                SystemPromptBuilder.create()
+                        .section("identity", "You are an assistant.")
+                        .addToolOverview(registry)
+                        .build();
 
         assertTrue(prompt.contains("Available Tools"), "Should contain tool section header");
         assertTrue(prompt.contains("read_file"), "Should contain tool name");
@@ -163,14 +185,19 @@ class SystemPromptBuilderTest {
 
     @Test
     void testToolOverviewWithUsageGuidance() {
-        DefaultToolRegistry registry = registryWith(
-                toolWithGuidance("edit_file", "Edit a file", ToolCategory.FILE_AND_CODE,
-                        "Always read the file before editing."));
+        DefaultToolRegistry registry =
+                registryWith(
+                        toolWithGuidance(
+                                "edit_file",
+                                "Edit a file",
+                                ToolCategory.FILE_AND_CODE,
+                                "Always read the file before editing."));
 
-        String prompt = SystemPromptBuilder.create()
-                .section("identity", "You are an assistant.")
-                .addToolOverview(registry)
-                .build();
+        String prompt =
+                SystemPromptBuilder.create()
+                        .section("identity", "You are an assistant.")
+                        .addToolOverview(registry)
+                        .build();
 
         assertTrue(prompt.contains("edit_file"));
         assertTrue(prompt.contains("Edit a file"));
@@ -183,22 +210,25 @@ class SystemPromptBuilderTest {
     void testToolOverviewWithNoTools() {
         DefaultToolRegistry emptyRegistry = new DefaultToolRegistry();
 
-        String prompt = SystemPromptBuilder.create()
-                .section("identity", "You are an assistant.")
-                .addToolOverview(emptyRegistry)
-                .build();
+        String prompt =
+                SystemPromptBuilder.create()
+                        .section("identity", "You are an assistant.")
+                        .addToolOverview(emptyRegistry)
+                        .build();
 
         assertTrue(prompt.contains("You are an assistant."));
-        assertFalse(prompt.contains("Available Tools"),
+        assertFalse(
+                prompt.contains("Available Tools"),
                 "Should not contain tool section when no tools are registered");
     }
 
     @Test
     void testToolOverviewWithNullRegistry() {
-        String prompt = SystemPromptBuilder.create()
-                .section("identity", "You are an assistant.")
-                .addToolOverview(null)
-                .build();
+        String prompt =
+                SystemPromptBuilder.create()
+                        .section("identity", "You are an assistant.")
+                        .addToolOverview(null)
+                        .build();
 
         assertTrue(prompt.contains("You are an assistant."));
     }
@@ -207,10 +237,11 @@ class SystemPromptBuilderTest {
 
     @Test
     void testCacheScopeMarking() {
-        SystemPromptBuilder builder = SystemPromptBuilder.create()
-                .section("identity", "You are an assistant.", CacheScope.GLOBAL)
-                .section("tools", "Tool listing here.", CacheScope.SESSION)
-                .section("context", "Runtime context.", CacheScope.NONE);
+        SystemPromptBuilder builder =
+                SystemPromptBuilder.create()
+                        .section("identity", "You are an assistant.", CacheScope.GLOBAL)
+                        .section("tools", "Tool listing here.", CacheScope.SESSION)
+                        .section("context", "Runtime context.", CacheScope.NONE);
 
         List<SystemPromptSegment> segments = builder.buildSegments();
 
@@ -231,16 +262,21 @@ class SystemPromptBuilderTest {
 
     @Test
     void testDefaultCacheScopeBeforeBoundary() {
-        SystemPromptBuilder builder = SystemPromptBuilder.create()
-                .section("identity", "Static content")
-                .dynamicBoundary()
-                .section("context", "Dynamic content");
+        SystemPromptBuilder builder =
+                SystemPromptBuilder.create()
+                        .section("identity", "Static content")
+                        .dynamicBoundary()
+                        .section("context", "Dynamic content");
 
         List<SystemPromptBuilder.PromptSection> sections = builder.sections();
 
-        assertEquals(CacheScope.GLOBAL, sections.get(0).cacheScope(),
+        assertEquals(
+                CacheScope.GLOBAL,
+                sections.get(0).cacheScope(),
                 "Before boundary should default to GLOBAL");
-        assertEquals(CacheScope.NONE, sections.get(1).cacheScope(),
+        assertEquals(
+                CacheScope.NONE,
+                sections.get(1).cacheScope(),
                 "After boundary should default to NONE");
     }
 
@@ -248,19 +284,19 @@ class SystemPromptBuilderTest {
 
     @Test
     void testCustomSystemPrompt() {
-        String prompt = SystemPromptBuilder.create()
-                .base("You are Kairo, an AI coding assistant.")
-                .build();
+        String prompt =
+                SystemPromptBuilder.create().base("You are Kairo, an AI coding assistant.").build();
 
         assertEquals("You are Kairo, an AI coding assistant.", prompt);
     }
 
     @Test
     void testLegacyBaseWithContext() {
-        String prompt = SystemPromptBuilder.create()
-                .base("You are Kairo.")
-                .addContext("Working directory: /project")
-                .build();
+        String prompt =
+                SystemPromptBuilder.create()
+                        .base("You are Kairo.")
+                        .addContext("Working directory: /project")
+                        .build();
 
         assertTrue(prompt.startsWith("You are Kairo."));
         assertTrue(prompt.contains("# Context"));
@@ -269,14 +305,15 @@ class SystemPromptBuilderTest {
 
     @Test
     void testLegacyBaseWithToolsAndContext() {
-        DefaultToolRegistry registry = registryWith(
-                tool("run_cmd", "Run a shell command", ToolCategory.EXECUTION));
+        DefaultToolRegistry registry =
+                registryWith(tool("run_cmd", "Run a shell command", ToolCategory.EXECUTION));
 
-        String prompt = SystemPromptBuilder.create()
-                .base("You are an assistant.")
-                .addToolOverview(registry)
-                .addContext("Project: kairo")
-                .build();
+        String prompt =
+                SystemPromptBuilder.create()
+                        .base("You are an assistant.")
+                        .addToolOverview(registry)
+                        .addContext("Project: kairo")
+                        .build();
 
         assertTrue(prompt.contains("You are an assistant."));
         assertTrue(prompt.contains("run_cmd"));
@@ -289,14 +326,19 @@ class SystemPromptBuilderTest {
 
     @Test
     void testPromptWithSkills() {
-        List<SkillDefinition> skills = List.of(
-                skill("commit", "Generate git commits", "Use conventional commits format."),
-                skill("review", "Review pull requests", "Check for bugs and style issues."));
+        List<SkillDefinition> skills =
+                List.of(
+                        skill("commit", "Generate git commits", "Use conventional commits format."),
+                        skill(
+                                "review",
+                                "Review pull requests",
+                                "Check for bugs and style issues."));
 
-        String prompt = SystemPromptBuilder.create()
-                .section("identity", "You are an assistant.")
-                .addSkillOverview(skills)
-                .build();
+        String prompt =
+                SystemPromptBuilder.create()
+                        .section("identity", "You are an assistant.")
+                        .addSkillOverview(skills)
+                        .build();
 
         assertTrue(prompt.contains("You are an assistant."));
         assertTrue(prompt.contains("commit"));
@@ -305,46 +347,46 @@ class SystemPromptBuilderTest {
 
     @Test
     void testSkillOverviewCacheScope() {
-        List<SkillDefinition> skills = List.of(
-                skill("commit", "Generate git commits", "Use conventional commits."));
+        List<SkillDefinition> skills =
+                List.of(skill("commit", "Generate git commits", "Use conventional commits."));
 
-        SystemPromptBuilder builder = SystemPromptBuilder.create()
-                .section("identity", "You are an assistant.")
-                .addSkillOverview(skills);
+        SystemPromptBuilder builder =
+                SystemPromptBuilder.create()
+                        .section("identity", "You are an assistant.")
+                        .addSkillOverview(skills);
 
         List<SystemPromptSegment> segments = builder.buildSegments();
 
-        SystemPromptSegment skillSegment = segments.stream()
-                .filter(s -> "skills".equals(s.name()))
-                .findFirst()
-                .orElse(null);
+        SystemPromptSegment skillSegment =
+                segments.stream().filter(s -> "skills".equals(s.name())).findFirst().orElse(null);
         assertNotNull(skillSegment, "Should have a skills segment");
-        assertEquals(CacheScope.SESSION, skillSegment.scope(),
-                "Skill section should be SESSION-scoped");
+        assertEquals(
+                CacheScope.SESSION, skillSegment.scope(), "Skill section should be SESSION-scoped");
     }
 
     // ---- 8. Prompt with Memory/Context ----
 
     @Test
     void testPromptWithMemoryContext() {
-        SystemPromptResult result = SystemPromptBuilder.create()
-                .section("identity", "You are an assistant.")
-                .dynamicBoundary()
-                .addContext("User prefers dark mode. Previous conversation about testing.")
-                .buildResult();
+        SystemPromptResult result =
+                SystemPromptBuilder.create()
+                        .section("identity", "You are an assistant.")
+                        .dynamicBoundary()
+                        .addContext("User prefers dark mode. Previous conversation about testing.")
+                        .buildResult();
 
         assertTrue(result.dynamicSuffix().contains("User prefers dark mode"));
-        assertTrue(result.fullPrompt().contains(
-                "User prefers dark mode. Previous conversation about testing."));
+        assertTrue(
+                result.fullPrompt()
+                        .contains("User prefers dark mode. Previous conversation about testing."));
     }
 
     // ---- 9. Build with Minimal Config ----
 
     @Test
     void testBuildWithMinimalConfig() {
-        String prompt = SystemPromptBuilder.create()
-                .section("identity", "You are an assistant.")
-                .build();
+        String prompt =
+                SystemPromptBuilder.create().section("identity", "You are an assistant.").build();
 
         assertTrue(prompt.contains("# Identity"));
         assertTrue(prompt.contains("You are an assistant."));
@@ -358,11 +400,12 @@ class SystemPromptBuilderTest {
 
     @Test
     void testNullAndBlankSectionsIgnored() {
-        String prompt = SystemPromptBuilder.create()
-                .section("identity", "You are an assistant.")
-                .section("empty", null)
-                .section("blank", "   ")
-                .build();
+        String prompt =
+                SystemPromptBuilder.create()
+                        .section("identity", "You are an assistant.")
+                        .section("empty", null)
+                        .section("blank", "   ")
+                        .build();
 
         assertTrue(prompt.contains("You are an assistant."));
         assertFalse(prompt.contains("Empty"));
@@ -373,23 +416,25 @@ class SystemPromptBuilderTest {
 
     @Test
     void testBuildWithFullConfig() {
-        DefaultToolRegistry registry = registryWith(
-                tool("read_file", "Read a file", ToolCategory.FILE_AND_CODE),
-                tool("run_cmd", "Run a command", ToolCategory.EXECUTION));
+        DefaultToolRegistry registry =
+                registryWith(
+                        tool("read_file", "Read a file", ToolCategory.FILE_AND_CODE),
+                        tool("run_cmd", "Run a command", ToolCategory.EXECUTION));
 
-        List<SkillDefinition> skills = List.of(
-                skill("commit", "Generate commits", "Use conventional commits."));
+        List<SkillDefinition> skills =
+                List.of(skill("commit", "Generate commits", "Use conventional commits."));
 
-        SystemPromptResult result = SystemPromptBuilder.create()
-                .forModel(standardModel())
-                .section("identity", "You are Kairo, an AI coding assistant.")
-                .section("rules", "Always read before edit.")
-                .addToolOverview(registry)
-                .addSkillOverview(skills)
-                .dynamicBoundary()
-                .addContext("Working directory: /project")
-                .featureGate("multiAgent", true, "You can delegate tasks to sub-agents.")
-                .buildResult();
+        SystemPromptResult result =
+                SystemPromptBuilder.create()
+                        .forModel(standardModel())
+                        .section("identity", "You are Kairo, an AI coding assistant.")
+                        .section("rules", "Always read before edit.")
+                        .addToolOverview(registry)
+                        .addSkillOverview(skills)
+                        .dynamicBoundary()
+                        .addContext("Working directory: /project")
+                        .featureGate("multiAgent", true, "You can delegate tasks to sub-agents.")
+                        .buildResult();
 
         String full = result.fullPrompt();
         assertTrue(full.contains("You are Kairo"));
@@ -414,11 +459,12 @@ class SystemPromptBuilderTest {
 
     @Test
     void testFeatureGateEnabled() {
-        SystemPromptResult result = SystemPromptBuilder.create()
-                .section("identity", "You are an assistant.")
-                .dynamicBoundary()
-                .featureGate("multiAgent", true, "Multi-agent instructions here.")
-                .buildResult();
+        SystemPromptResult result =
+                SystemPromptBuilder.create()
+                        .section("identity", "You are an assistant.")
+                        .dynamicBoundary()
+                        .featureGate("multiAgent", true, "Multi-agent instructions here.")
+                        .buildResult();
 
         assertTrue(result.fullPrompt().contains("Multi-agent instructions here."));
         assertTrue(result.dynamicSuffix().contains("Multi-agent instructions here."));
@@ -426,29 +472,31 @@ class SystemPromptBuilderTest {
 
     @Test
     void testFeatureGateDisabled() {
-        SystemPromptResult result = SystemPromptBuilder.create()
-                .section("identity", "You are an assistant.")
-                .dynamicBoundary()
-                .featureGate("multiAgent", false, "Multi-agent instructions here.")
-                .buildResult();
+        SystemPromptResult result =
+                SystemPromptBuilder.create()
+                        .section("identity", "You are an assistant.")
+                        .dynamicBoundary()
+                        .featureGate("multiAgent", false, "Multi-agent instructions here.")
+                        .buildResult();
 
         assertFalse(result.fullPrompt().contains("Multi-agent instructions"));
     }
 
     @Test
     void testFeatureGateAlwaysDynamic() {
-        SystemPromptBuilder builder = SystemPromptBuilder.create()
-                .featureGate("earlyFeature", true, "Early feature instructions.")
-                .section("identity", "You are an assistant.")
-                .dynamicBoundary();
+        SystemPromptBuilder builder =
+                SystemPromptBuilder.create()
+                        .featureGate("earlyFeature", true, "Early feature instructions.")
+                        .section("identity", "You are an assistant.")
+                        .dynamicBoundary();
 
-        SystemPromptBuilder.PromptSection featureSection = builder.sections().stream()
-                .filter(s -> s.name().startsWith("feature:"))
-                .findFirst()
-                .orElse(null);
+        SystemPromptBuilder.PromptSection featureSection =
+                builder.sections().stream()
+                        .filter(s -> s.name().startsWith("feature:"))
+                        .findFirst()
+                        .orElse(null);
         assertNotNull(featureSection);
-        assertTrue(featureSection.isDynamic(),
-                "Feature gate sections should always be dynamic");
+        assertTrue(featureSection.isDynamic(), "Feature gate sections should always be dynamic");
         assertEquals(CacheScope.SESSION, featureSection.cacheScope());
     }
 
@@ -456,39 +504,42 @@ class SystemPromptBuilderTest {
 
     @Test
     void testConciseModelSkipsExamples() {
-        String prompt = SystemPromptBuilder.create()
-                .forModel(conciseModel())
-                .section("identity", "You are an assistant.")
-                .section("examples", "Example 1: Hello world.")
-                .section("rules", "Be concise.")
-                .build();
+        String prompt =
+                SystemPromptBuilder.create()
+                        .forModel(conciseModel())
+                        .section("identity", "You are an assistant.")
+                        .section("examples", "Example 1: Hello world.")
+                        .section("rules", "Be concise.")
+                        .build();
 
         assertTrue(prompt.contains("You are an assistant."));
         assertTrue(prompt.contains("Be concise."));
-        assertFalse(prompt.contains("Example 1"),
-                "CONCISE model should skip example sections");
+        assertFalse(prompt.contains("Example 1"), "CONCISE model should skip example sections");
     }
 
     @Test
     void testConciseModelSkipsWorkedExamples() {
-        String prompt = SystemPromptBuilder.create()
-                .forModel(conciseModel())
-                .section("identity", "You are an assistant.")
-                .section("worked-examples", "Worked example: Step by step.")
-                .build();
+        String prompt =
+                SystemPromptBuilder.create()
+                        .forModel(conciseModel())
+                        .section("identity", "You are an assistant.")
+                        .section("worked-examples", "Worked example: Step by step.")
+                        .build();
 
         assertTrue(prompt.contains("You are an assistant."));
-        assertFalse(prompt.contains("Worked example"),
+        assertFalse(
+                prompt.contains("Worked example"),
                 "CONCISE model should skip worked-examples sections");
     }
 
     @Test
     void testStandardModelKeepsExamples() {
-        String prompt = SystemPromptBuilder.create()
-                .forModel(standardModel())
-                .section("identity", "You are an assistant.")
-                .section("examples", "Example 1: Hello world.")
-                .build();
+        String prompt =
+                SystemPromptBuilder.create()
+                        .forModel(standardModel())
+                        .section("identity", "You are an assistant.")
+                        .section("examples", "Example 1: Hello world.")
+                        .build();
 
         assertTrue(prompt.contains("You are an assistant."));
         assertTrue(prompt.contains("Example 1: Hello world."));
@@ -496,21 +547,24 @@ class SystemPromptBuilderTest {
 
     @Test
     void testModelPromptGuidanceInjected() {
-        String prompt = SystemPromptBuilder.create()
-                .forModel(gptModel())
-                .section("identity", "You are an assistant.")
-                .build();
+        String prompt =
+                SystemPromptBuilder.create()
+                        .forModel(gptModel())
+                        .section("identity", "You are an assistant.")
+                        .build();
 
         assertTrue(prompt.contains("You are an assistant."));
-        assertTrue(prompt.contains("Always use tools to take action"),
+        assertTrue(
+                prompt.contains("Always use tools to take action"),
                 "GPT model should get default prompt guidance injected");
     }
 
     @Test
     void testModelGuidanceNotDuplicated() {
-        SystemPromptBuilder builder = SystemPromptBuilder.create()
-                .forModel(gptModel())
-                .section("identity", "You are an assistant.");
+        SystemPromptBuilder builder =
+                SystemPromptBuilder.create()
+                        .forModel(gptModel())
+                        .section("identity", "You are an assistant.");
 
         String prompt = builder.build();
         assertTrue(prompt.contains("Always use tools to take action"));
@@ -523,10 +577,11 @@ class SystemPromptBuilderTest {
 
     @Test
     void testSectionHeadingsCapitalized() {
-        String prompt = SystemPromptBuilder.create()
-                .section("identity", "You are an assistant.")
-                .section("rules", "Be helpful.")
-                .build();
+        String prompt =
+                SystemPromptBuilder.create()
+                        .section("identity", "You are an assistant.")
+                        .section("rules", "Be helpful.")
+                        .build();
 
         assertTrue(prompt.contains("# Identity"));
         assertTrue(prompt.contains("# Rules"));
@@ -536,10 +591,11 @@ class SystemPromptBuilderTest {
 
     @Test
     void testBuildSegmentsContent() {
-        List<SystemPromptSegment> segments = SystemPromptBuilder.create()
-                .section("identity", "You are an assistant.", CacheScope.GLOBAL)
-                .section("tools", "Tool list.", CacheScope.SESSION)
-                .buildSegments();
+        List<SystemPromptSegment> segments =
+                SystemPromptBuilder.create()
+                        .section("identity", "You are an assistant.", CacheScope.GLOBAL)
+                        .section("tools", "Tool list.", CacheScope.SESSION)
+                        .buildSegments();
 
         assertEquals(2, segments.size());
         assertTrue(segments.get(0).content().startsWith("# Identity"));
@@ -550,10 +606,11 @@ class SystemPromptBuilderTest {
 
     @Test
     void testBuildSegmentsFromLegacyAPI() {
-        List<SystemPromptSegment> segments = SystemPromptBuilder.create()
-                .base("You are an assistant.")
-                .addContext("Project: kairo")
-                .buildSegments();
+        List<SystemPromptSegment> segments =
+                SystemPromptBuilder.create()
+                        .base("You are an assistant.")
+                        .addContext("Project: kairo")
+                        .buildSegments();
 
         assertFalse(segments.isEmpty());
         List<String> names = segments.stream().map(SystemPromptSegment::name).toList();
@@ -565,15 +622,17 @@ class SystemPromptBuilderTest {
 
     @Test
     void testToolsGroupedByCategory() {
-        DefaultToolRegistry registry = registryWith(
-                tool("read_file", "Read a file", ToolCategory.FILE_AND_CODE),
-                tool("write_file", "Write a file", ToolCategory.FILE_AND_CODE),
-                tool("web_search", "Search the web", ToolCategory.INFORMATION));
+        DefaultToolRegistry registry =
+                registryWith(
+                        tool("read_file", "Read a file", ToolCategory.FILE_AND_CODE),
+                        tool("write_file", "Write a file", ToolCategory.FILE_AND_CODE),
+                        tool("web_search", "Search the web", ToolCategory.INFORMATION));
 
-        String prompt = SystemPromptBuilder.create()
-                .section("identity", "You are an assistant.")
-                .addToolOverview(registry)
-                .build();
+        String prompt =
+                SystemPromptBuilder.create()
+                        .section("identity", "You are an assistant.")
+                        .addToolOverview(registry)
+                        .build();
 
         assertTrue(prompt.contains("FILE_AND_CODE"));
         assertTrue(prompt.contains("INFORMATION"));

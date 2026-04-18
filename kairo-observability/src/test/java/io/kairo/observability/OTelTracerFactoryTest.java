@@ -38,12 +38,11 @@ class OTelTracerFactoryTest {
     @Test
     void createWithOpenTelemetryReturnsOTelTracer() {
         InMemorySpanExporter exporter = InMemorySpanExporter.create();
-        SdkTracerProvider tp = SdkTracerProvider.builder()
-                .addSpanProcessor(SimpleSpanProcessor.create(exporter))
-                .build();
-        OpenTelemetrySdk otel = OpenTelemetrySdk.builder()
-                .setTracerProvider(tp)
-                .build();
+        SdkTracerProvider tp =
+                SdkTracerProvider.builder()
+                        .addSpanProcessor(SimpleSpanProcessor.create(exporter))
+                        .build();
+        OpenTelemetrySdk otel = OpenTelemetrySdk.builder().setTracerProvider(tp).build();
 
         Tracer tracer = OTelTracerFactory.create(otel);
 
@@ -60,12 +59,12 @@ class OTelTracerFactoryTest {
     @Test
     void createWithGlobalOpenTelemetryReturnsOTelTracer() {
         InMemorySpanExporter exporter = InMemorySpanExporter.create();
-        SdkTracerProvider tp = SdkTracerProvider.builder()
-                .addSpanProcessor(SimpleSpanProcessor.create(exporter))
-                .build();
-        OpenTelemetrySdk otel = OpenTelemetrySdk.builder()
-                .setTracerProvider(tp)
-                .buildAndRegisterGlobal();
+        SdkTracerProvider tp =
+                SdkTracerProvider.builder()
+                        .addSpanProcessor(SimpleSpanProcessor.create(exporter))
+                        .build();
+        OpenTelemetrySdk otel =
+                OpenTelemetrySdk.builder().setTracerProvider(tp).buildAndRegisterGlobal();
 
         Tracer tracer = OTelTracerFactory.create();
 
@@ -87,16 +86,17 @@ class OTelTracerFactoryTest {
     @Test
     void createdTracerProducesValidSpans() {
         InMemorySpanExporter exporter = InMemorySpanExporter.create();
-        SdkTracerProvider tp = SdkTracerProvider.builder()
-                .addSpanProcessor(SimpleSpanProcessor.create(exporter))
-                .build();
-        OpenTelemetrySdk otel = OpenTelemetrySdk.builder()
-                .setTracerProvider(tp)
-                .build();
+        SdkTracerProvider tp =
+                SdkTracerProvider.builder()
+                        .addSpanProcessor(SimpleSpanProcessor.create(exporter))
+                        .build();
+        OpenTelemetrySdk otel = OpenTelemetrySdk.builder().setTracerProvider(tp).build();
 
         Tracer tracer = OTelTracerFactory.create(otel);
-        var span = tracer.startAgentSpan("test-agent",
-                io.kairo.api.message.Msg.of(io.kairo.api.message.MsgRole.USER, "hello"));
+        var span =
+                tracer.startAgentSpan(
+                        "test-agent",
+                        io.kairo.api.message.Msg.of(io.kairo.api.message.MsgRole.USER, "hello"));
         span.end();
 
         assertEquals(1, exporter.getFinishedSpanItems().size());

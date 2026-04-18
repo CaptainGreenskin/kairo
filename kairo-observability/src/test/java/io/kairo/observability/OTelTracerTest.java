@@ -20,7 +20,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.tracing.Span;
-import io.kairo.api.tracing.Tracer;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
@@ -43,9 +42,10 @@ class OTelTracerTest {
     @BeforeEach
     void setUp() {
         exporter = InMemorySpanExporter.create();
-        tracerProvider = SdkTracerProvider.builder()
-                .addSpanProcessor(SimpleSpanProcessor.create(exporter))
-                .build();
+        tracerProvider =
+                SdkTracerProvider.builder()
+                        .addSpanProcessor(SimpleSpanProcessor.create(exporter))
+                        .build();
         tracer = new OTelTracer(tracerProvider.get("test"));
     }
 
@@ -161,8 +161,9 @@ class OTelTracerTest {
 
         // Verify hierarchy
         // Agent is root (no parent or parent is 0000...)
-        assertTrue(agentData.getParentSpanId().equals("0000000000000000")
-                || agentData.getParentSpanId().isEmpty());
+        assertTrue(
+                agentData.getParentSpanId().equals("0000000000000000")
+                        || agentData.getParentSpanId().isEmpty());
 
         // Iteration is child of agent
         assertEquals(agentData.getSpanId(), iterationData.getParentSpanId());
@@ -187,10 +188,17 @@ class OTelTracerTest {
         span.end();
 
         SpanData data = exporter.getFinishedSpanItems().get(0);
-        assertEquals(100L, data.getAttributes().get(AttributeKey.longKey("gen_ai.usage.input_tokens")));
-        assertEquals(200L, data.getAttributes().get(AttributeKey.longKey("gen_ai.usage.output_tokens")));
-        assertEquals(50L, data.getAttributes().get(AttributeKey.longKey("gen_ai.usage.cache_read_tokens")));
-        assertEquals(30L, data.getAttributes().get(AttributeKey.longKey("gen_ai.usage.cache_creation_tokens")));
+        assertEquals(
+                100L, data.getAttributes().get(AttributeKey.longKey("gen_ai.usage.input_tokens")));
+        assertEquals(
+                200L, data.getAttributes().get(AttributeKey.longKey("gen_ai.usage.output_tokens")));
+        assertEquals(
+                50L,
+                data.getAttributes().get(AttributeKey.longKey("gen_ai.usage.cache_read_tokens")));
+        assertEquals(
+                30L,
+                data.getAttributes()
+                        .get(AttributeKey.longKey("gen_ai.usage.cache_creation_tokens")));
     }
 
     // --- recordToolResult ---
@@ -202,9 +210,12 @@ class OTelTracerTest {
         span.end();
 
         SpanData data = exporter.getFinishedSpanItems().get(0);
-        assertEquals("calculator", data.getAttributes().get(AttributeKey.stringKey("gen_ai.tool.name")));
-        assertEquals(true, data.getAttributes().get(AttributeKey.booleanKey("gen_ai.tool.success")));
-        assertEquals(1500L, data.getAttributes().get(AttributeKey.longKey("gen_ai.tool.duration_ms")));
+        assertEquals(
+                "calculator", data.getAttributes().get(AttributeKey.stringKey("gen_ai.tool.name")));
+        assertEquals(
+                true, data.getAttributes().get(AttributeKey.booleanKey("gen_ai.tool.success")));
+        assertEquals(
+                1500L, data.getAttributes().get(AttributeKey.longKey("gen_ai.tool.duration_ms")));
     }
 
     // --- recordCompaction ---
@@ -216,8 +227,12 @@ class OTelTracerTest {
         span.end();
 
         SpanData data = exporter.getFinishedSpanItems().get(0);
-        assertEquals("summarize", data.getAttributes().get(AttributeKey.stringKey("gen_ai.compaction.strategy")));
-        assertEquals(5000L, data.getAttributes().get(AttributeKey.longKey("gen_ai.compaction.tokens_saved")));
+        assertEquals(
+                "summarize",
+                data.getAttributes().get(AttributeKey.stringKey("gen_ai.compaction.strategy")));
+        assertEquals(
+                5000L,
+                data.getAttributes().get(AttributeKey.longKey("gen_ai.compaction.tokens_saved")));
     }
 
     // --- recordException ---
@@ -230,9 +245,11 @@ class OTelTracerTest {
         span.end();
 
         SpanData data = exporter.getFinishedSpanItems().get(0);
-        assertEquals("java.lang.RuntimeException",
+        assertEquals(
+                "java.lang.RuntimeException",
                 data.getAttributes().get(AttributeKey.stringKey("exception.type")));
-        assertEquals("test error",
+        assertEquals(
+                "test error",
                 data.getAttributes().get(AttributeKey.stringKey("exception.message")));
         assertEquals(StatusCode.ERROR, data.getStatus().getStatusCode());
     }

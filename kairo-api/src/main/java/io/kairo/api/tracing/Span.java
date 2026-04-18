@@ -39,8 +39,8 @@ public interface Span {
     void end();
 
     /**
-     * Record a timestamped event on this span.
-     * Events enable deterministic replay by capturing full input/output snapshots.
+     * Record a timestamped event on this span. Events enable deterministic replay by capturing full
+     * input/output snapshots.
      *
      * @param name event name (e.g., "model.request", "tool.result", "compaction.before")
      * @param attributes event attributes (key-value pairs)

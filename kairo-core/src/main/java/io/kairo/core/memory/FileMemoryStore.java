@@ -157,6 +157,26 @@ public class FileMemoryStore implements MemoryStore {
     }
 
     @Override
+    public Flux<MemoryEntry> search(String query, MemoryScope scope, List<String> tags) {
+        if (tags == null || tags.isEmpty()) {
+            return search(query, scope);
+        }
+        String lowerQuery = query.toLowerCase();
+        return list(scope)
+                .filter(
+                        e ->
+                                (e.content().toLowerCase().contains(lowerQuery)
+                                                || e.tags().stream()
+                                                        .anyMatch(
+                                                                tag ->
+                                                                        tag.toLowerCase()
+                                                                                .contains(
+                                                                                        lowerQuery)))
+                                        && e.tags() != null
+                                        && tags.stream().allMatch(tag -> e.tags().contains(tag)));
+    }
+
+    @Override
     public Mono<Void> delete(String id) {
         return Mono.fromRunnable(
                 () -> {

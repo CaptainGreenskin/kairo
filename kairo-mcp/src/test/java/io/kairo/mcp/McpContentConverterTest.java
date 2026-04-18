@@ -78,8 +78,7 @@ class McpContentConverterTest {
 
     @Test
     void handlesNullContent() {
-        McpSchema.CallToolResult result =
-                McpSchema.CallToolResult.builder().isError(false).build();
+        McpSchema.CallToolResult result = McpSchema.CallToolResult.builder().isError(false).build();
         ToolResult tr = McpContentConverter.convert(result, "id5");
         assertEquals("", tr.content());
     }

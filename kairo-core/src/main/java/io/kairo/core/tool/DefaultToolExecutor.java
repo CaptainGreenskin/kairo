@@ -83,7 +83,8 @@ public class DefaultToolExecutor implements ToolExecutor {
     }
 
     /**
-     * Create a new executor with the given registry, permission guard, tracer, and shutdown manager.
+     * Create a new executor with the given registry, permission guard, tracer, and shutdown
+     * manager.
      *
      * @param registry the tool registry
      * @param permissionGuard the permission guard
@@ -118,9 +119,10 @@ public class DefaultToolExecutor implements ToolExecutor {
         this.tracer = tracer != null ? tracer : new io.kairo.api.tracing.NoopTracer();
         this.shutdownManager =
                 shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
-        this.circuitBreakerThreshold = circuitBreakerThreshold > 0
-                ? circuitBreakerThreshold
-                : DEFAULT_CIRCUIT_BREAKER_THRESHOLD;
+        this.circuitBreakerThreshold =
+                circuitBreakerThreshold > 0
+                        ? circuitBreakerThreshold
+                        : DEFAULT_CIRCUIT_BREAKER_THRESHOLD;
     }
 
     /**
@@ -298,14 +300,19 @@ public class DefaultToolExecutor implements ToolExecutor {
 
                     // 3. Check permissions
                     return permissionGuard
-                            .checkPermission(toolName, input)
+                            .checkPermissionDetail(toolName, input)
                             .flatMap(
-                                    permitted -> {
-                                        if (!permitted) {
-                                            return Mono.just(
-                                                    errorResult(
-                                                            toolName,
-                                                            "Permission denied: the command was blocked by the safety guard"));
+                                    decision -> {
+                                        if (!decision.allowed()) {
+                                            String msg =
+                                                    "Permission denied: "
+                                                            + decision.reason()
+                                                            + (decision.policyId() != null
+                                                                    ? " [policy: "
+                                                                            + decision.policyId()
+                                                                            + "]"
+                                                                    : "");
+                                            return Mono.just(errorResult(toolName, msg));
                                         }
                                         // 4. Execute the tool with shutdown guard
                                         Mono<ToolResult> execution =
@@ -595,9 +602,9 @@ public class DefaultToolExecutor implements ToolExecutor {
     /**
      * Apply the {@link ToolOutputSanitizer} to a tool result and attach any warnings as metadata.
      *
-     * <p>If the scan produces warnings, a new {@link ToolResult} is returned with an
-     * {@code "injection_warning"} metadata entry containing the warning list. The original result
-     * is returned unchanged when no warnings are found.
+     * <p>If the scan produces warnings, a new {@link ToolResult} is returned with an {@code
+     * "injection_warning"} metadata entry containing the warning list. The original result is
+     * returned unchanged when no warnings are found.
      *
      * @param result the original tool result
      * @return the result, possibly enriched with warning metadata
@@ -617,7 +624,8 @@ public class DefaultToolExecutor implements ToolExecutor {
                 scanResult.warnings());
         var enrichedMetadata = new HashMap<>(result.metadata());
         enrichedMetadata.put("injection_warning", scanResult.warnings());
-        return new ToolResult(result.toolUseId(), result.content(), result.isError(), enrichedMetadata);
+        return new ToolResult(
+                result.toolUseId(), result.content(), result.isError(), enrichedMetadata);
     }
 
     /** Create an error {@link ToolResult}. */

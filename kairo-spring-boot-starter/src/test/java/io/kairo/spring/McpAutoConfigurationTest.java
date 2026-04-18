@@ -22,9 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
-/**
- * Tests for {@link McpAutoConfiguration}.
- */
+/** Tests for {@link McpAutoConfiguration}. */
 class McpAutoConfigurationTest {
 
     private final ApplicationContextRunner runner =
@@ -34,25 +32,28 @@ class McpAutoConfigurationTest {
     @Test
     void mcpAutoConfigurationActivatesWhenMcpOnClasspath() {
         // McpClientRegistry IS on classpath (kairo-mcp is a test dep), so auto-config activates
-        runner.run(context -> {
-            assertThat(context).hasSingleBean(McpClientRegistry.class);
-            assertThat(context).hasSingleBean(KairoMcpProperties.class);
-        });
+        runner.run(
+                context -> {
+                    assertThat(context).hasSingleBean(McpClientRegistry.class);
+                    assertThat(context).hasSingleBean(KairoMcpProperties.class);
+                });
     }
 
     @Test
     void registryCreatedWithNoServersWhenNoneConfigured() {
-        runner.run(context -> {
-            McpClientRegistry registry = context.getBean(McpClientRegistry.class);
-            assertThat(registry.getServerNames()).isEmpty();
-        });
+        runner.run(
+                context -> {
+                    McpClientRegistry registry = context.getBean(McpClientRegistry.class);
+                    assertThat(registry.getServerNames()).isEmpty();
+                });
     }
 
     @Test
     void userDefinedRegistryTakesPrecedence() {
         runner.withBean("mcpClientRegistry", McpClientRegistry.class, McpClientRegistry::new)
-                .run(context -> {
-                    assertThat(context).hasSingleBean(McpClientRegistry.class);
-                });
+                .run(
+                        context -> {
+                            assertThat(context).hasSingleBean(McpClientRegistry.class);
+                        });
     }
 }

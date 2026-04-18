@@ -37,8 +37,8 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 /**
- * Comprehensive unit tests for all 5 compaction strategies:
- * SnipCompaction, MicroCompaction, CollapseCompaction, AutoCompaction, PartialCompaction.
+ * Comprehensive unit tests for all 5 compaction strategies: SnipCompaction, MicroCompaction,
+ * CollapseCompaction, AutoCompaction, PartialCompaction.
  */
 class CompactionStrategiesTest {
 
@@ -129,7 +129,9 @@ class CompactionStrategiesTest {
                             "tr-" + i,
                             "call-tu-" + i,
                             "public class App { public static void main(String[] args) {"
-                                    + " System.out.println(\"Hello world " + i + "\"); } }",
+                                    + " System.out.println(\"Hello world "
+                                    + i
+                                    + "\"); } }",
                             500));
             msgs.add(
                     assistantMsg(
@@ -206,7 +208,9 @@ class CompactionStrategiesTest {
                     .assertNext(
                             result -> {
                                 List<Msg> compacted = result.compactedMessages();
-                                assertEquals(msgs.size(), compacted.size(),
+                                assertEquals(
+                                        msgs.size(),
+                                        compacted.size(),
                                         "Snip replaces content, not removes messages");
                                 for (Msg m : compacted) {
                                     assertFalse(m.contents().isEmpty());
@@ -253,7 +257,8 @@ class CompactionStrategiesTest {
                             result -> {
                                 int newTokens = totalTokens(result.compactedMessages());
                                 int origTokens = totalTokens(msgs);
-                                assertTrue(newTokens <= origTokens,
+                                assertTrue(
+                                        newTokens <= origTokens,
                                         "Thinking content should be compressed");
                             })
                     .verifyComplete();
@@ -342,7 +347,10 @@ class CompactionStrategiesTest {
                                                 m.contents().stream()
                                                         .anyMatch(
                                                                 c ->
-                                                                        c instanceof Content.ToolResultContent),
+                                                                        c
+                                                                                instanceof
+                                                                                Content
+                                                                                        .ToolResultContent),
                                                 "Tool messages must retain ToolResultContent");
                                     }
                                 }
@@ -353,8 +361,13 @@ class CompactionStrategiesTest {
         @Test
         @DisplayName("Compacted tool results contain summary format [Result: ...]")
         void testMicroCompactionSummaryFormat() {
-            List<Msg> msgs = List.of(
-                    toolResultMsg("tr-1", "call-1", "Very long output from tool execution...", 500));
+            List<Msg> msgs =
+                    List.of(
+                            toolResultMsg(
+                                    "tr-1",
+                                    "call-1",
+                                    "Very long output from tool execution...",
+                                    500));
 
             StepVerifier.create(strategy.compact(msgs, DEFAULT_CONFIG))
                     .assertNext(
@@ -423,8 +436,8 @@ class CompactionStrategiesTest {
                     .assertNext(
                             result -> {
                                 assertEquals(1, result.compactedMessages().size());
-                                assertEquals("Hello world",
-                                        result.compactedMessages().get(0).text());
+                                assertEquals(
+                                        "Hello world", result.compactedMessages().get(0).text());
                             })
                     .verifyComplete();
         }
@@ -504,9 +517,10 @@ class CompactionStrategiesTest {
         @Test
         @DisplayName("Groups smaller than MIN_GROUP_SIZE (3) are kept as-is")
         void testCollapseSmallGroupKeptIntact() {
-            List<Msg> msgs = List.of(
-                    toolUseMsg("tu-0", "write_file", 20),
-                    toolResultMsg("tr-0", "call-tu-0", "ok", 10));
+            List<Msg> msgs =
+                    List.of(
+                            toolUseMsg("tu-0", "write_file", 20),
+                            toolResultMsg("tr-0", "call-tu-0", "ok", 10));
 
             StepVerifier.create(strategy.compact(msgs, DEFAULT_CONFIG))
                     .assertNext(
@@ -579,8 +593,7 @@ class CompactionStrategiesTest {
         @DisplayName("Single message handled gracefully")
         void testCollapseWithSingleMessage() {
             StepVerifier.create(
-                            strategy.compact(
-                                    List.of(userMsg("u1", "Hello", 10)), DEFAULT_CONFIG))
+                            strategy.compact(List.of(userMsg("u1", "Hello", 10)), DEFAULT_CONFIG))
                     .assertNext(
                             result -> {
                                 assertEquals(1, result.compactedMessages().size());
@@ -610,27 +623,22 @@ class CompactionStrategiesTest {
         void testAutoCompactionTriggerCondition() {
             AutoCompaction strategy = new AutoCompaction(mockProvider("test"));
 
-            assertFalse(
-                    strategy.shouldTrigger(new ContextState(100_000, 94_000, 0.94f, 10)));
-            assertTrue(
-                    strategy.shouldTrigger(new ContextState(100_000, 95_000, 0.95f, 10)));
-            assertTrue(
-                    strategy.shouldTrigger(new ContextState(100_000, 99_000, 0.99f, 10)));
+            assertFalse(strategy.shouldTrigger(new ContextState(100_000, 94_000, 0.94f, 10)));
+            assertTrue(strategy.shouldTrigger(new ContextState(100_000, 95_000, 0.95f, 10)));
+            assertTrue(strategy.shouldTrigger(new ContextState(100_000, 99_000, 0.99f, 10)));
         }
 
         @Test
         @DisplayName("shouldTrigger returns false when no ModelProvider")
         void testAutoCompactionNoTriggerBelowThreshold() {
             AutoCompaction strategy = new AutoCompaction(null);
-            assertFalse(
-                    strategy.shouldTrigger(new ContextState(100_000, 99_000, 0.99f, 10)));
+            assertFalse(strategy.shouldTrigger(new ContextState(100_000, 99_000, 0.99f, 10)));
         }
 
         @Test
         @DisplayName("Preserves system messages and last 3 non-system messages")
         void testAutoCompactionPreservesRecentMessages() {
-            AutoCompaction strategy =
-                    new AutoCompaction(mockProvider("Summary of conversation"));
+            AutoCompaction strategy = new AutoCompaction(mockProvider("Summary of conversation"));
 
             List<Msg> msgs = new ArrayList<>();
             msgs.add(systemMsg("sys-1", "System prompt", 50));
@@ -869,8 +877,7 @@ class CompactionStrategiesTest {
             StepVerifier.create(
                             strategy.compact(
                                     List.of(userMsg("u1", "Only message", 10)), DEFAULT_CONFIG))
-                    .assertNext(
-                            result -> assertEquals(1, result.compactedMessages().size()))
+                    .assertNext(result -> assertEquals(1, result.compactedMessages().size()))
                     .verifyComplete();
         }
 
@@ -895,10 +902,8 @@ class CompactionStrategiesTest {
         void testHybridThresholdWithContextWindow() {
             SnipCompaction snip = new SnipCompaction(); // 80% + 40k buffer
             // 200k context: 80%=160k, abs=200k-40k=160k -> effective=160k
-            assertTrue(
-                    snip.shouldTrigger(new ContextState(200_000, 160_000, 0.80f, 50, 200_000)));
-            assertFalse(
-                    snip.shouldTrigger(new ContextState(200_000, 150_000, 0.75f, 50, 200_000)));
+            assertTrue(snip.shouldTrigger(new ContextState(200_000, 160_000, 0.80f, 50, 200_000)));
+            assertFalse(snip.shouldTrigger(new ContextState(200_000, 150_000, 0.75f, 50, 200_000)));
         }
 
         @Test
@@ -906,8 +911,7 @@ class CompactionStrategiesTest {
         void testSmallContextWindow() {
             CollapseCompaction collapse = new CollapseCompaction(); // 90% + 20k buffer
             // 50k window: 90%=45k, abs=50k-20k=30k -> effective=30k
-            assertTrue(
-                    collapse.shouldTrigger(new ContextState(50_000, 31_000, 0.62f, 20, 50_000)));
+            assertTrue(collapse.shouldTrigger(new ContextState(50_000, 31_000, 0.62f, 20, 50_000)));
         }
     }
 }

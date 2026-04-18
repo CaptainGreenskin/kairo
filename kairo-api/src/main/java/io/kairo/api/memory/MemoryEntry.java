@@ -30,6 +30,7 @@ import java.util.List;
  * @param timestamp when this entry was created
  * @param tags tags for categorization and search
  * @param verbatim whether this entry should be preserved as-is (default true)
+ * @param confidence optional confidence score between 0.0 and 1.0 (nullable)
  */
 public record MemoryEntry(
         String id,
@@ -37,4 +38,26 @@ public record MemoryEntry(
         MemoryScope scope,
         Instant timestamp,
         List<String> tags,
-        boolean verbatim) {}
+        boolean verbatim,
+        Double confidence) {
+
+    /** Compact constructor — validates confidence range and defensively copies tags. */
+    public MemoryEntry {
+        if (confidence != null && (confidence < 0.0 || confidence > 1.0)) {
+            throw new IllegalArgumentException(
+                    "confidence must be between 0.0 and 1.0, was: " + confidence);
+        }
+        tags = tags == null ? List.of() : List.copyOf(tags);
+    }
+
+    /** Backward-compatible 6-arg constructor — sets confidence to {@code null}. */
+    public MemoryEntry(
+            String id,
+            String content,
+            MemoryScope scope,
+            Instant timestamp,
+            List<String> tags,
+            boolean verbatim) {
+        this(id, content, scope, timestamp, tags, verbatim, null);
+    }
+}

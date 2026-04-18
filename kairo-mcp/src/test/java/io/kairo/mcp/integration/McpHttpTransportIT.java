@@ -237,16 +237,15 @@ class McpHttpTransportIT {
             // Check captured URIs contain query params
             boolean hasApiKey =
                     capturedUris.stream().anyMatch(uri -> uri.contains("api_key=abc123"));
-            boolean hasVersion =
-                    capturedUris.stream().anyMatch(uri -> uri.contains("version=v2"));
+            boolean hasVersion = capturedUris.stream().anyMatch(uri -> uri.contains("version=v2"));
 
             // Also check the query params are stored in the builder
             java.lang.reflect.Field paramsField =
                     McpClientBuilder.class.getDeclaredField("httpQueryParams");
             paramsField.setAccessible(true);
             @SuppressWarnings("unchecked")
-            Map<String, String> params = (Map<String, String>) paramsField.get(
-                    McpClientBuilder.fromConfig(config));
+            Map<String, String> params =
+                    (Map<String, String>) paramsField.get(McpClientBuilder.fromConfig(config));
             assertEquals("abc123", params.get("api_key"));
             assertEquals("v2", params.get("version"));
 
@@ -329,7 +328,8 @@ class McpHttpTransportIT {
         exchange.getRequestHeaders()
                 .forEach(
                         (key, values) ->
-                                capturedHeaders.put(key.toLowerCase(), new CopyOnWriteArrayList<>(values)));
+                                capturedHeaders.put(
+                                        key.toLowerCase(), new CopyOnWriteArrayList<>(values)));
 
         // Capture URI
         capturedUris.add(exchange.getRequestURI().toString());
@@ -440,12 +440,12 @@ class McpHttpTransportIT {
         exchange.getRequestHeaders()
                 .forEach(
                         (key, values) ->
-                                capturedHeaders.put(key.toLowerCase(), new CopyOnWriteArrayList<>(values)));
+                                capturedHeaders.put(
+                                        key.toLowerCase(), new CopyOnWriteArrayList<>(values)));
 
         if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
             // Return an SSE endpoint event pointing to the /mcp POST endpoint
-            String sseData =
-                    "event: endpoint\ndata: " + baseUrl + "/mcp\n\n";
+            String sseData = "event: endpoint\ndata: " + baseUrl + "/mcp\n\n";
             exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
             exchange.getResponseHeaders().set("Cache-Control", "no-cache");
             exchange.sendResponseHeaders(200, sseData.length());

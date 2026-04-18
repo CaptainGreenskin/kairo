@@ -25,7 +25,6 @@ import io.modelcontextprotocol.client.transport.StdioClientTransport;
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
-import java.util.function.Function;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -33,6 +32,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -225,8 +225,8 @@ public class McpClientBuilder {
     /**
      * Builds a blocking synchronous client with the default timeout of 30 seconds.
      *
-     * <p>The returned {@link McpSyncClient} wraps the async client and calls {@code .block()}
-     * on every method. Do NOT use in reactive pipelines.
+     * <p>The returned {@link McpSyncClient} wraps the async client and calls {@code .block()} on
+     * every method. Do NOT use in reactive pipelines.
      *
      * @return a synchronous MCP client
      */
@@ -269,20 +269,22 @@ public class McpClientBuilder {
                         sdkRequest -> {
                             ElicitationRequest kairoRequest =
                                     new ElicitationRequest(
-                                            sdkRequest.message(),
-                                            sdkRequest.requestedSchema());
+                                            sdkRequest.message(), sdkRequest.requestedSchema());
                             return effectiveHandler
                                     .handle(kairoRequest)
                                     .map(
                                             kairoResponse -> {
                                                 McpSchema.ElicitResult.Action sdkAction =
                                                         switch (kairoResponse.action()) {
-                                                            case ACCEPT -> McpSchema.ElicitResult
-                                                                    .Action.ACCEPT;
-                                                            case DECLINE -> McpSchema.ElicitResult
-                                                                    .Action.DECLINE;
-                                                            case CANCEL -> McpSchema.ElicitResult
-                                                                    .Action.CANCEL;
+                                                            case ACCEPT ->
+                                                                    McpSchema.ElicitResult.Action
+                                                                            .ACCEPT;
+                                                            case DECLINE ->
+                                                                    McpSchema.ElicitResult.Action
+                                                                            .DECLINE;
+                                                            case CANCEL ->
+                                                                    McpSchema.ElicitResult.Action
+                                                                            .CANCEL;
                                                         };
                                                 return new McpSchema.ElicitResult(
                                                         sdkAction, kairoResponse.data());
@@ -313,7 +315,8 @@ public class McpClientBuilder {
         if (!stdioEnv.isEmpty()) {
             paramsBuilder.env(stdioEnv);
         }
-        return new StdioClientTransport(paramsBuilder.build(), new JacksonMcpJsonMapper(new ObjectMapper()));
+        return new StdioClientTransport(
+                paramsBuilder.build(), new JacksonMcpJsonMapper(new ObjectMapper()));
     }
 
     private McpClientTransport createStreamableHttpTransport() {

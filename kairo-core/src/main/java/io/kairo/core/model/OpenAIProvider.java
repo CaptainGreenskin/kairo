@@ -83,11 +83,13 @@ public class OpenAIProvider implements ModelProvider {
     /**
      * Create an OpenAIProvider with a custom base URL for compatible APIs.
      *
-     * <p>This constructor auto-appends {@code /v1/chat/completions} to the provided {@code baseUrl}.
-     * Therefore, the {@code baseUrl} should <strong>not</strong> include {@code /v1} — otherwise the
-     * final URL will contain a duplicated path segment (e.g. {@code /v1/v1/chat/completions}).
+     * <p>This constructor auto-appends {@code /v1/chat/completions} to the provided {@code
+     * baseUrl}. Therefore, the {@code baseUrl} should <strong>not</strong> include {@code /v1} —
+     * otherwise the final URL will contain a duplicated path segment (e.g. {@code
+     * /v1/v1/chat/completions}).
      *
      * <p><strong>Examples:</strong>
+     *
      * <pre>{@code
      * // For OpenAI:
      * new OpenAIProvider("sk-xxx", "https://api.openai.com")
@@ -102,7 +104,7 @@ public class OpenAIProvider implements ModelProvider {
      * // → calls https://api.deepseek.com/v1/chat/completions
      * }</pre>
      *
-     * @param apiKey  the API key for authentication
+     * @param apiKey the API key for authentication
      * @param baseUrl the base URL of the API provider (must <em>not</em> end with {@code /v1})
      * @see #OpenAIProvider(String, String, String) for specifying a custom chat completions path
      */
@@ -113,14 +115,15 @@ public class OpenAIProvider implements ModelProvider {
     /**
      * Create an OpenAIProvider with a custom base URL and an explicit chat completions path.
      *
-     * <p>Unlike the {@linkplain #OpenAIProvider(String, String) 2-arg constructor}, this constructor
-     * does <strong>not</strong> auto-append {@code /v1/chat/completions}. Instead, it uses the
-     * provided {@code chatCompletionsPath} as-is, which is useful when the API provider does not
-     * follow the standard {@code /v1/chat/completions} convention.
+     * <p>Unlike the {@linkplain #OpenAIProvider(String, String) 2-arg constructor}, this
+     * constructor does <strong>not</strong> auto-append {@code /v1/chat/completions}. Instead, it
+     * uses the provided {@code chatCompletionsPath} as-is, which is useful when the API provider
+     * does not follow the standard {@code /v1/chat/completions} convention.
      *
      * <p>The final URL is: {@code baseUrl + chatCompletionsPath}.
      *
      * <p><strong>Examples:</strong>
+     *
      * <pre>{@code
      * // For DashScope with explicit path:
      * new OpenAIProvider("sk-xxx",
@@ -133,10 +136,10 @@ public class OpenAIProvider implements ModelProvider {
      * // → calls https://open.bigmodel.cn/api/paas/v4/chat/completions
      * }</pre>
      *
-     * @param apiKey              the API key for authentication
-     * @param baseUrl             the base URL of the API provider (may include version path segments)
-     * @param chatCompletionsPath the path appended to {@code baseUrl} for chat completions
-     *                            (e.g. {@code "/chat/completions"})
+     * @param apiKey the API key for authentication
+     * @param baseUrl the base URL of the API provider (may include version path segments)
+     * @param chatCompletionsPath the path appended to {@code baseUrl} for chat completions (e.g.
+     *     {@code "/chat/completions"})
      */
     public OpenAIProvider(String apiKey, String baseUrl, String chatCompletionsPath) {
         this(
@@ -217,7 +220,9 @@ public class OpenAIProvider implements ModelProvider {
                         })
                 .retryWhen(
                         reactor.util.retry.Retry.backoff(3, Duration.ofSeconds(1))
-                                .filter(ModelProviderException.RateLimitException.class::isInstance))
+                                .filter(
+                                        ModelProviderException.RateLimitException.class
+                                                ::isInstance))
                 .timeout(DEFAULT_TIMEOUT);
     }
 
@@ -242,7 +247,8 @@ public class OpenAIProvider implements ModelProvider {
                                                 (resp, err) -> {
                                                     if (err != null) {
                                                         sink.tryEmitError(
-                                                                new ModelProviderException.ApiException(
+                                                                new ModelProviderException
+                                                                        .ApiException(
                                                                         "Streaming request failed",
                                                                         err));
                                                     }
@@ -383,7 +389,8 @@ public class OpenAIProvider implements ModelProvider {
             ObjectNode jsonSchema = responseFormat.putObject("json_schema");
             jsonSchema.put("name", config.responseSchema().getSimpleName());
             jsonSchema.put("strict", true);
-            jsonSchema.set("schema",
+            jsonSchema.set(
+                    "schema",
                     JsonSchemaGenerator.generateSchema(config.responseSchema(), objectMapper));
         }
 

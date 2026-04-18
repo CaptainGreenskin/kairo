@@ -244,6 +244,28 @@ ToolOutputSanitizer + 37 个新测试。
 - "Worker results are internal signals, not conversation partners — never thank or acknowledge them"
 - "不要向用户暴露内部机制（compaction、hook、tool partition 等）"
 
+### Task 3.5：ReActLoop Cooperative Cancellation ⬜ 待完成
+
+在 ReActLoop 迭代间检查 interrupted flag，支持细粒度取消（单个子任务级别，不是整个 Agent）。
+Java/Reactor 实现：`Flux.takeUntilOther(cancelSignal)` 或 step 间检查 `interrupted` flag，不需要新抽象类型。
+
+### Task 3.6：Loop Detection ⬜ 待完成
+
+双层循环检测，在 ReActLoop 的 step 之间加一个轻量 `LoopDetector`（有状态组件，不需要新 SPI）：
+- **Hash 层：** 滑动窗口内对 tool call 集合（name + 规范化参数）做 hash，3 次相同警告，5 次硬停
+- **频率层：** 按工具类型计数（不管参数），30 次警告，50 次硬停
+
+当前 DefaultReActAgent 只有 maxIterations 硬上限，没有智能循环检测。如果 LLM 反复调用同一个工具但参数微调（SRE 场景中常见），会白白烧 token 直到 hit maxIterations。
+
+### Task 3.7：Skill 系统补齐（模板能力）⬜ 待完成
+
+对标完整 Skill 能力，当前缺失三项模板能力：
+- **参数替换（Argument Substitution）：** Skill Markdown 中支持 `{{arg}}` 占位符，加载时替换为实际值
+- **`${SKILL_DIR}` 变量替换：** Skill 引用相对路径资源时，自动替换为 Skill 文件所在目录
+- **内联脚本执行（Inline Script Execution）：** Skill 中嵌入的 `bash` / `python` 代码块可直接执行
+
+计划版本：v0.3.0（参数替换 + ${SKILL_DIR}），v0.4.0（内联脚本执行，需安全审计）
+
 ---
 
 ## 阶段四：v0.3.0 — 生态连接
@@ -271,11 +293,77 @@ ToolOutputSanitizer + 37 个新测试。
 | ExecutionStrategy SPI（预留） | 预留接口，默认 ReAct。简单任务场景已可通过 `@PreReasoning` + `HookResult.SKIP` 覆盖 | ⬜ → v0.4.0 |
 | 记忆使用指导 | 配套 MemoryTool，在 system prompt 中加入记忆使用规范（什么值得持久化、什么不值得） | ⬜ → v0.4.0 |
 
-**v0.3.0 P0 全部完成 ✅** — MCP 正式化 + OTel 集成 + CacheBreakDetector + Spring MCP 配置
+**v0.3.0 健壮性 + SPI（6 项）：** PermissionDecision + tag 过滤 + pre-compaction flush + Model CircuitBreaker + Dangling Tool Call Recovery + ToolGroup + ToolResultPostProcessor
 
-**v0.3.1 全部完成 ✅** — AnthropicProvider 拆分 + Structured Output + MCP Elicitation + OpenAPI Tools + ProviderPresets + Skill Remote Loading + MCP Sync API + Span.addEvent()
+**v0.3.0 已完成项 ✅：** PermissionDecision + MemoryEntry confidence + tag 过滤 + pre-compaction flush + Model CircuitBreaker + Dangling Tool Call Recovery（1,497 tests, 0 failures）
+
+**v0.3.0 剩余项 ⬜：** ToolGroup 动态激活 + ToolResultPostProcessor
+
+**v0.3.1 已完成 ✅** — AnthropicProvider 拆分 + Structured Output + MCP Elicitation + OpenAPI Tools + ProviderPresets + Skill Remote Loading + MCP Sync API + Span.addEvent()
+
+**v0.3.2 Skill 进化（4 项）：** 多文件 Bundle + Search Path + SkillManageTool（CRUD）+ 变更历史 + 参数替换
 
 **Deferred to v0.4.0:** SSE Event Stream, Token Budget Degradation, ExecutionStrategy SPI, Memory Usage Guidance
+
+### v0.3.0 SPI 返回值丰富化（一个 PR）✅ 已完成
+
+以下三项都是"返回值变更或方法重载"级别的小改动，合并为一个 PR：
+
+| 改动 | 说明 | 兼容策略 | 状态 |
+|------|------|---------|------|
+| PermissionGuard → PermissionDecision | 返回 `PermissionDecision(allowed, reason, policyId)` 替代 `Boolean` | 加 `default checkPermissionDetail()` 委托给旧方法，不破坏现有实现 | ✅ |
+| Pre-compaction memory flush | CompactionTrigger 内部在 compact 前 flush 重要消息到 MemoryStore | 可配置 Predicate<Msg>，默认 verbatimPreserved | ✅ |
+| MemoryStore tag 过滤 | `search(query, scope)` 加重载 `search(query, scope, tags)` | AND 语义，MemoryEntry 已有 tags 字段 | ✅ |
+| MemoryEntry confidence 字段 | `Optional<Double> confidence`（default null，向后兼容） | 6-arg 构造函数保留，7-arg 新增 | ✅ |
+
+### v0.3.0 健壮性增强（一个 PR）✅ 已完成
+
+| 改动 | 说明 | 改动量 | 优先级 | 状态 |
+|------|------|--------|--------|------|
+| Model Call Circuit Breaker | ErrorRecoveryStrategy 入口加 `ModelCircuitBreaker`（Closed → Open → Half-Open 三态，5 次连续失败触发，60 秒后半开探测），只对暂时性错误（SERVER_ERROR, RATE_LIMITED）计数 | 小 | 高 | ✅ |
+| Dangling Tool Call Recovery | ReActLoop.runLoop() 开头扫描 conversationHistory，检测未配对的 tool_call 并注入 error ToolResult | 小 | 高 | ✅ |
+
+### v0.3.0 工具增强（一个 PR）
+
+| 改动 | 说明 | 改动量 |
+|------|------|--------|
+| ToolGroup 动态激活 | 工具按组注册，运行时按需激活/停用整组工具 | 小 |
+| ToolResultPostProcessor | 工具执行后的结果后处理 SPI（截断、格式化、脱敏） | 小 |
+
+### v0.3.2 Skill 系统增强
+
+> 主题：Skill 进化 — 从单文件提示词到完整能力包。不改 SPI 接口，只增强现有组件。
+
+**PR 1：多文件 Bundle + Search Path**
+
+| 改动 | 说明 | 改动量 |
+|------|------|--------|
+| 多文件 Skill Bundle | SkillLoader 支持目录结构：`SKILL.md` + `scripts/` + `templates/` + `references/`。SkillDefinition 加 `Path bundleRoot`（nullable，null = 传统单文件），运行时通过 `bundleRoot.resolve("scripts/xxx.sh")` 访问资源，不预设资源分类 | 中 |
+| Search Path 模型 | 替代硬编码 public/custom 目录。配置驱动的搜索路径，后者覆盖前者同名 Skill | 小 |
+
+```yaml
+# application.yml
+kairo:
+  skills:
+    search-paths:
+      - ~/.kairo/skills       # 最高优先级（用户自定义）
+      - ./project-skills      # 项目级
+      - classpath:skills      # 最低优先级（框架内置）
+```
+
+**PR 2：SkillManageTool（CRUD）+ 变更历史**
+
+| 改动 | 说明 | 改动量 |
+|------|------|--------|
+| SkillManageTool | 新增工具，支持 create/edit/delete。复用 SkillMarkdownParser.serialize() 做写入 | 中 |
+| 变更历史（JSONL） | CRUD 操作前旧内容追加到 `.history/{name}.jsonl`。可配置 `max-history-entries`（默认 50），oldest-first pruning 防止磁盘膨胀 | 小 |
+| 参数替换 + ${SKILL_DIR} | Skill Markdown 中 `{{arg}}` 占位符加载时替换；`${SKILL_DIR}` 替换为 Skill 文件所在目录 | 小 |
+
+**CRUD 安全约束（硬性要求）：**
+- CRUD 操作必须经过 PermissionGuard，权限级别 = `SYSTEM_CHANGE`
+- 支持 `kairo.skills.readonly=true` 配置项，生产环境禁用 CRUD
+- JSONL 变更历史是 SkillManageTool 的硬前置依赖，必须同时交付，不可拆分
+- 多 Skill 同时加载时，allowedTools 合并策略：取并集（SkillToolManager 验证）
 
 **MCP 设计决策：**
 - MCP 完全可选，`kairo-core` 对 `kairo-mcp` 零编译期依赖
@@ -298,6 +386,19 @@ ToolOutputSanitizer + 37 个新测试。
 | 自我改进机制 | 对话回顾、自动 Skill 提取、Memory 沉淀 |
 | 多租户隔离 | Agent 级资源配额、租户级 MemoryStore 隔离 |
 | Memory 分类重设计 | 按内容类型重新分类（user/feedback/project/reference），替代当前的生命周期分类 |
+| SkillRegistry SPI 正式化 | Skill 注册/发现接口冻结，等 v0.3.2 Skill 增强稳定后定义 |
+| Skill 组合（跨 Skill 引用） | 复杂任务编排多个专业 Skill（依赖 Bundle + CRUD 先落地，不需要框架级支持） |
+| Skill ZIP 安装 | 打包分发 Skill Bundle，含安全验证 |
+| Skill 安全扫描 | 基于 ToolOutputSanitizer 正则方案做 Skill 内容基础扫描（prompt injection 检测） |
+| Skill 内联脚本执行 | Skill 中嵌入的 bash/python 代码块可直接执行（需安全审计） |
+| 环境感知安全策略 | 根据执行环境（local/Docker/remote）动态调整 PermissionGuard 策略 |
+| Agent 状态快照/恢复 | Agent 运行时状态序列化，支持断点恢复和调试 |
+| Run 并发策略 | 同一 thread 的并发 run 控制：reject / interrupt / rollback 三种策略 |
+| SSE 事件流 | 订阅 Tracer 事件 → 转 SSE |
+| Token Budget 降级策略 | budget 耗尽时自动切便宜模型 |
+| ExecutionStrategy SPI | 预留非 ReAct 策略接口 |
+| 记忆使用指导 | 配套 MemoryTool + system prompt 指导 |
+| TokenCounter 抽象 | 统一的 token 计数 SPI，支持不同模型的 tokenizer |
 
 **已明确不做：**
 - Workflow Checkpoint — SessionSerializer + FileMemoryStore + TaskBoard 已覆盖恢复需求
@@ -342,15 +443,75 @@ kairo-mcp(@Exp)        kairo-mcp(@Exp)         kairo-mcp(正式)         kairo-m
 
 ##  借鉴对照（学设计理念，不学基础设施复杂度）
 
-| 借鉴点 | 结论 | 落地方式 | 版本 |
-|--------|------|---------|------|
-| Token Budget 三级管控 | ✅ 做 | TokenBudgetManager SPI + 动态追踪 | v0.2.0 接口，v0.3.0 降级策略 |
-| 确定性回放调试 | ✅ 做 | Tracer 扩展：Span.addEvent(name, snapshot) | v0.3.0 |
-| 执行策略路由 | ⚠️ 只预留 SPI | Hook 已能覆盖简单场景（SKIP） | v0.3.0 预留 |
-| 策略引擎 | ❌ 不做 | PermissionGuard SPI 够用，用户自行实现 | — |
-| 配置热更新 | ❌ 不做 | Spring @RefreshScope 原生支持 | — |
+| # | 借鉴点 | 结论 | 落地方式 | 版本 |
+|---|--------|------|---------|------|
+| 1 | Cooperative cancellation | ✅ 做 | ReActLoop step 间检查 interrupted flag | v0.2.1 |
+| 2 | Loop Detection（双层） | ✅ 做 | LoopDetector：Hash 层（滑动窗口 tool call hash）+ 频率层（按工具类型计数） | v0.2.1 |
+| 3 | PermissionGuard 结构化 reason | ✅ 已完成 | `PermissionDecision(allowed, reason, policyId)` + default 方法兼容 | v0.3.0 |
+| 4 | Pre-compaction memory flush | ✅ 已完成 | CompactionTrigger 内部 flush 重要消息到 MemoryStore | v0.3.0 |
+| 5 | MemoryStore tag 过滤 | ✅ 已完成 | `search(query, scope, tags)` 方法重载，AND 语义 | v0.3.0 |
+| 6 | Model Call Circuit Breaker | ✅ 已完成 | ModelCircuitBreaker（Closed/Open/Half-Open），只对暂时性错误计数 | v0.3.0 |
+| 7 | Dangling Tool Call Recovery | ✅ 已完成 | ReActLoop.runLoop() 开头扫描未配对 tool_call，注入 error ToolResult | v0.3.0 |
+| 8 | ToolGroup 动态激活 | ✅ 做 | 工具按组注册，运行时按需激活/停用 | v0.3.0 |
+| 9 | ToolResultPostProcessor | ✅ 做 | 工具结果后处理 SPI（截断、格式化、脱敏） | v0.3.0 |
+| 10 | 多文件 Skill Bundle | ✅ 做 | SkillDefinition 加 `Path bundleRoot`，运行时 resolve 资源路径 | v0.3.2 |
+| 11 | SkillManageTool（CRUD） | ✅ 做 | SYSTEM_CHANGE 权限 + readonly 模式 + JSONL 历史硬前置 | v0.3.2 |
+| 12 | Skill Search Path 模型 | ✅ 做 | 配置驱动搜索路径，后者覆盖前者同名 Skill | v0.3.2 |
+| 13 | Skill 变更历史 | ✅ 做 | CRUD 操作前旧内容追加 JSONL，max-entries=50 + oldest-first pruning | v0.3.2 |
+| 14 | Agent 状态快照/恢复 | ✅ 做 | Agent 运行时状态序列化，断点恢复 | v0.4.0 |
+| 15 | MemoryEntry confidence 字段 | ✅ 已完成 | `Optional<Double> confidence`（default null，7-arg 构造函数） | v0.3.0 |
+| 16 | Skill 组合（跨 Skill 引用） | ✅ 做 | 依赖 Bundle + CRUD 先落地，不需要框架级支持 | v0.4.0 |
+| 17 | 环境感知安全策略 | ✅ 做 | 根据执行环境动态调整 PermissionGuard | v0.4.0 |
+| 18 | Run 并发策略 | ✅ 做 | reject / interrupt / rollback 三种策略 | v0.4.0 |
+| 19 | TokenCounter 抽象 | ✅ 做 | 统一 token 计数 SPI，支持不同 tokenizer | v0.4.0+ |
+
+v0.2.1 的 2 个点（#1 cancellation + #2 loop detection）在 ReActLoop 拆分时一起做。
+v0.3.0 SPI + 健壮性（#3, #4, #5, #6, #7, #15）已完成 ✅。剩余工具增强（#8, #9）待做。
+v0.3.2 分 2 个 PR：Bundle + Search Path（#10, #12），CRUD + 历史 + 参数替换（#11, #13）。
 
 核心原则：很多设计理念用现有的 SPI（Hook、Tracer、PermissionGuard）就能实现，不需要新增抽象。
+
+### Skill 系统对比总结
+
+**Kairo 领先项（不需要借鉴）：**
+- Anti-Pollution TriggerGuard — 显式 trigger matching + 0.8 阈值，比纯 LLM 判断更可靠
+- 条件激活 — pathPatterns / platform / requiredTools 三维条件
+- Budget-aware Prompt 注入 — 3 级降级（完整描述 → 截断描述 → 仅名称），节省 token
+- allowedTools 白名单 — 在 ReActLoop 里强制执行
+
+**v0.3.2 补齐项：** 多文件 Bundle（`Path bundleRoot`）+ Search Path 模型 + CRUD Tool（SYSTEM_CHANGE 权限 + readonly 模式）+ 变更历史（JSONL, max 50 条）+ 参数替换
+**v0.4.0 补齐项：** SkillRegistry SPI 正式化 + ZIP 安装 + 安全扫描 + Skill 组合 + 内联脚本执行（SPI 级变更）
+
+**关键设计决策：**
+- `Path bundleRoot` 而非 `Map<String, List<Path>> resources` — 不预设资源分类，运行时按需 resolve
+- Search Path 模型而非 public/custom 硬编码 — 支持 project-level / team-level 扩展
+- JSONL 变更历史是 CRUD 的硬前置依赖 — 同时交付或都不交付
+- JSONL max-entries=50 + oldest-first pruning — 防止 Agent 快速迭代时磁盘膨胀
+
+### 不借鉴清单
+
+| 特性 | 不借鉴理由 |
+|------|-----------|
+| LangSmith/Langfuse 集成 | Kairo 有 Tracer SPI + OTel |
+| ThreadPoolExecutor 调度 | Reactor Schedulers 已覆盖 |
+| IM Channel（Telegram/Slack/飞书/微信） | 不在 Kairo 定位内 |
+| Skill Security Scanner (LLM-based) | 延迟高，Kairo 的正则方案够用 |
+| File Upload/Document Conversion | 不在核心定位 |
+| vLLM/DeepSeek Provider Patches | Kairo 主要对接 Anthropic |
+| XSS Artifact Protection | SRE 场景不需要 |
+| Config Hot Reload | Spring Boot @RefreshScope 已覆盖 |
+| Metaclass AOP | Java 有 Spring AOP |
+| MsgHub pub/sub | Kairo 已有 MessageBus SPI |
+| RAG 管道 | 用户自己接，框架不做 |
+| RL/Finetuning/Tuner | 框架定位不同 |
+| Realtime Voice Agent | 不相关 |
+| A2A 协议 | 太早期 |
+| Evaluation Framework | 独立关注点 |
+| Distributed Runtime | Kairo 是嵌入式库 |
+| Mem0/ReME 长期记忆 | 用户通过 MemoryStore SPI 自己接 |
+| Redis/SQLAlchemy 后端 | 同上 |
+| Formatter 分离 | 只对接 Anthropic 时不需要 |
+| Token Budget 三级管控 | ✅ 已做 — TokenBudgetManager SPI + 动态追踪（v0.2.0） |
 
 ---
 
@@ -372,7 +533,8 @@ kairo-mcp(@Exp)        kairo-mcp(@Exp)         kairo-mcp(正式)         kairo-m
 |------|------|-----------|---------|
 | v0.1.0 | 首次发布 | 补充 CI/BOM/Javadoc → Maven Central | 1-2 周 |
 | v0.2.0 | 骨架加固 | 异常层次 + ShutdownManager + 熔断 + 容错 + 性能基线 | 2-3 周 |
-| v0.2.1 | 重构 | DefaultReActAgent 拆分 | 1 周 |
-| v0.3.0 | 生态连接 | MCP 正式 + OTel + CacheBreakDetector（P0 完成） | 4-6 周 |
-| v0.3.1 | 延迟项清理 | AnthropicProvider 拆分 + Structured Output + MCP Elicitation + OpenAPI + ProviderPresets + Skill Remote + Sync API + Span.addEvent() | 1 周 |
-| v0.4.0 | 生产级 | 自我改进 + 多租户 + Memory 重设计 | 根据用户反馈 |
+| v0.2.1 | 重构 | DefaultReActAgent 拆分 + LoopDetector + Cooperative Cancellation + Skill 模板 | 1-2 周 |
+| v0.3.0 | 健壮性 + SPI | PermissionDecision + tag 过滤 + confidence + Model CircuitBreaker + Dangling Recovery ✅ / ToolGroup + ToolResultPostProcessor ⬜ | 2-3 周 |
+| v0.3.1 | 生态连接 | MCP 正式 + OTel + CacheBreakDetector + AnthropicProvider 拆分 + Structured Output + OpenAPI + ProviderPresets + Skill Remote + Span.addEvent() | ✅ 已完成 |
+| v0.3.2 | Skill 进化 | 多文件 Bundle + Search Path + SkillManageTool（CRUD）+ 变更历史 + 参数替换 | 2-3 周 |
+| v0.4.0 | 生产级 | 自我改进 + 多租户 + Memory 重设计 + Agent 状态快照 + SkillRegistry SPI + Skill 组合/ZIP/安全扫描 | 根据用户反馈 |

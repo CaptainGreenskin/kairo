@@ -158,8 +158,7 @@ class AnnotationToolScannerTest {
         ToolDefinition def = scanner.scanClass(GuidedTool.class);
         assertEquals("guided_tool", def.name());
         assertEquals(
-                "Use for quick reads; for large files use GrepTool instead",
-                def.usageGuidance());
+                "Use for quick reads; for large files use GrepTool instead", def.usageGuidance());
     }
 
     @Test

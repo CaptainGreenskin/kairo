@@ -21,7 +21,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -37,25 +36,45 @@ class JsonSchemaGeneratorTest {
 
     @Test
     void integerTypes() {
-        assertEquals("integer", JsonSchemaGenerator.generateSchema(int.class, mapper).path("type").asText());
-        assertEquals("integer", JsonSchemaGenerator.generateSchema(Integer.class, mapper).path("type").asText());
-        assertEquals("integer", JsonSchemaGenerator.generateSchema(long.class, mapper).path("type").asText());
-        assertEquals("integer", JsonSchemaGenerator.generateSchema(Long.class, mapper).path("type").asText());
+        assertEquals(
+                "integer",
+                JsonSchemaGenerator.generateSchema(int.class, mapper).path("type").asText());
+        assertEquals(
+                "integer",
+                JsonSchemaGenerator.generateSchema(Integer.class, mapper).path("type").asText());
+        assertEquals(
+                "integer",
+                JsonSchemaGenerator.generateSchema(long.class, mapper).path("type").asText());
+        assertEquals(
+                "integer",
+                JsonSchemaGenerator.generateSchema(Long.class, mapper).path("type").asText());
     }
 
     @Test
     void numberTypes() {
-        assertEquals("number", JsonSchemaGenerator.generateSchema(double.class, mapper).path("type").asText());
-        assertEquals("number", JsonSchemaGenerator.generateSchema(Float.class, mapper).path("type").asText());
+        assertEquals(
+                "number",
+                JsonSchemaGenerator.generateSchema(double.class, mapper).path("type").asText());
+        assertEquals(
+                "number",
+                JsonSchemaGenerator.generateSchema(Float.class, mapper).path("type").asText());
     }
 
     @Test
     void booleanType() {
-        assertEquals("boolean", JsonSchemaGenerator.generateSchema(boolean.class, mapper).path("type").asText());
-        assertEquals("boolean", JsonSchemaGenerator.generateSchema(Boolean.class, mapper).path("type").asText());
+        assertEquals(
+                "boolean",
+                JsonSchemaGenerator.generateSchema(boolean.class, mapper).path("type").asText());
+        assertEquals(
+                "boolean",
+                JsonSchemaGenerator.generateSchema(Boolean.class, mapper).path("type").asText());
     }
 
-    enum Color { RED, GREEN, BLUE }
+    enum Color {
+        RED,
+        GREEN,
+        BLUE
+    }
 
     @Test
     void enumType() {
@@ -102,6 +121,7 @@ class JsonSchemaGeneratorTest {
     static class AnnotatedPojo {
         @JsonProperty("full_name")
         public String name;
+
         public int count;
     }
 

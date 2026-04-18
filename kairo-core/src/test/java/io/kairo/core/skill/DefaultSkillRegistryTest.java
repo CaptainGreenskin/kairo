@@ -288,8 +288,7 @@ class DefaultSkillRegistryTest {
         @DisplayName("HTTP 500 emits IOException")
         void testLoadFromUrl500() throws Exception {
             try (MockWebServer server = new MockWebServer()) {
-                server.enqueue(
-                        new MockResponse().setResponseCode(500).setBody("Server Error"));
+                server.enqueue(new MockResponse().setResponseCode(500).setBody("Server Error"));
                 server.start();
 
                 String url = server.url("/error.md").toString();
@@ -324,9 +323,7 @@ class DefaultSkillRegistryTest {
         @Test
         @DisplayName("invalid URL emits error")
         void testLoadFromInvalidUrl() {
-            StepVerifier.create(registry.loadFromUrl("not-a-url"))
-                    .expectError()
-                    .verify();
+            StepVerifier.create(registry.loadFromUrl("not-a-url")).expectError().verify();
         }
     }
 
@@ -370,7 +367,8 @@ class DefaultSkillRegistryTest {
                     .expectErrorMatches(
                             e ->
                                     e instanceof IOException
-                                            && e.getMessage().contains("Classpath resource not found"))
+                                            && e.getMessage()
+                                                    .contains("Classpath resource not found"))
                     .verify();
         }
     }
@@ -390,9 +388,7 @@ class DefaultSkillRegistryTest {
             try (MockWebServer server = new MockWebServer()) {
                 // Only enqueue ONE response — second call should use cache
                 server.enqueue(
-                        new MockResponse()
-                                .setResponseCode(200)
-                                .setBody(VALID_SKILL_MARKDOWN));
+                        new MockResponse().setResponseCode(200).setBody(VALID_SKILL_MARKDOWN));
                 server.start();
 
                 String url = server.url("/cached-skill.md").toString();
@@ -427,13 +423,9 @@ class DefaultSkillRegistryTest {
             try (MockWebServer server = new MockWebServer()) {
                 // Enqueue two responses for the two fetches
                 server.enqueue(
-                        new MockResponse()
-                                .setResponseCode(200)
-                                .setBody(VALID_SKILL_MARKDOWN));
+                        new MockResponse().setResponseCode(200).setBody(VALID_SKILL_MARKDOWN));
                 server.enqueue(
-                        new MockResponse()
-                                .setResponseCode(200)
-                                .setBody(VALID_SKILL_MARKDOWN));
+                        new MockResponse().setResponseCode(200).setBody(VALID_SKILL_MARKDOWN));
                 server.start();
 
                 String url = server.url("/expiring-skill.md").toString();
@@ -461,13 +453,9 @@ class DefaultSkillRegistryTest {
 
             try (MockWebServer server = new MockWebServer()) {
                 server.enqueue(
-                        new MockResponse()
-                                .setResponseCode(200)
-                                .setBody(VALID_SKILL_MARKDOWN));
+                        new MockResponse().setResponseCode(200).setBody(VALID_SKILL_MARKDOWN));
                 server.enqueue(
-                        new MockResponse()
-                                .setResponseCode(200)
-                                .setBody(VALID_SKILL_MARKDOWN));
+                        new MockResponse().setResponseCode(200).setBody(VALID_SKILL_MARKDOWN));
                 server.start();
 
                 String url = server.url("/clear-test.md").toString();

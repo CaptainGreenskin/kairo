@@ -39,9 +39,10 @@ class OTelSpanTest {
     @BeforeEach
     void setUp() {
         exporter = InMemorySpanExporter.create();
-        tracerProvider = SdkTracerProvider.builder()
-                .addSpanProcessor(SimpleSpanProcessor.create(exporter))
-                .build();
+        tracerProvider =
+                SdkTracerProvider.builder()
+                        .addSpanProcessor(SimpleSpanProcessor.create(exporter))
+                        .build();
         otelTracer = tracerProvider.get("test");
     }
 
@@ -64,7 +65,8 @@ class OTelSpanTest {
         OTelSpan span = createSpan("test-span");
         span.setAttribute("token.input", 100L);
         SpanData data = endAndGetSpan(span);
-        assertEquals(100L, data.getAttributes().get(AttributeKey.longKey("gen_ai.usage.input_tokens")));
+        assertEquals(
+                100L, data.getAttributes().get(AttributeKey.longKey("gen_ai.usage.input_tokens")));
     }
 
     @Test
@@ -72,7 +74,8 @@ class OTelSpanTest {
         OTelSpan span = createSpan("test-span");
         span.setAttribute("token.output", 200L);
         SpanData data = endAndGetSpan(span);
-        assertEquals(200L, data.getAttributes().get(AttributeKey.longKey("gen_ai.usage.output_tokens")));
+        assertEquals(
+                200L, data.getAttributes().get(AttributeKey.longKey("gen_ai.usage.output_tokens")));
     }
 
     @Test
@@ -80,7 +83,9 @@ class OTelSpanTest {
         OTelSpan span = createSpan("test-span");
         span.setAttribute("token.cache_read", 50L);
         SpanData data = endAndGetSpan(span);
-        assertEquals(50L, data.getAttributes().get(AttributeKey.longKey("gen_ai.usage.cache_read_tokens")));
+        assertEquals(
+                50L,
+                data.getAttributes().get(AttributeKey.longKey("gen_ai.usage.cache_read_tokens")));
     }
 
     @Test
@@ -88,7 +93,10 @@ class OTelSpanTest {
         OTelSpan span = createSpan("test-span");
         span.setAttribute("token.cache_write", 30L);
         SpanData data = endAndGetSpan(span);
-        assertEquals(30L, data.getAttributes().get(AttributeKey.longKey("gen_ai.usage.cache_creation_tokens")));
+        assertEquals(
+                30L,
+                data.getAttributes()
+                        .get(AttributeKey.longKey("gen_ai.usage.cache_creation_tokens")));
     }
 
     @Test
@@ -96,7 +104,8 @@ class OTelSpanTest {
         OTelSpan span = createSpan("test-span");
         span.setAttribute("tool.name", "calculator");
         SpanData data = endAndGetSpan(span);
-        assertEquals("calculator", data.getAttributes().get(AttributeKey.stringKey("gen_ai.tool.name")));
+        assertEquals(
+                "calculator", data.getAttributes().get(AttributeKey.stringKey("gen_ai.tool.name")));
     }
 
     @Test
@@ -104,7 +113,8 @@ class OTelSpanTest {
         OTelSpan span = createSpan("test-span");
         span.setAttribute("tool.success", true);
         SpanData data = endAndGetSpan(span);
-        assertEquals(true, data.getAttributes().get(AttributeKey.booleanKey("gen_ai.tool.success")));
+        assertEquals(
+                true, data.getAttributes().get(AttributeKey.booleanKey("gen_ai.tool.success")));
     }
 
     @Test
@@ -112,7 +122,8 @@ class OTelSpanTest {
         OTelSpan span = createSpan("test-span");
         span.setAttribute("tool.duration_ms", 1500L);
         SpanData data = endAndGetSpan(span);
-        assertEquals(1500L, data.getAttributes().get(AttributeKey.longKey("gen_ai.tool.duration_ms")));
+        assertEquals(
+                1500L, data.getAttributes().get(AttributeKey.longKey("gen_ai.tool.duration_ms")));
     }
 
     @Test
@@ -120,7 +131,9 @@ class OTelSpanTest {
         OTelSpan span = createSpan("test-span");
         span.setAttribute("exception.type", "java.lang.RuntimeException");
         SpanData data = endAndGetSpan(span);
-        assertEquals("java.lang.RuntimeException", data.getAttributes().get(AttributeKey.stringKey("exception.type")));
+        assertEquals(
+                "java.lang.RuntimeException",
+                data.getAttributes().get(AttributeKey.stringKey("exception.type")));
     }
 
     @Test
@@ -128,7 +141,9 @@ class OTelSpanTest {
         OTelSpan span = createSpan("test-span");
         span.setAttribute("exception.message", "something went wrong");
         SpanData data = endAndGetSpan(span);
-        assertEquals("something went wrong", data.getAttributes().get(AttributeKey.stringKey("exception.message")));
+        assertEquals(
+                "something went wrong",
+                data.getAttributes().get(AttributeKey.stringKey("exception.message")));
     }
 
     @Test
@@ -136,7 +151,9 @@ class OTelSpanTest {
         OTelSpan span = createSpan("test-span");
         span.setAttribute("compaction.strategy", "summarize");
         SpanData data = endAndGetSpan(span);
-        assertEquals("summarize", data.getAttributes().get(AttributeKey.stringKey("gen_ai.compaction.strategy")));
+        assertEquals(
+                "summarize",
+                data.getAttributes().get(AttributeKey.stringKey("gen_ai.compaction.strategy")));
     }
 
     @Test
@@ -144,7 +161,9 @@ class OTelSpanTest {
         OTelSpan span = createSpan("test-span");
         span.setAttribute("compaction.tokens_saved", 5000L);
         SpanData data = endAndGetSpan(span);
-        assertEquals(5000L, data.getAttributes().get(AttributeKey.longKey("gen_ai.compaction.tokens_saved")));
+        assertEquals(
+                5000L,
+                data.getAttributes().get(AttributeKey.longKey("gen_ai.compaction.tokens_saved")));
     }
 
     // --- Unmapped key pass-through ---
@@ -154,7 +173,8 @@ class OTelSpanTest {
         OTelSpan span = createSpan("test-span");
         span.setAttribute("my.custom.key", "custom-value");
         SpanData data = endAndGetSpan(span);
-        assertEquals("custom-value", data.getAttributes().get(AttributeKey.stringKey("my.custom.key")));
+        assertEquals(
+                "custom-value", data.getAttributes().get(AttributeKey.stringKey("my.custom.key")));
     }
 
     // --- Type handling ---
@@ -308,18 +328,14 @@ class OTelSpanTest {
         List<EventData> events = data.getEvents();
         assertEquals(1, events.size());
         assertEquals("tool.result", events.get(0).getName());
-        assertEquals("success", events.get(0).getAttributes().get(AttributeKey.stringKey("output")));
+        assertEquals(
+                "success", events.get(0).getAttributes().get(AttributeKey.stringKey("output")));
     }
 
     @Test
     void addEventWithVariousValueTypes() {
         OTelSpan span = createSpan("test-span");
-        span.addEvent("multi.type", Map.of(
-                "str", "hello",
-                "lng", 42L,
-                "dbl", 3.14,
-                "bool", true
-        ));
+        span.addEvent("multi.type", Map.of("str", "hello", "lng", 42L, "dbl", 3.14, "bool", true));
         SpanData data = endAndGetSpan(span);
         EventData event = data.getEvents().get(0);
         assertEquals("hello", event.getAttributes().get(AttributeKey.stringKey("str")));

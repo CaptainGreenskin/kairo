@@ -16,7 +16,6 @@
 package io.kairo.observability;
 
 import io.opentelemetry.api.common.AttributeKey;
-
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -24,17 +23,18 @@ import java.util.Map;
 /**
  * OpenTelemetry GenAI semantic convention attribute keys.
  *
- * <p>Centralizes all GenAI-specific attribute keys used by the Kairo observability layer.
- * The OTel GenAI semantic conventions are still experimental and may change package names
- * or key formats — centralizing here means <strong>only this one file</strong> needs to be
- * updated when the semconv stabilizes.
+ * <p>Centralizes all GenAI-specific attribute keys used by the Kairo observability layer. The OTel
+ * GenAI semantic conventions are still experimental and may change package names or key formats —
+ * centralizing here means <strong>only this one file</strong> needs to be updated when the semconv
+ * stabilizes.
  *
- * <p>This class also provides a {@linkplain #kairoKeyToOTel(String) translation map} from
- * Kairo's internal short key strings (e.g. {@code "token.input"}) to the corresponding
- * OTel {@link AttributeKey} constants. This is used by {@code OTelSpan.setAttribute()} to
- * bridge the Kairo tracing API to OTel attributes.
+ * <p>This class also provides a {@linkplain #kairoKeyToOTel(String) translation map} from Kairo's
+ * internal short key strings (e.g. {@code "token.input"}) to the corresponding OTel {@link
+ * AttributeKey} constants. This is used by {@code OTelSpan.setAttribute()} to bridge the Kairo
+ * tracing API to OTel attributes.
  *
- * @see <a href="https://opentelemetry.io/docs/specs/semconv/gen-ai/">OTel GenAI Semantic Conventions</a>
+ * @see <a href="https://opentelemetry.io/docs/specs/semconv/gen-ai/">OTel GenAI Semantic
+ *     Conventions</a>
  */
 public final class GenAiSemanticAttributes {
 
@@ -65,8 +65,7 @@ public final class GenAiSemanticAttributes {
     // ---------------------------------------------------------------------------
 
     /** Name of the tool being executed. */
-    public static final AttributeKey<String> TOOL_NAME =
-            AttributeKey.stringKey("gen_ai.tool.name");
+    public static final AttributeKey<String> TOOL_NAME = AttributeKey.stringKey("gen_ai.tool.name");
 
     /** Whether the tool execution completed successfully. */
     public static final AttributeKey<Boolean> TOOL_SUCCESS =
@@ -144,8 +143,8 @@ public final class GenAiSemanticAttributes {
      * Unmodifiable mapping from Kairo's short attribute key strings to OTel {@link AttributeKey}
      * constants. Used by {@code OTelSpan.setAttribute()} to translate between the two systems.
      *
-     * <p>Keys follow the pattern used by {@link io.kairo.api.tracing.Tracer} default methods
-     * (e.g. {@code "token.input"}, {@code "tool.name"}).
+     * <p>Keys follow the pattern used by {@link io.kairo.api.tracing.Tracer} default methods (e.g.
+     * {@code "token.input"}, {@code "tool.name"}).
      */
     private static final Map<String, AttributeKey<?>> KAIRO_KEY_MAP;
 

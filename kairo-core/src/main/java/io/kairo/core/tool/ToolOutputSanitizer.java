@@ -25,54 +25,61 @@ import java.util.regex.Pattern;
  * Scans tool output for potential injection attacks, credential leaks, and suspicious Unicode
  * characters.
  *
- * <p>This sanitizer is designed to be used as a post-execution hook: it inspects the textual
- * output of a tool and returns a {@link ScanResult} containing any warnings found. It does
- * <b>not</b> block or modify the output — warnings are purely informational metadata that
- * downstream consumers can act on.
+ * <p>This sanitizer is designed to be used as a post-execution hook: it inspects the textual output
+ * of a tool and returns a {@link ScanResult} containing any warnings found. It does <b>not</b>
+ * block or modify the output — warnings are purely informational metadata that downstream consumers
+ * can act on.
  *
  * <h3>Detection categories</h3>
+ *
  * <ul>
- *   <li><b>Prompt injection phrases</b> — common phrases used in prompt injection attacks</li>
+ *   <li><b>Prompt injection phrases</b> — common phrases used in prompt injection attacks
  *   <li><b>System prompt override attempts</b> — tokens or phrases that attempt to override
- *       system-level prompts</li>
+ *       system-level prompts
  *   <li><b>Invisible Unicode characters</b> — zero-width characters and bidirectional overrides
- *       that can hide malicious content</li>
- *   <li><b>Credential patterns</b> — API keys, AWS access keys, and bearer tokens</li>
+ *       that can hide malicious content
+ *   <li><b>Credential patterns</b> — API keys, AWS access keys, and bearer tokens
  * </ul>
  */
 public class ToolOutputSanitizer {
 
     // ── Prompt injection phrases (case-insensitive) ──
-    private static final List<Pattern> PROMPT_INJECTION_PATTERNS = List.of(
-            Pattern.compile("ignore\\s+previous\\s+instructions", Pattern.CASE_INSENSITIVE),
-            Pattern.compile("ignore\\s+all\\s+prior\\s+instructions", Pattern.CASE_INSENSITIVE),
-            Pattern.compile("disregard\\s+above", Pattern.CASE_INSENSITIVE),
-            Pattern.compile("forget\\s+your\\s+instructions", Pattern.CASE_INSENSITIVE),
-            Pattern.compile("you\\s+are\\s+now", Pattern.CASE_INSENSITIVE),
-            Pattern.compile("new\\s+system\\s+prompt", Pattern.CASE_INSENSITIVE));
+    private static final List<Pattern> PROMPT_INJECTION_PATTERNS =
+            List.of(
+                    Pattern.compile("ignore\\s+previous\\s+instructions", Pattern.CASE_INSENSITIVE),
+                    Pattern.compile(
+                            "ignore\\s+all\\s+prior\\s+instructions", Pattern.CASE_INSENSITIVE),
+                    Pattern.compile("disregard\\s+above", Pattern.CASE_INSENSITIVE),
+                    Pattern.compile("forget\\s+your\\s+instructions", Pattern.CASE_INSENSITIVE),
+                    Pattern.compile("you\\s+are\\s+now", Pattern.CASE_INSENSITIVE),
+                    Pattern.compile("new\\s+system\\s+prompt", Pattern.CASE_INSENSITIVE));
 
     // ── System prompt override patterns ──
-    private static final List<Pattern> SYSTEM_OVERRIDE_PATTERNS = List.of(
-            Pattern.compile("system\\s+prompt", Pattern.CASE_INSENSITIVE),
-            Pattern.compile("system\\s+message\\s+override", Pattern.CASE_INSENSITIVE),
-            Pattern.compile(Pattern.quote("<|system|>")),
-            Pattern.compile(Pattern.quote("<|im_start|>") + "system", Pattern.CASE_INSENSITIVE));
+    private static final List<Pattern> SYSTEM_OVERRIDE_PATTERNS =
+            List.of(
+                    Pattern.compile("system\\s+prompt", Pattern.CASE_INSENSITIVE),
+                    Pattern.compile("system\\s+message\\s+override", Pattern.CASE_INSENSITIVE),
+                    Pattern.compile(Pattern.quote("<|system|>")),
+                    Pattern.compile(
+                            Pattern.quote("<|im_start|>") + "system", Pattern.CASE_INSENSITIVE));
 
     // ── Credential patterns ──
-    private static final List<Pattern> CREDENTIAL_PATTERNS = List.of(
-            Pattern.compile(
-                    "(sk|ak|key|token|secret|password)[-_]?[a-zA-Z0-9]{20,}",
-                    Pattern.CASE_INSENSITIVE),
-            Pattern.compile("AKIA[0-9A-Z]{16}"),
-            Pattern.compile("Bearer\\s+[A-Za-z0-9\\-._~+/]+=*", Pattern.CASE_INSENSITIVE));
+    private static final List<Pattern> CREDENTIAL_PATTERNS =
+            List.of(
+                    Pattern.compile(
+                            "(sk|ak|key|token|secret|password)[-_]?[a-zA-Z0-9]{20,}",
+                            Pattern.CASE_INSENSITIVE),
+                    Pattern.compile("AKIA[0-9A-Z]{16}"),
+                    Pattern.compile("Bearer\\s+[A-Za-z0-9\\-._~+/]+=*", Pattern.CASE_INSENSITIVE));
 
     // ── Invisible Unicode codepoints to detect ──
-    private static final Map<Integer, String> INVISIBLE_CHARS = Map.of(
-            0x200B, "ZERO WIDTH SPACE",
-            0x200C, "ZERO WIDTH NON-JOINER",
-            0x200D, "ZERO WIDTH JOINER",
-            0x202D, "LEFT-TO-RIGHT OVERRIDE",
-            0x202E, "RIGHT-TO-LEFT OVERRIDE");
+    private static final Map<Integer, String> INVISIBLE_CHARS =
+            Map.of(
+                    0x200B, "ZERO WIDTH SPACE",
+                    0x200C, "ZERO WIDTH NON-JOINER",
+                    0x200D, "ZERO WIDTH JOINER",
+                    0x202D, "LEFT-TO-RIGHT OVERRIDE",
+                    0x202E, "RIGHT-TO-LEFT OVERRIDE");
 
     /**
      * Result of scanning tool output.
@@ -123,7 +130,8 @@ public class ToolOutputSanitizer {
         for (Pattern pattern : SYSTEM_OVERRIDE_PATTERNS) {
             var matcher = pattern.matcher(toolOutput);
             if (matcher.find()) {
-                warnings.add("System prompt override attempt detected: \"" + matcher.group() + "\"");
+                warnings.add(
+                        "System prompt override attempt detected: \"" + matcher.group() + "\"");
             }
         }
 
@@ -132,8 +140,10 @@ public class ToolOutputSanitizer {
             int codePoint = toolOutput.codePointAt(i);
             String name = INVISIBLE_CHARS.get(codePoint);
             if (name != null) {
-                warnings.add(String.format(
-                        "Invisible Unicode character U+%04X (%s) at offset %d", codePoint, name, i));
+                warnings.add(
+                        String.format(
+                                "Invisible Unicode character U+%04X (%s) at offset %d",
+                                codePoint, name, i));
             }
             if (Character.isSupplementaryCodePoint(codePoint)) {
                 i++; // skip surrogate pair
@@ -144,17 +154,17 @@ public class ToolOutputSanitizer {
         for (Pattern pattern : CREDENTIAL_PATTERNS) {
             var matcher = pattern.matcher(toolOutput);
             if (matcher.find()) {
-                warnings.add("Potential credential leak detected: pattern matches \""
-                        + truncate(matcher.group(), 30) + "\"");
+                warnings.add(
+                        "Potential credential leak detected: pattern matches \""
+                                + truncate(matcher.group(), 30)
+                                + "\"");
             }
         }
 
         return new ScanResult(Collections.unmodifiableList(warnings));
     }
 
-    /**
-     * Truncate a string for safe display in warnings.
-     */
+    /** Truncate a string for safe display in warnings. */
     private static String truncate(String s, int maxLen) {
         if (s.length() <= maxLen) {
             return s;

@@ -96,9 +96,7 @@ public class McpAutoConfiguration {
             }
             case STDIO -> {
                 KairoMcpProperties.StdioTransportProperties stdio = props.getStdio();
-                if (stdio == null
-                        || stdio.getCommand() == null
-                        || stdio.getCommand().isBlank()) {
+                if (stdio == null || stdio.getCommand() == null || stdio.getCommand().isBlank()) {
                     throw new IllegalArgumentException(
                             "MCP server '"
                                     + name

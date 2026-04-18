@@ -54,8 +54,7 @@ class ToolExecutionPipelineIT {
     //  Helper: register a ToolHandler with a ToolDefinition
     // ================================
 
-    private void registerHandler(
-            String name, ToolSideEffect sideEffect, ToolHandler handler) {
+    private void registerHandler(String name, ToolSideEffect sideEffect, ToolHandler handler) {
         ToolDefinition def =
                 new ToolDefinition(
                         name,
@@ -81,18 +80,12 @@ class ToolExecutionPipelineIT {
     void toolRegistration_thenExecution_returnsResult() {
         registerReadHandler(
                 "echo",
-                input ->
-                        new ToolResult(
-                                "echo",
-                                "echoed: " + input.get("text"),
-                                false,
-                                Map.of()));
+                input -> new ToolResult("echo", "echoed: " + input.get("text"), false, Map.of()));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
 
         ToolResult result =
-                executor.execute("echo", Map.of("text", "hello"))
-                        .block(Duration.ofSeconds(5));
+                executor.execute("echo", Map.of("text", "hello")).block(Duration.ofSeconds(5));
 
         assertNotNull(result);
         assertFalse(result.isError());
@@ -108,8 +101,7 @@ class ToolExecutionPipelineIT {
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
 
         ToolResult result =
-                executor.execute("nonexistent_tool", Map.of())
-                        .block(Duration.ofSeconds(5));
+                executor.execute("nonexistent_tool", Map.of()).block(Duration.ofSeconds(5));
 
         assertNotNull(result);
         assertTrue(result.isError());
@@ -161,15 +153,13 @@ class ToolExecutionPipelineIT {
 
         // Trigger 3 consecutive failures
         for (int i = 0; i < 3; i++) {
-            ToolResult r =
-                    executor.execute("flaky", Map.of()).block(Duration.ofSeconds(5));
+            ToolResult r = executor.execute("flaky", Map.of()).block(Duration.ofSeconds(5));
             assertNotNull(r);
             assertTrue(r.isError());
         }
 
         // 4th call should be circuit-broken (not even attempt execution)
-        ToolResult circuitBroken =
-                executor.execute("flaky", Map.of()).block(Duration.ofSeconds(5));
+        ToolResult circuitBroken = executor.execute("flaky", Map.of()).block(Duration.ofSeconds(5));
 
         assertNotNull(circuitBroken);
         assertTrue(circuitBroken.isError());
@@ -219,8 +209,7 @@ class ToolExecutionPipelineIT {
         executor.execute("intermittent", Map.of()).block(Duration.ofSeconds(5));
 
         // 3rd failure after reset — now it should trip
-        ToolResult r3 =
-                executor.execute("intermittent", Map.of()).block(Duration.ofSeconds(5));
+        ToolResult r3 = executor.execute("intermittent", Map.of()).block(Duration.ofSeconds(5));
         assertNotNull(r3);
         assertTrue(r3.isError());
         // At this point we have 3 consecutive failures so next call should be circuit-broken
@@ -257,8 +246,7 @@ class ToolExecutionPipelineIT {
         }
 
         // Verify circuit is tripped
-        ToolResult tripped =
-                executor.execute("resettable", Map.of()).block(Duration.ofSeconds(5));
+        ToolResult tripped = executor.execute("resettable", Map.of()).block(Duration.ofSeconds(5));
         assertNotNull(tripped);
         assertTrue(tripped.content().contains("circuit-broken"));
 
@@ -280,17 +268,14 @@ class ToolExecutionPipelineIT {
     @Test
     void allowedTools_blocksUnauthorized() {
         registerReadHandler(
-                "allowed_tool",
-                input -> new ToolResult("allowed_tool", "ok", false, Map.of()));
+                "allowed_tool", input -> new ToolResult("allowed_tool", "ok", false, Map.of()));
         registerReadHandler(
-                "blocked_tool",
-                input -> new ToolResult("blocked_tool", "ok", false, Map.of()));
+                "blocked_tool", input -> new ToolResult("blocked_tool", "ok", false, Map.of()));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
         executor.setAllowedTools(Set.of("allowed_tool"));
 
-        ToolResult result =
-                executor.execute("blocked_tool", Map.of()).block(Duration.ofSeconds(5));
+        ToolResult result = executor.execute("blocked_tool", Map.of()).block(Duration.ofSeconds(5));
 
         assertNotNull(result);
         assertTrue(result.isError());
@@ -310,8 +295,7 @@ class ToolExecutionPipelineIT {
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
         executor.setAllowedTools(Set.of("allowed_tool"));
 
-        ToolResult result =
-                executor.execute("allowed_tool", Map.of()).block(Duration.ofSeconds(5));
+        ToolResult result = executor.execute("allowed_tool", Map.of()).block(Duration.ofSeconds(5));
 
         assertNotNull(result);
         assertFalse(result.isError());
@@ -325,22 +309,19 @@ class ToolExecutionPipelineIT {
     @Test
     void clearAllowedTools_removesRestriction() {
         registerReadHandler(
-                "any_tool",
-                input -> new ToolResult("any_tool", "executed", false, Map.of()));
+                "any_tool", input -> new ToolResult("any_tool", "executed", false, Map.of()));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
 
         // Set restriction
         executor.setAllowedTools(Set.of("other_tool"));
-        ToolResult blocked =
-                executor.execute("any_tool", Map.of()).block(Duration.ofSeconds(5));
+        ToolResult blocked = executor.execute("any_tool", Map.of()).block(Duration.ofSeconds(5));
         assertNotNull(blocked);
         assertTrue(blocked.isError());
 
         // Clear restriction
         executor.clearAllowedTools();
-        ToolResult unblocked =
-                executor.execute("any_tool", Map.of()).block(Duration.ofSeconds(5));
+        ToolResult unblocked = executor.execute("any_tool", Map.of()).block(Duration.ofSeconds(5));
         assertNotNull(unblocked);
         assertFalse(unblocked.isError());
         assertEquals("executed", unblocked.content());
@@ -405,9 +386,7 @@ class ToolExecutionPipelineIT {
                         new ToolInvocation("tool_b", Map.of()));
 
         List<ToolResult> results =
-                executor.executeParallel(invocations)
-                        .collectList()
-                        .block(Duration.ofSeconds(10));
+                executor.executeParallel(invocations).collectList().block(Duration.ofSeconds(10));
 
         assertNotNull(results);
         assertEquals(2, results.size());
@@ -425,20 +404,17 @@ class ToolExecutionPipelineIT {
     void toolResult_isError_trackedByCircuitBreaker() {
         // A tool that returns an error ToolResult (not throwing an exception)
         registerReadHandler(
-                "soft_fail",
-                input -> new ToolResult("soft_fail", "soft error", true, Map.of()));
+                "soft_fail", input -> new ToolResult("soft_fail", "soft error", true, Map.of()));
 
         // Use threshold = 2 for faster test
-        DefaultToolExecutor executor =
-                new DefaultToolExecutor(registry, guard, null, null, 2);
+        DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard, null, null, 2);
 
         // 2 error results should trip the circuit breaker
         executor.execute("soft_fail", Map.of()).block(Duration.ofSeconds(5));
         executor.execute("soft_fail", Map.of()).block(Duration.ofSeconds(5));
 
         // Next call should be circuit-broken
-        ToolResult tripped =
-                executor.execute("soft_fail", Map.of()).block(Duration.ofSeconds(5));
+        ToolResult tripped = executor.execute("soft_fail", Map.of()).block(Duration.ofSeconds(5));
 
         assertNotNull(tripped);
         assertTrue(tripped.isError());

@@ -120,7 +120,8 @@ public class FullToolsetExample {
         Msg result = agent.call(MsgBuilder.user(TASK)).block();
 
         System.out.println("\n========================================");
-        System.out.println("  Full Toolset Example complete! " + hook.getIteration() + " iterations");
+        System.out.println(
+                "  Full Toolset Example complete! " + hook.getIteration() + " iterations");
         System.out.println("========================================");
     }
 }

@@ -19,12 +19,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.agent.AgentState;
 import io.kairo.api.hook.*;
-import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelConfig;
-import io.kairo.api.model.ModelResponse;
-import io.kairo.api.tool.ToolResult;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -39,8 +36,8 @@ import reactor.core.publisher.Mono;
 /**
  * Contract-level tests for the Hook API surface in kairo-api.
  *
- * <p>Validates HookResult behavior, Decision priority ordering, hook event type completeness,
- * and HookChain default method contracts.
+ * <p>Validates HookResult behavior, Decision priority ordering, hook event type completeness, and
+ * HookChain default method contracts.
  */
 @Tag("integration")
 class HookContractTest {
@@ -55,7 +52,8 @@ class HookContractTest {
         Msg msg = Msg.of(MsgRole.ASSISTANT, "injected");
         Map<String, Object> input = Map.of("key", "value");
         HookResult<String> result =
-                new HookResult<>("evt", HookResult.Decision.INJECT, "ctx", input, "reason", msg, "src");
+                new HookResult<>(
+                        "evt", HookResult.Decision.INJECT, "ctx", input, "reason", msg, "src");
 
         assertEquals("evt", result.event());
         assertEquals(HookResult.Decision.INJECT, result.decision());
@@ -88,8 +86,7 @@ class HookContractTest {
         HookResult.Decision[] values = HookResult.Decision.values();
         assertEquals(5, values.length);
 
-        Set<String> names =
-                Arrays.stream(values).map(Enum::name).collect(Collectors.toSet());
+        Set<String> names = Arrays.stream(values).map(Enum::name).collect(Collectors.toSet());
         assertTrue(names.containsAll(Set.of("CONTINUE", "INJECT", "MODIFY", "SKIP", "ABORT")));
     }
 
@@ -117,8 +114,12 @@ class HookContractTest {
                 Arrays.stream(HookResult.Decision.values())
                         .map(HookResult.Decision::priority)
                         .collect(Collectors.toSet());
-        assertEquals(HookResult.Decision.values().length, priorities.size(), "Priorities must be unique");
-        assertTrue(priorities.stream().allMatch(p -> p >= 0), "All priorities must be non-negative");
+        assertEquals(
+                HookResult.Decision.values().length,
+                priorities.size(),
+                "Priorities must be unique");
+        assertTrue(
+                priorities.stream().allMatch(p -> p >= 0), "All priorities must be non-negative");
     }
 
     // ================================
@@ -129,8 +130,7 @@ class HookContractTest {
     @DisplayName("All expected hook event record types are instantiable")
     void hookEventTypes_allInstantiable() {
         Msg msg = Msg.of(MsgRole.USER, "hello");
-        ModelConfig config =
-                ModelConfig.builder().model(ModelConfig.DEFAULT_MODEL).build();
+        ModelConfig config = ModelConfig.builder().model(ModelConfig.DEFAULT_MODEL).build();
 
         // Pre/Post reasoning events
         PreReasoningEvent preReasoning = new PreReasoningEvent(List.of(msg), config, false);
@@ -154,7 +154,8 @@ class HookContractTest {
         assertEquals(0.8, preCompact.pressure());
         assertFalse(preCompact.cancelled());
 
-        PostCompactEvent postCompact = new PostCompactEvent(List.of(msg), 500, "tail-drop", List.of());
+        PostCompactEvent postCompact =
+                new PostCompactEvent(List.of(msg), 500, "tail-drop", List.of());
         assertNotNull(postCompact);
         assertEquals(500, postCompact.tokensSaved());
 
@@ -164,7 +165,8 @@ class HookContractTest {
         assertEquals("agent", sessionStart.agentName());
 
         SessionEndEvent sessionEnd =
-                new SessionEndEvent("agent", AgentState.COMPLETED, 5, 1000L, Duration.ofSeconds(30), null);
+                new SessionEndEvent(
+                        "agent", AgentState.COMPLETED, 5, 1000L, Duration.ofSeconds(30), null);
         assertNotNull(sessionEnd);
         assertNull(sessionEnd.error());
 
@@ -203,11 +205,11 @@ class HookContractTest {
         assertSame(startEvent, chain.fireOnSessionStart(startEvent).block());
 
         SessionEndEvent endEvent =
-                new SessionEndEvent("agent", AgentState.COMPLETED, 1, 100L, Duration.ofSeconds(1), null);
+                new SessionEndEvent(
+                        "agent", AgentState.COMPLETED, 1, 100L, Duration.ofSeconds(1), null);
         assertSame(endEvent, chain.fireOnSessionEnd(endEvent).block());
 
-        ToolResultEvent toolEvent =
-                new ToolResultEvent("read", null, Duration.ofMillis(50), true);
+        ToolResultEvent toolEvent = new ToolResultEvent("read", null, Duration.ofMillis(50), true);
         assertSame(toolEvent, chain.fireOnToolResult(toolEvent).block());
     }
 
@@ -218,17 +220,23 @@ class HookContractTest {
         String event = "test-event";
 
         // All six *WithResult defaults should wrap as CONTINUE
-        assertEquals(HookResult.Decision.CONTINUE,
+        assertEquals(
+                HookResult.Decision.CONTINUE,
                 chain.firePreReasoningWithResult(event).block().decision());
-        assertEquals(HookResult.Decision.CONTINUE,
+        assertEquals(
+                HookResult.Decision.CONTINUE,
                 chain.firePostReasoningWithResult(event).block().decision());
-        assertEquals(HookResult.Decision.CONTINUE,
+        assertEquals(
+                HookResult.Decision.CONTINUE,
                 chain.firePreActingWithResult(event).block().decision());
-        assertEquals(HookResult.Decision.CONTINUE,
+        assertEquals(
+                HookResult.Decision.CONTINUE,
                 chain.firePostActingWithResult(event).block().decision());
-        assertEquals(HookResult.Decision.CONTINUE,
+        assertEquals(
+                HookResult.Decision.CONTINUE,
                 chain.firePreCompactWithResult(event).block().decision());
-        assertEquals(HookResult.Decision.CONTINUE,
+        assertEquals(
+                HookResult.Decision.CONTINUE,
                 chain.firePostCompactWithResult(event).block().decision());
     }
 

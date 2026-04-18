@@ -52,26 +52,25 @@ public record ModelConfig(
     /**
      * Default model name used when no model is explicitly configured.
      *
-     * <p>Set to {@code "claude-sonnet-4-20250514"} as it offers the best balance of
-     * capability, speed, and cost for agentic workloads that require tool use
-     * and extended reasoning.
+     * <p>Set to {@code "claude-sonnet-4-20250514"} as it offers the best balance of capability,
+     * speed, and cost for agentic workloads that require tool use and extended reasoning.
      */
     public static final String DEFAULT_MODEL = "claude-sonnet-4-20250514";
 
     /**
      * Default maximum output tokens per model call.
      *
-     * <p>Set to {@code 8096} to allow substantial responses (including tool-call JSON)
-     * while staying within provider rate limits for most tiers.
+     * <p>Set to {@code 8096} to allow substantial responses (including tool-call JSON) while
+     * staying within provider rate limits for most tiers.
      */
     public static final int DEFAULT_MAX_TOKENS = 8096;
 
     /**
      * Default sampling temperature for model calls.
      *
-     * <p>Set to {@code 1.0} (the Anthropic default) to preserve the model's full
-     * creative range. Lower values can be configured per-call via the {@link Builder}
-     * when deterministic output is desired.
+     * <p>Set to {@code 1.0} (the Anthropic default) to preserve the model's full creative range.
+     * Lower values can be configured per-call via the {@link Builder} when deterministic output is
+     * desired.
      */
     public static final double DEFAULT_TEMPERATURE = 1.0;
 
@@ -159,9 +158,7 @@ public record ModelConfig(
      */
     public record ThinkingConfig(boolean enabled, int budgetTokens) {}
 
-    /**
-     * Backward-compatible constructor without {@code responseSchema}.
-     */
+    /** Backward-compatible constructor without {@code responseSchema}. */
     public ModelConfig(
             String model,
             int maxTokens,
@@ -198,7 +195,10 @@ public record ModelConfig(
         return new Builder();
     }
 
-    /** Builder for {@link ModelConfig}. Provides a fluent API for constructing immutable config instances. */
+    /**
+     * Builder for {@link ModelConfig}. Provides a fluent API for constructing immutable config
+     * instances.
+     */
     public static class Builder {
         private String model;
         private int maxTokens = 4096;
@@ -317,8 +317,8 @@ public record ModelConfig(
         }
 
         /**
-         * Set an explicit token budget for the thinking phase, overriding
-         * {@link ThinkingConfig#budgetTokens()}.
+         * Set an explicit token budget for the thinking phase, overriding {@link
+         * ThinkingConfig#budgetTokens()}.
          *
          * @param thinkingBudget the thinking token budget, or {@code null} to use the default
          * @return this builder
@@ -368,10 +368,11 @@ public record ModelConfig(
          * Set the response schema class for structured output.
          *
          * <p>When set, the provider will constrain the model output to match the JSON schema
-         * derived from this class. Use {@link ModelResponse#contentAs(Class)} to deserialize
-         * the response.
+         * derived from this class. Use {@link ModelResponse#contentAs(Class)} to deserialize the
+         * response.
          *
-         * @param responseSchema the class whose JSON schema constrains the output, or null to disable
+         * @param responseSchema the class whose JSON schema constrains the output, or null to
+         *     disable
          * @return this builder
          */
         public Builder responseSchema(Class<?> responseSchema) {

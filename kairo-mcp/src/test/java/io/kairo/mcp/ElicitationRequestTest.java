@@ -32,8 +32,7 @@ class ElicitationRequestTest {
 
     @Test
     void nullMessageThrowsNullPointerException() {
-        assertThrows(
-                NullPointerException.class, () -> new ElicitationRequest(null, Map.of()));
+        assertThrows(NullPointerException.class, () -> new ElicitationRequest(null, Map.of()));
     }
 
     @Test
@@ -45,8 +44,7 @@ class ElicitationRequestTest {
 
     @Test
     void requestedSchemaIsUnmodifiable() {
-        ElicitationRequest request =
-                new ElicitationRequest("msg", Map.of("key", "value"));
+        ElicitationRequest request = new ElicitationRequest("msg", Map.of("key", "value"));
         assertThrows(
                 UnsupportedOperationException.class,
                 () -> request.requestedSchema().put("new", "item"));
@@ -96,15 +94,12 @@ class ElicitationRequestTest {
 
     @Test
     void responseNullActionThrows() {
-        assertThrows(
-                NullPointerException.class,
-                () -> new ElicitationResponse(null, Map.of()));
+        assertThrows(NullPointerException.class, () -> new ElicitationResponse(null, Map.of()));
     }
 
     @Test
     void responseNullDataDefaultsToEmptyMap() {
-        ElicitationResponse response =
-                new ElicitationResponse(ElicitationAction.ACCEPT, null);
+        ElicitationResponse response = new ElicitationResponse(ElicitationAction.ACCEPT, null);
         assertNotNull(response.data());
         assertTrue(response.data().isEmpty());
     }
@@ -112,9 +107,7 @@ class ElicitationRequestTest {
     @Test
     void responseDataIsUnmodifiable() {
         ElicitationResponse response = ElicitationResponse.accept(Map.of("k", "v"));
-        assertThrows(
-                UnsupportedOperationException.class,
-                () -> response.data().put("new", "item"));
+        assertThrows(UnsupportedOperationException.class, () -> response.data().put("new", "item"));
     }
 
     @Test

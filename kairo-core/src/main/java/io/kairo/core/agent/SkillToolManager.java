@@ -36,7 +36,8 @@ class SkillToolManager {
     private final AgentConfig config;
     private final ToolExecutor toolExecutor;
     private volatile boolean mcpInitialized = false;
-    private AutoCloseable mcpRegistry; // McpClientRegistry, held as AutoCloseable to avoid compile dep
+    private AutoCloseable
+            mcpRegistry; // McpClientRegistry, held as AutoCloseable to avoid compile dep
 
     SkillToolManager(AgentConfig config, ToolExecutor toolExecutor) {
         this.config = config;

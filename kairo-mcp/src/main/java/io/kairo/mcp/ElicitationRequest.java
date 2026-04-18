@@ -68,7 +68,11 @@ public final class ElicitationRequest {
 
     @Override
     public String toString() {
-        return "ElicitationRequest{message='" + message + "', requestedSchema=" + requestedSchema + '}';
+        return "ElicitationRequest{message='"
+                + message
+                + "', requestedSchema="
+                + requestedSchema
+                + '}';
     }
 
     @Override

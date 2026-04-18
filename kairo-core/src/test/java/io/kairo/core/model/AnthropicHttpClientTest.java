@@ -64,7 +64,10 @@ class AnthropicHttpClientTest {
 
     @Test
     void sendRequestReturnsBodyOn200() throws InterruptedException {
-        server.enqueue(new MockResponse().setBody("{\"id\":\"r\"}").setHeader("Content-Type", "application/json"));
+        server.enqueue(
+                new MockResponse()
+                        .setBody("{\"id\":\"r\"}")
+                        .setHeader("Content-Type", "application/json"));
 
         StepVerifier.create(client.sendRequest("{\"model\":\"test\"}"))
                 .assertNext(body -> assertTrue(body.contains("\"id\":\"r\"")))
@@ -76,18 +79,21 @@ class AnthropicHttpClientTest {
 
     @Test
     void sendRequestThrowsRateLimitOn429() {
-        server.enqueue(new MockResponse().setResponseCode(429)
-                .setBody("Rate limited")
-                .setHeader("retry-after", "30"));
+        server.enqueue(
+                new MockResponse()
+                        .setResponseCode(429)
+                        .setBody("Rate limited")
+                        .setHeader("retry-after", "30"));
 
         StepVerifier.create(client.sendRequest("{\"model\":\"test\"}"))
-                .expectErrorMatches(e -> {
-                    assertInstanceOf(ModelProviderException.RateLimitException.class, e);
-                    ModelProviderException.RateLimitException rle =
-                            (ModelProviderException.RateLimitException) e;
-                    assertEquals(30L, rle.getRetryAfterSeconds());
-                    return true;
-                })
+                .expectErrorMatches(
+                        e -> {
+                            assertInstanceOf(ModelProviderException.RateLimitException.class, e);
+                            ModelProviderException.RateLimitException rle =
+                                    (ModelProviderException.RateLimitException) e;
+                            assertEquals(30L, rle.getRetryAfterSeconds());
+                            return true;
+                        })
                 .verify();
     }
 
@@ -96,11 +102,12 @@ class AnthropicHttpClientTest {
         server.enqueue(new MockResponse().setResponseCode(500).setBody("Internal Error"));
 
         StepVerifier.create(client.sendRequest("{\"model\":\"test\"}"))
-                .expectErrorMatches(e -> {
-                    assertInstanceOf(ModelProviderException.ApiException.class, e);
-                    assertTrue(e.getMessage().contains("server error"));
-                    return true;
-                })
+                .expectErrorMatches(
+                        e -> {
+                            assertInstanceOf(ModelProviderException.ApiException.class, e);
+                            assertTrue(e.getMessage().contains("server error"));
+                            return true;
+                        })
                 .verify();
     }
 
@@ -109,11 +116,12 @@ class AnthropicHttpClientTest {
         server.enqueue(new MockResponse().setResponseCode(400).setBody("Bad Request"));
 
         StepVerifier.create(client.sendRequest("{\"model\":\"test\"}"))
-                .expectErrorMatches(e -> {
-                    assertInstanceOf(ModelProviderException.ApiException.class, e);
-                    assertTrue(e.getMessage().contains("400"));
-                    return true;
-                })
+                .expectErrorMatches(
+                        e -> {
+                            assertInstanceOf(ModelProviderException.ApiException.class, e);
+                            assertTrue(e.getMessage().contains("400"));
+                            return true;
+                        })
                 .verify();
     }
 

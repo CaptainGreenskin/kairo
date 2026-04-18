@@ -23,17 +23,17 @@ import reactor.core.publisher.Mono;
  * Manages the conversation context: messages, token tracking, and compaction.
  *
  * <p>The context manager is the central point for adding messages, tracking token usage, and
- * triggering compaction when the context window is under pressure. It maintains an ordered
- * list of {@link Msg} objects representing the full conversation history visible to the model.
+ * triggering compaction when the context window is under pressure. It maintains an ordered list of
+ * {@link Msg} objects representing the full conversation history visible to the model.
  *
- * <p>When the token count approaches the configured budget (see {@link TokenBudget}),
- * callers should invoke {@link #compact()} to summarize or prune older messages.
- * Individual messages can be exempted from compaction via {@link #markVerbatim(String)},
- * following the "Facts First" principle that preserves critical information.
+ * <p>When the token count approaches the configured budget (see {@link TokenBudget}), callers
+ * should invoke {@link #compact()} to summarize or prune older messages. Individual messages can be
+ * exempted from compaction via {@link #markVerbatim(String)}, following the "Facts First" principle
+ * that preserves critical information.
  *
- * <p><strong>Thread safety:</strong> Implementations must be safe for concurrent reads
- * ({@link #getMessages()}, {@link #getTokenCount()}) but may assume that writes
- * ({@link #addMessage(Msg)}, {@link #compact()}) are externally synchronized.
+ * <p><strong>Thread safety:</strong> Implementations must be safe for concurrent reads ({@link
+ * #getMessages()}, {@link #getTokenCount()}) but may assume that writes ({@link #addMessage(Msg)},
+ * {@link #compact()}) are externally synchronized.
  *
  * @see TokenBudget
  * @see CompactionResult

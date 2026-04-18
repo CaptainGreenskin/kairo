@@ -27,6 +27,7 @@ import io.kairo.core.agent.DefaultAgentFactory;
 import io.kairo.core.memory.FileMemoryStore;
 import io.kairo.core.memory.InMemoryStore;
 import io.kairo.core.model.AnthropicProvider;
+import io.kairo.core.model.ModelCircuitBreaker;
 import io.kairo.core.model.OpenAIProvider;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import io.kairo.core.tool.DefaultPermissionGuard;
@@ -144,7 +145,8 @@ public class AgentRuntimeAutoConfiguration {
             DefaultToolRegistry toolRegistry,
             PermissionGuard permissionGuard,
             GracefulShutdownManager gracefulShutdownManager) {
-        return new DefaultToolExecutor(toolRegistry, permissionGuard, null, gracefulShutdownManager);
+        return new DefaultToolExecutor(
+                toolRegistry, permissionGuard, null, gracefulShutdownManager);
     }
 
     // ---- Agent Factory ----
@@ -219,6 +221,28 @@ public class AgentRuntimeAutoConfiguration {
             return configured;
         }
         return System.getenv(envVarName);
+    }
+
+    // ---- Circuit Breaker ----
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(
+            name = "kairo.model.circuit-breaker.enabled",
+            havingValue = "true",
+            matchIfMissing = true)
+    public ModelCircuitBreaker modelCircuitBreaker(AgentRuntimeProperties properties) {
+        var cbProps = properties.getModel().getCircuitBreaker();
+        ModelCircuitBreaker breaker =
+                new ModelCircuitBreaker(
+                        properties.getModel().getModelName(),
+                        cbProps.getFailureThreshold(),
+                        cbProps.getResetTimeout());
+        log.info(
+                "Configured model circuit breaker (threshold={}, resetTimeout={})",
+                cbProps.getFailureThreshold(),
+                cbProps.getResetTimeout());
+        return breaker;
     }
 
     // ---- Graceful Shutdown ----

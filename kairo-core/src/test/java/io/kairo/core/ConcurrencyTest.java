@@ -44,8 +44,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Concurrency safety tests for thread-safe classes in kairo-core.
  *
- * <p>Verifies that {@link FileMemoryStore} (ReadWriteLock-based) and {@link
- * DefaultContextManager} (CopyOnWriteArrayList-based) behave correctly under concurrent access.
+ * <p>Verifies that {@link FileMemoryStore} (ReadWriteLock-based) and {@link DefaultContextManager}
+ * (CopyOnWriteArrayList-based) behave correctly under concurrent access.
  */
 class ConcurrencyTest {
 
@@ -68,23 +68,25 @@ class ConcurrencyTest {
         try {
             for (int i = 0; i < THREAD_COUNT; i++) {
                 final int idx = i;
-                executor.submit(() -> {
-                    try {
-                        startLatch.await();
-                        MemoryEntry entry = new MemoryEntry(
-                                "entry-" + idx,
-                                "content-" + idx,
-                                MemoryScope.SESSION,
-                                Instant.now(),
-                                List.of("tag-" + idx),
-                                true);
-                        store.save(entry).block();
-                    } catch (Throwable t) {
-                        errors.add(t);
-                    } finally {
-                        doneLatch.countDown();
-                    }
-                });
+                executor.submit(
+                        () -> {
+                            try {
+                                startLatch.await();
+                                MemoryEntry entry =
+                                        new MemoryEntry(
+                                                "entry-" + idx,
+                                                "content-" + idx,
+                                                MemoryScope.SESSION,
+                                                Instant.now(),
+                                                List.of("tag-" + idx),
+                                                true);
+                                store.save(entry).block();
+                            } catch (Throwable t) {
+                                errors.add(t);
+                            } finally {
+                                doneLatch.countDown();
+                            }
+                        });
             }
 
             // Release all threads simultaneously
@@ -93,8 +95,7 @@ class ConcurrencyTest {
             assertTrue(errors.isEmpty(), "Errors during concurrent writes: " + errors);
 
             // Verify all entries were saved correctly
-            List<MemoryEntry> saved =
-                    store.list(MemoryScope.SESSION).collectList().block();
+            List<MemoryEntry> saved = store.list(MemoryScope.SESSION).collectList().block();
             assertNotNull(saved);
             assertEquals(THREAD_COUNT, saved.size(), "Expected all entries to be saved");
 
@@ -120,13 +121,14 @@ class ConcurrencyTest {
 
         // Pre-populate some data so reads have something to find
         for (int i = 0; i < 5; i++) {
-            store.save(new MemoryEntry(
-                            "seed-" + i,
-                            "seed-content-" + i,
-                            MemoryScope.SESSION,
-                            Instant.now(),
-                            List.of(),
-                            true))
+            store.save(
+                            new MemoryEntry(
+                                    "seed-" + i,
+                                    "seed-content-" + i,
+                                    MemoryScope.SESSION,
+                                    Instant.now(),
+                                    List.of(),
+                                    true))
                     .block();
         }
 
@@ -140,37 +142,37 @@ class ConcurrencyTest {
         try {
             for (int i = 0; i < THREAD_COUNT; i++) {
                 final int idx = i;
-                executor.submit(() -> {
-                    try {
-                        startLatch.await();
-                        if (idx % 2 == 0) {
-                            // Writer thread
-                            MemoryEntry entry = new MemoryEntry(
-                                    "write-" + idx,
-                                    "write-content-" + idx,
-                                    MemoryScope.SESSION,
-                                    Instant.now(),
-                                    List.of(),
-                                    true);
-                            store.save(entry).block();
-                            successfulWrites.incrementAndGet();
-                        } else {
-                            // Reader thread — list and get
-                            List<MemoryEntry> entries =
-                                    store.list(MemoryScope.SESSION)
-                                            .collectList()
-                                            .block();
-                            assertNotNull(entries);
-                            // Also try individual get
-                            store.get("seed-0").block();
-                            successfulReads.incrementAndGet();
-                        }
-                    } catch (Throwable t) {
-                        errors.add(t);
-                    } finally {
-                        doneLatch.countDown();
-                    }
-                });
+                executor.submit(
+                        () -> {
+                            try {
+                                startLatch.await();
+                                if (idx % 2 == 0) {
+                                    // Writer thread
+                                    MemoryEntry entry =
+                                            new MemoryEntry(
+                                                    "write-" + idx,
+                                                    "write-content-" + idx,
+                                                    MemoryScope.SESSION,
+                                                    Instant.now(),
+                                                    List.of(),
+                                                    true);
+                                    store.save(entry).block();
+                                    successfulWrites.incrementAndGet();
+                                } else {
+                                    // Reader thread — list and get
+                                    List<MemoryEntry> entries =
+                                            store.list(MemoryScope.SESSION).collectList().block();
+                                    assertNotNull(entries);
+                                    // Also try individual get
+                                    store.get("seed-0").block();
+                                    successfulReads.incrementAndGet();
+                                }
+                            } catch (Throwable t) {
+                                errors.add(t);
+                            } finally {
+                                doneLatch.countDown();
+                            }
+                        });
             }
 
             startLatch.countDown();
@@ -182,8 +184,7 @@ class ConcurrencyTest {
             assertTrue(successfulWrites.get() > 0, "At least one write should have succeeded");
 
             // Verify all written entries are present
-            List<MemoryEntry> all =
-                    store.list(MemoryScope.SESSION).collectList().block();
+            List<MemoryEntry> all = store.list(MemoryScope.SESSION).collectList().block();
             assertNotNull(all);
             // seed entries (5) + writer threads (even indices: 0,2,4,6,8,10,12,14,16,18 = 10)
             assertEquals(5 + successfulWrites.get(), all.size());
@@ -207,22 +208,25 @@ class ConcurrencyTest {
         try {
             for (int i = 0; i < THREAD_COUNT; i++) {
                 final int idx = i;
-                executor.submit(() -> {
-                    try {
-                        startLatch.await();
-                        Msg msg = Msg.builder()
-                                .id("msg-" + idx)
-                                .role(MsgRole.USER)
-                                .addContent(new Content.TextContent("message-" + idx))
-                                .tokenCount(10)
-                                .build();
-                        manager.addMessage(msg);
-                    } catch (Throwable t) {
-                        errors.add(t);
-                    } finally {
-                        doneLatch.countDown();
-                    }
-                });
+                executor.submit(
+                        () -> {
+                            try {
+                                startLatch.await();
+                                Msg msg =
+                                        Msg.builder()
+                                                .id("msg-" + idx)
+                                                .role(MsgRole.USER)
+                                                .addContent(
+                                                        new Content.TextContent("message-" + idx))
+                                                .tokenCount(10)
+                                                .build();
+                                manager.addMessage(msg);
+                            } catch (Throwable t) {
+                                errors.add(t);
+                            } finally {
+                                doneLatch.countDown();
+                            }
+                        });
             }
 
             startLatch.countDown();
@@ -231,7 +235,9 @@ class ConcurrencyTest {
 
             // Verify all messages are present (no lost updates)
             List<Msg> messages = manager.getMessages();
-            assertEquals(THREAD_COUNT, messages.size(),
+            assertEquals(
+                    THREAD_COUNT,
+                    messages.size(),
                     "All messages should be present — no lost updates");
 
             // Verify each message ID is present
@@ -249,19 +255,21 @@ class ConcurrencyTest {
     }
 
     @Test
-    @DisplayName("DefaultContextManager concurrent reads during writes cause no ConcurrentModificationException")
+    @DisplayName(
+            "DefaultContextManager concurrent reads during writes cause no ConcurrentModificationException")
     @Timeout(10)
     void contextManagerHandlesConcurrentReadsDuringWrites() throws Exception {
         DefaultContextManager manager = new DefaultContextManager();
 
         // Pre-populate some messages
         for (int i = 0; i < 10; i++) {
-            manager.addMessage(Msg.builder()
-                    .id("seed-" + i)
-                    .role(MsgRole.USER)
-                    .addContent(new Content.TextContent("seed-" + i))
-                    .tokenCount(5)
-                    .build());
+            manager.addMessage(
+                    Msg.builder()
+                            .id("seed-" + i)
+                            .role(MsgRole.USER)
+                            .addContent(new Content.TextContent("seed-" + i))
+                            .tokenCount(5)
+                            .build());
         }
 
         CountDownLatch startLatch = new CountDownLatch(1);
@@ -274,43 +282,49 @@ class ConcurrencyTest {
         try {
             for (int i = 0; i < THREAD_COUNT; i++) {
                 final int idx = i;
-                executor.submit(() -> {
-                    try {
-                        startLatch.await();
-                        if (idx % 2 == 0) {
-                            // Writer thread
-                            Msg msg = Msg.builder()
-                                    .id("write-" + idx)
-                                    .role(MsgRole.ASSISTANT)
-                                    .addContent(new Content.TextContent("response-" + idx))
-                                    .tokenCount(5)
-                                    .build();
-                            manager.addMessage(msg);
-                            successfulWrites.incrementAndGet();
-                        } else {
-                            // Reader thread — iterate all messages
-                            List<Msg> messages = manager.getMessages();
-                            // Force iteration — must not throw ConcurrentModificationException
-                            int count = 0;
-                            for (Msg m : messages) {
-                                assertNotNull(m.id());
-                                assertNotNull(m.role());
-                                count++;
+                executor.submit(
+                        () -> {
+                            try {
+                                startLatch.await();
+                                if (idx % 2 == 0) {
+                                    // Writer thread
+                                    Msg msg =
+                                            Msg.builder()
+                                                    .id("write-" + idx)
+                                                    .role(MsgRole.ASSISTANT)
+                                                    .addContent(
+                                                            new Content.TextContent(
+                                                                    "response-" + idx))
+                                                    .tokenCount(5)
+                                                    .build();
+                                    manager.addMessage(msg);
+                                    successfulWrites.incrementAndGet();
+                                } else {
+                                    // Reader thread — iterate all messages
+                                    List<Msg> messages = manager.getMessages();
+                                    // Force iteration — must not throw
+                                    // ConcurrentModificationException
+                                    int count = 0;
+                                    for (Msg m : messages) {
+                                        assertNotNull(m.id());
+                                        assertNotNull(m.role());
+                                        count++;
+                                    }
+                                    assertTrue(count >= 10, "Should see at least seed messages");
+                                    successfulReads.incrementAndGet();
+                                }
+                            } catch (Throwable t) {
+                                errors.add(t);
+                            } finally {
+                                doneLatch.countDown();
                             }
-                            assertTrue(count >= 10, "Should see at least seed messages");
-                            successfulReads.incrementAndGet();
-                        }
-                    } catch (Throwable t) {
-                        errors.add(t);
-                    } finally {
-                        doneLatch.countDown();
-                    }
-                });
+                        });
             }
 
             startLatch.countDown();
             assertTrue(doneLatch.await(10, TimeUnit.SECONDS), "Threads did not finish in time");
-            assertTrue(errors.isEmpty(),
+            assertTrue(
+                    errors.isEmpty(),
                     "Errors during concurrent reads/writes (ConcurrentModificationException?): "
                             + errors);
 

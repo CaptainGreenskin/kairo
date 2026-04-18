@@ -34,9 +34,7 @@ import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
-/**
- * Smoke test for the full Agent chain: Builder → Agent → ModelProvider → Response.
- */
+/** Smoke test for the full Agent chain: Builder → Agent → ModelProvider → Response. */
 @Tag("smoke")
 class AgentSmokeTest {
 
@@ -44,22 +42,23 @@ class AgentSmokeTest {
     void fullChainBuilderToResponse() {
         // Mock ModelProvider returning a fixed text response "Done"
         ModelProvider mockProvider = mock(ModelProvider.class);
-        ModelResponse response = new ModelResponse(
-                "resp-smoke",
-                List.of(new Content.TextContent("Done")),
-                new ModelResponse.Usage(5, 10, 0, 0),
-                ModelResponse.StopReason.END_TURN,
-                "mock-model");
-        when(mockProvider.call(anyList(), any(ModelConfig.class)))
-                .thenReturn(Mono.just(response));
+        ModelResponse response =
+                new ModelResponse(
+                        "resp-smoke",
+                        List.of(new Content.TextContent("Done")),
+                        new ModelResponse.Usage(5, 10, 0, 0),
+                        ModelResponse.StopReason.END_TURN,
+                        "mock-model");
+        when(mockProvider.call(anyList(), any(ModelConfig.class))).thenReturn(Mono.just(response));
 
         // Build agent via AgentBuilder
-        Agent agent = AgentBuilder.create()
-                .name("smoke")
-                .model(mockProvider)
-                .modelName("mock-model")
-                .maxIterations(1)
-                .build();
+        Agent agent =
+                AgentBuilder.create()
+                        .name("smoke")
+                        .model(mockProvider)
+                        .modelName("mock-model")
+                        .maxIterations(1)
+                        .build();
 
         assertNotNull(agent);
         assertEquals("smoke", agent.name());
@@ -68,11 +67,13 @@ class AgentSmokeTest {
         Msg userMsg = Msg.of(MsgRole.USER, "Hello");
 
         StepVerifier.create(agent.call(userMsg))
-                .assertNext(result -> {
-                    assertNotNull(result);
-                    assertTrue(result.text().contains("Done"),
-                            "Expected response to contain 'Done', got: " + result.text());
-                })
+                .assertNext(
+                        result -> {
+                            assertNotNull(result);
+                            assertTrue(
+                                    result.text().contains("Done"),
+                                    "Expected response to contain 'Done', got: " + result.text());
+                        })
                 .verifyComplete();
     }
 }

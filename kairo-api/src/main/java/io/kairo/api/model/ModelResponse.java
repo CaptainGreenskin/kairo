@@ -15,8 +15,8 @@
  */
 package io.kairo.api.model;
 
-import io.kairo.api.message.Content;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.kairo.api.message.Content;
 import java.util.List;
 import java.util.Optional;
 
@@ -43,23 +43,31 @@ public record ModelResponse(
      * @throws IllegalStateException if no text content is found or JSON parsing fails
      */
     public <T> T contentAs(Class<T> type) {
-        String text = contents.stream()
-                .filter(Content.TextContent.class::isInstance)
-                .map(c -> ((Content.TextContent) c).text())
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException(
-                        "No text content found in response to deserialize as " + type.getSimpleName()));
+        String text =
+                contents.stream()
+                        .filter(Content.TextContent.class::isInstance)
+                        .map(c -> ((Content.TextContent) c).text())
+                        .findFirst()
+                        .orElseThrow(
+                                () ->
+                                        new IllegalStateException(
+                                                "No text content found in response to deserialize as "
+                                                        + type.getSimpleName()));
         try {
             return SHARED_MAPPER.readValue(text, type);
         } catch (Exception e) {
             throw new IllegalStateException(
-                    "Failed to parse response text as " + type.getSimpleName() + ": " + e.getMessage(), e);
+                    "Failed to parse response text as "
+                            + type.getSimpleName()
+                            + ": "
+                            + e.getMessage(),
+                    e);
         }
     }
 
     /**
-     * Deserialize the first text content block as the given type, returning an empty Optional
-     * on failure instead of throwing.
+     * Deserialize the first text content block as the given type, returning an empty Optional on
+     * failure instead of throwing.
      *
      * @param <T> the target type
      * @param type the class to deserialize into

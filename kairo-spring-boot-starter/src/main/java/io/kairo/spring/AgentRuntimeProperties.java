@@ -16,6 +16,7 @@
 package io.kairo.spring;
 
 import io.kairo.api.model.ModelConfig;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -106,6 +107,9 @@ public class AgentRuntimeProperties {
         /** Budget tokens for extended thinking. */
         private int thinkingBudget = 10000;
 
+        /** Circuit breaker configuration. */
+        private CircuitBreaker circuitBreaker = new CircuitBreaker();
+
         public String getProvider() {
             return provider;
         }
@@ -168,6 +172,50 @@ public class AgentRuntimeProperties {
 
         public void setThinkingBudget(int thinkingBudget) {
             this.thinkingBudget = thinkingBudget;
+        }
+
+        public CircuitBreaker getCircuitBreaker() {
+            return circuitBreaker;
+        }
+
+        public void setCircuitBreaker(CircuitBreaker circuitBreaker) {
+            this.circuitBreaker = circuitBreaker;
+        }
+
+        /** Circuit breaker configuration for model API calls. */
+        public static class CircuitBreaker {
+            /** Whether the circuit breaker is enabled. */
+            private boolean enabled = true;
+
+            /** Number of consecutive failures before the circuit opens. */
+            private int failureThreshold = 5;
+
+            /** Duration to wait before transitioning from OPEN to HALF_OPEN. */
+            private Duration resetTimeout = Duration.ofSeconds(60);
+
+            public boolean isEnabled() {
+                return enabled;
+            }
+
+            public void setEnabled(boolean enabled) {
+                this.enabled = enabled;
+            }
+
+            public int getFailureThreshold() {
+                return failureThreshold;
+            }
+
+            public void setFailureThreshold(int failureThreshold) {
+                this.failureThreshold = failureThreshold;
+            }
+
+            public Duration getResetTimeout() {
+                return resetTimeout;
+            }
+
+            public void setResetTimeout(Duration resetTimeout) {
+                this.resetTimeout = resetTimeout;
+            }
         }
     }
 

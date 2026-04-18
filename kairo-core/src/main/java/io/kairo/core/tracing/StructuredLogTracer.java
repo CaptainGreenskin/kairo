@@ -116,7 +116,10 @@ public class StructuredLogTracer implements Tracer {
                 event.put("attributes", attributes);
             }
             events.add(event);
-            log.info("[Event] {} | spanId={} | attrs={}", name, id,
+            log.info(
+                    "[Event] {} | spanId={} | attrs={}",
+                    name,
+                    id,
                     attributes != null && !attributes.isEmpty() ? attributes : "{}");
         }
 

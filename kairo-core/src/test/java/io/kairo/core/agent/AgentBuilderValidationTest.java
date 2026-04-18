@@ -23,8 +23,8 @@ import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
 /**
- * Validation tests for {@link AgentBuilder} — verifies all guard clauses
- * in {@code build()}, {@code buildConfig()}, and individual setters.
+ * Validation tests for {@link AgentBuilder} — verifies all guard clauses in {@code build()}, {@code
+ * buildConfig()}, and individual setters.
  */
 class AgentBuilderValidationTest {
 
@@ -34,11 +34,14 @@ class AgentBuilderValidationTest {
 
     @Test
     void throwsWhenNameIsNull() {
-        NullPointerException ex = assertThrows(NullPointerException.class,
-                () -> AgentBuilder.create()
-                        .model(mockProvider)
-                        .modelName("test-model")
-                        .build());
+        NullPointerException ex =
+                assertThrows(
+                        NullPointerException.class,
+                        () ->
+                                AgentBuilder.create()
+                                        .model(mockProvider)
+                                        .modelName("test-model")
+                                        .build());
         assertTrue(ex.getMessage().contains("Agent name must not be null"));
     }
 
@@ -47,35 +50,39 @@ class AgentBuilderValidationTest {
         // AgentBuilder.name("") does not throw — buildConfig() only checks null via
         // Objects.requireNonNull. Blank name passes validation and builds successfully.
         assertDoesNotThrow(
-                () -> AgentBuilder.create()
-                        .name("")
-                        .model(mockProvider)
-                        .modelName("test-model")
-                        .build());
+                () ->
+                        AgentBuilder.create()
+                                .name("")
+                                .model(mockProvider)
+                                .modelName("test-model")
+                                .build());
     }
 
     // ===== 2. ModelName validation =====
 
     @Test
     void throwsWhenModelNameMissing() {
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> AgentBuilder.create()
-                        .name("test")
-                        .model(mockProvider)
-                        .build());
-        assertTrue(ex.getMessage().contains("modelName"),
+        IllegalStateException ex =
+                assertThrows(
+                        IllegalStateException.class,
+                        () -> AgentBuilder.create().name("test").model(mockProvider).build());
+        assertTrue(
+                ex.getMessage().contains("modelName"),
                 "Expected message to contain 'modelName', got: " + ex.getMessage());
     }
 
     @Test
     void throwsWhenModelNameIsBlank() {
         // The modelName() setter validates eagerly
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> AgentBuilder.create()
-                        .name("test")
-                        .model(mockProvider)
-                        .modelName("")
-                        .build());
+        IllegalArgumentException ex =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () ->
+                                AgentBuilder.create()
+                                        .name("test")
+                                        .model(mockProvider)
+                                        .modelName("")
+                                        .build());
         assertTrue(ex.getMessage().contains("modelName cannot be null or blank"));
     }
 
@@ -83,25 +90,31 @@ class AgentBuilderValidationTest {
 
     @Test
     void throwsWhenMaxIterationsZero() {
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> AgentBuilder.create()
-                        .name("test")
-                        .model(mockProvider)
-                        .modelName("test-model")
-                        .maxIterations(0)
-                        .build());
+        IllegalArgumentException ex =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () ->
+                                AgentBuilder.create()
+                                        .name("test")
+                                        .model(mockProvider)
+                                        .modelName("test-model")
+                                        .maxIterations(0)
+                                        .build());
         assertTrue(ex.getMessage().contains("maxIterations must be positive"));
     }
 
     @Test
     void throwsWhenMaxIterationsNegative() {
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> AgentBuilder.create()
-                        .name("test")
-                        .model(mockProvider)
-                        .modelName("test-model")
-                        .maxIterations(-1)
-                        .build());
+        IllegalArgumentException ex =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () ->
+                                AgentBuilder.create()
+                                        .name("test")
+                                        .model(mockProvider)
+                                        .modelName("test-model")
+                                        .maxIterations(-1)
+                                        .build());
         assertTrue(ex.getMessage().contains("maxIterations must be positive"));
     }
 
@@ -109,25 +122,31 @@ class AgentBuilderValidationTest {
 
     @Test
     void throwsWhenTokenBudgetNegative() {
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> AgentBuilder.create()
-                        .name("test")
-                        .model(mockProvider)
-                        .modelName("test-model")
-                        .tokenBudget(-1)
-                        .build());
+        IllegalArgumentException ex =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () ->
+                                AgentBuilder.create()
+                                        .name("test")
+                                        .model(mockProvider)
+                                        .modelName("test-model")
+                                        .tokenBudget(-1)
+                                        .build());
         assertTrue(ex.getMessage().contains("tokenBudget must be positive"));
     }
 
     @Test
     void throwsWhenTokenBudgetZero() {
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> AgentBuilder.create()
-                        .name("test")
-                        .model(mockProvider)
-                        .modelName("test-model")
-                        .tokenBudget(0)
-                        .build());
+        IllegalArgumentException ex =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () ->
+                                AgentBuilder.create()
+                                        .name("test")
+                                        .model(mockProvider)
+                                        .modelName("test-model")
+                                        .tokenBudget(0)
+                                        .build());
         assertTrue(ex.getMessage().contains("tokenBudget must be positive"));
     }
 
@@ -137,41 +156,45 @@ class AgentBuilderValidationTest {
     void acceptsNullHookGracefully() {
         // hook(null) silently ignores the null — does not throw
         assertDoesNotThrow(
-                () -> AgentBuilder.create()
-                        .name("test")
-                        .model(mockProvider)
-                        .modelName("test-model")
-                        .hook(null)
-                        .build());
+                () ->
+                        AgentBuilder.create()
+                                .name("test")
+                                .model(mockProvider)
+                                .modelName("test-model")
+                                .hook(null)
+                                .build());
     }
 
     // ===== 6. Successful build =====
 
     @Test
     void buildsSuccessfullyWithAllValidParams() {
-        assertDoesNotThrow(() -> {
-            var agent = AgentBuilder.create()
-                    .name("full-agent")
-                    .model(mockProvider)
-                    .modelName("gpt-4o")
-                    .systemPrompt("You are helpful.")
-                    .maxIterations(25)
-                    .timeout(Duration.ofMinutes(5))
-                    .tokenBudget(100_000)
-                    .hook(new Object())
-                    .build();
-            assertNotNull(agent);
-            assertEquals("full-agent", agent.name());
-        });
+        assertDoesNotThrow(
+                () -> {
+                    var agent =
+                            AgentBuilder.create()
+                                    .name("full-agent")
+                                    .model(mockProvider)
+                                    .modelName("gpt-4o")
+                                    .systemPrompt("You are helpful.")
+                                    .maxIterations(25)
+                                    .timeout(Duration.ofMinutes(5))
+                                    .tokenBudget(100_000)
+                                    .hook(new Object())
+                                    .build();
+                    assertNotNull(agent);
+                    assertEquals("full-agent", agent.name());
+                });
     }
 
     // ===== 7. ModelName null via setter =====
 
     @Test
     void throwsWhenModelNameIsNullViaSetter() {
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> AgentBuilder.create()
-                        .modelName(null));
+        IllegalArgumentException ex =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () -> AgentBuilder.create().modelName(null));
         assertTrue(ex.getMessage().contains("modelName cannot be null or blank"));
     }
 
@@ -180,19 +203,19 @@ class AgentBuilderValidationTest {
     @Test
     void buildCoordinatorThrowsWhenNameMissing() {
         // buildCoordinator() calls buildConfig() which validates name
-        assertThrows(NullPointerException.class,
-                () -> AgentBuilder.create()
-                        .model(mockProvider)
-                        .modelName("test-model")
-                        .buildCoordinator());
+        assertThrows(
+                NullPointerException.class,
+                () ->
+                        AgentBuilder.create()
+                                .model(mockProvider)
+                                .modelName("test-model")
+                                .buildCoordinator());
     }
 
     @Test
     void buildCoordinatorThrowsWhenModelNameMissing() {
-        assertThrows(IllegalStateException.class,
-                () -> AgentBuilder.create()
-                        .name("coord")
-                        .model(mockProvider)
-                        .buildCoordinator());
+        assertThrows(
+                IllegalStateException.class,
+                () -> AgentBuilder.create().name("coord").model(mockProvider).buildCoordinator());
     }
 }

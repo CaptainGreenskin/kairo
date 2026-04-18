@@ -25,13 +25,13 @@ import reactor.core.publisher.Mono;
 /**
  * Executes tools by name with given input parameters.
  *
- * <p>The executor is the central dispatch point for tool invocations within an agent's
- * acting phase. It resolves tool handlers, enforces permission policies (via
- * {@link UserApprovalHandler}), manages circuit breakers for fault tolerance, and
- * optionally restricts execution to an allowed-tools whitelist.
+ * <p>The executor is the central dispatch point for tool invocations within an agent's acting
+ * phase. It resolves tool handlers, enforces permission policies (via {@link UserApprovalHandler}),
+ * manages circuit breakers for fault tolerance, and optionally restricts execution to an
+ * allowed-tools whitelist.
  *
- * <p>Implementations should be thread-safe: parallel tool execution via
- * {@link #executeParallel(List)} may invoke multiple handlers concurrently.
+ * <p>Implementations should be thread-safe: parallel tool execution via {@link
+ * #executeParallel(List)} may invoke multiple handlers concurrently.
  *
  * @see ToolResult
  * @see ToolInvocation
@@ -77,8 +77,8 @@ public interface ToolExecutor {
     /**
      * Clear the allowed tools whitelist, restoring unrestricted tool execution.
      *
-     * <p>After this call, all registered tools are eligible for execution regardless of
-     * any prior {@link #setAllowedTools(Set)} restriction.
+     * <p>After this call, all registered tools are eligible for execution regardless of any prior
+     * {@link #setAllowedTools(Set)} restriction.
      */
     default void clearAllowedTools() {}
 
@@ -129,8 +129,7 @@ public interface ToolExecutor {
     default void setApprovalHandler(UserApprovalHandler approvalHandler) {}
 
     /**
-     * Reset circuit breaker state for all tools, allowing previously tripped tools to be
-     * retried.
+     * Reset circuit breaker state for all tools, allowing previously tripped tools to be retried.
      */
     default void resetCircuitBreaker() {}
 

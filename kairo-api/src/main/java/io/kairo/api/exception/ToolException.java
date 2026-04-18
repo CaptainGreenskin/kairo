@@ -15,9 +15,7 @@
  */
 package io.kairo.api.exception;
 
-/**
- * Base exception for tool execution errors such as permission denials and plan mode violations.
- */
+/** Base exception for tool execution errors such as permission denials and plan mode violations. */
 public class ToolException extends KairoException {
 
     /**

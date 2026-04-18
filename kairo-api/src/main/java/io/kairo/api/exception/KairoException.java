@@ -19,13 +19,13 @@ package io.kairo.api.exception;
  * Base unchecked exception for all Kairo framework errors.
  *
  * <p>All domain-specific exceptions in the Kairo framework extend this class, enabling unified
- * catch-and-handle patterns across agent, model, and tool subsystems. Because it extends
- * {@link RuntimeException}, it propagates through reactive pipelines without requiring
- * explicit checked-exception handling.
+ * catch-and-handle patterns across agent, model, and tool subsystems. Because it extends {@link
+ * RuntimeException}, it propagates through reactive pipelines without requiring explicit
+ * checked-exception handling.
  *
- * <p>Typical subclasses include model invocation failures, tool execution errors, and
- * context budget violations. Callers that need to distinguish error categories should
- * catch the specific subclass rather than this base type.
+ * <p>Typical subclasses include model invocation failures, tool execution errors, and context
+ * budget violations. Callers that need to distinguish error categories should catch the specific
+ * subclass rather than this base type.
  *
  * <pre>{@code
  * try {

@@ -174,7 +174,8 @@ class GracefulShutdownIT {
         long elapsed = System.currentTimeMillis() - start;
 
         assertEquals(ShutdownState.TERMINATED, manager.getState());
-        assertTrue(elapsed < 1000, "Shutdown with no agents should be fast, took " + elapsed + "ms");
+        assertTrue(
+                elapsed < 1000, "Shutdown with no agents should be fast, took " + elapsed + "ms");
     }
 
     // ================================
@@ -293,8 +294,7 @@ class GracefulShutdownIT {
                             () -> {
                                 try {
                                     startLatch.await();
-                                    StubAgent agent =
-                                            new StubAgent("agent-" + idx, "agent-" + idx);
+                                    StubAgent agent = new StubAgent("agent-" + idx, "agent-" + idx);
                                     manager.registerAgent(agent);
                                     Thread.sleep(10); // brief overlap
                                     manager.unregisterAgent(agent);
@@ -448,7 +448,8 @@ class GracefulShutdownIT {
                 "All threads should complete within timeout");
 
         assertFalse(anyException.get(), "No thread should have thrown an exception");
-        assertEquals(1, successCount.get(), "Exactly one thread should succeed in initiating shutdown");
+        assertEquals(
+                1, successCount.get(), "Exactly one thread should succeed in initiating shutdown");
         manager.awaitTermination(Duration.ofSeconds(2));
         assertEquals(ShutdownState.TERMINATED, manager.getState());
     }

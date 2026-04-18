@@ -15,20 +15,19 @@
  */
 package io.kairo.tools.openapi;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import io.kairo.api.tool.JsonSchema;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.api.tool.ToolSideEffect;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 class OpenApiToolRegistrarTest {
 
@@ -342,9 +341,7 @@ class OpenApiToolRegistrarTest {
 
         @Override
         public List<ToolDefinition> getByCategory(ToolCategory category) {
-            return registered.stream()
-                    .filter(t -> t.category() == category)
-                    .toList();
+            return registered.stream().filter(t -> t.category() == category).toList();
         }
 
         @Override

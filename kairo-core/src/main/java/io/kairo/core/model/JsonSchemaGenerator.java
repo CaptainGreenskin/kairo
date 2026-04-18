@@ -47,7 +47,8 @@ public final class JsonSchemaGenerator {
         return generateSchemaInternal(type, null, mapper);
     }
 
-    private static ObjectNode generateSchemaInternal(Class<?> type, Type genericType, ObjectMapper mapper) {
+    private static ObjectNode generateSchemaInternal(
+            Class<?> type, Type genericType, ObjectMapper mapper) {
         ObjectNode schema = mapper.createObjectNode();
 
         // Primitives and wrappers
@@ -55,15 +56,21 @@ public final class JsonSchemaGenerator {
             schema.put("type", "string");
             return schema;
         }
-        if (type == int.class || type == Integer.class
-                || type == long.class || type == Long.class
-                || type == short.class || type == Short.class
-                || type == byte.class || type == Byte.class) {
+        if (type == int.class
+                || type == Integer.class
+                || type == long.class
+                || type == Long.class
+                || type == short.class
+                || type == Short.class
+                || type == byte.class
+                || type == Byte.class) {
             schema.put("type", "integer");
             return schema;
         }
-        if (type == float.class || type == Float.class
-                || type == double.class || type == Double.class) {
+        if (type == float.class
+                || type == Float.class
+                || type == double.class
+                || type == Double.class) {
             schema.put("type", "number");
             return schema;
         }
@@ -104,7 +111,8 @@ public final class JsonSchemaGenerator {
             if (genericType instanceof ParameterizedType pt) {
                 Type[] args = pt.getActualTypeArguments();
                 if (args.length > 1 && args[1] instanceof Class<?> valType) {
-                    schema.set("additionalProperties", generateSchemaInternal(valType, null, mapper));
+                    schema.set(
+                            "additionalProperties", generateSchemaInternal(valType, null, mapper));
                 }
             }
             return schema;
@@ -122,13 +130,16 @@ public final class JsonSchemaGenerator {
                 if (jp != null && !jp.value().isEmpty()) {
                     name = jp.value();
                 }
-                properties.set(name,
-                        generateSchemaInternal(component.getType(), component.getGenericType(), mapper));
+                properties.set(
+                        name,
+                        generateSchemaInternal(
+                                component.getType(), component.getGenericType(), mapper));
                 required.add(name);
             }
         } else {
             for (Field field : type.getDeclaredFields()) {
-                if (Modifier.isStatic(field.getModifiers()) || Modifier.isTransient(field.getModifiers())) {
+                if (Modifier.isStatic(field.getModifiers())
+                        || Modifier.isTransient(field.getModifiers())) {
                     continue;
                 }
                 String name = field.getName();
@@ -136,7 +147,8 @@ public final class JsonSchemaGenerator {
                 if (jp != null && !jp.value().isEmpty()) {
                     name = jp.value();
                 }
-                properties.set(name,
+                properties.set(
+                        name,
                         generateSchemaInternal(field.getType(), field.getGenericType(), mapper));
                 required.add(name);
             }

@@ -64,7 +64,10 @@ public record AgentConfig(
         return new Builder();
     }
 
-    /** Builder for {@link AgentConfig}. Provides a fluent API for constructing immutable config instances. */
+    /**
+     * Builder for {@link AgentConfig}. Provides a fluent API for constructing immutable config
+     * instances.
+     */
     public static class Builder {
         private String name;
         private String systemPrompt;
@@ -84,7 +87,8 @@ public record AgentConfig(
         private Builder() {}
 
         /**
-         * Set the agent name. This is required and used in logging, tracing, and multi-agent routing.
+         * Set the agent name. This is required and used in logging, tracing, and multi-agent
+         * routing.
          *
          * @param name the agent name; must not be {@code null}
          * @return this builder
@@ -128,8 +132,8 @@ public record AgentConfig(
         }
 
         /**
-         * Set the maximum number of reasoning/acting iterations before the agent stops.
-         * Defaults to {@code 100}.
+         * Set the maximum number of reasoning/acting iterations before the agent stops. Defaults to
+         * {@code 100}.
          *
          * @param maxIterations the iteration limit; must be positive
          * @return this builder
@@ -140,8 +144,8 @@ public record AgentConfig(
         }
 
         /**
-         * Set the overall timeout for a single {@code agent.call()} invocation.
-         * Defaults to 10 minutes.
+         * Set the overall timeout for a single {@code agent.call()} invocation. Defaults to 10
+         * minutes.
          *
          * @param timeout the timeout duration
          * @return this builder

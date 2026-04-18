@@ -55,6 +55,10 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
+# Internal docs (not for public release)
+docs/ROADMAP.md
+docs/KV-CACHE-PROPOSAL.md
+
 # Kairo runtime
 /tmp/kairo-sessions/
 .kairo/

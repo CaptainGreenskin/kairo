@@ -17,21 +17,16 @@ package io.kairo.spring;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
 
-/**
- * Tests for {@link KairoMcpProperties} binding and {@link McpAutoConfiguration} bean creation.
- */
+/** Tests for {@link KairoMcpProperties} binding and {@link McpAutoConfiguration} bean creation. */
 class KairoMcpPropertiesTest {
 
     private final ApplicationContextRunner runner =
-            new ApplicationContextRunner()
-                    .withUserConfiguration(TestConfig.class);
+            new ApplicationContextRunner().withUserConfiguration(TestConfig.class);
 
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties(KairoMcpProperties.class)
@@ -47,22 +42,23 @@ class KairoMcpPropertiesTest {
                         "kairo.mcp.servers.weather.http.bearer-token=my-secret-token",
                         "kairo.mcp.servers.weather.http.headers.X-Custom=value1",
                         "kairo.mcp.servers.weather.http.query-params.version=v2")
-                .run(context -> {
-                    KairoMcpProperties props = context.getBean(KairoMcpProperties.class);
-                    assertThat(props.getServers()).containsKey("weather");
+                .run(
+                        context -> {
+                            KairoMcpProperties props = context.getBean(KairoMcpProperties.class);
+                            assertThat(props.getServers()).containsKey("weather");
 
-                    KairoMcpProperties.McpServerProperties server =
-                            props.getServers().get("weather");
-                    assertThat(server.getTransport())
-                            .isEqualTo(KairoMcpProperties.TransportType.HTTP);
+                            KairoMcpProperties.McpServerProperties server =
+                                    props.getServers().get("weather");
+                            assertThat(server.getTransport())
+                                    .isEqualTo(KairoMcpProperties.TransportType.HTTP);
 
-                    KairoMcpProperties.HttpTransportProperties http = server.getHttp();
-                    assertThat(http).isNotNull();
-                    assertThat(http.getUrl()).isEqualTo("http://localhost:8080/mcp");
-                    assertThat(http.getBearerToken()).isEqualTo("my-secret-token");
-                    assertThat(http.getHeaders()).containsEntry("X-Custom", "value1");
-                    assertThat(http.getQueryParams()).containsEntry("version", "v2");
-                });
+                            KairoMcpProperties.HttpTransportProperties http = server.getHttp();
+                            assertThat(http).isNotNull();
+                            assertThat(http.getUrl()).isEqualTo("http://localhost:8080/mcp");
+                            assertThat(http.getBearerToken()).isEqualTo("my-secret-token");
+                            assertThat(http.getHeaders()).containsEntry("X-Custom", "value1");
+                            assertThat(http.getQueryParams()).containsEntry("version", "v2");
+                        });
     }
 
     @Test
@@ -72,25 +68,26 @@ class KairoMcpPropertiesTest {
                         "kairo.mcp.servers.filesystem.stdio.command=npx",
                         "kairo.mcp.servers.filesystem.stdio.args=-y,@modelcontextprotocol/server-filesystem,/tmp",
                         "kairo.mcp.servers.filesystem.stdio.env.NODE_ENV=production")
-                .run(context -> {
-                    KairoMcpProperties props = context.getBean(KairoMcpProperties.class);
-                    assertThat(props.getServers()).containsKey("filesystem");
+                .run(
+                        context -> {
+                            KairoMcpProperties props = context.getBean(KairoMcpProperties.class);
+                            assertThat(props.getServers()).containsKey("filesystem");
 
-                    KairoMcpProperties.McpServerProperties server =
-                            props.getServers().get("filesystem");
-                    assertThat(server.getTransport())
-                            .isEqualTo(KairoMcpProperties.TransportType.STDIO);
+                            KairoMcpProperties.McpServerProperties server =
+                                    props.getServers().get("filesystem");
+                            assertThat(server.getTransport())
+                                    .isEqualTo(KairoMcpProperties.TransportType.STDIO);
 
-                    KairoMcpProperties.StdioTransportProperties stdio = server.getStdio();
-                    assertThat(stdio).isNotNull();
-                    assertThat(stdio.getCommand()).isEqualTo("npx");
-                    assertThat(stdio.getArgs())
-                            .containsExactly(
-                                    "-y",
-                                    "@modelcontextprotocol/server-filesystem",
-                                    "/tmp");
-                    assertThat(stdio.getEnv()).containsEntry("NODE_ENV", "production");
-                });
+                            KairoMcpProperties.StdioTransportProperties stdio = server.getStdio();
+                            assertThat(stdio).isNotNull();
+                            assertThat(stdio.getCommand()).isEqualTo("npx");
+                            assertThat(stdio.getArgs())
+                                    .containsExactly(
+                                            "-y",
+                                            "@modelcontextprotocol/server-filesystem",
+                                            "/tmp");
+                            assertThat(stdio.getEnv()).containsEntry("NODE_ENV", "production");
+                        });
     }
 
     @Test
@@ -102,47 +99,49 @@ class KairoMcpPropertiesTest {
                         "kairo.mcp.servers.api.transport=HTTP",
                         "kairo.mcp.servers.api.http.url=http://api.example.com/mcp",
                         "kairo.mcp.servers.api.http.bearer-token=token123")
-                .run(context -> {
-                    KairoMcpProperties props = context.getBean(KairoMcpProperties.class);
-                    assertThat(props.getServers()).hasSize(2);
-                    assertThat(props.getServers()).containsKeys("fs", "api");
+                .run(
+                        context -> {
+                            KairoMcpProperties props = context.getBean(KairoMcpProperties.class);
+                            assertThat(props.getServers()).hasSize(2);
+                            assertThat(props.getServers()).containsKeys("fs", "api");
 
-                    // Verify STDIO server
-                    KairoMcpProperties.McpServerProperties fsServer =
-                            props.getServers().get("fs");
-                    assertThat(fsServer.getTransport())
-                            .isEqualTo(KairoMcpProperties.TransportType.STDIO);
-                    assertThat(fsServer.getStdio().getCommand()).isEqualTo("npx");
+                            // Verify STDIO server
+                            KairoMcpProperties.McpServerProperties fsServer =
+                                    props.getServers().get("fs");
+                            assertThat(fsServer.getTransport())
+                                    .isEqualTo(KairoMcpProperties.TransportType.STDIO);
+                            assertThat(fsServer.getStdio().getCommand()).isEqualTo("npx");
 
-                    // Verify HTTP server
-                    KairoMcpProperties.McpServerProperties apiServer =
-                            props.getServers().get("api");
-                    assertThat(apiServer.getTransport())
-                            .isEqualTo(KairoMcpProperties.TransportType.HTTP);
-                    assertThat(apiServer.getHttp().getUrl())
-                            .isEqualTo("http://api.example.com/mcp");
-                    assertThat(apiServer.getHttp().getBearerToken()).isEqualTo("token123");
-                });
+                            // Verify HTTP server
+                            KairoMcpProperties.McpServerProperties apiServer =
+                                    props.getServers().get("api");
+                            assertThat(apiServer.getTransport())
+                                    .isEqualTo(KairoMcpProperties.TransportType.HTTP);
+                            assertThat(apiServer.getHttp().getUrl())
+                                    .isEqualTo("http://api.example.com/mcp");
+                            assertThat(apiServer.getHttp().getBearerToken()).isEqualTo("token123");
+                        });
     }
 
     @Test
     void defaultTransportIsStdio() {
-        runner.withPropertyValues(
-                        "kairo.mcp.servers.test.stdio.command=echo")
-                .run(context -> {
-                    KairoMcpProperties props = context.getBean(KairoMcpProperties.class);
-                    KairoMcpProperties.McpServerProperties server =
-                            props.getServers().get("test");
-                    assertThat(server.getTransport())
-                            .isEqualTo(KairoMcpProperties.TransportType.STDIO);
-                });
+        runner.withPropertyValues("kairo.mcp.servers.test.stdio.command=echo")
+                .run(
+                        context -> {
+                            KairoMcpProperties props = context.getBean(KairoMcpProperties.class);
+                            KairoMcpProperties.McpServerProperties server =
+                                    props.getServers().get("test");
+                            assertThat(server.getTransport())
+                                    .isEqualTo(KairoMcpProperties.TransportType.STDIO);
+                        });
     }
 
     @Test
     void emptyServersMapByDefault() {
-        runner.run(context -> {
-            KairoMcpProperties props = context.getBean(KairoMcpProperties.class);
-            assertThat(props.getServers()).isEmpty();
-        });
+        runner.run(
+                context -> {
+                    KairoMcpProperties props = context.getBean(KairoMcpProperties.class);
+                    assertThat(props.getServers()).isEmpty();
+                });
     }
 }

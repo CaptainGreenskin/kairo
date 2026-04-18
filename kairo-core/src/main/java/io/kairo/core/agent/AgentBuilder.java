@@ -132,8 +132,8 @@ public class AgentBuilder {
     /**
      * Set the model name (e.g. "glm-4-plus", "gpt-4o").
      *
-     * <p>This is a <strong>required</strong> parameter. The builder will throw
-     * {@link IllegalStateException} at {@link #build()} time if not set.
+     * <p>This is a <strong>required</strong> parameter. The builder will throw {@link
+     * IllegalStateException} at {@link #build()} time if not set.
      */
     public AgentBuilder modelName(String modelName) {
         if (modelName == null || modelName.isBlank()) {
@@ -361,8 +361,9 @@ public class AgentBuilder {
         Objects.requireNonNull(modelProvider, "ModelProvider must not be null");
 
         if (modelName == null || modelName.isBlank()) {
-            throw new IllegalStateException("modelName is required. Call .modelName(\"your-model\") before .build(). "
-                    + "Example: AgentBuilder.create().name(\"my-agent\").model(provider).modelName(\"gpt-4o\").build()");
+            throw new IllegalStateException(
+                    "modelName is required. Call .modelName(\"your-model\") before .build(). "
+                            + "Example: AgentBuilder.create().name(\"my-agent\").model(provider).modelName(\"gpt-4o\").build()");
         }
 
         if (maxIterations <= 0) {

@@ -33,9 +33,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/**
- * Full trace tree integration test simulating a complete agent call flow.
- */
+/** Full trace tree integration test simulating a complete agent call flow. */
 class OTelTracerIntegrationTest {
 
     private InMemorySpanExporter exporter;
@@ -45,9 +43,10 @@ class OTelTracerIntegrationTest {
     @BeforeEach
     void setUp() {
         exporter = InMemorySpanExporter.create();
-        tracerProvider = SdkTracerProvider.builder()
-                .addSpanProcessor(SimpleSpanProcessor.create(exporter))
-                .build();
+        tracerProvider =
+                SdkTracerProvider.builder()
+                        .addSpanProcessor(SimpleSpanProcessor.create(exporter))
+                        .build();
         tracer = new OTelTracer(tracerProvider.get("kairo-integration-test"));
     }
 
@@ -103,29 +102,52 @@ class OTelTracerIntegrationTest {
         assertEquals(traceId, reasoningData.getTraceId());
         assertEquals(traceId, toolData.getTraceId());
 
-        assertTrue(agentData.getParentSpanId().equals("0000000000000000")
-                || agentData.getParentSpanId().isEmpty());
+        assertTrue(
+                agentData.getParentSpanId().equals("0000000000000000")
+                        || agentData.getParentSpanId().isEmpty());
         assertEquals(agentData.getSpanId(), iterationData.getParentSpanId());
         assertEquals(iterationData.getSpanId(), reasoningData.getParentSpanId());
         assertEquals(iterationData.getSpanId(), toolData.getParentSpanId());
 
         // Verify agent span attributes
-        assertEquals("math-agent", agentData.getAttributes().get(AttributeKey.stringKey("agent.name")));
-        assertEquals(10L, agentData.getAttributes().get(AttributeKey.longKey("gen_ai.usage.input_tokens")));
+        assertEquals(
+                "math-agent", agentData.getAttributes().get(AttributeKey.stringKey("agent.name")));
+        assertEquals(
+                10L,
+                agentData.getAttributes().get(AttributeKey.longKey("gen_ai.usage.input_tokens")));
         assertEquals(StatusCode.OK, agentData.getStatus().getStatusCode());
 
         // Verify reasoning span attributes
         assertEquals(3L, reasoningData.getAttributes().get(AttributeKey.longKey("message_count")));
-        assertEquals(100L, reasoningData.getAttributes().get(AttributeKey.longKey("gen_ai.usage.input_tokens")));
-        assertEquals(50L, reasoningData.getAttributes().get(AttributeKey.longKey("gen_ai.usage.output_tokens")));
-        assertEquals(20L, reasoningData.getAttributes().get(AttributeKey.longKey("gen_ai.usage.cache_read_tokens")));
-        assertEquals(10L,
-                reasoningData.getAttributes().get(AttributeKey.longKey("gen_ai.usage.cache_creation_tokens")));
+        assertEquals(
+                100L,
+                reasoningData
+                        .getAttributes()
+                        .get(AttributeKey.longKey("gen_ai.usage.input_tokens")));
+        assertEquals(
+                50L,
+                reasoningData
+                        .getAttributes()
+                        .get(AttributeKey.longKey("gen_ai.usage.output_tokens")));
+        assertEquals(
+                20L,
+                reasoningData
+                        .getAttributes()
+                        .get(AttributeKey.longKey("gen_ai.usage.cache_read_tokens")));
+        assertEquals(
+                10L,
+                reasoningData
+                        .getAttributes()
+                        .get(AttributeKey.longKey("gen_ai.usage.cache_creation_tokens")));
 
         // Verify tool span attributes
-        assertEquals("calculator", toolData.getAttributes().get(AttributeKey.stringKey("gen_ai.tool.name")));
-        assertEquals(true, toolData.getAttributes().get(AttributeKey.booleanKey("gen_ai.tool.success")));
-        assertEquals(42L, toolData.getAttributes().get(AttributeKey.longKey("gen_ai.tool.duration_ms")));
+        assertEquals(
+                "calculator",
+                toolData.getAttributes().get(AttributeKey.stringKey("gen_ai.tool.name")));
+        assertEquals(
+                true, toolData.getAttributes().get(AttributeKey.booleanKey("gen_ai.tool.success")));
+        assertEquals(
+                42L, toolData.getAttributes().get(AttributeKey.longKey("gen_ai.tool.duration_ms")));
     }
 
     @Test
@@ -156,10 +178,16 @@ class OTelTracerIntegrationTest {
 
         // Verify compaction attributes on agent span
         SpanData agentData = findSpan(spans, "agent:complex-agent");
-        assertEquals("summarize",
-                agentData.getAttributes().get(AttributeKey.stringKey("gen_ai.compaction.strategy")));
-        assertEquals(3000L,
-                agentData.getAttributes().get(AttributeKey.longKey("gen_ai.compaction.tokens_saved")));
+        assertEquals(
+                "summarize",
+                agentData
+                        .getAttributes()
+                        .get(AttributeKey.stringKey("gen_ai.compaction.strategy")));
+        assertEquals(
+                3000L,
+                agentData
+                        .getAttributes()
+                        .get(AttributeKey.longKey("gen_ai.compaction.tokens_saved")));
     }
 
     @Test
@@ -179,9 +207,11 @@ class OTelTracerIntegrationTest {
         agentSpan.end();
 
         SpanData toolData = findSpan(exporter.getFinishedSpanItems(), "tool:failing-tool");
-        assertEquals("java.lang.RuntimeException",
+        assertEquals(
+                "java.lang.RuntimeException",
                 toolData.getAttributes().get(AttributeKey.stringKey("exception.type")));
-        assertEquals("tool execution failed",
+        assertEquals(
+                "tool execution failed",
                 toolData.getAttributes().get(AttributeKey.stringKey("exception.message")));
         assertEquals(StatusCode.ERROR, toolData.getStatus().getStatusCode());
     }

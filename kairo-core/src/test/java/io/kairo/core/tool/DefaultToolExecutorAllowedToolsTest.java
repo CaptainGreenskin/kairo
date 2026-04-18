@@ -38,6 +38,11 @@ class DefaultToolExecutorAllowedToolsTest {
         registry = new DefaultToolRegistry();
         permissionGuard = mock(PermissionGuard.class);
         when(permissionGuard.checkPermission(anyString(), any())).thenReturn(Mono.just(true));
+        when(permissionGuard.checkPermissionDetail(anyString(), any(Map.class)))
+                .thenReturn(Mono.just(PermissionDecision.allow()));
+        when(permissionGuard.checkPermissionDetail(
+                        anyString(), any(ToolCategory.class), any(Map.class)))
+                .thenReturn(Mono.just(PermissionDecision.allow()));
         executor = new DefaultToolExecutor(registry, permissionGuard);
 
         // Register mock tools

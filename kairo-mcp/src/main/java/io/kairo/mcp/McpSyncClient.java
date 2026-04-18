@@ -26,8 +26,8 @@ import java.util.Map;
  *
  * <p>Provides a synchronous API for users who prefer blocking calls over reactive Mono-based APIs.
  *
- * <p><strong>WARNING:</strong> Do NOT use in reactive pipelines. These methods call {@code .block()}
- * internally and will deadlock in reactive contexts (e.g. inside a Reactor scheduler).
+ * <p><strong>WARNING:</strong> Do NOT use in reactive pipelines. These methods call {@code
+ * .block()} internally and will deadlock in reactive contexts (e.g. inside a Reactor scheduler).
  *
  * <p>Example:
  *
@@ -147,8 +147,7 @@ public class McpSyncClient implements AutoCloseable {
      * @return the read resource result
      */
     public McpSchema.ReadResourceResult readResource(String uri) {
-        McpSchema.ReadResourceRequest request =
-                new McpSchema.ReadResourceRequest(uri);
+        McpSchema.ReadResourceRequest request = new McpSchema.ReadResourceRequest(uri);
         return delegate.readResource(request).block(defaultTimeout);
     }
 
@@ -162,17 +161,13 @@ public class McpSyncClient implements AutoCloseable {
         return result != null ? result.prompts() : List.of();
     }
 
-    /**
-     * Closes the underlying MCP connection.
-     */
+    /** Closes the underlying MCP connection. */
     @Override
     public void close() {
         delegate.close();
     }
 
-    /**
-     * Closes the underlying MCP connection gracefully, waiting for pending operations.
-     */
+    /** Closes the underlying MCP connection gracefully, waiting for pending operations. */
     public void closeGracefully() {
         delegate.closeGracefully().block(defaultTimeout);
     }

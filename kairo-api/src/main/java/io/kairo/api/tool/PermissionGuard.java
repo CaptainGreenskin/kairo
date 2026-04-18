@@ -50,6 +50,36 @@ public interface PermissionGuard {
     }
 
     /**
+     * Check permission with structured decision including reason and policy context.
+     *
+     * @param toolName the tool name
+     * @param input the tool input parameters
+     * @return a Mono emitting the structured permission decision
+     */
+    default Mono<PermissionDecision> checkPermissionDetail(
+            String toolName, Map<String, Object> input) {
+        return checkPermission(toolName, input)
+                .map(
+                        allowed ->
+                                allowed
+                                        ? PermissionDecision.allow()
+                                        : PermissionDecision.deny("Denied by guard", "default"));
+    }
+
+    /**
+     * Check permission with structured decision, including tool category context.
+     *
+     * @param toolName the tool name
+     * @param category the tool category
+     * @param input the tool input parameters
+     * @return a Mono emitting the structured permission decision
+     */
+    default Mono<PermissionDecision> checkPermissionDetail(
+            String toolName, ToolCategory category, Map<String, Object> input) {
+        return checkPermissionDetail(toolName, input);
+    }
+
+    /**
      * Register a dangerous pattern that should be blocked.
      *
      * @param pattern a regex or glob pattern to match against tool inputs

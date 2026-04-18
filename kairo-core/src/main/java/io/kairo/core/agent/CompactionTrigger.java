@@ -16,16 +16,22 @@
 package io.kairo.core.agent;
 
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.memory.MemoryEntry;
+import io.kairo.api.memory.MemoryScope;
+import io.kairo.api.memory.MemoryStore;
 import io.kairo.api.message.Msg;
+import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
+import java.util.function.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 /**
- * Checks whether the conversation history exceeds the context budget and triggers compaction
- * when needed. After compaction the replacement history is written back via
- * {@link ReActLoop#replaceHistory}.
+ * Checks whether the conversation history exceeds the context budget and triggers compaction when
+ * needed. After compaction the replacement history is written back via {@link
+ * ReActLoop#replaceHistory}.
  *
  * <p>Package-private: not part of the public API.
  */
@@ -33,17 +39,32 @@ class CompactionTrigger {
 
     private static final Logger log = LoggerFactory.getLogger(CompactionTrigger.class);
 
+    private static final Predicate<Msg> DEFAULT_IMPORTANCE_PREDICATE = Msg::verbatimPreserved;
+
     private final ContextManager contextManager; // nullable
     private final ReActLoop reactLoop;
+    private final MemoryStore memoryStore; // nullable
+    private final Predicate<Msg> importancePredicate;
 
     CompactionTrigger(ContextManager contextManager, ReActLoop reactLoop) {
+        this(contextManager, reactLoop, null, null);
+    }
+
+    CompactionTrigger(
+            ContextManager contextManager,
+            ReActLoop reactLoop,
+            MemoryStore memoryStore,
+            Predicate<Msg> importancePredicate) {
         this.contextManager = contextManager;
         this.reactLoop = reactLoop;
+        this.memoryStore = memoryStore;
+        this.importancePredicate =
+                importancePredicate != null ? importancePredicate : DEFAULT_IMPORTANCE_PREDICATE;
     }
 
     /**
-     * Check if compaction is needed and perform it if so. Returns {@code true} wrapped in a Mono
-     * if compaction was performed, {@code false} otherwise.
+     * Check if compaction is needed and perform it if so. Returns {@code true} wrapped in a Mono if
+     * compaction was performed, {@code false} otherwise.
      *
      * @param conversationHistory the current conversation history (read-only view)
      * @return Mono&lt;Boolean&gt; — true if compaction occurred
@@ -52,6 +73,9 @@ class CompactionTrigger {
         if (contextManager == null || !contextManager.needsCompaction(conversationHistory)) {
             return Mono.just(false);
         }
+
+        // Flush important messages to memory before compaction
+        flushImportantMessages(conversationHistory);
 
         int previousSize = conversationHistory.size();
         log.info("Context pressure high, triggering compaction...");
@@ -70,5 +94,29 @@ class CompactionTrigger {
                             return true;
                         })
                 .defaultIfEmpty(false);
+    }
+
+    /**
+     * Flush important messages to memory store before they are lost to compaction. No-op if
+     * memoryStore is null.
+     */
+    private void flushImportantMessages(List<Msg> conversationHistory) {
+        if (memoryStore == null) {
+            return;
+        }
+        for (Msg msg : conversationHistory) {
+            if (importancePredicate.test(msg)) {
+                MemoryEntry entry =
+                        new MemoryEntry(
+                                UUID.randomUUID().toString(),
+                                msg.text(),
+                                MemoryScope.SESSION,
+                                Instant.now(),
+                                List.of("compaction-flush"),
+                                true);
+                memoryStore.save(entry).subscribe();
+            }
+        }
+        log.debug("Pre-compaction flush complete for {} messages", conversationHistory.size());
     }
 }
