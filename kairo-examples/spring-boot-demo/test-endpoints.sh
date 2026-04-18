@@ -64,7 +64,7 @@ snippet() {
 
 # Execute a test against an endpoint.
 #   test_endpoint METHOD PATH [BODY] [TIMEOUT]
-# METHOD  : GET or POST
+# METHOD  : GET, POST, PUT, or DELETE
 # PATH    : e.g. /tools/list
 # BODY    : JSON body (empty string for none)
 # TIMEOUT : curl timeout in seconds (default TIMEOUT_NORMAL)
@@ -84,13 +84,13 @@ test_endpoint() {
   tmp_file="$(mktemp)"
 
   local http_code
-  if [[ "$method" == "GET" ]]; then
+  if [[ "$method" == "GET" || ( "$method" == "DELETE" && -z "$body" ) ]]; then
     http_code=$(curl -s -o "$tmp_file" -w '%{http_code}' \
-      --max-time "$timeout" "$url" 2>/dev/null) || http_code="000"
+      --max-time "$timeout" -X "$method" "$url" 2>/dev/null) || http_code="000"
   else
     http_code=$(curl -s -o "$tmp_file" -w '%{http_code}' \
       --max-time "$timeout" \
-      -X POST \
+      -X "$method" \
       -H 'Content-Type: application/json' \
       -d "$body" \
       "$url" 2>/dev/null) || http_code="000"
@@ -172,6 +172,10 @@ test_endpoint GET  "/secure/policy"
 test_endpoint POST "/secure/test-tool" \
   '{"toolName":"readFile","action":"READ"}'
 test_endpoint GET  "/models/available"
+test_endpoint DELETE "/hooks/reset"
+test_endpoint PUT "/secure/policy" \
+  '{"READ_ONLY":"ALLOW","WRITE":"ALLOW","SYSTEM_CHANGE":"DENY"}'
+test_endpoint GET  "/secure/policy"
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Section 2: LLM-Dependent Endpoints
@@ -179,7 +183,7 @@ test_endpoint GET  "/models/available"
 print_header "Section 2: LLM-Dependent Endpoints (require valid API key)"
 
 if [[ "$SKIP_LLM" == "true" ]]; then
-  SKIP=$((SKIP + 10))
+  SKIP=$((SKIP + 12))
   print_skip "All LLM endpoints skipped (--skip-llm)"
 else
   test_endpoint POST "/chat" \
@@ -220,6 +224,11 @@ else
   test_endpoint POST "/multi-agent/plan" \
     '{"task":"Write a hello world program"}' \
     "$TIMEOUT_LLM" true
+
+  test_endpoint PUT "/multi-agent/tasks/1/status" \
+    '{"status":"in_progress"}'
+
+  test_endpoint DELETE "/session/test-1"
 fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
