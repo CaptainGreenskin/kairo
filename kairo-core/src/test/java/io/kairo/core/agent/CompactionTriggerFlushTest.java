@@ -235,4 +235,94 @@ class CompactionTriggerFlushTest {
         assertTrue(contents.contains("user says hello"));
         assertTrue(contents.contains("verbatim but ignored by custom predicate"));
     }
+
+    @Test
+    @DisplayName("Flush error handling: save failure does not prevent compaction")
+    void flushErrorDoesNotPreventCompaction() {
+        when(contextManager.needsCompaction(anyList())).thenReturn(true);
+        when(contextManager.compactMessages(anyList()))
+                .thenReturn(Mono.just(List.of(normalMsg("summary"))));
+
+        // First save fails, second succeeds
+        MemoryEntry dummyEntry =
+                new MemoryEntry(
+                        "dummy", "dummy", MemoryScope.SESSION, Instant.now(), List.of(), true);
+        when(memoryStore.save(any(MemoryEntry.class)))
+                .thenReturn(Mono.error(new RuntimeException("Storage failure")))
+                .thenReturn(Mono.just(dummyEntry));
+
+        Msg v1 = verbatimMsg("will fail to save");
+        Msg v2 = verbatimMsg("will succeed");
+        List<Msg> history = List.of(v1, v2);
+
+        CompactionTrigger trigger =
+                new CompactionTrigger(contextManager, reactLoop, memoryStore, null);
+
+        // Compaction should still complete successfully despite save error
+        StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
+
+        // Both saves were attempted
+        verify(memoryStore, times(2)).save(any(MemoryEntry.class));
+        // Compaction was still called
+        verify(contextManager).compactMessages(anyList());
+    }
+
+    @Test
+    @DisplayName("All flush saves complete before compactMessages is called")
+    void allFlushSavesCompleteBeforeCompaction() {
+        when(contextManager.needsCompaction(anyList())).thenReturn(true);
+        when(contextManager.compactMessages(anyList()))
+                .thenReturn(Mono.just(List.of(normalMsg("summary"))));
+
+        Msg v1 = verbatimMsg("fact A");
+        Msg v2 = verbatimMsg("fact B");
+        Msg v3 = verbatimMsg("fact C");
+        List<Msg> history = List.of(v1, v2, v3);
+
+        CompactionTrigger trigger =
+                new CompactionTrigger(contextManager, reactLoop, memoryStore, null);
+
+        StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
+
+        // All 3 saves must happen before compactMessages
+        InOrder inOrder = inOrder(memoryStore, contextManager);
+        inOrder.verify(memoryStore, times(3)).save(any(MemoryEntry.class));
+        inOrder.verify(contextManager).compactMessages(anyList());
+    }
+
+    @Test
+    @DisplayName("Messages with null or blank text are skipped during flush")
+    void nullAndBlankTextMessagesSkipped() {
+        when(contextManager.needsCompaction(anyList())).thenReturn(true);
+        when(contextManager.compactMessages(anyList()))
+                .thenReturn(Mono.just(List.of(normalMsg("summary"))));
+
+        // A verbatim message with no TextContent — text() returns ""
+        Msg noTextMsg =
+                Msg.builder()
+                        .role(MsgRole.USER)
+                        .verbatimPreserved(true)
+                        .build();
+        // A verbatim message with blank text
+        Msg blankTextMsg =
+                Msg.builder()
+                        .role(MsgRole.USER)
+                        .addContent(new Content.TextContent("   "))
+                        .verbatimPreserved(true)
+                        .build();
+        // A normal verbatim message with valid text
+        Msg validMsg = verbatimMsg("valid content");
+
+        List<Msg> history = List.of(noTextMsg, blankTextMsg, validMsg);
+
+        CompactionTrigger trigger =
+                new CompactionTrigger(contextManager, reactLoop, memoryStore, null);
+
+        StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
+
+        // Only the valid message should be saved
+        ArgumentCaptor<MemoryEntry> captor = ArgumentCaptor.forClass(MemoryEntry.class);
+        verify(memoryStore, times(1)).save(captor.capture());
+        assertEquals("valid content", captor.getValue().content());
+    }
 }
