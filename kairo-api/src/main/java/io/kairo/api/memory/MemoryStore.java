@@ -82,8 +82,8 @@ public interface MemoryStore {
      * Search memory entries by query text within a scope, filtered by tags. Only entries containing
      * ALL specified tags are returned (AND semantics).
      *
-     * <p><strong>Performance note:</strong> The default implementation applies post-filtering
-     * on the 2-arg search results. Implementations SHOULD override this method for efficiency,
+     * <p><strong>Performance note:</strong> The default implementation applies post-filtering on
+     * the 2-arg search results. Implementations SHOULD override this method for efficiency,
      * especially for large datasets where server-side tag filtering reduces data transfer.
      *
      * @param query the search query

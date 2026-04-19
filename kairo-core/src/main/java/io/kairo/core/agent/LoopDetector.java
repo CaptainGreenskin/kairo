@@ -22,11 +22,11 @@ import java.util.*;
 /**
  * Dual-layer loop detector that identifies repetitive tool call patterns in the ReAct loop.
  *
- * <p><b>Layer 1 — Hash-based detection:</b> Computes a hash of each tool call set (sorted by
- * name with canonicalized arguments). Consecutive identical hashes trigger warnings or hard stops.
+ * <p><b>Layer 1 — Hash-based detection:</b> Computes a hash of each tool call set (sorted by name
+ * with canonicalized arguments). Consecutive identical hashes trigger warnings or hard stops.
  *
- * <p><b>Layer 2 — Frequency-based detection:</b> Tracks per-tool invocation timestamps within
- * a sliding time window. Excessive calls to the same tool within the window trigger alerts.
+ * <p><b>Layer 2 — Frequency-based detection:</b> Tracks per-tool invocation timestamps within a
+ * sliding time window. Excessive calls to the same tool within the window trigger alerts.
  *
  * <p>Package-private: not part of the public API.
  */
@@ -139,8 +139,8 @@ class LoopDetector {
     }
 
     /**
-     * Compute a stable hash for a set of tool calls. Tool calls are sorted by name, and each
-     * tool's arguments are canonicalized by sorting map entries.
+     * Compute a stable hash for a set of tool calls. Tool calls are sorted by name, and each tool's
+     * arguments are canonicalized by sorting map entries.
      */
     private int computeCallSetHash(List<Content.ToolUseContent> toolCalls) {
         List<String> signatures = new ArrayList<>();

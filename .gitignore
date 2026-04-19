@@ -60,6 +60,9 @@ docs/ROADMAP.md
 docs/KV-CACHE-PROPOSAL.md
 .plans/
 
+# Local scripts (not for public release)
+scripts/
+
 # Kairo runtime
 /tmp/kairo-sessions/
 .kairo/

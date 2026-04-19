@@ -298,11 +298,7 @@ class CompactionTriggerFlushTest {
                 .thenReturn(Mono.just(List.of(normalMsg("summary"))));
 
         // A verbatim message with no TextContent — text() returns ""
-        Msg noTextMsg =
-                Msg.builder()
-                        .role(MsgRole.USER)
-                        .verbatimPreserved(true)
-                        .build();
+        Msg noTextMsg = Msg.builder().role(MsgRole.USER).verbatimPreserved(true).build();
         // A verbatim message with blank text
         Msg blankTextMsg =
                 Msg.builder()
@@ -348,9 +344,13 @@ class CompactionTriggerFlushTest {
         ArgumentCaptor<MemoryEntry> captor = ArgumentCaptor.forClass(MemoryEntry.class);
         verify(memoryStore, times(3)).save(captor.capture());
 
-        captor.getAllValues().forEach(entry ->
-                assertEquals(MemoryScope.SESSION, entry.scope(),
-                        "Every flushed entry must have SESSION scope"));
+        captor.getAllValues()
+                .forEach(
+                        entry ->
+                                assertEquals(
+                                        MemoryScope.SESSION,
+                                        entry.scope(),
+                                        "Every flushed entry must have SESSION scope"));
     }
 
     @Test
@@ -372,16 +372,19 @@ class CompactionTriggerFlushTest {
         ArgumentCaptor<MemoryEntry> captor = ArgumentCaptor.forClass(MemoryEntry.class);
         verify(memoryStore, times(2)).save(captor.capture());
 
-        captor.getAllValues().forEach(entry ->
-                assertTrue(entry.verbatim(), "Every flushed entry must have verbatim=true"));
+        captor.getAllValues()
+                .forEach(
+                        entry ->
+                                assertTrue(
+                                        entry.verbatim(),
+                                        "Every flushed entry must have verbatim=true"));
     }
 
     @Test
     @DisplayName("Empty conversation history triggers no flush and no errors")
     void testEmptyHistoryNoFlush() {
         when(contextManager.needsCompaction(anyList())).thenReturn(true);
-        when(contextManager.compactMessages(anyList()))
-                .thenReturn(Mono.just(List.of()));
+        when(contextManager.compactMessages(anyList())).thenReturn(Mono.just(List.of()));
 
         List<Msg> history = List.of();
 

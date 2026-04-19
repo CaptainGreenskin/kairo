@@ -49,8 +49,8 @@ import reactor.test.StepVerifier;
 /**
  * Tests for cooperative cancellation in {@link ReActLoop}.
  *
- * <p>Verifies that the {@code checkCancelled()} guard fires at each reactive chain boundary:
- * before tool execution, before recursion, and before flush/compaction.
+ * <p>Verifies that the {@code checkCancelled()} guard fires at each reactive chain boundary: before
+ * tool execution, before recursion, and before flush/compaction.
  */
 class CooperativeCancellationTest {
 
@@ -138,19 +138,22 @@ class CooperativeCancellationTest {
     void interruptBeforeToolExecution_exitsWithAgentInterruptedException() {
         // Model returns a tool call; we set interrupted before tools execute
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
-                .thenAnswer(inv -> {
-                    // Set interrupted after model responds but before tool execution
-                    interrupted.set(true);
-                    return Mono.just(toolCallResponse("tc-1", "search", Map.of("q", "hello")));
-                });
+                .thenAnswer(
+                        inv -> {
+                            // Set interrupted after model responds but before tool execution
+                            interrupted.set(true);
+                            return Mono.just(
+                                    toolCallResponse("tc-1", "search", Map.of("q", "hello")));
+                        });
 
         ReActLoop loop = createLoop(10);
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "search hello")));
 
         StepVerifier.create(loop.runLoop())
                 .expectErrorMatches(
-                        e -> e instanceof AgentInterruptedException
-                                && e.getMessage().contains("interrupted at iteration"))
+                        e ->
+                                e instanceof AgentInterruptedException
+                                        && e.getMessage().contains("interrupted at iteration"))
                 .verify();
 
         // Tool executor should never be called — cancellation fires before tool execution
@@ -164,28 +167,32 @@ class CooperativeCancellationTest {
         // First model call returns tool call; tool executes; then we interrupt before recursion
         AtomicInteger callCount = new AtomicInteger(0);
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
-                .thenAnswer(inv -> {
-                    int n = callCount.incrementAndGet();
-                    if (n == 1) {
-                        return Mono.just(toolCallResponse("tc-1", "fetch", Map.of()));
-                    }
-                    return Mono.just(textResponse("Should not reach here."));
-                });
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(toolCallResponse("tc-1", "fetch", Map.of()));
+                            }
+                            return Mono.just(textResponse("Should not reach here."));
+                        });
 
         when(toolExecutor.execute(eq("fetch"), any()))
-                .thenAnswer(inv -> {
-                    // Set interrupted after tool completes — before next runLoop()
-                    interrupted.set(true);
-                    return Mono.just(new ToolResult("tc-1", "fetched data", false, Map.of()));
-                });
+                .thenAnswer(
+                        inv -> {
+                            // Set interrupted after tool completes — before next runLoop()
+                            interrupted.set(true);
+                            return Mono.just(
+                                    new ToolResult("tc-1", "fetched data", false, Map.of()));
+                        });
 
         ReActLoop loop = createLoop(10);
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "fetch data")));
 
         StepVerifier.create(loop.runLoop())
                 .expectErrorMatches(
-                        e -> e instanceof AgentInterruptedException
-                                && e.getMessage().contains("interrupted at iteration"))
+                        e ->
+                                e instanceof AgentInterruptedException
+                                        && e.getMessage().contains("interrupted at iteration"))
                 .verify();
 
         // Model should only be called once (the first tool-call response)
@@ -199,13 +206,15 @@ class CooperativeCancellationTest {
         // Standard tool-call cycle: model returns tool call, then final text
         AtomicInteger callCount = new AtomicInteger(0);
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
-                .thenAnswer(inv -> {
-                    int n = callCount.incrementAndGet();
-                    if (n == 1) {
-                        return Mono.just(toolCallResponse("tc-1", "echo", Map.of("msg", "hi")));
-                    }
-                    return Mono.just(textResponse("Echo complete."));
-                });
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(
+                                        toolCallResponse("tc-1", "echo", Map.of("msg", "hi")));
+                            }
+                            return Mono.just(textResponse("Echo complete."));
+                        });
 
         when(toolExecutor.execute(eq("echo"), any()))
                 .thenReturn(Mono.just(new ToolResult("tc-1", "hi", false, Map.of())));
@@ -214,10 +223,11 @@ class CooperativeCancellationTest {
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "echo hi")));
 
         StepVerifier.create(loop.runLoop())
-                .assertNext(msg -> {
-                    assertEquals(MsgRole.ASSISTANT, msg.role());
-                    assertTrue(msg.text().contains("Echo complete."));
-                })
+                .assertNext(
+                        msg -> {
+                            assertEquals(MsgRole.ASSISTANT, msg.role());
+                            assertTrue(msg.text().contains("Echo complete."));
+                        })
                 .verifyComplete();
 
         // Both model calls and tool execution should have happened
@@ -234,20 +244,23 @@ class CooperativeCancellationTest {
         // checkAndCompact is reached, so the agent exits cleanly.
         AtomicInteger callCount = new AtomicInteger(0);
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
-                .thenAnswer(inv -> {
-                    int n = callCount.incrementAndGet();
-                    if (n == 1) {
-                        return Mono.just(toolCallResponse("tc-1", "work", Map.of()));
-                    }
-                    return Mono.just(textResponse("Should not reach."));
-                });
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(toolCallResponse("tc-1", "work", Map.of()));
+                            }
+                            return Mono.just(textResponse("Should not reach."));
+                        });
 
         when(toolExecutor.execute(eq("work"), any()))
-                .thenAnswer(inv -> {
-                    // Set interrupted — the checkCancelled before compaction/recursion catches it
-                    interrupted.set(true);
-                    return Mono.just(new ToolResult("tc-1", "done", false, Map.of()));
-                });
+                .thenAnswer(
+                        inv -> {
+                            // Set interrupted — the checkCancelled before compaction/recursion
+                            // catches it
+                            interrupted.set(true);
+                            return Mono.just(new ToolResult("tc-1", "done", false, Map.of()));
+                        });
 
         ReActLoop loop = createLoop(10);
         // Use a real CompactionTrigger with null contextManager — checkAndCompact
@@ -257,8 +270,9 @@ class CooperativeCancellationTest {
 
         StepVerifier.create(loop.runLoop())
                 .expectErrorMatches(
-                        e -> e instanceof AgentInterruptedException
-                                && e.getMessage().contains("interrupted at iteration"))
+                        e ->
+                                e instanceof AgentInterruptedException
+                                        && e.getMessage().contains("interrupted at iteration"))
                 .verify();
 
         // Model should only be called once (the tool-call response)

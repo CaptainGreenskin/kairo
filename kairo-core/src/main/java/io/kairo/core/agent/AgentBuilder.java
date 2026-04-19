@@ -19,12 +19,14 @@ import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.context.ContextManager;
 import io.kairo.api.memory.MemoryStore;
+import io.kairo.api.middleware.Middleware;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.api.tool.UserApprovalHandler;
 import io.kairo.api.tracing.Tracer;
 import io.kairo.core.hook.DefaultHookChain;
+import io.kairo.core.middleware.DefaultMiddlewarePipeline;
 import io.kairo.core.session.SessionManager;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import java.nio.file.Path;
@@ -64,6 +66,7 @@ public class AgentBuilder {
     private int tokenBudget = 200_000;
     private String modelName;
     private final List<Object> hooks = new ArrayList<>();
+    private final List<Middleware> middlewares = new ArrayList<>();
     private ContextManager contextManager;
     private MemoryStore memoryStore;
     private String sessionId;
@@ -152,6 +155,14 @@ public class AgentBuilder {
     public AgentBuilder hook(Object hookHandler) {
         if (hookHandler != null) {
             this.hooks.add(hookHandler);
+        }
+        return this;
+    }
+
+    /** Register a middleware that runs before the agent loop. */
+    public AgentBuilder middleware(Middleware mw) {
+        if (mw != null) {
+            this.middlewares.add(mw);
         }
         return this;
     }
@@ -297,8 +308,8 @@ public class AgentBuilder {
     /**
      * Configure loop detection thresholds for the ReAct loop.
      *
-     * <p>If not called, sensible defaults apply (hash warn=3, hash stop=5,
-     * freq warn=50, freq stop=100, window=10min).
+     * <p>If not called, sensible defaults apply (hash warn=3, hash stop=5, freq warn=50, freq
+     * stop=100, window=10min).
      *
      * @param hashWarn consecutive identical tool-call hashes to trigger a warning
      * @param hashStop consecutive identical tool-call hashes to hard-stop
@@ -335,11 +346,15 @@ public class AgentBuilder {
         // Create hook chain — hooks will be registered by DefaultReActAgent constructor
         DefaultHookChain hookChain = new DefaultHookChain();
 
+        // Build middleware pipeline
+        DefaultMiddlewarePipeline middlewarePipeline = new DefaultMiddlewarePipeline(middlewares);
+
         // Default shutdown manager if none provided
         GracefulShutdownManager sm =
                 shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
 
-        DefaultReActAgent agent = new DefaultReActAgent(config, toolExecutor, hookChain, sm);
+        DefaultReActAgent agent =
+                new DefaultReActAgent(config, toolExecutor, hookChain, middlewarePipeline, sm);
         if (streamingEnabled) {
             agent.setStreamingEnabled(true);
         }
@@ -422,6 +437,10 @@ public class AgentBuilder {
 
         for (Object hook : hooks) {
             configBuilder.addHook(hook);
+        }
+
+        for (Middleware mw : middlewares) {
+            configBuilder.addMiddleware(mw);
         }
 
         for (Object mcpConfig : mcpServerConfigs) {

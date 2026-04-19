@@ -31,8 +31,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Records JSONL change history for skills, supporting per-skill locks so that
- * concurrent modifications to different skills do not block each other.
+ * Records JSONL change history for skills, supporting per-skill locks so that concurrent
+ * modifications to different skills do not block each other.
  */
 public class SkillChangeHistory {
 
@@ -65,7 +65,8 @@ public class SkillChangeHistory {
         return locks.computeIfAbsent(skillName, k -> new Object());
     }
 
-    public void recordChange(String skillName, String operation, String agentName, String oldContent) {
+    public void recordChange(
+            String skillName, String operation, String agentName, String oldContent) {
         synchronized (getLock(skillName)) {
             try {
                 Files.createDirectories(historyDir);
@@ -76,16 +77,22 @@ public class SkillChangeHistory {
                     lines.addAll(Files.readAllLines(historyFile, StandardCharsets.UTF_8));
                 }
 
-                HistoryEntry entry = new HistoryEntry(Instant.now(), operation, agentName, oldContent);
+                HistoryEntry entry =
+                        new HistoryEntry(Instant.now(), operation, agentName, oldContent);
                 lines.add(objectMapper.writeValueAsString(entry));
 
                 if (lines.size() > maxEntries) {
                     lines = new ArrayList<>(lines.subList(lines.size() - maxEntries, lines.size()));
                 }
 
-                Files.writeString(historyFile, String.join("\n", lines) + "\n", StandardCharsets.UTF_8);
+                Files.writeString(
+                        historyFile, String.join("\n", lines) + "\n", StandardCharsets.UTF_8);
             } catch (IOException e) {
-                log.error("Failed to record change history for skill '{}': {}", skillName, e.getMessage(), e);
+                log.error(
+                        "Failed to record change history for skill '{}': {}",
+                        skillName,
+                        e.getMessage(),
+                        e);
             }
         }
     }
@@ -106,7 +113,11 @@ public class SkillChangeHistory {
             }
             return entries;
         } catch (IOException e) {
-            log.error("Failed to read change history for skill '{}': {}", skillName, e.getMessage(), e);
+            log.error(
+                    "Failed to read change history for skill '{}': {}",
+                    skillName,
+                    e.getMessage(),
+                    e);
             return Collections.emptyList();
         }
     }

@@ -144,9 +144,7 @@ class SkillSearchPathTest {
         @DisplayName("loads skills from classpath: path")
         void loadsFromClasspath() {
             List<SkillDefinition> skills =
-                    loader.loadFromSearchPaths(List.of("classpath:skills"))
-                            .collectList()
-                            .block();
+                    loader.loadFromSearchPaths(List.of("classpath:skills")).collectList().block();
 
             assertNotNull(skills);
             assertFalse(skills.isEmpty(), "Should load at least one skill from classpath:skills");
@@ -173,8 +171,7 @@ class SkillSearchPathTest {
         @Test
         @DisplayName("returns null for non-existent ~/ subdirectory")
         void returnsNullForMissingTildePath() {
-            Path resolved =
-                    loader.resolveSearchPath("~/nonexistent-kairo-test-dir-xyz-123456");
+            Path resolved = loader.resolveSearchPath("~/nonexistent-kairo-test-dir-xyz-123456");
             assertNull(resolved);
         }
     }
@@ -207,8 +204,7 @@ class SkillSearchPathTest {
         @DisplayName("all non-existent paths returns empty")
         void allNonExistentReturnsEmpty() {
             List<SkillDefinition> skills =
-                    loader.loadFromSearchPaths(
-                                    List.of("/nonexistent/a", "/nonexistent/b"))
+                    loader.loadFromSearchPaths(List.of("/nonexistent/a", "/nonexistent/b"))
                             .collectList()
                             .block();
 

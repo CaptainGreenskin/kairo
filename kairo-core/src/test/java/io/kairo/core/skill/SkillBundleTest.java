@@ -144,8 +144,7 @@ class SkillBundleTest {
         @DisplayName("listResources returns relative paths excluding SKILL.md")
         void listResourcesReturnsCorrectPaths() throws IOException {
             // Create bundle structure
-            Files.writeString(
-                    tempDir.resolve("SKILL.md"), "---\nname: test\n---\n# Test");
+            Files.writeString(tempDir.resolve("SKILL.md"), "---\nname: test\n---\n# Test");
             Path scriptsDir = Files.createDirectory(tempDir.resolve("scripts"));
             Files.writeString(scriptsDir.resolve("run.sh"), "#!/bin/bash");
             Files.writeString(tempDir.resolve("template.txt"), "hello");
@@ -212,8 +211,7 @@ class SkillBundleTest {
                             + "# Code Review\n\nReview the code carefully.",
                     StandardCharsets.UTF_8);
             Files.createDirectory(bundleDir.resolve("templates"));
-            Files.writeString(
-                    bundleDir.resolve("templates/checklist.md"), "- [ ] Check naming");
+            Files.writeString(bundleDir.resolve("templates/checklist.md"), "- [ ] Check naming");
 
             StepVerifier.create(loader.loadFromDirectory(tempDir))
                     .assertNext(

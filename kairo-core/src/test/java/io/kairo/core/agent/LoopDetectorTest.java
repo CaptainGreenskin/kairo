@@ -24,9 +24,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/**
- * Unit tests for {@link LoopDetector} — dual-layer loop detection.
- */
+/** Unit tests for {@link LoopDetector} — dual-layer loop detection. */
 class LoopDetectorTest {
 
     private static List<Content.ToolUseContent> toolCalls(String... names) {
@@ -69,14 +67,10 @@ class LoopDetectorTest {
     void hashLayer_differentSequencesReturnNone() {
         LoopDetector detector = LoopDetector.withDefaults();
 
-        assertEquals(DetectionResult.Level.NONE,
-                detector.check(toolCalls("read_file")).level());
-        assertEquals(DetectionResult.Level.NONE,
-                detector.check(toolCalls("write_file")).level());
-        assertEquals(DetectionResult.Level.NONE,
-                detector.check(toolCalls("search")).level());
-        assertEquals(DetectionResult.Level.NONE,
-                detector.check(toolCalls("read_file")).level());
+        assertEquals(DetectionResult.Level.NONE, detector.check(toolCalls("read_file")).level());
+        assertEquals(DetectionResult.Level.NONE, detector.check(toolCalls("write_file")).level());
+        assertEquals(DetectionResult.Level.NONE, detector.check(toolCalls("search")).level());
+        assertEquals(DetectionResult.Level.NONE, detector.check(toolCalls("read_file")).level());
     }
 
     @Test

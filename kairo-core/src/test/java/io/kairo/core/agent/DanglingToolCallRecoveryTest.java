@@ -285,7 +285,8 @@ class DanglingToolCallRecoveryTest {
         Content.ToolResultContent trc = (Content.ToolResultContent) injected.contents().get(0);
 
         // Verify the error message contains "interrupted"
-        assertTrue(trc.content().toLowerCase().contains("interrupted"),
+        assertTrue(
+                trc.content().toLowerCase().contains("interrupted"),
                 "Error message should contain 'interrupted' but was: " + trc.content());
     }
 
@@ -309,7 +310,9 @@ class DanglingToolCallRecoveryTest {
         Content.ToolResultContent trc = (Content.ToolResultContent) injected.contents().get(0);
 
         // The recovered ToolResult's toolUseId must match the original dangling call ID
-        assertEquals(danglingId, trc.toolUseId(),
+        assertEquals(
+                danglingId,
+                trc.toolUseId(),
                 "Recovered ToolResult toolUseId must match the dangling call ID");
     }
 }

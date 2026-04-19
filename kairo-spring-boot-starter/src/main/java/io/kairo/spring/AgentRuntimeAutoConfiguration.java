@@ -18,6 +18,7 @@ package io.kairo.spring;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentFactory;
 import io.kairo.api.memory.MemoryStore;
+import io.kairo.api.middleware.Middleware;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.skill.SkillRegistry;
 import io.kairo.api.tool.PermissionGuard;
@@ -41,6 +42,7 @@ import io.kairo.tools.skill.SkillListTool;
 import io.kairo.tools.skill.SkillLoadTool;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -248,11 +250,13 @@ public class AgentRuntimeAutoConfiguration {
             ToolRegistry toolRegistry,
             ToolExecutor toolExecutor,
             GracefulShutdownManager gracefulShutdownManager,
-            AgentRuntimeProperties properties) {
+            AgentRuntimeProperties properties,
+            @org.springframework.beans.factory.annotation.Autowired(required = false)
+                    List<Middleware> middlewares) {
 
         AgentRuntimeProperties.Agent agentProps = properties.getAgent();
 
-        Agent agent =
+        AgentBuilder builder =
                 AgentBuilder.create()
                         .name(agentProps.getName())
                         .model(modelProvider)
@@ -263,8 +267,15 @@ public class AgentRuntimeAutoConfiguration {
                         .maxIterations(agentProps.getMaxIterations())
                         .timeout(Duration.ofSeconds(agentProps.getTimeoutSeconds()))
                         .tokenBudget(agentProps.getTokenBudget())
-                        .shutdownManager(gracefulShutdownManager)
-                        .build();
+                        .shutdownManager(gracefulShutdownManager);
+
+        if (middlewares != null) {
+            for (Middleware mw : middlewares) {
+                builder.middleware(mw);
+            }
+        }
+
+        Agent agent = builder.build();
 
         log.info(
                 "Created default agent '{}' (maxIterations={}, tokenBudget={})",

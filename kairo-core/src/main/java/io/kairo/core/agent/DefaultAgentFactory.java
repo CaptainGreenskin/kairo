@@ -20,6 +20,7 @@ import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.agent.AgentFactory;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.core.hook.DefaultHookChain;
+import io.kairo.core.middleware.DefaultMiddlewarePipeline;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import java.util.ArrayList;
 import java.util.List;
@@ -55,14 +56,20 @@ public class DefaultAgentFactory implements AgentFactory {
     @Override
     public Agent create(AgentConfig config) {
         DefaultHookChain hookChain = new DefaultHookChain();
+        DefaultMiddlewarePipeline pipeline =
+                new DefaultMiddlewarePipeline(
+                        config.middlewares() != null ? config.middlewares() : List.of());
         GracefulShutdownManager sm =
                 shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
-        return new DefaultReActAgent(config, toolExecutor, hookChain, sm);
+        return new DefaultReActAgent(config, toolExecutor, hookChain, pipeline, sm);
     }
 
     @Override
     public Agent createSubAgent(Agent parent, AgentConfig config) {
         DefaultHookChain hookChain = new DefaultHookChain();
+        DefaultMiddlewarePipeline pipeline =
+                new DefaultMiddlewarePipeline(
+                        config.middlewares() != null ? config.middlewares() : List.of());
         GracefulShutdownManager sm =
                 shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
 
@@ -72,6 +79,6 @@ public class DefaultAgentFactory implements AgentFactory {
             parentContext.addAll(reactAgent.conversationHistory());
         }
 
-        return new DefaultReActAgent(config, toolExecutor, hookChain, sm, parentContext);
+        return new DefaultReActAgent(config, toolExecutor, hookChain, pipeline, sm, parentContext);
     }
 }

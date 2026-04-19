@@ -69,7 +69,8 @@ class ErrorRecoveryStrategyCircuitBreakerTest {
     @Test
     void testCircuitBreakerOpenThrowsException() {
         // Use threshold=1 so a single failure opens the breaker
-        ModelCircuitBreaker breaker = new ModelCircuitBreaker("test-model", 1, Duration.ofSeconds(60));
+        ModelCircuitBreaker breaker =
+                new ModelCircuitBreaker("test-model", 1, Duration.ofSeconds(60));
         // Force the breaker to OPEN state
         breaker.recordFailure();
         assertEquals(ModelCircuitBreaker.State.OPEN, breaker.getState());
@@ -96,7 +97,8 @@ class ErrorRecoveryStrategyCircuitBreakerTest {
     @Test
     void testTransientErrorRecordedInBreaker() {
         // Threshold=2 so we can observe the failure count increase
-        ModelCircuitBreaker breaker = new ModelCircuitBreaker("test-model", 2, Duration.ofSeconds(60));
+        ModelCircuitBreaker breaker =
+                new ModelCircuitBreaker("test-model", 2, Duration.ofSeconds(60));
         ErrorRecoveryStrategy strategy =
                 new ErrorRecoveryStrategy(modelProvider, null, fallbackManager, breaker);
 
@@ -104,8 +106,7 @@ class ErrorRecoveryStrategyCircuitBreakerTest {
 
         // Throw a 500 server error — classified as SERVER_ERROR (transient)
         when(modelProvider.call(any(), any()))
-                .thenReturn(
-                        Mono.error(new RuntimeException("500 internal server error")));
+                .thenReturn(Mono.error(new RuntimeException("500 internal server error")));
 
         List<Msg> messages = List.of(Msg.of(MsgRole.USER, "hello"));
         // Start at MAX_RETRY_ATTEMPTS so it won't retry, just classify and record
@@ -125,7 +126,8 @@ class ErrorRecoveryStrategyCircuitBreakerTest {
         // Let's use retryCount=0 and verify the breaker state after exhaustion.
 
         // Reset: use a fresh breaker
-        ModelCircuitBreaker breaker2 = new ModelCircuitBreaker("test-model", 2, Duration.ofSeconds(60));
+        ModelCircuitBreaker breaker2 =
+                new ModelCircuitBreaker("test-model", 2, Duration.ofSeconds(60));
         ErrorRecoveryStrategy strategy2 =
                 new ErrorRecoveryStrategy(modelProvider, null, fallbackManager, breaker2);
 
@@ -148,7 +150,8 @@ class ErrorRecoveryStrategyCircuitBreakerTest {
 
     @Test
     void testNonTransientErrorNotRecorded() {
-        ModelCircuitBreaker breaker = new ModelCircuitBreaker("test-model", 2, Duration.ofSeconds(60));
+        ModelCircuitBreaker breaker =
+                new ModelCircuitBreaker("test-model", 2, Duration.ofSeconds(60));
         ErrorRecoveryStrategy strategy =
                 new ErrorRecoveryStrategy(modelProvider, null, fallbackManager, breaker);
 
@@ -177,7 +180,8 @@ class ErrorRecoveryStrategyCircuitBreakerTest {
 
     @Test
     void testSuccessResetsBreaker() {
-        ModelCircuitBreaker breaker = new ModelCircuitBreaker("test-model", 5, Duration.ofSeconds(60));
+        ModelCircuitBreaker breaker =
+                new ModelCircuitBreaker("test-model", 5, Duration.ofSeconds(60));
         // Record some failures (but not enough to open)
         breaker.recordFailure();
         breaker.recordFailure();

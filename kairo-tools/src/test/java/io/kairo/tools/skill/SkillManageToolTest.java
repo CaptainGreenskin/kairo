@@ -72,7 +72,14 @@ class SkillManageToolTest {
         when(registry.get("test-skill")).thenReturn(Optional.empty());
 
         ToolResult result =
-                tool.execute(Map.of("operation", "create", "name", "test-skill", "content", VALID_SKILL_CONTENT));
+                tool.execute(
+                        Map.of(
+                                "operation",
+                                "create",
+                                "name",
+                                "test-skill",
+                                "content",
+                                VALID_SKILL_CONTENT));
 
         assertFalse(result.isError(), result.content());
         assertTrue(result.content().contains("created"));
@@ -97,11 +104,23 @@ class SkillManageToolTest {
     void editSkill() throws IOException {
         SkillDefinition existing =
                 new SkillDefinition(
-                        "test-skill", "1.0.0", "desc", "old instructions", List.of("/test"), SkillCategory.CODE);
+                        "test-skill",
+                        "1.0.0",
+                        "desc",
+                        "old instructions",
+                        List.of("/test"),
+                        SkillCategory.CODE);
         when(registry.get("test-skill")).thenReturn(Optional.of(existing));
 
         ToolResult result =
-                tool.execute(Map.of("operation", "edit", "name", "test-skill", "content", VALID_SKILL_CONTENT));
+                tool.execute(
+                        Map.of(
+                                "operation",
+                                "edit",
+                                "name",
+                                "test-skill",
+                                "content",
+                                VALID_SKILL_CONTENT));
 
         assertFalse(result.isError(), result.content());
         assertTrue(result.content().contains("updated"));
@@ -124,7 +143,12 @@ class SkillManageToolTest {
     void deleteSkill() {
         SkillDefinition existing =
                 new SkillDefinition(
-                        "test-skill", "1.0.0", "desc", "instructions", List.of("/test"), SkillCategory.CODE);
+                        "test-skill",
+                        "1.0.0",
+                        "desc",
+                        "instructions",
+                        List.of("/test"),
+                        SkillCategory.CODE);
         when(registry.get("test-skill")).thenReturn(Optional.of(existing));
 
         ToolResult result = tool.execute(Map.of("operation", "delete", "name", "test-skill"));
@@ -147,12 +171,14 @@ class SkillManageToolTest {
                 new SkillManageTool(registry, changeHistory, List.of(tempDir.toString()), true);
 
         ToolResult createResult =
-                readonlyTool.execute(Map.of("operation", "create", "name", "x", "content", VALID_SKILL_CONTENT));
+                readonlyTool.execute(
+                        Map.of("operation", "create", "name", "x", "content", VALID_SKILL_CONTENT));
         assertTrue(createResult.isError());
         assertTrue(createResult.content().contains("readonly"));
 
         ToolResult editResult =
-                readonlyTool.execute(Map.of("operation", "edit", "name", "x", "content", VALID_SKILL_CONTENT));
+                readonlyTool.execute(
+                        Map.of("operation", "edit", "name", "x", "content", VALID_SKILL_CONTENT));
         assertTrue(editResult.isError());
         assertTrue(editResult.content().contains("readonly"));
 
@@ -164,11 +190,19 @@ class SkillManageToolTest {
     @Test
     void createDuplicateNameRejected() {
         SkillDefinition existing =
-                new SkillDefinition("test-skill", "1.0.0", "desc", "inst", List.of(), SkillCategory.CODE);
+                new SkillDefinition(
+                        "test-skill", "1.0.0", "desc", "inst", List.of(), SkillCategory.CODE);
         when(registry.get("test-skill")).thenReturn(Optional.of(existing));
 
         ToolResult result =
-                tool.execute(Map.of("operation", "create", "name", "test-skill", "content", VALID_SKILL_CONTENT));
+                tool.execute(
+                        Map.of(
+                                "operation",
+                                "create",
+                                "name",
+                                "test-skill",
+                                "content",
+                                VALID_SKILL_CONTENT));
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("already exists"));
@@ -179,7 +213,14 @@ class SkillManageToolTest {
         when(registry.get("nonexistent")).thenReturn(Optional.empty());
 
         ToolResult result =
-                tool.execute(Map.of("operation", "edit", "name", "nonexistent", "content", VALID_SKILL_CONTENT));
+                tool.execute(
+                        Map.of(
+                                "operation",
+                                "edit",
+                                "name",
+                                "nonexistent",
+                                "content",
+                                VALID_SKILL_CONTENT));
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("does not exist"));
@@ -203,8 +244,15 @@ class SkillManageToolTest {
 
         assertThrows(
                 ToolException.class,
-                () -> classpathOnlyTool.execute(
-                        Map.of("operation", "create", "name", "test-skill", "content", VALID_SKILL_CONTENT)));
+                () ->
+                        classpathOnlyTool.execute(
+                                Map.of(
+                                        "operation",
+                                        "create",
+                                        "name",
+                                        "test-skill",
+                                        "content",
+                                        VALID_SKILL_CONTENT)));
     }
 
     @Test
@@ -218,7 +266,10 @@ class SkillManageToolTest {
                 new SkillManageTool(
                         registry,
                         changeHistory,
-                        List.of("classpath:skills", lowPriority.toString(), highPriority.toString()),
+                        List.of(
+                                "classpath:skills",
+                                lowPriority.toString(),
+                                highPriority.toString()),
                         false);
 
         // highPriority is last non-classpath path, so it should be selected
@@ -231,7 +282,14 @@ class SkillManageToolTest {
         when(registry.get("bad-skill")).thenReturn(Optional.empty());
 
         ToolResult result =
-                tool.execute(Map.of("operation", "create", "name", "bad-skill", "content", "not valid markdown"));
+                tool.execute(
+                        Map.of(
+                                "operation",
+                                "create",
+                                "name",
+                                "bad-skill",
+                                "content",
+                                "not valid markdown"));
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("Invalid skill content"));

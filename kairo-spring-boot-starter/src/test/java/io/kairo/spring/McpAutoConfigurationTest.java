@@ -17,10 +17,12 @@ package io.kairo.spring;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.kairo.mcp.ElicitationHandler;
 import io.kairo.mcp.McpClientRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import reactor.core.publisher.Mono;
 
 /** Tests for {@link McpAutoConfiguration}. */
 class McpAutoConfigurationTest {
@@ -29,9 +31,14 @@ class McpAutoConfigurationTest {
             new ApplicationContextRunner()
                     .withConfiguration(AutoConfigurations.of(McpAutoConfiguration.class));
 
+    /** Runner that provides an empty registry so server registration doesn't fail on connect. */
+    private final ApplicationContextRunner runnerWithMockRegistry =
+            new ApplicationContextRunner()
+                    .withConfiguration(AutoConfigurations.of(McpAutoConfiguration.class))
+                    .withBean("mcpClientRegistry", McpClientRegistry.class, McpClientRegistry::new);
+
     @Test
     void mcpAutoConfigurationActivatesWhenMcpOnClasspath() {
-        // McpClientRegistry IS on classpath (kairo-mcp is a test dep), so auto-config activates
         runner.run(
                 context -> {
                     assertThat(context).hasSingleBean(McpClientRegistry.class);
@@ -54,6 +61,105 @@ class McpAutoConfigurationTest {
                 .run(
                         context -> {
                             assertThat(context).hasSingleBean(McpClientRegistry.class);
+                        });
+    }
+
+    @Test
+    void defaultElicitationHandlerIsProvided() {
+        runner.run(
+                context -> {
+                    assertThat(context).hasSingleBean(ElicitationHandler.class);
+                });
+    }
+
+    @Test
+    void userDefinedElicitationHandlerTakesPrecedence() {
+        runner.withBean(ElicitationHandler.class, () -> request -> Mono.empty())
+                .run(
+                        context -> {
+                            assertThat(context).hasSingleBean(ElicitationHandler.class);
+                        });
+    }
+
+    @Test
+    void stdioServerWithNoCommandFails() {
+        runner.withPropertyValues("kairo.mcp.servers.bad.transport=STDIO")
+                .run(
+                        context -> {
+                            assertThat(context).hasFailed();
+                            assertThat(context.getStartupFailure())
+                                    .hasMessageContaining("no command is configured");
+                        });
+    }
+
+    @Test
+    void httpServerWithNoUrlFails() {
+        runner.withPropertyValues("kairo.mcp.servers.bad.transport=HTTP")
+                .run(
+                        context -> {
+                            assertThat(context).hasFailed();
+                            assertThat(context.getStartupFailure())
+                                    .hasMessageContaining("no URL is configured");
+                        });
+    }
+
+    @Test
+    void httpServerWithBlankUrlFails() {
+        runner.withPropertyValues(
+                        "kairo.mcp.servers.bad.transport=HTTP",
+                        "kairo.mcp.servers.bad.http.url=")
+                .run(
+                        context -> {
+                            assertThat(context).hasFailed();
+                            assertThat(context.getStartupFailure())
+                                    .hasMessageContaining("no URL is configured");
+                        });
+    }
+
+    @Test
+    void stdioServerPropertiesAreParsedCorrectly() {
+        // Provide a user-defined empty registry so McpAutoConfiguration doesn't try to register
+        runnerWithMockRegistry
+                .withPropertyValues(
+                        "kairo.mcp.servers.test-server.transport=STDIO",
+                        "kairo.mcp.servers.test-server.stdio.command=echo",
+                        "kairo.mcp.servers.test-server.stdio.args[0]=hello",
+                        "kairo.mcp.servers.test-server.stdio.env.TEST_KEY=test-value")
+                .run(
+                        context -> {
+                            KairoMcpProperties props = context.getBean(KairoMcpProperties.class);
+                            assertThat(props.getServers()).containsKey("test-server");
+                            KairoMcpProperties.McpServerProperties server =
+                                    props.getServers().get("test-server");
+                            assertThat(server.getTransport())
+                                    .isEqualTo(KairoMcpProperties.TransportType.STDIO);
+                            assertThat(server.getStdio().getCommand()).isEqualTo("echo");
+                            assertThat(server.getStdio().getArgs()).containsExactly("hello");
+                            assertThat(server.getStdio().getEnv())
+                                    .containsEntry("TEST_KEY", "test-value");
+                        });
+    }
+
+    @Test
+    void httpServerPropertiesAreParsedCorrectly() {
+        runnerWithMockRegistry
+                .withPropertyValues(
+                        "kairo.mcp.servers.http-server.transport=HTTP",
+                        "kairo.mcp.servers.http-server.http.url=http://localhost:3000/mcp",
+                        "kairo.mcp.servers.http-server.http.bearer-token=my-token",
+                        "kairo.mcp.servers.http-server.http.headers.X-Custom=value")
+                .run(
+                        context -> {
+                            KairoMcpProperties props = context.getBean(KairoMcpProperties.class);
+                            assertThat(props.getServers()).containsKey("http-server");
+                            KairoMcpProperties.McpServerProperties server =
+                                    props.getServers().get("http-server");
+                            assertThat(server.getTransport())
+                                    .isEqualTo(KairoMcpProperties.TransportType.HTTP);
+                            assertThat(server.getHttp().getUrl()).isEqualTo("http://localhost:3000/mcp");
+                            assertThat(server.getHttp().getBearerToken()).isEqualTo("my-token");
+                            assertThat(server.getHttp().getHeaders())
+                                    .containsEntry("X-Custom", "value");
                         });
     }
 }

@@ -106,7 +106,8 @@ public class SkillLoader {
                                                                                         log.warn(
                                                                                                 "Failed to load skill from {}: {}",
                                                                                                 path,
-                                                                                                e.getMessage()))
+                                                                                                e
+                                                                                                        .getMessage()))
                                                                         .onErrorResume(
                                                                                 e -> Flux.empty()));
 
@@ -120,7 +121,8 @@ public class SkillLoader {
                                                                                         log.warn(
                                                                                                 "Failed to load bundle from {}: {}",
                                                                                                 dir,
-                                                                                                e.getMessage()))
+                                                                                                e
+                                                                                                        .getMessage()))
                                                                         .onErrorResume(
                                                                                 e -> Flux.empty()));
 
@@ -150,25 +152,25 @@ public class SkillLoader {
             return Flux.empty();
         }
         return Flux.defer(
-                () -> {
-                    Map<String, SkillDefinition> skillMap = new LinkedHashMap<>();
-                    for (String searchPath : searchPaths) {
-                        Path resolved = resolveSearchPath(searchPath);
-                        if (resolved == null) {
-                            log.debug("Skipping unresolved search path: {}", searchPath);
-                            continue;
-                        }
-                        // Use loadFromDirectory and collect results synchronously
-                        List<SkillDefinition> skills =
-                                loadFromDirectory(resolved).collectList().block();
-                        if (skills != null) {
-                            for (SkillDefinition skill : skills) {
-                                skillMap.put(skill.name(), skill);
+                        () -> {
+                            Map<String, SkillDefinition> skillMap = new LinkedHashMap<>();
+                            for (String searchPath : searchPaths) {
+                                Path resolved = resolveSearchPath(searchPath);
+                                if (resolved == null) {
+                                    log.debug("Skipping unresolved search path: {}", searchPath);
+                                    continue;
+                                }
+                                // Use loadFromDirectory and collect results synchronously
+                                List<SkillDefinition> skills =
+                                        loadFromDirectory(resolved).collectList().block();
+                                if (skills != null) {
+                                    for (SkillDefinition skill : skills) {
+                                        skillMap.put(skill.name(), skill);
+                                    }
+                                }
                             }
-                        }
-                    }
-                    return Flux.fromIterable(skillMap.values());
-                })
+                            return Flux.fromIterable(skillMap.values());
+                        })
                 .subscribeOn(Schedulers.boundedElastic());
     }
 

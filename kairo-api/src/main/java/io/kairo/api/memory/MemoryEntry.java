@@ -30,10 +30,10 @@ import java.util.List;
  * @param timestamp when this entry was created
  * @param tags tags for categorization and search
  * @param verbatim whether this entry should be preserved as-is (default true)
- * @param confidence optional confidence score between 0.0 and 1.0 (nullable).
- *     Reserved for future use. Currently no consumer reads this field.
- *     Null confidence indicates the entry was created without explicit confidence assessment;
- *     consumers should treat null as "unscored" rather than low-confidence.
+ * @param confidence optional confidence score between 0.0 and 1.0 (nullable). Reserved for future
+ *     use. Currently no consumer reads this field. Null confidence indicates the entry was created
+ *     without explicit confidence assessment; consumers should treat null as "unscored" rather than
+ *     low-confidence.
  */
 public record MemoryEntry(
         String id,

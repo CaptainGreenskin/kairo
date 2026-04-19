@@ -80,62 +80,83 @@ class CompactionTrigger {
 
         // Flush important messages to memory before compaction (wait for completion)
         return flushImportantMessages(conversationHistory)
-                .then(Mono.defer(() -> contextManager
-                        .compactMessages(conversationHistory)
-                        .map(
-                                compacted -> {
-                                    if (compacted != null && compacted.size() < previousSize) {
-                                        reactLoop.replaceHistory(compacted);
-                                        log.info(
-                                                "Compaction complete: {} -> {} messages",
-                                                previousSize,
-                                                reactLoop.getHistory().size());
-                                    }
-                                    return true;
-                                })
-                        .defaultIfEmpty(false)));
+                .then(
+                        Mono.defer(
+                                () ->
+                                        contextManager
+                                                .compactMessages(conversationHistory)
+                                                .map(
+                                                        compacted -> {
+                                                            if (compacted != null
+                                                                    && compacted.size()
+                                                                            < previousSize) {
+                                                                reactLoop.replaceHistory(compacted);
+                                                                log.info(
+                                                                        "Compaction complete: {} -> {} messages",
+                                                                        previousSize,
+                                                                        reactLoop
+                                                                                .getHistory()
+                                                                                .size());
+                                                            }
+                                                            return true;
+                                                        })
+                                                .defaultIfEmpty(false)));
     }
 
     /**
-     * Flush important messages to memory store before they are lost to compaction. Returns a
-     * {@link Mono} that completes when all saves finish. No-op if memoryStore is null.
+     * Flush important messages to memory store before they are lost to compaction. Returns a {@link
+     * Mono} that completes when all saves finish. No-op if memoryStore is null.
      */
     private Mono<Void> flushImportantMessages(List<Msg> conversationHistory) {
         if (memoryStore == null) {
             return Mono.empty();
         }
 
-        List<Msg> importantMessages = conversationHistory.stream()
-                .filter(importancePredicate)
-                .filter(msg -> msg.text() != null && !msg.text().isBlank())
-                .toList();
+        List<Msg> importantMessages =
+                conversationHistory.stream()
+                        .filter(importancePredicate)
+                        .filter(msg -> msg.text() != null && !msg.text().isBlank())
+                        .toList();
 
         if (importantMessages.isEmpty()) {
             return Mono.empty();
         }
 
         return Flux.fromIterable(importantMessages)
-                .flatMap(msg -> {
-                    MemoryEntry entry =
-                            new MemoryEntry(
-                                    UUID.randomUUID().toString(),
-                                    msg.text(),
-                                    MemoryScope.SESSION,
-                                    Instant.now(),
-                                    List.of("compaction-flush"),
-                                    true);
-                    return memoryStore.save(entry)
-                            .doOnError(e -> log.warn(
-                                    "Failed to flush message to memory store: {}",
-                                    msg.text() != null
-                                            ? msg.text().substring(0, Math.min(50, msg.text().length()))
-                                            : "null",
-                                    e))
-                            .onErrorComplete();
-                }, 10)
+                .flatMap(
+                        msg -> {
+                            MemoryEntry entry =
+                                    new MemoryEntry(
+                                            UUID.randomUUID().toString(),
+                                            msg.text(),
+                                            MemoryScope.SESSION,
+                                            Instant.now(),
+                                            List.of("compaction-flush"),
+                                            true);
+                            return memoryStore
+                                    .save(entry)
+                                    .doOnError(
+                                            e ->
+                                                    log.warn(
+                                                            "Failed to flush message to memory store: {}",
+                                                            msg.text() != null
+                                                                    ? msg.text()
+                                                                            .substring(
+                                                                                    0,
+                                                                                    Math.min(
+                                                                                            50,
+                                                                                            msg.text()
+                                                                                                    .length()))
+                                                                    : "null",
+                                                            e))
+                                    .onErrorComplete();
+                        },
+                        10)
                 .then()
-                .doOnTerminate(() -> log.debug(
-                        "Pre-compaction flush complete for {} important messages",
-                        importantMessages.size()));
+                .doOnTerminate(
+                        () ->
+                                log.debug(
+                                        "Pre-compaction flush complete for {} important messages",
+                                        importantMessages.size()));
     }
 }

@@ -2,50 +2,56 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  format-check:
+  spotless:
+    name: Format Check
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'maven'
-      - name: Spotless check
-        run: mvn spotless:check -B
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - run: mvn spotless:check -B
 
   build:
+    name: Build & Test (Java ${{ matrix.java }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
-        java-version: [ '21' ]
+        java: ['17', '21']
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK ${{ matrix.java-version }}
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
-          java-version: ${{ matrix.java-version }}
-          distribution: 'temurin'
-          cache: 'maven'
+          java-version: ${{ matrix.java }}
+          distribution: temurin
+          cache: maven
 
       - name: Build and test
-        run: mvn clean verify -Dspotless.check.skip=true -B
+        run: mvn clean verify -Dspotless.check.skip=true -B -V
 
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-reports-jdk${{ matrix.java-version }}
+          name: test-reports-jdk${{ matrix.java }}
           path: '**/target/surefire-reports/'
           retention-days: 7

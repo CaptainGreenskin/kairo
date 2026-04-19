@@ -82,8 +82,7 @@ public interface SkillRegistry {
     }
 
     /**
-     * Unregisters a skill by name.
-     * Default implementation throws UnsupportedOperationException.
+     * Unregisters a skill by name. Default implementation throws UnsupportedOperationException.
      *
      * @param name the skill name to unregister
      */

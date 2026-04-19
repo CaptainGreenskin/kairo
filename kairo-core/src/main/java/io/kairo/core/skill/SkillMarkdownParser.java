@@ -79,6 +79,7 @@ public class SkillMarkdownParser {
                             return Matcher.quoteReplacement(args.get(key));
                         });
     }
+
     private final ObjectMapper yamlMapper = new ObjectMapper(new YAMLFactory());
 
     /**

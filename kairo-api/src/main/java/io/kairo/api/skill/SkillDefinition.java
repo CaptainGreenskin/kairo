@@ -191,8 +191,10 @@ public record SkillDefinition(
     public List<String> listResources() {
         if (bundleRoot == null) return List.of();
         try (var stream = Files.walk(bundleRoot, 2)) {
-            return stream.filter(p -> !p.equals(bundleRoot)
-                            && !p.getFileName().toString().equals("SKILL.md"))
+            return stream.filter(
+                            p ->
+                                    !p.equals(bundleRoot)
+                                            && !p.getFileName().toString().equals("SKILL.md"))
                     .map(p -> bundleRoot.relativize(p).toString())
                     .toList();
         } catch (IOException e) {

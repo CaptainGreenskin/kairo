@@ -102,7 +102,8 @@ public class SkillManageTool implements ToolHandler {
             case "create" -> doCreate(skillName, skillContent);
             case "edit" -> doEdit(skillName, skillContent);
             case "delete" -> doDelete(skillName);
-            default -> error("Unknown operation: " + op + ". Valid operations: create, edit, delete");
+            default ->
+                    error("Unknown operation: " + op + ". Valid operations: create, edit, delete");
         };
     }
 
@@ -208,8 +209,8 @@ public class SkillManageTool implements ToolHandler {
     }
 
     /**
-     * Select the highest-priority writable path (reversed iteration). New skills land in user custom
-     * directory, not framework built-in.
+     * Select the highest-priority writable path (reversed iteration). New skills land in user
+     * custom directory, not framework built-in.
      */
     Path resolveWritablePath() {
         return searchPaths.reversed().stream()
@@ -217,7 +218,8 @@ public class SkillManageTool implements ToolHandler {
                 .map(
                         p -> {
                             if (p.startsWith("~/")) {
-                                return Path.of(System.getProperty("user.home")).resolve(p.substring(2));
+                                return Path.of(System.getProperty("user.home"))
+                                        .resolve(p.substring(2));
                             }
                             return Path.of(p);
                         })

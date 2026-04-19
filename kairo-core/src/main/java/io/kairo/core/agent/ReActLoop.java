@@ -15,6 +15,7 @@
  */
 package io.kairo.core.agent;
 
+import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.hook.*;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
@@ -26,7 +27,6 @@ import io.kairo.api.tool.ToolResult;
 import io.kairo.core.message.MsgBuilder;
 import io.kairo.core.model.DetectedToolCall;
 import io.kairo.core.model.StreamingToolDetector;
-import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.core.tool.StreamingToolExecutor;
 import java.time.Duration;
 import java.time.Instant;
@@ -489,8 +489,7 @@ class ReActLoop {
         }
         if (detection.level() == LoopDetector.DetectionResult.Level.WARN) {
             // Inject warning as USER message and re-enter reasoning without executing tools
-            conversationHistory.add(
-                    Msg.of(MsgRole.USER, "[Loop Warning] " + detection.message()));
+            conversationHistory.add(Msg.of(MsgRole.USER, "[Loop Warning] " + detection.message()));
             return runLoop();
         }
 
@@ -511,8 +510,9 @@ class ReActLoop {
                             // Auto-compaction check (delegated to CompactionTrigger)
                             if (compactionTrigger != null) {
                                 return checkCancelled()
-                                        .then(compactionTrigger
-                                                .checkAndCompact(conversationHistory))
+                                        .then(
+                                                compactionTrigger.checkAndCompact(
+                                                        conversationHistory))
                                         .flatMap(compacted -> runLoop());
                             }
 
@@ -914,13 +914,17 @@ class ReActLoop {
     }
 
     /**
-     * Check if the agent has been interrupted and signal cancellation if so.
-     * Inserted at reactive chain boundaries for cooperative cancellation.
+     * Check if the agent has been interrupted and signal cancellation if so. Inserted at reactive
+     * chain boundaries for cooperative cancellation.
      */
     private Mono<Void> checkCancelled() {
         if (interrupted.get()) {
-            return Mono.error(new AgentInterruptedException(
-                    "Agent '" + ctx.agentName() + "' interrupted at iteration " + currentIteration));
+            return Mono.error(
+                    new AgentInterruptedException(
+                            "Agent '"
+                                    + ctx.agentName()
+                                    + "' interrupted at iteration "
+                                    + currentIteration));
         }
         return Mono.empty();
     }

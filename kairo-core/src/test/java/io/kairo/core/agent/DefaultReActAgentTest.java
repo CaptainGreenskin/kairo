@@ -71,7 +71,7 @@ class DefaultReActAgentTest {
     }
 
     private DefaultReActAgent createAgent(AgentConfig config) {
-        return new DefaultReActAgent(config, toolExecutor, hookChain, null);
+        return new DefaultReActAgent(config, toolExecutor, hookChain, null, null);
     }
 
     private ModelResponse textResponse(String text) {
@@ -288,7 +288,7 @@ class DefaultReActAgentTest {
                         });
 
         AgentConfig config = baseConfig().build();
-        DefaultReActAgent agent = new DefaultReActAgent(config, null, hookChain, null);
+        DefaultReActAgent agent = new DefaultReActAgent(config, null, hookChain, null, null);
 
         StepVerifier.create(agent.call(Msg.of(MsgRole.USER, "call tool")))
                 .assertNext(msg -> assertNotNull(msg.text()))

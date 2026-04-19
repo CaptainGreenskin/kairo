@@ -17,6 +17,7 @@ package io.kairo.api.agent;
 
 import io.kairo.api.context.ContextManager;
 import io.kairo.api.memory.MemoryStore;
+import io.kairo.api.middleware.Middleware;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.api.tracing.Tracer;
@@ -24,7 +25,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
  * Configuration for creating an agent.
@@ -50,6 +50,7 @@ public record AgentConfig(
         int tokenBudget,
         String modelName,
         List<Object> hooks,
+        List<Middleware> middlewares,
         ContextManager contextManager,
         MemoryStore memoryStore,
         String sessionId,
@@ -60,6 +61,50 @@ public record AgentConfig(
         int loopFreqWarnThreshold,
         int loopFreqHardLimit,
         Duration loopFreqWindow) {
+
+    /** Backward-compatible constructor without middlewares (defaults to empty list). */
+    public AgentConfig(
+            String name,
+            String systemPrompt,
+            ModelProvider modelProvider,
+            ToolRegistry toolRegistry,
+            int maxIterations,
+            Duration timeout,
+            int tokenBudget,
+            String modelName,
+            List<Object> hooks,
+            ContextManager contextManager,
+            MemoryStore memoryStore,
+            String sessionId,
+            Tracer tracer,
+            List<Object> mcpServerConfigs,
+            int loopHashWarnThreshold,
+            int loopHashHardLimit,
+            int loopFreqWarnThreshold,
+            int loopFreqHardLimit,
+            Duration loopFreqWindow) {
+        this(
+                name,
+                systemPrompt,
+                modelProvider,
+                toolRegistry,
+                maxIterations,
+                timeout,
+                tokenBudget,
+                modelName,
+                hooks,
+                List.of(),
+                contextManager,
+                memoryStore,
+                sessionId,
+                tracer,
+                mcpServerConfigs,
+                loopHashWarnThreshold,
+                loopHashHardLimit,
+                loopFreqWarnThreshold,
+                loopFreqHardLimit,
+                loopFreqWindow);
+    }
 
     /**
      * Create a new {@link Builder} for constructing an {@link AgentConfig}.
@@ -84,6 +129,7 @@ public record AgentConfig(
         private int tokenBudget = 200_000;
         private String modelName;
         private final List<Object> hooks = new ArrayList<>();
+        private final List<Middleware> middlewares = new ArrayList<>();
         private ContextManager contextManager;
         private MemoryStore memoryStore;
         private String sessionId;
@@ -201,6 +247,17 @@ public record AgentConfig(
         }
 
         /**
+         * Add a {@link Middleware} to the pipeline that runs before the agent loop.
+         *
+         * @param middleware the middleware to register
+         * @return this builder
+         */
+        public Builder addMiddleware(Middleware middleware) {
+            this.middlewares.add(middleware);
+            return this;
+        }
+
+        /**
          * Set the {@link ContextManager} for conversation history and compaction.
          *
          * @param contextManager the context manager
@@ -294,6 +351,7 @@ public record AgentConfig(
                     tokenBudget,
                     modelName,
                     List.copyOf(hooks),
+                    List.copyOf(middlewares),
                     contextManager,
                     memoryStore,
                     sessionId,

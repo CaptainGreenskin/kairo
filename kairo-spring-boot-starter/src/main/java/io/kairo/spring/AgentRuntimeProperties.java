@@ -358,10 +358,11 @@ public class AgentRuntimeProperties {
 
         /**
          * Ordered search paths for skill files (lowest priority first). Supports:
+         *
          * <ul>
-         *   <li>{@code classpath:} prefix for classpath resources</li>
-         *   <li>{@code ~/} prefix for user home directory</li>
-         *   <li>plain filesystem paths</li>
+         *   <li>{@code classpath:} prefix for classpath resources
+         *   <li>{@code ~/} prefix for user home directory
+         *   <li>plain filesystem paths
          * </ul>
          */
         private List<String> searchPaths = List.of("classpath:skills");

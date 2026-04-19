@@ -109,9 +109,7 @@ public class SkillLoadTool implements ToolHandler {
         // 2. {{arg}} substitution second
         @SuppressWarnings("unchecked")
         Map<String, String> argMap =
-                (input.get("args") instanceof Map<?, ?> m)
-                        ? (Map<String, String>) m
-                        : null;
+                (input.get("args") instanceof Map<?, ?> m) ? (Map<String, String>) m : null;
         if (argMap != null && !argMap.isEmpty()) {
             instructions = SkillMarkdownParser.substituteParameters(instructions, argMap);
         }

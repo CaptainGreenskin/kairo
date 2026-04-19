@@ -289,56 +289,70 @@ class MemoryStoreTagFilterTest {
     @DisplayName("Default method post-filtering works on minimal MemoryStore impl")
     void testDefaultMethodBehavior() {
         // A minimal MemoryStore that does NOT override the 3-arg search
-        MemoryStore minimalStore = new MemoryStore() {
-            private final List<MemoryEntry> entries = new ArrayList<>();
+        MemoryStore minimalStore =
+                new MemoryStore() {
+                    private final List<MemoryEntry> entries = new ArrayList<>();
 
-            @Override
-            public Mono<MemoryEntry> save(MemoryEntry entry) {
-                entries.add(entry);
-                return Mono.just(entry);
-            }
+                    @Override
+                    public Mono<MemoryEntry> save(MemoryEntry entry) {
+                        entries.add(entry);
+                        return Mono.just(entry);
+                    }
 
-            @Override
-            public Mono<MemoryEntry> get(String id) {
-                return Mono.justOrEmpty(
-                        entries.stream().filter(e -> e.id().equals(id)).findFirst().orElse(null));
-            }
+                    @Override
+                    public Mono<MemoryEntry> get(String id) {
+                        return Mono.justOrEmpty(
+                                entries.stream()
+                                        .filter(e -> e.id().equals(id))
+                                        .findFirst()
+                                        .orElse(null));
+                    }
 
-            @Override
-            public Flux<MemoryEntry> search(String query, MemoryScope scope) {
-                return Flux.fromIterable(entries).filter(
-                        e -> e.scope() == scope && e.content().contains(query));
-            }
+                    @Override
+                    public Flux<MemoryEntry> search(String query, MemoryScope scope) {
+                        return Flux.fromIterable(entries)
+                                .filter(e -> e.scope() == scope && e.content().contains(query));
+                    }
 
-            @Override
-            public Mono<Void> delete(String id) {
-                entries.removeIf(e -> e.id().equals(id));
-                return Mono.empty();
-            }
+                    @Override
+                    public Mono<Void> delete(String id) {
+                        entries.removeIf(e -> e.id().equals(id));
+                        return Mono.empty();
+                    }
 
-            @Override
-            public Flux<MemoryEntry> list(MemoryScope scope) {
-                return Flux.fromIterable(entries).filter(e -> e.scope() == scope);
-            }
-        };
+                    @Override
+                    public Flux<MemoryEntry> list(MemoryScope scope) {
+                        return Flux.fromIterable(entries).filter(e -> e.scope() == scope);
+                    }
+                };
 
         // Seed entries
-        minimalStore.save(entry("m1", "java guide", MemoryScope.PROJECT, List.of("java", "tutorial")))
+        minimalStore
+                .save(entry("m1", "java guide", MemoryScope.PROJECT, List.of("java", "tutorial")))
                 .block();
-        minimalStore.save(entry("m2", "java concurrency", MemoryScope.PROJECT, List.of("java", "concurrency")))
+        minimalStore
+                .save(
+                        entry(
+                                "m2",
+                                "java concurrency",
+                                MemoryScope.PROJECT,
+                                List.of("java", "concurrency")))
                 .block();
-        minimalStore.save(entry("m3", "java streams", MemoryScope.PROJECT, List.of("java", "tutorial")))
+        minimalStore
+                .save(entry("m3", "java streams", MemoryScope.PROJECT, List.of("java", "tutorial")))
                 .block();
 
         // 3-arg search uses default method post-filtering
         StepVerifier.create(
-                        minimalStore.search("java", MemoryScope.PROJECT, List.of("java", "tutorial"))
+                        minimalStore
+                                .search("java", MemoryScope.PROJECT, List.of("java", "tutorial"))
                                 .collectList())
-                .assertNext(results -> {
-                    assertEquals(2, results.size());
-                    assertTrue(results.stream().anyMatch(e -> e.id().equals("m1")));
-                    assertTrue(results.stream().anyMatch(e -> e.id().equals("m3")));
-                })
+                .assertNext(
+                        results -> {
+                            assertEquals(2, results.size());
+                            assertTrue(results.stream().anyMatch(e -> e.id().equals("m1")));
+                            assertTrue(results.stream().anyMatch(e -> e.id().equals("m3")));
+                        })
                 .verifyComplete();
     }
 
@@ -351,12 +365,24 @@ class MemoryStoreTagFilterTest {
         store.save(entry("x1", "java guide", MemoryScope.PROJECT, List.of("java", "tutorial")))
                 .block();
         // Entry with null tags
-        store.save(new MemoryEntry(
-                        "x2", "java nulltags", MemoryScope.PROJECT, Instant.now(), null, true))
+        store.save(
+                        new MemoryEntry(
+                                "x2",
+                                "java nulltags",
+                                MemoryScope.PROJECT,
+                                Instant.now(),
+                                null,
+                                true))
                 .block();
         // Entry with empty tags
-        store.save(new MemoryEntry(
-                        "x3", "java emptytags", MemoryScope.PROJECT, Instant.now(), List.of(), true))
+        store.save(
+                        new MemoryEntry(
+                                "x3",
+                                "java emptytags",
+                                MemoryScope.PROJECT,
+                                Instant.now(),
+                                List.of(),
+                                true))
                 .block();
         // Entry with different tags
         store.save(entry("x4", "java other", MemoryScope.PROJECT, List.of("other"))).block();
@@ -364,10 +390,11 @@ class MemoryStoreTagFilterTest {
         // Filter for "java" tag should only return x1, not NPE on x2/x3
         StepVerifier.create(
                         store.search("java", MemoryScope.PROJECT, List.of("java")).collectList())
-                .assertNext(results -> {
-                    assertEquals(1, results.size());
-                    assertEquals("x1", results.get(0).id());
-                })
+                .assertNext(
+                        results -> {
+                            assertEquals(1, results.size());
+                            assertEquals("x1", results.get(0).id());
+                        })
                 .verifyComplete();
     }
 }

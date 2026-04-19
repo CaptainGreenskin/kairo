@@ -30,8 +30,8 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
- * Tests for {@link ModelCircuitBreaker} auto-configuration in
- * {@link AgentRuntimeAutoConfiguration}.
+ * Tests for {@link ModelCircuitBreaker} auto-configuration in {@link
+ * AgentRuntimeAutoConfiguration}.
  *
  * <p>Every test uses {@link ApplicationContextRunner} so no real Spring context is started.
  */

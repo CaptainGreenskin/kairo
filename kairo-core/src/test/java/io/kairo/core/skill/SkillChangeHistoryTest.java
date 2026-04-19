@@ -33,8 +33,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class SkillChangeHistoryTest {
 
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     @Test
     void recordAndRetrieveSingleChange() {
@@ -78,8 +77,10 @@ class SkillChangeHistoryTest {
         Path jsonlFile = historyDir.resolve("my-skill.jsonl");
         assertThat(jsonlFile).exists();
 
-        List<String> lines = Files.readAllLines(jsonlFile, StandardCharsets.UTF_8)
-                .stream().filter(l -> !l.isBlank()).toList();
+        List<String> lines =
+                Files.readAllLines(jsonlFile, StandardCharsets.UTF_8).stream()
+                        .filter(l -> !l.isBlank())
+                        .toList();
         assertThat(lines).hasSize(1);
 
         ObjectMapper mapper = new ObjectMapper();
@@ -119,13 +120,15 @@ class SkillChangeHistoryTest {
         // Write to different skills concurrently
         for (int i = 0; i < threadCount; i++) {
             String skillName = "skill-" + i;
-            executor.submit(() -> {
-                try {
-                    history.recordChange(skillName, "create", "agent-" + skillName, "content");
-                } finally {
-                    latch.countDown();
-                }
-            });
+            executor.submit(
+                    () -> {
+                        try {
+                            history.recordChange(
+                                    skillName, "create", "agent-" + skillName, "content");
+                        } finally {
+                            latch.countDown();
+                        }
+                    });
         }
 
         assertThat(latch.await(10, TimeUnit.SECONDS)).isTrue();
