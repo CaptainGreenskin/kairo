@@ -17,6 +17,7 @@ package io.kairo.core.agent;
 
 import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentConfig;
+import io.kairo.api.agent.AgentSnapshot;
 import io.kairo.api.context.ContextManager;
 import io.kairo.api.memory.MemoryStore;
 import io.kairo.api.middleware.Middleware;
@@ -75,6 +76,7 @@ public class AgentBuilder {
     private Tracer tracer;
     private boolean streamingEnabled = false;
     private GracefulShutdownManager shutdownManager;
+    private AgentSnapshot restoreFrom;
     private final List<Object> mcpServerConfigs = new ArrayList<>();
     private int loopHashWarn = 3;
     private int loopHashStop = 5;
@@ -246,6 +248,21 @@ public class AgentBuilder {
     }
 
     /**
+     * Restore an agent from a previously captured snapshot.
+     *
+     * <p>The restored agent will continue from the snapshot's conversation history, iteration
+     * count, and token usage. Runtime dependencies (model provider, tool executor, etc.) must still
+     * be set on this builder — they are not stored in the snapshot.
+     *
+     * @param snapshot the snapshot to restore from
+     * @return this builder
+     */
+    public AgentBuilder restoreFrom(AgentSnapshot snapshot) {
+        this.restoreFrom = snapshot;
+        return this;
+    }
+
+    /**
      * Enable or disable streaming responses from the model provider.
      *
      * <p>When enabled, the agent receives tokens in real-time as they are generated. Streaming
@@ -355,6 +372,15 @@ public class AgentBuilder {
 
         DefaultReActAgent agent =
                 new DefaultReActAgent(config, toolExecutor, hookChain, middlewarePipeline, sm);
+
+        // Restore from snapshot if provided
+        if (restoreFrom != null) {
+            if (restoreFrom.conversationHistory() != null
+                    && !restoreFrom.conversationHistory().isEmpty()) {
+                agent.injectMessages(restoreFrom.conversationHistory());
+            }
+        }
+
         if (streamingEnabled) {
             agent.setStreamingEnabled(true);
         }

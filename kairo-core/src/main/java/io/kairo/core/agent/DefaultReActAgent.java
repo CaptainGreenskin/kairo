@@ -17,6 +17,7 @@ package io.kairo.core.agent;
 
 import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentConfig;
+import io.kairo.api.agent.AgentSnapshot;
 import io.kairo.api.agent.AgentState;
 import io.kairo.api.context.ContextManager;
 import io.kairo.api.exception.AgentInterruptedException;
@@ -406,6 +407,28 @@ public class DefaultReActAgent implements Agent {
      */
     public long totalTokensUsed() {
         return totalTokensUsed.get();
+    }
+
+    @Override
+    public AgentSnapshot snapshot() {
+        return new AgentSnapshot(
+                id,
+                name,
+                state,
+                currentIteration.get(),
+                totalTokensUsed.get(),
+                reactLoop.getHistory(),
+                Map.of("modelName", config.modelName()),
+                Instant.now());
+    }
+
+    /**
+     * Inject conversation history into this agent (used for snapshot restoration).
+     *
+     * @param messages the messages to inject
+     */
+    public void injectMessages(List<Msg> messages) {
+        reactLoop.injectMessages(messages);
     }
 
     // ---- Private: System prompt and model config ----

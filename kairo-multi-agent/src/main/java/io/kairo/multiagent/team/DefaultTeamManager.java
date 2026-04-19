@@ -15,6 +15,8 @@
  */
 package io.kairo.multiagent.team;
 
+import io.kairo.api.a2a.AgentCard;
+import io.kairo.api.a2a.AgentCardResolver;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.team.MessageBus;
 import io.kairo.api.team.Team;
@@ -36,6 +38,25 @@ public class DefaultTeamManager implements TeamManager {
     private static final Logger log = LoggerFactory.getLogger(DefaultTeamManager.class);
 
     private final ConcurrentHashMap<String, Team> teams = new ConcurrentHashMap<>();
+    private final AgentCardResolver agentCardResolver;
+
+    /** Creates a {@code DefaultTeamManager} without A2A agent-card integration. */
+    public DefaultTeamManager() {
+        this(null);
+    }
+
+    /**
+     * Creates a {@code DefaultTeamManager} with optional A2A agent-card integration.
+     *
+     * <p>When a non-null resolver is provided, agents added via {@link #addAgent(String, Agent)}
+     * are automatically registered as {@link AgentCard}s for A2A discovery, and removed agents are
+     * unregistered.
+     *
+     * @param agentCardResolver the resolver to use for agent card registration, or {@code null}
+     */
+    public DefaultTeamManager(AgentCardResolver agentCardResolver) {
+        this.agentCardResolver = agentCardResolver;
+    }
 
     @Override
     public Team create(String name) {
@@ -90,6 +111,12 @@ public class DefaultTeamManager implements TeamManager {
         if (bus instanceof InProcessMessageBus inProcessBus) {
             inProcessBus.registerAgent(agent.id());
         }
+        // Register agent card for A2A discovery
+        if (agentCardResolver != null) {
+            AgentCard card = AgentCard.of(agent.id(), agent.name(), "");
+            agentCardResolver.register(card);
+            log.debug("Registered AgentCard for '{}'", agent.id());
+        }
         log.info("Added agent '{}' to team '{}'", agent.id(), teamName);
     }
 
@@ -104,6 +131,11 @@ public class DefaultTeamManager implements TeamManager {
         MessageBus bus = team.messageBus();
         if (bus instanceof InProcessMessageBus inProcessBus) {
             inProcessBus.unregisterAgent(agentId);
+        }
+        // Unregister agent card from A2A discovery
+        if (agentCardResolver != null) {
+            agentCardResolver.unregister(agentId);
+            log.debug("Unregistered AgentCard for '{}'", agentId);
         }
         log.info("Removed agent '{}' from team '{}'", agentId, teamName);
     }

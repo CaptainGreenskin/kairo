@@ -91,4 +91,22 @@ public interface Agent {
      * implementation.
      */
     void interrupt();
+
+    /**
+     * Capture a snapshot of the agent's current runtime state.
+     *
+     * <p>The snapshot includes conversation history, iteration count, token usage, and lifecycle
+     * state. Runtime dependencies (ModelProvider, ToolExecutor, etc.) are not included. The
+     * snapshot can be restored via {@code AgentBuilder.restoreFrom(snapshot)}.
+     *
+     * <p>The default implementation throws {@link UnsupportedOperationException}. Agents that
+     * support snapshotting should override this method.
+     *
+     * @return an immutable snapshot of the agent's state
+     * @throws UnsupportedOperationException if the agent does not support snapshotting
+     */
+    default AgentSnapshot snapshot() {
+        throw new UnsupportedOperationException(
+                "Snapshot not supported by this agent implementation");
+    }
 }

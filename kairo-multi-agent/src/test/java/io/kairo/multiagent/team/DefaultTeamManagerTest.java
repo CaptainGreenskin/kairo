@@ -18,9 +18,12 @@ package io.kairo.multiagent.team;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import io.kairo.api.a2a.AgentCardResolver;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.team.Team;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 class DefaultTeamManagerTest {
@@ -128,5 +131,77 @@ class DefaultTeamManagerTest {
         manager.addAgent("golf", a2);
 
         assertEquals(2, manager.get("golf").agents().size());
+    }
+
+    @Nested
+    @DisplayName("A2A AgentCard integration")
+    class AgentCardIntegration {
+
+        private AgentCardResolver resolver;
+        private DefaultTeamManager managerWithResolver;
+
+        @BeforeEach
+        void setUp() {
+            resolver = mock(AgentCardResolver.class);
+            managerWithResolver = new DefaultTeamManager(resolver);
+        }
+
+        @Test
+        @DisplayName("addAgent registers AgentCard when resolver is present")
+        void addAgentRegistersCard() {
+            managerWithResolver.create("team-a2a");
+            Agent agent = mock(Agent.class);
+            when(agent.id()).thenReturn("agent-x");
+            when(agent.name()).thenReturn("Agent X");
+
+            managerWithResolver.addAgent("team-a2a", agent);
+
+            verify(resolver)
+                    .register(
+                            argThat(
+                                    card ->
+                                            card.id().equals("agent-x")
+                                                    && card.name().equals("Agent X")));
+        }
+
+        @Test
+        @DisplayName("removeAgent unregisters AgentCard when resolver is present")
+        void removeAgentUnregistersCard() {
+            managerWithResolver.create("team-a2a");
+            Agent agent = mock(Agent.class);
+            when(agent.id()).thenReturn("agent-y");
+            when(agent.name()).thenReturn("Agent Y");
+            managerWithResolver.addAgent("team-a2a", agent);
+
+            managerWithResolver.removeAgent("team-a2a", "agent-y");
+
+            verify(resolver).unregister("agent-y");
+        }
+
+        @Test
+        @DisplayName("no-arg constructor works without resolver (backward compatible)")
+        void noArgConstructorBackwardCompatible() {
+            DefaultTeamManager plain = new DefaultTeamManager();
+            plain.create("plain-team");
+            Agent agent = mock(Agent.class);
+            when(agent.id()).thenReturn("a1");
+            when(agent.name()).thenReturn("A1");
+
+            assertDoesNotThrow(() -> plain.addAgent("plain-team", agent));
+            assertDoesNotThrow(() -> plain.removeAgent("plain-team", "a1"));
+        }
+
+        @Test
+        @DisplayName("null resolver constructor works without resolver")
+        void nullResolverConstructor() {
+            DefaultTeamManager nullResolver = new DefaultTeamManager(null);
+            nullResolver.create("null-team");
+            Agent agent = mock(Agent.class);
+            when(agent.id()).thenReturn("a2");
+            when(agent.name()).thenReturn("A2");
+
+            assertDoesNotThrow(() -> nullResolver.addAgent("null-team", agent));
+            assertDoesNotThrow(() -> nullResolver.removeAgent("null-team", "a2"));
+        }
     }
 }
