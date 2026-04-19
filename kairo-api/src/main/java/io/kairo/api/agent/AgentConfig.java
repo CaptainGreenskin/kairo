@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Configuration for creating an agent.
@@ -53,7 +54,12 @@ public record AgentConfig(
         MemoryStore memoryStore,
         String sessionId,
         Tracer tracer,
-        List<Object> mcpServerConfigs) {
+        List<Object> mcpServerConfigs,
+        int loopHashWarnThreshold,
+        int loopHashHardLimit,
+        int loopFreqWarnThreshold,
+        int loopFreqHardLimit,
+        Duration loopFreqWindow) {
 
     /**
      * Create a new {@link Builder} for constructing an {@link AgentConfig}.
@@ -83,6 +89,11 @@ public record AgentConfig(
         private String sessionId;
         private Tracer tracer;
         private final List<Object> mcpServerConfigs = new ArrayList<>();
+        private int loopHashWarnThreshold = 3;
+        private int loopHashHardLimit = 5;
+        private int loopFreqWarnThreshold = 50;
+        private int loopFreqHardLimit = 100;
+        private Duration loopFreqWindow = Duration.ofMinutes(10);
 
         private Builder() {}
 
@@ -245,6 +256,26 @@ public record AgentConfig(
         }
 
         /**
+         * Configure loop detection thresholds.
+         *
+         * @param hashWarn consecutive identical hash count to trigger WARN (default 3)
+         * @param hashStop consecutive identical hash count to trigger HARD_STOP (default 5)
+         * @param freqWarn per-tool call count within window to trigger WARN (default 50)
+         * @param freqStop per-tool call count within window to trigger HARD_STOP (default 100)
+         * @param freqWindow the sliding time window for frequency detection (default 10 min)
+         * @return this builder
+         */
+        public Builder loopDetection(
+                int hashWarn, int hashStop, int freqWarn, int freqStop, Duration freqWindow) {
+            this.loopHashWarnThreshold = hashWarn;
+            this.loopHashHardLimit = hashStop;
+            this.loopFreqWarnThreshold = freqWarn;
+            this.loopFreqHardLimit = freqStop;
+            this.loopFreqWindow = freqWindow;
+            return this;
+        }
+
+        /**
          * Build an immutable {@link AgentConfig} from the current builder state.
          *
          * @return the constructed config
@@ -267,7 +298,12 @@ public record AgentConfig(
                     memoryStore,
                     sessionId,
                     tracer,
-                    List.copyOf(mcpServerConfigs));
+                    List.copyOf(mcpServerConfigs),
+                    loopHashWarnThreshold,
+                    loopHashHardLimit,
+                    loopFreqWarnThreshold,
+                    loopFreqHardLimit,
+                    loopFreqWindow);
         }
     }
 }

@@ -26,6 +26,7 @@ import io.kairo.api.tool.ToolResult;
 import io.kairo.core.message.MsgBuilder;
 import io.kairo.core.model.DetectedToolCall;
 import io.kairo.core.model.StreamingToolDetector;
+import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.core.tool.StreamingToolExecutor;
 import java.time.Duration;
 import java.time.Instant;
@@ -64,6 +65,7 @@ class ReActLoop {
     private volatile boolean streamingEnabled = false;
     private final AtomicBoolean danglingRecoveryDone = new AtomicBoolean(false);
     private CompactionTrigger compactionTrigger; // set after construction
+    private final LoopDetector loopDetector;
 
     /**
      * Create a new ReActLoop.
@@ -86,6 +88,14 @@ class ReActLoop {
         this.currentIteration = currentIteration;
         this.totalTokensUsed = totalTokensUsed;
         this.modelConfigSupplier = modelConfigSupplier;
+        // Initialize loop detector from config thresholds
+        this.loopDetector =
+                new LoopDetector(
+                        ctx.config().loopHashWarnThreshold(),
+                        ctx.config().loopHashHardLimit(),
+                        ctx.config().loopFreqWarnThreshold(),
+                        ctx.config().loopFreqHardLimit(),
+                        ctx.config().loopFreqWindow());
     }
 
     // ---- History management (controlled mutation) ----
@@ -472,8 +482,21 @@ class ReActLoop {
                         .map(Content.ToolUseContent::toolName)
                         .collect(Collectors.joining(", ")));
 
-        // 7. Execute tools with hooks
-        return executeToolsWithHooks(toolCalls)
+        // Loop detection: check BEFORE tool execution
+        var detection = loopDetector.check(toolCalls);
+        if (detection.level() == LoopDetector.DetectionResult.Level.HARD_STOP) {
+            return Mono.error(new LoopDetectionException(detection.message()));
+        }
+        if (detection.level() == LoopDetector.DetectionResult.Level.WARN) {
+            // Inject warning as USER message and re-enter reasoning without executing tools
+            conversationHistory.add(
+                    Msg.of(MsgRole.USER, "[Loop Warning] " + detection.message()));
+            return runLoop();
+        }
+
+        // 7. Execute tools with hooks (check cancellation before starting)
+        return checkCancelled()
+                .then(executeToolsWithHooks(toolCalls))
                 .flatMap(
                         toolResults -> {
                             // 7b. Detect allowedTools from skill_load results
@@ -487,13 +510,14 @@ class ReActLoop {
 
                             // Auto-compaction check (delegated to CompactionTrigger)
                             if (compactionTrigger != null) {
-                                return compactionTrigger
-                                        .checkAndCompact(conversationHistory)
+                                return checkCancelled()
+                                        .then(compactionTrigger
+                                                .checkAndCompact(conversationHistory))
                                         .flatMap(compacted -> runLoop());
                             }
 
                             // 9. Recurse into next loop iteration
-                            return runLoop();
+                            return checkCancelled().then(runLoop());
                         });
     }
 
@@ -887,6 +911,18 @@ class ReActLoop {
                 .sourceAgentId(ctx.agentId())
                 .text(text)
                 .build();
+    }
+
+    /**
+     * Check if the agent has been interrupted and signal cancellation if so.
+     * Inserted at reactive chain boundaries for cooperative cancellation.
+     */
+    private Mono<Void> checkCancelled() {
+        if (interrupted.get()) {
+            return Mono.error(new AgentInterruptedException(
+                    "Agent '" + ctx.agentName() + "' interrupted at iteration " + currentIteration));
+        }
+        return Mono.empty();
     }
 
     /** Apply skill_load tool restrictions from tool results. */

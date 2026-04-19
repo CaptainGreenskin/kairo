@@ -21,6 +21,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
 
 import io.kairo.api.agent.AgentConfig;
+import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.hook.HookChain;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;

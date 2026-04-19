@@ -73,6 +73,11 @@ public class AgentBuilder {
     private boolean streamingEnabled = false;
     private GracefulShutdownManager shutdownManager;
     private final List<Object> mcpServerConfigs = new ArrayList<>();
+    private int loopHashWarn = 3;
+    private int loopHashStop = 5;
+    private int loopFreqWarn = 50;
+    private int loopFreqStop = 100;
+    private Duration loopFreqWindow = Duration.ofMinutes(10);
 
     private AgentBuilder() {}
 
@@ -290,6 +295,29 @@ public class AgentBuilder {
     }
 
     /**
+     * Configure loop detection thresholds for the ReAct loop.
+     *
+     * <p>If not called, sensible defaults apply (hash warn=3, hash stop=5,
+     * freq warn=50, freq stop=100, window=10min).
+     *
+     * @param hashWarn consecutive identical tool-call hashes to trigger a warning
+     * @param hashStop consecutive identical tool-call hashes to hard-stop
+     * @param freqWarn per-tool call count within window to trigger a warning
+     * @param freqStop per-tool call count within window to hard-stop
+     * @param freqWindow sliding time window for frequency detection
+     * @return this builder
+     */
+    public AgentBuilder loopDetection(
+            int hashWarn, int hashStop, int freqWarn, int freqStop, Duration freqWindow) {
+        this.loopHashWarn = hashWarn;
+        this.loopHashStop = hashStop;
+        this.loopFreqWarn = freqWarn;
+        this.loopFreqStop = freqStop;
+        this.loopFreqWindow = freqWindow;
+        return this;
+    }
+
+    /**
      * Build the agent, validating required parameters.
      *
      * @return a new {@link Agent} instance
@@ -388,6 +416,9 @@ public class AgentBuilder {
                         .memoryStore(memoryStore)
                         .sessionId(sessionId)
                         .tracer(tracer);
+
+        configBuilder.loopDetection(
+                loopHashWarn, loopHashStop, loopFreqWarn, loopFreqStop, loopFreqWindow);
 
         for (Object hook : hooks) {
             configBuilder.addHook(hook);

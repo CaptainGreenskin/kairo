@@ -19,6 +19,7 @@ import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.agent.AgentState;
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.hook.*;
 import io.kairo.api.hook.HookChain;
 import io.kairo.api.message.Msg;

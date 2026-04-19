@@ -17,6 +17,7 @@ package io.kairo.core.plan;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.exception.PlanModeViolationException;
 import io.kairo.api.plan.PlanFile;
 import io.kairo.api.plan.PlanStatus;
 import io.kairo.api.tool.*;

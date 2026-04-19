@@ -15,20 +15,20 @@
  */
 package io.kairo.core.agent;
 
+import io.kairo.api.exception.KairoException;
+
 /**
- * Exception thrown when an agent's processing is interrupted.
- *
- * @deprecated Use {@link io.kairo.api.exception.AgentInterruptedException} instead. This class is
- *     kept for backward compatibility and delegates to the API exception hierarchy.
+ * Thrown when the {@link LoopDetector} detects a repetitive tool call pattern that exceeds the
+ * hard-stop threshold, indicating the agent is stuck in an infinite loop.
  */
-@Deprecated
-public class AgentInterruptedException extends io.kairo.api.exception.AgentInterruptedException {
+public class LoopDetectionException extends KairoException {
 
-    public AgentInterruptedException(String message) {
+    /**
+     * Create a new LoopDetectionException with the given message.
+     *
+     * @param message a description of the detected loop pattern
+     */
+    public LoopDetectionException(String message) {
         super(message);
-    }
-
-    public AgentInterruptedException(String message, Throwable cause) {
-        super(message, cause);
     }
 }
