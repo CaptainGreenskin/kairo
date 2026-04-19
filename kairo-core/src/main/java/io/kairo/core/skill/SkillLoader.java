@@ -23,7 +23,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
@@ -77,30 +79,132 @@ public class SkillLoader {
                                 log.warn("Skill directory does not exist: {}", skillDir);
                                 return Flux.empty();
                             }
-                            try (Stream<Path> files = Files.list(skillDir)) {
+                            try (Stream<Path> entries = Files.list(skillDir)) {
+                                List<Path> allEntries = entries.toList();
+
+                                // Traditional single-file skills (*.md)
                                 List<Path> mdFiles =
-                                        files.filter(p -> p.toString().endsWith(".md"))
+                                        allEntries.stream()
+                                                .filter(p -> p.toString().endsWith(".md"))
                                                 .filter(Files::isRegularFile)
                                                 .toList();
 
-                                return Flux.fromIterable(mdFiles)
-                                        .flatMap(
-                                                path ->
-                                                        loadMetadata(path)
-                                                                .doOnError(
-                                                                        e ->
-                                                                                log.warn(
-                                                                                        "Failed to load skill from {}: {}",
-                                                                                        path,
-                                                                                        e
-                                                                                                .getMessage()))
-                                                                .onErrorResume(e -> Flux.empty()));
+                                // Bundle directories (subdirectories with SKILL.md)
+                                List<Path> bundleDirs =
+                                        allEntries.stream()
+                                                .filter(Files::isDirectory)
+                                                .filter(p -> Files.exists(p.resolve("SKILL.md")))
+                                                .toList();
+
+                                Flux<SkillDefinition> singleFileFlux =
+                                        Flux.fromIterable(mdFiles)
+                                                .flatMap(
+                                                        path ->
+                                                                loadMetadata(path)
+                                                                        .doOnError(
+                                                                                e ->
+                                                                                        log.warn(
+                                                                                                "Failed to load skill from {}: {}",
+                                                                                                path,
+                                                                                                e.getMessage()))
+                                                                        .onErrorResume(
+                                                                                e -> Flux.empty()));
+
+                                Flux<SkillDefinition> bundleFlux =
+                                        Flux.fromIterable(bundleDirs)
+                                                .flatMap(
+                                                        dir ->
+                                                                loadBundleMetadata(dir)
+                                                                        .doOnError(
+                                                                                e ->
+                                                                                        log.warn(
+                                                                                                "Failed to load bundle from {}: {}",
+                                                                                                dir,
+                                                                                                e.getMessage()))
+                                                                        .onErrorResume(
+                                                                                e -> Flux.empty()));
+
+                                return singleFileFlux.concatWith(bundleFlux);
                             } catch (IOException e) {
                                 log.error("Failed to list skill directory: {}", skillDir, e);
                                 return Flux.error(e);
                             }
                         })
                 .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /**
+     * Loads skills from multiple search paths with last-wins priority.
+     *
+     * <p>Example: given paths ["classpath:skills", "./project-skills", "~/.kairo/skills"], if
+     * "code-review" exists in both classpath and ~/.kairo/skills, the ~/.kairo/skills version wins
+     * (last path = highest priority).
+     *
+     * <p>Note: index 0 = lowest priority (loaded first, overridden by later).
+     *
+     * @param searchPaths ordered list of search paths (lowest priority first)
+     * @return Flux of loaded skill definitions
+     */
+    public Flux<SkillDefinition> loadFromSearchPaths(List<String> searchPaths) {
+        if (searchPaths == null || searchPaths.isEmpty()) {
+            return Flux.empty();
+        }
+        return Flux.defer(
+                () -> {
+                    Map<String, SkillDefinition> skillMap = new LinkedHashMap<>();
+                    for (String searchPath : searchPaths) {
+                        Path resolved = resolveSearchPath(searchPath);
+                        if (resolved == null) {
+                            log.debug("Skipping unresolved search path: {}", searchPath);
+                            continue;
+                        }
+                        // Use loadFromDirectory and collect results synchronously
+                        List<SkillDefinition> skills =
+                                loadFromDirectory(resolved).collectList().block();
+                        if (skills != null) {
+                            for (SkillDefinition skill : skills) {
+                                skillMap.put(skill.name(), skill);
+                            }
+                        }
+                    }
+                    return Flux.fromIterable(skillMap.values());
+                })
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /**
+     * Resolve a search path string to a filesystem Path.
+     *
+     * <p>Supports three prefix types:
+     *
+     * <ul>
+     *   <li>{@code classpath:} — resolved via ClassLoader.getResource()
+     *   <li>{@code ~/} — resolved relative to user home directory
+     *   <li>plain path — resolved as-is
+     * </ul>
+     *
+     * @param path the search path string
+     * @return resolved Path, or null if the path does not exist
+     */
+    Path resolveSearchPath(String path) {
+        try {
+            if (path.startsWith("classpath:")) {
+                var resource =
+                        getClass()
+                                .getClassLoader()
+                                .getResource(path.substring("classpath:".length()));
+                if (resource == null) return null;
+                return Path.of(resource.toURI());
+            } else if (path.startsWith("~/")) {
+                var p = Path.of(System.getProperty("user.home")).resolve(path.substring(2));
+                return Files.exists(p) ? p : null;
+            }
+            var p = Path.of(path);
+            return Files.exists(p) ? p : null;
+        } catch (Exception e) {
+            log.warn("Failed to resolve search path '{}': {}", path, e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -181,6 +285,26 @@ public class SkillLoader {
         }
         // Use the original filename stem (not the frontmatter name) to locate the file
         String fileStem = nameToFileStem.getOrDefault(skillName, skillName);
+
+        // Check if this is a bundle skill (directory with SKILL.md)
+        Path bundleDir = skillDirectory.resolve(fileStem);
+        if (Files.isDirectory(bundleDir) && Files.exists(bundleDir.resolve("SKILL.md"))) {
+            Path skillFile = bundleDir.resolve("SKILL.md");
+            try {
+                String content = Files.readString(skillFile, StandardCharsets.UTF_8);
+                SkillDefinition parsed = parser.parse(content);
+                SkillDefinition full = withBundleRoot(parsed, bundleDir);
+                registry.register(full);
+                return full;
+            } catch (Exception e) {
+                log.warn(
+                        "Failed to reload full content for bundle skill '{}': {}",
+                        skillName,
+                        e.getMessage());
+                return metadataOnly;
+            }
+        }
+
         Path skillFile = skillDirectory.resolve(fileStem + ".md");
         if (!Files.exists(skillFile)) {
             log.warn(
@@ -198,5 +322,44 @@ public class SkillLoader {
             log.warn("Failed to reload full content for skill '{}': {}", skillName, e.getMessage());
             return metadataOnly;
         }
+    }
+
+    private Flux<SkillDefinition> loadBundleMetadata(Path bundleDir) {
+        return Flux.defer(
+                () -> {
+                    try {
+                        Path skillFile = bundleDir.resolve("SKILL.md");
+                        String content = Files.readString(skillFile, StandardCharsets.UTF_8);
+                        SkillDefinition parsed = parser.parseMetadataOnly(content);
+                        SkillDefinition metadataOnly = withBundleRoot(parsed, bundleDir);
+                        registry.register(metadataOnly);
+                        // Use directory name as file stem for later reload
+                        String dirName = bundleDir.getFileName().toString();
+                        nameToFileStem.put(metadataOnly.name(), dirName);
+                        log.debug(
+                                "Loaded bundle skill metadata: {} from {}",
+                                metadataOnly.name(),
+                                bundleDir);
+                        return Flux.just(metadataOnly);
+                    } catch (Exception e) {
+                        return Flux.error(e);
+                    }
+                });
+    }
+
+    private SkillDefinition withBundleRoot(SkillDefinition parsed, Path bundleRoot) {
+        return new SkillDefinition(
+                parsed.name(),
+                parsed.version(),
+                parsed.description(),
+                parsed.instructions(),
+                parsed.triggerConditions(),
+                parsed.category(),
+                parsed.pathPatterns(),
+                parsed.requiredTools(),
+                parsed.platform(),
+                parsed.matchScore(),
+                parsed.allowedTools(),
+                bundleRoot);
     }
 }

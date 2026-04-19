@@ -24,6 +24,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Parses and serializes skill definitions in Markdown format with YAML front-matter.
@@ -47,7 +51,34 @@ import java.util.Map;
  */
 public class SkillMarkdownParser {
 
+    private static final Logger log = LoggerFactory.getLogger(SkillMarkdownParser.class);
     private static final String FRONT_MATTER_DELIMITER = "---";
+    private static final Pattern PARAM_PATTERN = Pattern.compile("\\{\\{(\\w+)}}");
+
+    /**
+     * Substitutes {{key}} placeholders in skill content with provided arguments. Unmatched
+     * placeholders are replaced with empty string and logged at DEBUG level.
+     *
+     * @param content the skill content with placeholders
+     * @param args the argument map
+     * @return content with placeholders substituted
+     */
+    public static String substituteParameters(String content, Map<String, String> args) {
+        if (content == null) return null;
+        if (args == null || args.isEmpty()) return content;
+        return PARAM_PATTERN
+                .matcher(content)
+                .replaceAll(
+                        match -> {
+                            String key = match.group(1).trim();
+                            if (!args.containsKey(key)) {
+                                log.debug(
+                                        "Unmatched skill parameter '{}', substituting empty", key);
+                                return "";
+                            }
+                            return Matcher.quoteReplacement(args.get(key));
+                        });
+    }
     private final ObjectMapper yamlMapper = new ObjectMapper(new YAMLFactory());
 
     /**

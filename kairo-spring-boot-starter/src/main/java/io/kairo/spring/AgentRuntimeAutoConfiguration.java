@@ -19,6 +19,7 @@ import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentFactory;
 import io.kairo.api.memory.MemoryStore;
 import io.kairo.api.model.ModelProvider;
+import io.kairo.api.skill.SkillRegistry;
 import io.kairo.api.tool.PermissionGuard;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolRegistry;
@@ -30,9 +31,14 @@ import io.kairo.core.model.AnthropicProvider;
 import io.kairo.core.model.ModelCircuitBreaker;
 import io.kairo.core.model.OpenAIProvider;
 import io.kairo.core.shutdown.GracefulShutdownManager;
+import io.kairo.core.skill.DefaultSkillRegistry;
+import io.kairo.core.skill.SkillLoader;
+import io.kairo.core.tool.AnnotationToolScanner;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
 import io.kairo.core.tool.DefaultToolRegistry;
+import io.kairo.tools.skill.SkillListTool;
+import io.kairo.tools.skill.SkillLoadTool;
 import java.nio.file.Path;
 import java.time.Duration;
 import org.slf4j.Logger;
@@ -177,6 +183,60 @@ public class AgentRuntimeAutoConfiguration {
                 yield new InMemoryStore();
             }
         };
+    }
+
+    // ---- Skill Infrastructure ----
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(
+            name = "kairo.skills.enabled",
+            havingValue = "true",
+            matchIfMissing = true)
+    public SkillRegistry skillRegistry() {
+        return new DefaultSkillRegistry();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(
+            name = "kairo.skills.enabled",
+            havingValue = "true",
+            matchIfMissing = true)
+    public SkillLoader skillLoader(SkillRegistry skillRegistry) {
+        return new SkillLoader(skillRegistry);
+    }
+
+    @Bean
+    @ConditionalOnProperty(
+            name = "kairo.skills.enabled",
+            havingValue = "true",
+            matchIfMissing = true)
+    public SkillListTool skillListTool(
+            SkillRegistry skillRegistry, DefaultToolRegistry toolRegistry) {
+        SkillListTool tool = new SkillListTool(skillRegistry);
+        var scanner = new AnnotationToolScanner();
+        toolRegistry.register(scanner.scanClass(SkillListTool.class));
+        toolRegistry.registerInstance("skill_list", tool);
+        log.info("Registered skill_list tool");
+        return tool;
+    }
+
+    @Bean
+    @ConditionalOnProperty(
+            name = "kairo.skills.enabled",
+            havingValue = "true",
+            matchIfMissing = true)
+    public SkillLoadTool skillLoadTool(
+            SkillRegistry skillRegistry,
+            SkillLoader skillLoader,
+            DefaultToolRegistry toolRegistry) {
+        SkillLoadTool tool = new SkillLoadTool(skillRegistry, skillLoader);
+        var scanner = new AnnotationToolScanner();
+        toolRegistry.register(scanner.scanClass(SkillLoadTool.class));
+        toolRegistry.registerInstance("skill_load", tool);
+        log.info("Registered skill_load tool");
+        return tool;
     }
 
     // ---- Default Agent ----

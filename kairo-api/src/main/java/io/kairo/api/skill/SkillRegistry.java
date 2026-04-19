@@ -80,4 +80,14 @@ public interface SkillRegistry {
     default Mono<SkillDefinition> loadFromClasspath(String resourcePath) {
         return Mono.error(new UnsupportedOperationException("loadFromClasspath not implemented"));
     }
+
+    /**
+     * Unregisters a skill by name.
+     * Default implementation throws UnsupportedOperationException.
+     *
+     * @param name the skill name to unregister
+     */
+    default void unregister(String name) {
+        throw new UnsupportedOperationException("unregister not supported by this registry");
+    }
 }

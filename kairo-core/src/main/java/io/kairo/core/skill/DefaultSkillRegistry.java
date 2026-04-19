@@ -106,6 +106,16 @@ public class DefaultSkillRegistry implements SkillRegistry {
     }
 
     @Override
+    public void unregister(String name) {
+        SkillDefinition removed = skills.remove(name);
+        if (removed != null) {
+            log.info("Unregistered skill: {}", name);
+        }
+        // Remove any URL cache entries that resolved to this skill name
+        urlCache.entrySet().removeIf(e -> name.equals(e.getValue().skill().name()));
+    }
+
+    @Override
     public Optional<SkillDefinition> get(String name) {
         return Optional.ofNullable(skills.get(name));
     }

@@ -39,6 +39,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *   tool:
  *     enable-file-tools: true
  *     enable-exec-tools: true
+ *   skills:
+ *     enabled: true
+ *     search-paths:
+ *       - classpath:skills
+ *       - ./project-skills
+ *       - ~/.kairo/skills
+ *     readonly: false
  * }</pre>
  */
 @ConfigurationProperties(prefix = "kairo")
@@ -48,6 +55,7 @@ public class AgentRuntimeProperties {
     private Agent agent = new Agent();
     private Tool tool = new Tool();
     private Memory memory = new Memory();
+    private Skills skills = new Skills();
 
     public Model getModel() {
         return model;
@@ -79,6 +87,14 @@ public class AgentRuntimeProperties {
 
     public void setMemory(Memory memory) {
         this.memory = memory;
+    }
+
+    public Skills getSkills() {
+        return skills;
+    }
+
+    public void setSkills(Skills skills) {
+        this.skills = skills;
     }
 
     /** Model provider configuration. */
@@ -332,6 +348,49 @@ public class AgentRuntimeProperties {
 
         public void setDangerousPatterns(List<String> dangerousPatterns) {
             this.dangerousPatterns = dangerousPatterns;
+        }
+    }
+
+    /** Skill loading configuration. */
+    public static class Skills {
+        /** Whether skill loading is enabled. */
+        private boolean enabled = true;
+
+        /**
+         * Ordered search paths for skill files (lowest priority first). Supports:
+         * <ul>
+         *   <li>{@code classpath:} prefix for classpath resources</li>
+         *   <li>{@code ~/} prefix for user home directory</li>
+         *   <li>plain filesystem paths</li>
+         * </ul>
+         */
+        private List<String> searchPaths = List.of("classpath:skills");
+
+        /** Whether skills are read-only (disallow create/edit/delete). */
+        private boolean readonly = false;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public List<String> getSearchPaths() {
+            return searchPaths;
+        }
+
+        public void setSearchPaths(List<String> searchPaths) {
+            this.searchPaths = searchPaths;
+        }
+
+        public boolean isReadonly() {
+            return readonly;
+        }
+
+        public void setReadonly(boolean readonly) {
+            this.readonly = readonly;
         }
     }
 

@@ -15,6 +15,9 @@
  */
 package io.kairo.api.skill;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 /**
@@ -39,6 +42,7 @@ import java.util.List;
  * @param matchScore priority weight for ordering when multiple skills match (higher = preferred)
  * @param allowedTools tool names whitelist (null = all tools allowed, non-null non-empty =
  *     whitelist)
+ * @param bundleRoot the bundle directory root (null = traditional single-file skill)
  */
 public record SkillDefinition(
         String name,
@@ -51,13 +55,14 @@ public record SkillDefinition(
         List<String> requiredTools,
         String platform,
         int matchScore,
-        List<String> allowedTools) {
+        List<String> allowedTools,
+        Path bundleRoot) {
 
     /**
      * Backward-compatible constructor without conditional activation fields.
      *
      * <p>Sets pathPatterns=null, requiredTools=null, platform=null, matchScore=0,
-     * allowedTools=null.
+     * allowedTools=null, bundleRoot=null.
      */
     public SkillDefinition(
             String name,
@@ -82,7 +87,7 @@ public record SkillDefinition(
     /**
      * Backward-compatible 10-param constructor without allowedTools.
      *
-     * <p>Sets allowedTools=null.
+     * <p>Sets allowedTools=null, bundleRoot=null.
      */
     public SkillDefinition(
             String name,
@@ -106,6 +111,39 @@ public record SkillDefinition(
                 requiredTools,
                 platform,
                 matchScore,
+                null,
+                null);
+    }
+
+    /**
+     * Backward-compatible 11-param constructor without bundleRoot.
+     *
+     * <p>Sets bundleRoot=null.
+     */
+    public SkillDefinition(
+            String name,
+            String version,
+            String description,
+            String instructions,
+            List<String> triggerConditions,
+            SkillCategory category,
+            List<String> pathPatterns,
+            List<String> requiredTools,
+            String platform,
+            int matchScore,
+            List<String> allowedTools) {
+        this(
+                name,
+                version,
+                description,
+                instructions,
+                triggerConditions,
+                category,
+                pathPatterns,
+                requiredTools,
+                platform,
+                matchScore,
+                allowedTools,
                 null);
     }
 
@@ -126,6 +164,42 @@ public record SkillDefinition(
         return allowedTools != null && !allowedTools.isEmpty();
     }
 
+    /** Whether this skill is a multi-file bundle. */
+    public boolean isBundle() {
+        return bundleRoot != null;
+    }
+
+    /**
+     * Resolve a relative path within the bundle directory.
+     *
+     * @param relativePath the relative path to resolve
+     * @return the resolved absolute path
+     * @throws IllegalStateException if this is not a bundle skill
+     */
+    public Path resolveResource(String relativePath) {
+        if (bundleRoot == null) {
+            throw new IllegalStateException("Not a bundle skill: " + name());
+        }
+        return bundleRoot.resolve(relativePath);
+    }
+
+    /**
+     * List resources in the bundle directory (excluding SKILL.md).
+     *
+     * @return relative paths of resources, or empty list if not a bundle
+     */
+    public List<String> listResources() {
+        if (bundleRoot == null) return List.of();
+        try (var stream = Files.walk(bundleRoot, 2)) {
+            return stream.filter(p -> !p.equals(bundleRoot)
+                            && !p.getFileName().toString().equals("SKILL.md"))
+                    .map(p -> bundleRoot.relativize(p).toString())
+                    .toList();
+        } catch (IOException e) {
+            return List.of();
+        }
+    }
+
     /** Create a metadata-only copy of this skill (instructions stripped). */
     public SkillDefinition metadataOnly() {
         return new SkillDefinition(
@@ -139,6 +213,7 @@ public record SkillDefinition(
                 requiredTools,
                 platform,
                 matchScore,
-                allowedTools);
+                allowedTools,
+                bundleRoot);
     }
 }

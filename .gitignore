@@ -58,6 +58,7 @@ Desktop.ini
 # Internal docs (not for public release)
 docs/ROADMAP.md
 docs/KV-CACHE-PROPOSAL.md
+.plans/
 
 # Kairo runtime
 /tmp/kairo-sessions/

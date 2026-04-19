@@ -22,6 +22,7 @@ import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.core.skill.SkillLoader;
+import io.kairo.core.skill.SkillMarkdownParser;
 import io.kairo.core.tool.ToolHandler;
 import java.util.HashMap;
 import java.util.Map;
@@ -43,6 +44,9 @@ public class SkillLoadTool implements ToolHandler {
 
     @ToolParam(description = "Name of the skill to load", required = true)
     private String name;
+
+    @ToolParam(description = "Optional arguments for parameter substitution")
+    private Map<String, String> args;
 
     private final SkillRegistry registry;
     private final SkillLoader skillLoader;
@@ -95,6 +99,23 @@ public class SkillLoadTool implements ToolHandler {
             return error("Skill '" + skillName + "' has no instructions content");
         }
 
+        // Parameter substitution — order matters:
+        // 1. ${SKILL_DIR} first (so arg values can reference resolved paths)
+        if (skill.isBundle() && skill.bundleRoot() != null) {
+            instructions =
+                    instructions.replace(
+                            "${SKILL_DIR}", skill.bundleRoot().toAbsolutePath().toString());
+        }
+        // 2. {{arg}} substitution second
+        @SuppressWarnings("unchecked")
+        Map<String, String> argMap =
+                (input.get("args") instanceof Map<?, ?> m)
+                        ? (Map<String, String>) m
+                        : null;
+        if (argMap != null && !argMap.isEmpty()) {
+            instructions = SkillMarkdownParser.substituteParameters(instructions, argMap);
+        }
+
         StringBuilder sb = new StringBuilder();
         sb.append("# Skill loaded: ")
                 .append(skill.name())
@@ -111,6 +132,14 @@ public class SkillLoadTool implements ToolHandler {
                             "\n\n---\n\u26A0\uFE0F TOOL RESTRICTION: While this skill is active, you may ONLY use these tools: ")
                     .append(String.join(", ", skill.allowedTools()))
                     .append(". All other tools will be blocked.\n");
+        }
+
+        if (skill.isBundle()) {
+            var resources = skill.listResources();
+            if (!resources.isEmpty()) {
+                sb.append("\n\nAvailable resources:\n");
+                resources.forEach(r -> sb.append("- ").append(r).append("\n"));
+            }
         }
 
         Map<String, Object> metadata = new HashMap<>();
