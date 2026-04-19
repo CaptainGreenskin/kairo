@@ -21,9 +21,8 @@ import reactor.core.publisher.Mono;
  * Passes control to the next middleware in the pipeline.
  *
  * <p>A middleware that does <b>not</b> call {@link #next} short-circuits the pipeline — no
- * subsequent middleware or the agent itself will execute.
- *
- * @FunctionalInterface enables lambda usage in tests and internal code.
+ * subsequent middleware or the agent itself will execute. @FunctionalInterface enables lambda usage
+ * in tests and internal code.
  */
 @FunctionalInterface
 public interface MiddlewareChain {

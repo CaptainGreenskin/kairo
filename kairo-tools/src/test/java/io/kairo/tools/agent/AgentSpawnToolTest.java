@@ -27,7 +27,6 @@ import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
 import io.kairo.api.tool.ToolResult;
-import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -85,8 +84,7 @@ class AgentSpawnToolTest {
     void spawnWithTextResult() {
         agentFactory.response = Msg.of(MsgRole.ASSISTANT, "Task completed successfully");
 
-        ToolResult result =
-                tool.execute(Map.of("name", "worker", "task", "process data"));
+        ToolResult result = tool.execute(Map.of("name", "worker", "task", "process data"));
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("worker"));
@@ -138,8 +136,7 @@ class AgentSpawnToolTest {
                         .addContent(new Content.TextContent("part 2"))
                         .build();
 
-        ToolResult result =
-                tool.execute(Map.of("name", "worker", "task", "multi-part task"));
+        ToolResult result = tool.execute(Map.of("name", "worker", "task", "multi-part task"));
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("part 1"));
@@ -154,8 +151,7 @@ class AgentSpawnToolTest {
                         .addContent(new Content.ToolResultContent("id1", "result text", false))
                         .build();
 
-        ToolResult result =
-                tool.execute(Map.of("name", "worker", "task", "tool task"));
+        ToolResult result = tool.execute(Map.of("name", "worker", "task", "tool task"));
 
         assertFalse(result.isError());
         assertNotNull(result.content());
@@ -165,8 +161,7 @@ class AgentSpawnToolTest {
     void spawnExceptionReturnsError() {
         agentFactory.shouldThrow = true;
 
-        ToolResult result =
-                tool.execute(Map.of("name", "broken", "task", "will fail"));
+        ToolResult result = tool.execute(Map.of("name", "broken", "task", "will fail"));
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("broken"));
@@ -177,8 +172,7 @@ class AgentSpawnToolTest {
     void spawnAgentCallExceptionReturnsError() {
         agentFactory.shouldFailCall = true;
 
-        ToolResult result =
-                tool.execute(Map.of("name", "failing", "task", "crash"));
+        ToolResult result = tool.execute(Map.of("name", "failing", "task", "crash"));
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("failing"));
@@ -246,8 +240,7 @@ class AgentSpawnToolTest {
         public reactor.core.publisher.Mono<Msg> call(Msg input) {
             this.lastInputText = input.text();
             if (shouldFail) {
-                return reactor.core.publisher.Mono.error(
-                        new RuntimeException("Agent call failed"));
+                return reactor.core.publisher.Mono.error(new RuntimeException("Agent call failed"));
             }
             return reactor.core.publisher.Mono.justOrEmpty(response);
         }

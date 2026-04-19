@@ -102,11 +102,7 @@ class AskUserToolTest {
         setInput("1");
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "question",
-                                "Pick one",
-                                "options",
-                                List.of("Option A", "Option B")));
+                        Map.of("question", "Pick one", "options", List.of("Option A", "Option B")));
         assertFalse(result.isError());
         assertEquals("Option A", result.content());
         assertEquals(1, result.metadata().get("selectedIndex"));
@@ -116,12 +112,7 @@ class AskUserToolTest {
     void optionSelectionLastOption() {
         setInput("3");
         ToolResult result =
-                tool.execute(
-                        Map.of(
-                                "question",
-                                "Pick one",
-                                "options",
-                                List.of("A", "B", "C")));
+                tool.execute(Map.of("question", "Pick one", "options", List.of("A", "B", "C")));
         assertFalse(result.isError());
         assertEquals("C", result.content());
         assertEquals(3, result.metadata().get("selectedIndex"));
@@ -131,12 +122,7 @@ class AskUserToolTest {
     void optionNumberOutOfRangeReturnsCustomText() {
         setInput("5");
         ToolResult result =
-                tool.execute(
-                        Map.of(
-                                "question",
-                                "Pick one",
-                                "options",
-                                List.of("A", "B", "C")));
+                tool.execute(Map.of("question", "Pick one", "options", List.of("A", "B", "C")));
         assertFalse(result.isError());
         assertEquals("5", result.content());
         assertNull(result.metadata().get("selectedIndex"));
@@ -146,12 +132,7 @@ class AskUserToolTest {
     void optionZeroOutOfRangeReturnsCustomText() {
         setInput("0");
         ToolResult result =
-                tool.execute(
-                        Map.of(
-                                "question",
-                                "Pick one",
-                                "options",
-                                List.of("A", "B", "C")));
+                tool.execute(Map.of("question", "Pick one", "options", List.of("A", "B", "C")));
         assertFalse(result.isError());
         assertEquals("0", result.content());
     }
@@ -160,12 +141,7 @@ class AskUserToolTest {
     void customTextWhenOptionsProvided() {
         setInput("custom text");
         ToolResult result =
-                tool.execute(
-                        Map.of(
-                                "question",
-                                "Pick one",
-                                "options",
-                                List.of("A", "B")));
+                tool.execute(Map.of("question", "Pick one", "options", List.of("A", "B")));
         assertFalse(result.isError());
         assertEquals("custom text", result.content());
         assertNull(result.metadata().get("selectedIndex"));
@@ -174,8 +150,7 @@ class AskUserToolTest {
     @Test
     void emptyOptionsListActsAsFreeText() {
         setInput("my answer");
-        ToolResult result =
-                tool.execute(Map.of("question", "Name?", "options", List.of()));
+        ToolResult result = tool.execute(Map.of("question", "Name?", "options", List.of()));
         assertFalse(result.isError());
         assertEquals("my answer", result.content());
     }

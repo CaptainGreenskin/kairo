@@ -20,10 +20,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.kairo.api.tool.ApprovalResult;
 import io.kairo.api.tool.ToolCallRequest;
 import io.kairo.api.tool.ToolResult;
-import io.kairo.api.tool.ToolSideEffect;
 import io.kairo.api.tool.UserApprovalHandler;
 import io.kairo.core.plan.PlanFileManager;
-import io.kairo.core.tool.DefaultToolExecutor;
 import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -77,8 +75,7 @@ class ExitPlanModeToolTest {
     @Test
     void exitWithPlanIdButNoManager() {
         // planId present but no planFileManager set
-        ToolResult result =
-                tool.execute(Map.of("overview", "Deploy v2", "planId", "abc123"));
+        ToolResult result = tool.execute(Map.of("overview", "Deploy v2", "planId", "abc123"));
 
         assertFalse(result.isError());
     }
@@ -121,9 +118,7 @@ class ExitPlanModeToolTest {
     void exitWithPlanNotFoundContinues() {
         tool.setPlanFileManager(planFileManager);
 
-        ToolResult result =
-                tool.execute(
-                        Map.of("overview", "Deploy v2", "planId", "nonexistent"));
+        ToolResult result = tool.execute(Map.of("overview", "Deploy v2", "planId", "nonexistent"));
 
         // Should still succeed despite plan not found (caught IllegalArgumentException)
         assertFalse(result.isError());
@@ -132,8 +127,7 @@ class ExitPlanModeToolTest {
 
     @Test
     void exitWithApprovalApproved() {
-        tool.setApprovalHandler(
-                new StubApprovalHandler(ApprovalResult.allow()));
+        tool.setApprovalHandler(new StubApprovalHandler(ApprovalResult.allow()));
 
         ToolResult result = tool.execute(Map.of("overview", "Deploy v2"));
 
@@ -143,8 +137,7 @@ class ExitPlanModeToolTest {
 
     @Test
     void exitWithApprovalDenied() {
-        tool.setApprovalHandler(
-                new StubApprovalHandler(ApprovalResult.denied("Not ready yet")));
+        tool.setApprovalHandler(new StubApprovalHandler(ApprovalResult.denied("Not ready yet")));
 
         ToolResult result = tool.execute(Map.of("overview", "Deploy v2"));
 
@@ -157,8 +150,7 @@ class ExitPlanModeToolTest {
 
     @Test
     void exitWithApprovalNullResult() {
-        tool.setApprovalHandler(
-                new StubApprovalHandler(null));
+        tool.setApprovalHandler(new StubApprovalHandler(null));
 
         ToolResult result = tool.execute(Map.of("overview", "Deploy v2"));
 

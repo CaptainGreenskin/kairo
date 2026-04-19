@@ -93,12 +93,19 @@ class AgentRuntimeAutoConfigurationTest {
 
     @Test
     void middlewareBeansAreCollectedIntoDefaultAgent() {
-        Middleware testMiddleware = new Middleware() {
-            @Override public String name() { return "test-mw"; }
-            @Override public Mono<MiddlewareContext> handle(MiddlewareContext ctx, MiddlewareChain chain) {
-                return chain.next(ctx);
-            }
-        };
+        Middleware testMiddleware =
+                new Middleware() {
+                    @Override
+                    public String name() {
+                        return "test-mw";
+                    }
+
+                    @Override
+                    public Mono<MiddlewareContext> handle(
+                            MiddlewareContext ctx, MiddlewareChain chain) {
+                        return chain.next(ctx);
+                    }
+                };
 
         runner.withBean("testMiddleware", Middleware.class, () -> testMiddleware)
                 .run(

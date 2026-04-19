@@ -92,7 +92,9 @@ public class DefaultMiddlewarePipeline {
             }
             if (byName.containsKey(name)) {
                 throw new IllegalStateException(
-                        "Duplicate middleware name: '" + name + "'"
+                        "Duplicate middleware name: '"
+                                + name
+                                + "'"
                                 + " (defined by "
                                 + byName.get(name).getClass().getName()
                                 + " and "

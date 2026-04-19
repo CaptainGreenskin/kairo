@@ -17,12 +17,10 @@ package io.kairo.tools.agent;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import io.kairo.api.plan.PlanFile;
 import io.kairo.api.plan.PlanStatus;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.core.plan.PlanFileManager;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

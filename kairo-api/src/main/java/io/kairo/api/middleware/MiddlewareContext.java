@@ -16,9 +16,7 @@
 package io.kairo.api.middleware;
 
 import io.kairo.api.message.Msg;
-
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,10 +24,10 @@ import java.util.Map;
 /**
  * Request context flowing through the middleware pipeline.
  *
- * <p>Carries the agent's input message, conversation history, and a mutable {@link #attributes}
- * map for cross-middleware data exchange. The attributes map is {@link LinkedHashMap}-backed to
- * preserve insertion order for debugging, and is shared-mutable by design within a single
- * reactive subscriber chain (no concurrent access).
+ * <p>Carries the agent's input message, conversation history, and a mutable {@link #attributes} map
+ * for cross-middleware data exchange. The attributes map is {@link LinkedHashMap}-backed to
+ * preserve insertion order for debugging, and is shared-mutable by design within a single reactive
+ * subscriber chain (no concurrent access).
  *
  * @param agentName the target agent's name
  * @param sessionId the session identifier, may be null

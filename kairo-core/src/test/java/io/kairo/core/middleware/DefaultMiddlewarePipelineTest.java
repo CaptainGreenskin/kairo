@@ -50,8 +50,12 @@ class DefaultMiddlewarePipelineTest {
         void orderingConstraintsSatisfied() {
             // A before C, C before B => A, C, B
             List<String> order = new ArrayList<>();
-            DefaultMiddlewarePipeline pipeline = new DefaultMiddlewarePipeline(List.of(
-                    new OrderTrackingC(order), new OrderTrackingA(order), new OrderTrackingB(order)));
+            DefaultMiddlewarePipeline pipeline =
+                    new DefaultMiddlewarePipeline(
+                            List.of(
+                                    new OrderTrackingC(order),
+                                    new OrderTrackingA(order),
+                                    new OrderTrackingB(order)));
 
             StepVerifier.create(pipeline.execute(testContext()))
                     .expectNextCount(1)
@@ -63,10 +67,12 @@ class DefaultMiddlewarePipelineTest {
         @DisplayName("unordered middleware can appear anywhere")
         void unorderedMiddlewareFlexible() {
             List<String> order = new ArrayList<>();
-            DefaultMiddlewarePipeline pipeline = new DefaultMiddlewarePipeline(List.of(
-                    new OrderTrackingUnordered("x", order),
-                    new OrderTrackingFirst(order),
-                    new OrderTrackingUnordered("y", order)));
+            DefaultMiddlewarePipeline pipeline =
+                    new DefaultMiddlewarePipeline(
+                            List.of(
+                                    new OrderTrackingUnordered("x", order),
+                                    new OrderTrackingFirst(order),
+                                    new OrderTrackingUnordered("y", order)));
 
             StepVerifier.create(pipeline.execute(testContext()))
                     .expectNextCount(1)
@@ -77,8 +83,10 @@ class DefaultMiddlewarePipelineTest {
         @Test
         @DisplayName("cycle detected at construction")
         void cycleDetected() {
-            assertThatThrownBy(() -> new DefaultMiddlewarePipeline(
-                    List.of(new CycleA(), new CycleB())))
+            assertThatThrownBy(
+                            () ->
+                                    new DefaultMiddlewarePipeline(
+                                            List.of(new CycleA(), new CycleB())))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("Circular dependency");
         }
@@ -86,8 +94,8 @@ class DefaultMiddlewarePipelineTest {
         @Test
         @DisplayName("reference to unknown name fails at construction")
         void unknownNameFails() {
-            assertThatThrownBy(() -> new DefaultMiddlewarePipeline(
-                    List.of(new ReferencesUnknown())))
+            assertThatThrownBy(
+                            () -> new DefaultMiddlewarePipeline(List.of(new ReferencesUnknown())))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("no middleware with name()");
         }
@@ -95,10 +103,12 @@ class DefaultMiddlewarePipelineTest {
         @Test
         @DisplayName("duplicate names fail at construction")
         void duplicateNamesFail() {
-            assertThatThrownBy(() -> new DefaultMiddlewarePipeline(
-                    List.of(
-                            new SimpleMiddleware("dup"),
-                            new SimpleMiddleware("dup"))))
+            assertThatThrownBy(
+                            () ->
+                                    new DefaultMiddlewarePipeline(
+                                            List.of(
+                                                    new SimpleMiddleware("dup"),
+                                                    new SimpleMiddleware("dup"))))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("Duplicate middleware name");
         }
@@ -106,17 +116,19 @@ class DefaultMiddlewarePipelineTest {
         @Test
         @DisplayName("null or blank name fails at construction")
         void blankNameFails() {
-            Middleware blank = new Middleware() {
-                @Override
-                public String name() {
-                    return "";
-                }
+            Middleware blank =
+                    new Middleware() {
+                        @Override
+                        public String name() {
+                            return "";
+                        }
 
-                @Override
-                public Mono<MiddlewareContext> handle(MiddlewareContext ctx, MiddlewareChain chain) {
-                    return chain.next(ctx);
-                }
-            };
+                        @Override
+                        public Mono<MiddlewareContext> handle(
+                                MiddlewareContext ctx, MiddlewareChain chain) {
+                            return chain.next(ctx);
+                        }
+                    };
             assertThatThrownBy(() -> new DefaultMiddlewarePipeline(List.of(blank)))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("null or blank name()");
@@ -141,8 +153,9 @@ class DefaultMiddlewarePipelineTest {
         @Test
         @DisplayName("attributes flow between middleware")
         void attributesFlow() {
-            DefaultMiddlewarePipeline pipeline = new DefaultMiddlewarePipeline(
-                    List.of(new AttrWriterMiddleware(), new AttrReaderMiddleware()));
+            DefaultMiddlewarePipeline pipeline =
+                    new DefaultMiddlewarePipeline(
+                            List.of(new AttrWriterMiddleware(), new AttrReaderMiddleware()));
             StepVerifier.create(pipeline.execute(testContext()))
                     .assertNext(ctx -> assertThat(ctx.attributes().get("key")).isEqualTo("value"))
                     .verifyComplete();
@@ -153,32 +166,37 @@ class DefaultMiddlewarePipelineTest {
         void shortCircuit() {
             StringBuilder log = new StringBuilder();
 
-            Middleware rejector = new Middleware() {
-                @Override
-                public String name() {
-                    return "rejector";
-                }
+            Middleware rejector =
+                    new Middleware() {
+                        @Override
+                        public String name() {
+                            return "rejector";
+                        }
 
-                @Override
-                public Mono<MiddlewareContext> handle(MiddlewareContext ctx, MiddlewareChain chain) {
-                    log.append("rejector ");
-                    return Mono.error(new MiddlewareRejectException("rejector", "blocked"));
-                }
-            };
-            Middleware after = new Middleware() {
-                @Override
-                public String name() {
-                    return "after";
-                }
+                        @Override
+                        public Mono<MiddlewareContext> handle(
+                                MiddlewareContext ctx, MiddlewareChain chain) {
+                            log.append("rejector ");
+                            return Mono.error(new MiddlewareRejectException("rejector", "blocked"));
+                        }
+                    };
+            Middleware after =
+                    new Middleware() {
+                        @Override
+                        public String name() {
+                            return "after";
+                        }
 
-                @Override
-                public Mono<MiddlewareContext> handle(MiddlewareContext ctx, MiddlewareChain chain) {
-                    log.append("after ");
-                    return chain.next(ctx);
-                }
-            };
+                        @Override
+                        public Mono<MiddlewareContext> handle(
+                                MiddlewareContext ctx, MiddlewareChain chain) {
+                            log.append("after ");
+                            return chain.next(ctx);
+                        }
+                    };
 
-            DefaultMiddlewarePipeline pipeline = new DefaultMiddlewarePipeline(List.of(rejector, after));
+            DefaultMiddlewarePipeline pipeline =
+                    new DefaultMiddlewarePipeline(List.of(rejector, after));
             StepVerifier.create(pipeline.execute(testContext()))
                     .expectError(MiddlewareRejectException.class)
                     .verify();
@@ -189,25 +207,28 @@ class DefaultMiddlewarePipelineTest {
         @Test
         @DisplayName("MiddlewareRejectException preserves middleware name")
         void rejectExceptionHasName() {
-            Middleware rejector = new Middleware() {
-                @Override
-                public String name() {
-                    return "auth";
-                }
+            Middleware rejector =
+                    new Middleware() {
+                        @Override
+                        public String name() {
+                            return "auth";
+                        }
 
-                @Override
-                public Mono<MiddlewareContext> handle(MiddlewareContext ctx, MiddlewareChain chain) {
-                    return Mono.error(new MiddlewareRejectException("auth", "bad token"));
-                }
-            };
+                        @Override
+                        public Mono<MiddlewareContext> handle(
+                                MiddlewareContext ctx, MiddlewareChain chain) {
+                            return Mono.error(new MiddlewareRejectException("auth", "bad token"));
+                        }
+                    };
 
             DefaultMiddlewarePipeline pipeline = new DefaultMiddlewarePipeline(List.of(rejector));
             StepVerifier.create(pipeline.execute(testContext()))
-                    .expectErrorSatisfies(e -> {
-                        MiddlewareRejectException ex = (MiddlewareRejectException) e;
-                        assertThat(ex.middlewareName()).isEqualTo("auth");
-                        assertThat(ex.getMessage()).contains("bad token");
-                    })
+                    .expectErrorSatisfies(
+                            e -> {
+                                MiddlewareRejectException ex = (MiddlewareRejectException) e;
+                                assertThat(ex.middlewareName()).isEqualTo("auth");
+                                assertThat(ex.getMessage()).contains("bad token");
+                            })
                     .verify();
         }
 
@@ -216,32 +237,37 @@ class DefaultMiddlewarePipelineTest {
         void noChainNextShortCircuits() {
             List<String> log = new ArrayList<>();
 
-            Middleware stopper = new Middleware() {
-                @Override
-                public String name() {
-                    return "stopper";
-                }
+            Middleware stopper =
+                    new Middleware() {
+                        @Override
+                        public String name() {
+                            return "stopper";
+                        }
 
-                @Override
-                public Mono<MiddlewareContext> handle(MiddlewareContext ctx, MiddlewareChain chain) {
-                    log.add("stopper");
-                    return Mono.just(ctx); // does NOT call chain.next()
-                }
-            };
-            Middleware after = new Middleware() {
-                @Override
-                public String name() {
-                    return "after";
-                }
+                        @Override
+                        public Mono<MiddlewareContext> handle(
+                                MiddlewareContext ctx, MiddlewareChain chain) {
+                            log.add("stopper");
+                            return Mono.just(ctx); // does NOT call chain.next()
+                        }
+                    };
+            Middleware after =
+                    new Middleware() {
+                        @Override
+                        public String name() {
+                            return "after";
+                        }
 
-                @Override
-                public Mono<MiddlewareContext> handle(MiddlewareContext ctx, MiddlewareChain chain) {
-                    log.add("after");
-                    return chain.next(ctx);
-                }
-            };
+                        @Override
+                        public Mono<MiddlewareContext> handle(
+                                MiddlewareContext ctx, MiddlewareChain chain) {
+                            log.add("after");
+                            return chain.next(ctx);
+                        }
+                    };
 
-            DefaultMiddlewarePipeline pipeline = new DefaultMiddlewarePipeline(List.of(stopper, after));
+            DefaultMiddlewarePipeline pipeline =
+                    new DefaultMiddlewarePipeline(List.of(stopper, after));
             StepVerifier.create(pipeline.execute(testContext()))
                     .expectNextCount(1)
                     .verifyComplete();
@@ -272,7 +298,9 @@ class DefaultMiddlewarePipelineTest {
         }
     }
 
-    @MiddlewareOrder(after = {}, before = {"c", "b"})
+    @MiddlewareOrder(
+            after = {},
+            before = {"c", "b"})
     static class OrderTrackingA implements Middleware {
         private final List<String> order;
 
@@ -312,7 +340,9 @@ class DefaultMiddlewarePipelineTest {
         }
     }
 
-    @MiddlewareOrder(after = {"a"}, before = {"b"})
+    @MiddlewareOrder(
+            after = {"a"},
+            before = {"b"})
     static class OrderTrackingC implements Middleware {
         private final List<String> order;
 

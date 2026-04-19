@@ -23,9 +23,9 @@ import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.hook.*;
 import io.kairo.api.hook.HookChain;
 import io.kairo.api.message.Msg;
-import io.kairo.api.model.ModelConfig;
 import io.kairo.api.middleware.MiddlewareContext;
 import io.kairo.api.middleware.MiddlewareRejectException;
+import io.kairo.api.model.ModelConfig;
 import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tracing.NoopTracer;
@@ -249,8 +249,7 @@ public class DefaultReActAgent implements Agent {
                                             input.text()
                                                     .substring(
                                                             0,
-                                                            Math.min(
-                                                                    80, input.text().length())));
+                                                            Math.min(80, input.text().length())));
 
                                     sessionStartTime = Instant.now();
 
@@ -336,8 +335,7 @@ public class DefaultReActAgent implements Agent {
                                                     signal -> {
                                                         agentSpan.end();
                                                         shutdownManager.unregisterAgent(this);
-                                                        skillToolManager
-                                                                .clearSkillRestrictions();
+                                                        skillToolManager.clearSkillRestrictions();
                                                         skillToolManager.closeMcpRegistry();
                                                     })
                                             .timeout(config.timeout())

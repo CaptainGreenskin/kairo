@@ -27,8 +27,8 @@ import io.kairo.api.exception.KairoException;
  * return Mono.error(new MiddlewareRejectException("auth", "Invalid API key"));
  * }</pre>
  *
- * <p>The agent runtime catches this exception and converts it to an error response, preventing
- * the ReAct loop from executing.
+ * <p>The agent runtime catches this exception and converts it to an error response, preventing the
+ * ReAct loop from executing.
  */
 public class MiddlewareRejectException extends KairoException {
 

@@ -106,8 +106,7 @@ class McpAutoConfigurationTest {
     @Test
     void httpServerWithBlankUrlFails() {
         runner.withPropertyValues(
-                        "kairo.mcp.servers.bad.transport=HTTP",
-                        "kairo.mcp.servers.bad.http.url=")
+                        "kairo.mcp.servers.bad.transport=HTTP", "kairo.mcp.servers.bad.http.url=")
                 .run(
                         context -> {
                             assertThat(context).hasFailed();
@@ -156,7 +155,8 @@ class McpAutoConfigurationTest {
                                     props.getServers().get("http-server");
                             assertThat(server.getTransport())
                                     .isEqualTo(KairoMcpProperties.TransportType.HTTP);
-                            assertThat(server.getHttp().getUrl()).isEqualTo("http://localhost:3000/mcp");
+                            assertThat(server.getHttp().getUrl())
+                                    .isEqualTo("http://localhost:3000/mcp");
                             assertThat(server.getHttp().getBearerToken()).isEqualTo("my-token");
                             assertThat(server.getHttp().getHeaders())
                                     .containsEntry("X-Custom", "value");
