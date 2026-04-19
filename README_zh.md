@@ -21,17 +21,22 @@
 
 **Kairo**（源自希腊语 *Kairos* — 行动的决定性时刻）是一个 Java Agent 操作系统，为 AI Agent 提供完整的运行时环境。Kairo 不是一个简单的 LLM 封装库，而是将 Agent 运行时的每个组件映射到操作系统概念：
 
+Kairo 不是封装层 — 它是基础设施。正如 Netty 之于网络、Jackson 之于序列化，Kairo 之于 AI Agent。
+
 | OS 概念 | Kairo 映射 | 说明 |
 |---------|-----------|------|
 | 内存管理 | Context | 上下文窗口 = 有限内存，需要智能压缩 |
 | 系统调用 | Tool | 21+ 专用工具，Agent 与外部世界的接口 |
 | 进程 | Agent | ReAct 循环驱动的独立执行单元 |
 | 文件系统 | Memory | 持久化知识存储（文件 / 内存） |
-| 信号处理 | Hook | 生命周期事件链（Pre/Post Reasoning、Acting） |
+| 信号处理 | Hook | 10 个钩子点，支持 CONTINUE/MODIFY/SKIP/ABORT/INJECT 决策 |
 | 可执行文件 | Skill | Markdown 格式的即插即用能力包 |
 | 作业调度 | Task + Team | 多 Agent 任务编排与团队协作 |
+| IPC | A2A 协议 | Agent-to-Agent 通信，跨 Agent 调用 |
+| 中间件 | 中间件管道 | 声明式请求/响应拦截 |
+| 检查点 | 快照 | Agent 状态序列化与恢复 |
 
-基于 Project Reactor 构建，完全响应式、非阻塞执行，开箱即用支持 Claude、GLM、Qwen、GPT 等模型。
+基于 Project Reactor 构建，完全响应式、非阻塞执行，开箱即用支持 Claude、GLM、Qwen、GPT 等模型。框架与模型无关 — 切换提供者无需修改 Agent 逻辑。
 
 ## 架构
 
@@ -41,8 +46,9 @@ kairo-parent
 ├── kairo-api                  — SPI 接口层（零实现依赖）
 ├── kairo-core                 — 核心运行时（ReAct 引擎、压缩管道、模型提供者）
 ├── kairo-tools                — 内置工具集（21 个工具）
-├── kairo-mcp                  — MCP 协议集成 (@Experimental)
-├── kairo-multi-agent          — 多 Agent 编排（TaskBoard、TeamScheduler）
+├── kairo-mcp                  — MCP 协议集成（StreamableHTTP）
+├── kairo-multi-agent          — 多 Agent 编排（A2A 协议、Team、TaskBoard）
+├── kairo-observability        — OpenTelemetry 集成
 ├── kairo-spring-boot-starter  — Spring Boot 自动装配
 └── kairo-examples             — 示例应用
 ```
@@ -55,6 +61,15 @@ kairo-parent
 - **读写分区** — READ_ONLY 工具并行执行，WRITE/SYSTEM_CHANGE 工具自动串行化
 - **人机协作** — 三态权限模型（ALLOWED/ASK/DENIED），通过 `PermissionGuard` 控制
 - **多 Agent 编排** — TaskBoard、PlanBuilder、TeamScheduler 和进程内 MessageBus
+- **A2A 协议** — Agent-to-Agent 通信标准（Google ADK 兼容），进程内发现 + 调用，团队自动注册
+- **中间件管道** — 声明式请求/响应拦截，通过 `@MiddlewareOrder` 实现横切关注点（日志、认证、限流）
+- **Agent 快照/检查点** — 对话中序列化 Agent 状态，通过 `AgentBuilder.restoreFrom(snapshot)` 从检查点恢复
+- **结构化输出** — 调用模型返回类型化 POJO，格式错误时自动自纠正
+- **Hook 生命周期** — 10 个钩子点（Pre/Post Reasoning、Acting 等），支持 CONTINUE/MODIFY/SKIP/ABORT/INJECT 决策
+- **熔断器** — 模型调用和工具调用的三态熔断器，支持可配置阈值
+- **循环检测** — 基于哈希 + 基于频率的双重检测，防止 Agent 无限循环
+- **协作取消** — 优雅的 Agent 终止，保留状态
+- **MCP 集成** — StreamableHTTP + Elicitation Protocol，连接外部工具服务器
 - **技能系统** — Markdown 格式技能定义，`TriggerGuard` 反污染设计
 - **计划模式** — 规划与执行分离，规划期间写工具被阻止
 - **模型适配** — 深度 Anthropic 集成 + OpenAI 兼容回退（GLM、Qwen、GPT 等）
@@ -72,7 +87,7 @@ kairo-parent
         <dependency>
             <groupId>io.github.captainreenskin</groupId>
             <artifactId>kairo-bom</artifactId>
-            <version>0.1.0</version>
+            <version>0.4.0-SNAPSHOT</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -179,7 +194,7 @@ OpenAIProvider provider = new OpenAIProvider(apiKey, baseUrl, "/chat/completions
 # 构建并安装所有模块（运行 Demo 前必须先执行）
 mvn clean install
 
-# 仅运行测试
+# 仅运行测试（1,792 个测试）
 mvn test
 ```
 
@@ -222,6 +237,15 @@ mvn exec:java -pl kairo-examples \
 | `SessionExample` | 否 | FileMemoryStore + SessionSerializer 序列化往返 |
 | Spring Boot Demo | 是 | REST API、流式输出、结构化输出、Hook、MCP |
 
+## Roadmap
+
+| Version | Theme | Status |
+|---------|-------|--------|
+| v0.1–v0.4 | Core Runtime + SPI + A2A + Middleware + Snapshot | ✅ Complete |
+| v0.5 | Agents That Remember — Memory SPI + Embedding + Checkpoint/Rollback | Next |
+| v0.6 | Agents That Are Safe — Guardrail SPI + Team Patterns | Planned |
+| v0.7+ | Channel SPI + Dashboard + Execution Replay | Planned |
+
 ## 贡献
 
 欢迎贡献！请参阅 [CONTRIBUTING.md](./CONTRIBUTING.md) 了解详情。
@@ -236,15 +260,6 @@ mvn exec:java -pl kairo-examples \
 <!-- TODO: 社区渠道就绪后添加 -->
 <!-- - [Discord](https://discord.gg/xxx) -->
 <!-- - 微信群 / 钉钉群二维码 -->
-
-## 致谢
-
-Kairo 受到以下开源项目的启发：
-
-- [AgentScope Java](https://github.com/agentscope-ai/agentscope-java)（Apache 2.0，阿里巴巴）— Kairo 的模块化 Maven 结构和 Hook 生命周期概念受到 AgentScope 的 Agent 式编程架构方法的启发。（无运行时依赖 AgentScope Java。）
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code)（Anthropic）— Kairo 的三态权限模型（allow/ask/deny）、上下文压缩策略、读写工具分区和计划模式隔离受到 Anthropic Claude Code 设计模式的启发。
-
-Kairo 在此基础上做出了原创贡献，包括 OS 隐喻架构、多级上下文压缩管道、带反污染设计的技能系统，以及深度 Anthropic Prompt Caching 集成。
 
 ## 许可证
 

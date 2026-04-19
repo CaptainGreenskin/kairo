@@ -21,17 +21,22 @@
 
 **Kairo** (from Greek *Kairos* — the decisive moment for action) is a Java Agent operating system that provides a complete runtime environment for AI agents. Rather than being yet another LLM wrapper, Kairo models the agent runtime as an operating system, mapping every component to a familiar OS concept:
 
+Kairo is not a wrapper — it's infrastructure. Think Netty for networking, Jackson for serialization, Kairo for AI Agents.
+
 | OS Concept | Kairo Mapping | Description |
 |------------|---------------|-------------|
 | Memory | Context | Context window as bounded memory with intelligent compaction |
 | System Call | Tool | 21+ specialized tools — the agent's interface to the outside world |
 | Process | Agent | Independent execution unit driven by a ReAct loop |
 | File System | Memory | Persistent knowledge storage (file / in-memory) |
-| Signal | Hook | Lifecycle event chain (Pre/Post Reasoning, Acting) |
+| Signal | Hook | 10 hook points with CONTINUE/MODIFY/SKIP/ABORT/INJECT decisions |
 | Executable | Skill | Plug-and-play capability packs in Markdown format |
 | Job Scheduling | Task + Team | Multi-agent task orchestration and team collaboration |
+| IPC | A2A Protocol | Agent-to-Agent communication for cross-agent invocation |
+| Middleware | Middleware Pipeline | Declarative request/response interception |
+| Checkpoint | Snapshot | Agent state serialization and restoration |
 
-Kairo is built on Project Reactor for fully reactive, non-blocking execution and supports Claude, GLM, Qwen, GPT, and other models out of the box.
+Kairo is built on Project Reactor for fully reactive, non-blocking execution and supports Claude, GLM, Qwen, GPT, and other models out of the box. The framework is model-agnostic — swap providers without changing agent logic.
 
 ## Architecture
 
@@ -41,8 +46,9 @@ kairo-parent
 ├── kairo-api                  — SPI interface layer (zero implementation dependencies)
 ├── kairo-core                 — Core runtime (ReAct engine, compaction, model providers)
 ├── kairo-tools                — Built-in tool suite (21 tools)
-├── kairo-mcp                  — MCP protocol integration (@Experimental)
-├── kairo-multi-agent          — Multi-agent orchestration (TaskBoard, TeamScheduler)
+├── kairo-mcp                  — MCP protocol integration (StreamableHTTP)
+├── kairo-multi-agent          — Multi-agent orchestration (A2A Protocol, Team, TaskBoard)
+├── kairo-observability        — OpenTelemetry integration
 ├── kairo-spring-boot-starter  — Spring Boot auto-configuration
 └── kairo-examples             — Example applications
 ```
@@ -55,6 +61,15 @@ kairo-parent
 - **Read/Write Partition** — READ_ONLY tools execute in parallel, WRITE/SYSTEM_CHANGE tools serialize automatically
 - **Human-in-the-Loop** — Three-state permission model (ALLOWED/ASK/DENIED) with `PermissionGuard`
 - **Multi-Agent Orchestration** — TaskBoard, PlanBuilder, TeamScheduler, and in-process MessageBus
+- **A2A Protocol** — Agent-to-Agent communication standard (Google ADK-compatible), in-process discovery + invocation, team auto-registration
+- **Middleware Pipeline** — Declarative request/response interception with `@MiddlewareOrder` for cross-cutting concerns (logging, auth, rate-limiting)
+- **Agent Snapshot/Checkpoint** — Serialize agent state mid-conversation, restore from checkpoint with `AgentBuilder.restoreFrom(snapshot)`
+- **Structured Output** — Call models returning typed POJOs with automatic self-correction on format errors
+- **Hook Lifecycle** — 10 hook points (Pre/Post Reasoning, Acting, etc.) with CONTINUE/MODIFY/SKIP/ABORT/INJECT decisions
+- **Circuit Breaker** — Three-state circuit breaker for both model and tool calls with configurable thresholds
+- **Loop Detection** — Hash-based + frequency-based dual detection to prevent infinite agent loops
+- **Cooperative Cancellation** — Graceful agent termination with state preservation
+- **MCP Integration** — StreamableHTTP + Elicitation Protocol for external tool server connectivity
 - **Skill System** — Markdown-based skill definitions with `TriggerGuard` anti-contamination design
 - **Plan Mode** — Separate planning from execution; write tools blocked during planning
 - **Model Harness** — Deep Anthropic integration + OpenAI-compatible fallback for GLM, Qwen, GPT, etc.
@@ -72,7 +87,7 @@ kairo-parent
         <dependency>
             <groupId>io.github.captainreenskin</groupId>
             <artifactId>kairo-bom</artifactId>
-            <version>0.1.0</version>
+            <version>0.4.0-SNAPSHOT</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -179,7 +194,7 @@ OpenAIProvider provider = new OpenAIProvider(apiKey, baseUrl, "/chat/completions
 # Build and install all modules (required before running demos)
 mvn clean install
 
-# Run tests only
+# Run tests only (1,792 tests)
 mvn test
 ```
 
@@ -222,6 +237,15 @@ More demos available:
 | `SessionExample` | No | FileMemoryStore + SessionSerializer round-trip |
 | Spring Boot Demo | Yes | REST API, streaming, structured output, hooks, MCP |
 
+## Roadmap
+
+| Version | Theme | Status |
+|---------|-------|--------|
+| v0.1–v0.4 | Core Runtime + SPI + A2A + Middleware + Snapshot | ✅ Complete |
+| v0.5 | Agents That Remember — Memory SPI + Embedding + Checkpoint/Rollback | Next |
+| v0.6 | Agents That Are Safe — Guardrail SPI + Team Patterns | Planned |
+| v0.7+ | Channel SPI + Dashboard + Execution Replay | Planned |
+
 ## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
@@ -236,15 +260,6 @@ Look for issues labeled [`good first issue`](https://github.com/CaptainGreenskin
 <!-- TODO: Add community channels when available -->
 <!-- - [Discord](https://discord.gg/xxx) -->
 <!-- - WeChat / DingTalk group QR codes -->
-
-## Acknowledgments
-
-Kairo was inspired by the following open-source projects:
-
-- [AgentScope Java](https://github.com/agentscope-ai/agentscope-java) (Apache 2.0, Alibaba) — Kairo's modular Maven structure and Hook lifecycle concept were inspired by AgentScope's approach to agent-oriented programming architecture. (No runtime dependency on AgentScope Java.)
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (Anthropic) — Kairo's three-state permission model (allow/ask/deny), context compaction strategy, read/write tool partitioning, and plan mode isolation were inspired by design patterns from Anthropic's Claude Code.
-
-Kairo extends these ideas with original contributions including the OS metaphor architecture, multi-stage context compaction pipeline, Skill system with anti-contamination design, and deep Anthropic prompt caching integration.
 
 ## License
 
