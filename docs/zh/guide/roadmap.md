@@ -1,0 +1,24 @@
+# 路线图
+
+| 版本 | 主题 | 状态 |
+|------|------|------|
+| v0.1–v0.4 | 核心运行时 + SPI + A2A + 中间件 + 快照 | ✅ 已完成 |
+| v0.5 | 会记忆的 Agent — Memory SPI + Embedding + 检查点/回滚 | 下一个 |
+| v0.6 | 安全的 Agent — Guardrail SPI + 团队模式 | 计划中 |
+| v0.7+ | Channel SPI + 仪表盘 + 执行回放 | 计划中 |
+
+## v0.1–v0.4：核心运行时（已完成）
+
+基础已就位：ReAct 引擎、SPI 架构、21 个内置工具、上下文压缩、模型提供者（Anthropic、GLM、Qwen、GPT）、A2A 协议、中间件管道、Agent 快照以及 Spring Boot 集成。
+
+## v0.5：会记忆的 Agent（下一个）
+
+Memory SPI，基于 Embedding 的检索、持久化检查点/回滚，以及持久执行支持。
+
+## v0.6：安全的 Agent（计划中）
+
+Guardrail SPI 用于输入/输出验证、团队协作模式和增强的权限管理。
+
+## v0.7+：完整平台（计划中）
+
+Channel SPI 用于多渠道通信、Web 仪表盘用于 Agent 监控，以及执行回放用于调试和审计。
