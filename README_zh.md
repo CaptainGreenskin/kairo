@@ -85,9 +85,9 @@ kairo-parent
 <dependencyManagement>
     <dependencies>
         <dependency>
-            <groupId>io.github.captainreenskin</groupId>
+            <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-bom</artifactId>
-            <version>0.4.0-SNAPSHOT</version>
+            <version>0.5.0-SNAPSHOT</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -96,11 +96,11 @@ kairo-parent
 
 <dependencies>
     <dependency>
-        <groupId>io.github.captainreenskin</groupId>
+        <groupId>io.github.captaingreenskin</groupId>
         <artifactId>kairo-core</artifactId>
     </dependency>
     <dependency>
-        <groupId>io.github.captainreenskin</groupId>
+        <groupId>io.github.captaingreenskin</groupId>
         <artifactId>kairo-tools</artifactId>
     </dependency>
 </dependencies>
@@ -144,7 +144,7 @@ Msg result = agent.call(MsgBuilder.user("创建一个 HelloWorld.java 并编译�
 
 ```xml
 <dependency>
-    <groupId>io.github.captainreenskin</groupId>
+    <groupId>io.github.captaingreenskin</groupId>
     <artifactId>kairo-spring-boot-starter</artifactId>
 </dependency>
 ```

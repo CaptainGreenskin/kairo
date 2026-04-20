@@ -24,6 +24,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -36,30 +37,39 @@ import reactor.test.StepVerifier;
 class MemoryStoreTagFilterTest {
 
     private static MemoryEntry entry(
-            String id, String content, MemoryScope scope, List<String> tags) {
+            String id, String content, MemoryScope scope, Set<String> tags) {
         return new MemoryEntry(
-                id, content, scope, Instant.parse("2025-01-15T10:00:00Z"), tags, true);
+                id,
+                null,
+                content,
+                null,
+                scope,
+                0.5,
+                null,
+                tags,
+                Instant.parse("2025-01-15T10:00:00Z"),
+                null);
     }
 
     private static void seedEntries(MemoryStore store) {
-        store.save(entry("e1", "java guide", MemoryScope.PROJECT, List.of("java", "tutorial")))
+        store.save(entry("e1", "java guide", MemoryScope.AGENT, Set.of("java", "tutorial")))
                 .block();
         store.save(
                         entry(
                                 "e2",
                                 "java concurrency",
-                                MemoryScope.PROJECT,
-                                List.of("java", "concurrency")))
+                                MemoryScope.AGENT,
+                                Set.of("java", "concurrency")))
                 .block();
-        store.save(entry("e3", "python basics", MemoryScope.PROJECT, List.of("python"))).block();
-        store.save(entry("e4", "java streams", MemoryScope.PROJECT, List.of("java", "tutorial")))
+        store.save(entry("e3", "python basics", MemoryScope.AGENT, Set.of("python"))).block();
+        store.save(entry("e4", "java streams", MemoryScope.AGENT, Set.of("java", "tutorial")))
                 .block();
     }
 
     private static void assertAllTagsMatch(MemoryStore store) {
         seedEntries(store);
         StepVerifier.create(
-                        store.search("java", MemoryScope.PROJECT, List.of("java", "tutorial"))
+                        store.search("java", MemoryScope.AGENT, List.of("java", "tutorial"))
                                 .collectList())
                 .assertNext(
                         results -> {
@@ -73,7 +83,7 @@ class MemoryStoreTagFilterTest {
     private static void assertPartialTagMatchExcluded(MemoryStore store) {
         seedEntries(store);
         StepVerifier.create(
-                        store.search("java", MemoryScope.PROJECT, List.of("java", "concurrency"))
+                        store.search("java", MemoryScope.AGENT, List.of("java", "concurrency"))
                                 .collectList())
                 .assertNext(
                         results -> {
@@ -85,14 +95,14 @@ class MemoryStoreTagFilterTest {
 
     private static void assertNullTagsFallsBack(MemoryStore store) {
         seedEntries(store);
-        StepVerifier.create(store.search("java", MemoryScope.PROJECT, null).collectList())
+        StepVerifier.create(store.search("java", MemoryScope.AGENT, null).collectList())
                 .assertNext(results -> assertEquals(3, results.size()))
                 .verifyComplete();
     }
 
     private static void assertEmptyTagsFallsBack(MemoryStore store) {
         seedEntries(store);
-        StepVerifier.create(store.search("java", MemoryScope.PROJECT, List.of()).collectList())
+        StepVerifier.create(store.search("java", MemoryScope.AGENT, List.of()).collectList())
                 .assertNext(results -> assertEquals(3, results.size()))
                 .verifyComplete();
     }
@@ -100,7 +110,7 @@ class MemoryStoreTagFilterTest {
     private static void assertNoMatchingTagsReturnsEmpty(MemoryStore store) {
         seedEntries(store);
         StepVerifier.create(
-                        store.search("java", MemoryScope.PROJECT, List.of("nonexistent"))
+                        store.search("java", MemoryScope.AGENT, List.of("nonexistent"))
                                 .collectList())
                 .assertNext(results -> assertTrue(results.isEmpty()))
                 .verifyComplete();
@@ -109,7 +119,16 @@ class MemoryStoreTagFilterTest {
     private static void assertNullTagsOnEntryNoNPE(MemoryStore store) {
         MemoryEntry entryWithNullTags =
                 new MemoryEntry(
-                        "e-null", "some content", MemoryScope.SESSION, Instant.now(), null, true);
+                        "e-null",
+                        null,
+                        "some content",
+                        null,
+                        MemoryScope.SESSION,
+                        0.5,
+                        null,
+                        null,
+                        Instant.now(),
+                        null);
         store.save(entryWithNullTags).block();
         StepVerifier.create(
                         store.search("some", MemoryScope.SESSION, List.of("tag1")).collectList())
@@ -120,7 +139,7 @@ class MemoryStoreTagFilterTest {
     private static void assertSingleTagFilter(MemoryStore store) {
         seedEntries(store);
         StepVerifier.create(
-                        store.search("java", MemoryScope.PROJECT, List.of("concurrency"))
+                        store.search("java", MemoryScope.AGENT, List.of("concurrency"))
                                 .collectList())
                 .assertNext(
                         results -> {
@@ -131,9 +150,9 @@ class MemoryStoreTagFilterTest {
     }
 
     private static void assertTagFilterRespectsScope(MemoryStore store) {
-        store.save(entry("s1", "java guide", MemoryScope.SESSION, List.of("java", "tutorial")))
+        store.save(entry("s1", "java guide", MemoryScope.SESSION, Set.of("java", "tutorial")))
                 .block();
-        store.save(entry("p1", "java guide", MemoryScope.PROJECT, List.of("java", "tutorial")))
+        store.save(entry("p1", "java guide", MemoryScope.AGENT, Set.of("java", "tutorial")))
                 .block();
         StepVerifier.create(
                         store.search("java", MemoryScope.SESSION, List.of("java")).collectList())
@@ -273,9 +292,8 @@ class MemoryStoreTagFilterTest {
     void testDuplicateTagsInFilter() {
         InMemoryStore store = new InMemoryStore();
         seedEntries(store);
-        // Searching with duplicate tags List.of("java", "java") should work same as List.of("java")
         StepVerifier.create(
-                        store.search("java", MemoryScope.PROJECT, List.of("java", "java"))
+                        store.search("java", MemoryScope.AGENT, List.of("java", "java"))
                                 .collectList())
                 .assertNext(
                         results -> {
@@ -288,7 +306,6 @@ class MemoryStoreTagFilterTest {
     @Test
     @DisplayName("Default method post-filtering works on minimal MemoryStore impl")
     void testDefaultMethodBehavior() {
-        // A minimal MemoryStore that does NOT override the 3-arg search
         MemoryStore minimalStore =
                 new MemoryStore() {
                     private final List<MemoryEntry> entries = new ArrayList<>();
@@ -326,26 +343,24 @@ class MemoryStoreTagFilterTest {
                     }
                 };
 
-        // Seed entries
         minimalStore
-                .save(entry("m1", "java guide", MemoryScope.PROJECT, List.of("java", "tutorial")))
+                .save(entry("m1", "java guide", MemoryScope.AGENT, Set.of("java", "tutorial")))
                 .block();
         minimalStore
                 .save(
                         entry(
                                 "m2",
                                 "java concurrency",
-                                MemoryScope.PROJECT,
-                                List.of("java", "concurrency")))
+                                MemoryScope.AGENT,
+                                Set.of("java", "concurrency")))
                 .block();
         minimalStore
-                .save(entry("m3", "java streams", MemoryScope.PROJECT, List.of("java", "tutorial")))
+                .save(entry("m3", "java streams", MemoryScope.AGENT, Set.of("java", "tutorial")))
                 .block();
 
-        // 3-arg search uses default method post-filtering
         StepVerifier.create(
                         minimalStore
-                                .search("java", MemoryScope.PROJECT, List.of("java", "tutorial"))
+                                .search("java", MemoryScope.AGENT, List.of("java", "tutorial"))
                                 .collectList())
                 .assertNext(
                         results -> {
@@ -361,35 +376,37 @@ class MemoryStoreTagFilterTest {
     void testMixedNullAndNonNullTagsOnEntries() {
         InMemoryStore store = new InMemoryStore();
 
-        // Entry with tags
-        store.save(entry("x1", "java guide", MemoryScope.PROJECT, List.of("java", "tutorial")))
+        store.save(entry("x1", "java guide", MemoryScope.AGENT, Set.of("java", "tutorial")))
                 .block();
-        // Entry with null tags
         store.save(
                         new MemoryEntry(
                                 "x2",
-                                "java nulltags",
-                                MemoryScope.PROJECT,
-                                Instant.now(),
                                 null,
-                                true))
+                                "java nulltags",
+                                null,
+                                MemoryScope.AGENT,
+                                0.5,
+                                null,
+                                null,
+                                Instant.now(),
+                                null))
                 .block();
-        // Entry with empty tags
         store.save(
                         new MemoryEntry(
                                 "x3",
+                                null,
                                 "java emptytags",
-                                MemoryScope.PROJECT,
+                                null,
+                                MemoryScope.AGENT,
+                                0.5,
+                                null,
+                                Set.of(),
                                 Instant.now(),
-                                List.of(),
-                                true))
+                                null))
                 .block();
-        // Entry with different tags
-        store.save(entry("x4", "java other", MemoryScope.PROJECT, List.of("other"))).block();
+        store.save(entry("x4", "java other", MemoryScope.AGENT, Set.of("other"))).block();
 
-        // Filter for "java" tag should only return x1, not NPE on x2/x3
-        StepVerifier.create(
-                        store.search("java", MemoryScope.PROJECT, List.of("java")).collectList())
+        StepVerifier.create(store.search("java", MemoryScope.AGENT, List.of("java")).collectList())
                 .assertNext(
                         results -> {
                             assertEquals(1, results.size());

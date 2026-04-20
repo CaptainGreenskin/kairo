@@ -173,7 +173,7 @@ public class FileMemoryStore implements MemoryStore {
                                                                                 .contains(
                                                                                         lowerQuery)))
                                         && e.tags() != null
-                                        && tags.stream().allMatch(tag -> e.tags().contains(tag)));
+                                        && e.tags().containsAll(tags));
     }
 
     @Override

@@ -23,6 +23,7 @@ import io.kairo.api.model.ModelProvider;
 import io.kairo.core.context.compaction.CompactionModelFork;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
@@ -79,11 +80,15 @@ public class SessionMemoryCompact {
                             MemoryEntry entry =
                                     new MemoryEntry(
                                             "session-" + sessionId,
+                                            null,
                                             summary,
+                                            null,
                                             MemoryScope.SESSION,
+                                            0.7,
+                                            null,
+                                            Set.of("session", sessionId),
                                             Instant.now(),
-                                            List.of("session", sessionId),
-                                            false);
+                                            null);
                             log.info(
                                     "Saving session memory for session '{}', summary length: {}"
                                             + " chars",

@@ -47,7 +47,8 @@ public record ModelConfig(
         Integer thinkingBudget,
         ToolVerbosity toolVerbosity,
         List<SystemPromptSegment> systemPromptSegments,
-        Class<?> responseSchema) {
+        Class<?> responseSchema,
+        Double effort) {
 
     /**
      * Default model name used when no model is explicitly configured.
@@ -112,6 +113,7 @@ public record ModelConfig(
                 thinkingBudget,
                 toolVerbosity,
                 null,
+                null,
                 null);
     }
 
@@ -143,6 +145,7 @@ public record ModelConfig(
                 thinking,
                 systemPrompt,
                 systemPromptParts,
+                null,
                 null,
                 null,
                 null,
@@ -183,6 +186,7 @@ public record ModelConfig(
                 thinkingBudget,
                 toolVerbosity,
                 systemPromptSegments,
+                null,
                 null);
     }
 
@@ -212,6 +216,7 @@ public record ModelConfig(
         private ToolVerbosity toolVerbosity;
         private List<SystemPromptSegment> systemPromptSegments;
         private Class<?> responseSchema;
+        private Double effort;
 
         private Builder() {}
 
@@ -381,6 +386,21 @@ public record ModelConfig(
         }
 
         /**
+         * Set the effort level for model reasoning.
+         *
+         * <p>A continuous value between 0.0 and 1.0 that controls reasoning effort. Providers map
+         * this to their native parameters (e.g., Anthropic → {@code /effort}, OpenAI → {@code
+         * reasoning_effort}). Null means provider default behavior.
+         *
+         * @param effort the effort level (0.0-1.0), or {@code null} for provider default
+         * @return this builder
+         */
+        public Builder effort(Double effort) {
+            this.effort = effort;
+            return this;
+        }
+
+        /**
          * Build an immutable {@link ModelConfig} from the current builder state.
          *
          * @return the constructed config
@@ -400,7 +420,8 @@ public record ModelConfig(
                     thinkingBudget,
                     toolVerbosity,
                     systemPromptSegments != null ? List.copyOf(systemPromptSegments) : null,
-                    responseSchema);
+                    responseSchema,
+                    effort);
         }
     }
 }

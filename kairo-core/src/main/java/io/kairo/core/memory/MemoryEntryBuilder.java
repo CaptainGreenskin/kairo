@@ -18,13 +18,13 @@ package io.kairo.core.memory;
 import io.kairo.api.memory.MemoryEntry;
 import io.kairo.api.memory.MemoryScope;
 import java.time.Instant;
-import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * Convenience factory for creating {@link MemoryEntry} instances.
  *
- * <p>All entries default to {@code verbatim=true}, following the "Facts First" principle.
+ * <p>All entries default to importance 0.5 (medium).
  */
 public final class MemoryEntryBuilder {
 
@@ -39,45 +39,57 @@ public final class MemoryEntryBuilder {
     public static MemoryEntry session(String content) {
         return new MemoryEntry(
                 UUID.randomUUID().toString(),
+                null,
                 content,
+                null,
                 MemoryScope.SESSION,
+                0.5,
+                null,
+                Set.of(),
                 Instant.now(),
-                List.of(),
-                true);
+                null);
     }
 
     /**
-     * Create a project-scoped memory entry.
+     * Create an agent-scoped memory entry.
      *
      * @param content the memory content
      * @param tags optional tags for categorization
-     * @return a new MemoryEntry scoped to PROJECT
+     * @return a new MemoryEntry scoped to AGENT
      */
-    public static MemoryEntry project(String content, String... tags) {
+    public static MemoryEntry agent(String content, String... tags) {
         return new MemoryEntry(
                 UUID.randomUUID().toString(),
+                null,
                 content,
-                MemoryScope.PROJECT,
+                null,
+                MemoryScope.AGENT,
+                0.5,
+                null,
+                Set.of(tags),
                 Instant.now(),
-                List.of(tags),
-                true);
+                null);
     }
 
     /**
-     * Create a user-scoped memory entry.
+     * Create a global memory entry.
      *
      * @param content the memory content
      * @param tags optional tags for categorization
-     * @return a new MemoryEntry scoped to USER
+     * @return a new MemoryEntry scoped to GLOBAL
      */
-    public static MemoryEntry user(String content, String... tags) {
+    public static MemoryEntry global(String content, String... tags) {
         return new MemoryEntry(
                 UUID.randomUUID().toString(),
+                null,
                 content,
-                MemoryScope.USER,
+                null,
+                MemoryScope.GLOBAL,
+                0.5,
+                null,
+                Set.of(tags),
                 Instant.now(),
-                List.of(tags),
-                true);
+                null);
     }
 
     /**
@@ -86,12 +98,21 @@ public final class MemoryEntryBuilder {
      * @param content the memory content
      * @param scope the visibility scope
      * @param tags tags for categorization
-     * @param verbatim whether to preserve verbatim (default true)
+     * @param importance importance score 0.0-1.0
      * @return a new MemoryEntry
      */
     public static MemoryEntry create(
-            String content, MemoryScope scope, List<String> tags, boolean verbatim) {
+            String content, MemoryScope scope, Set<String> tags, double importance) {
         return new MemoryEntry(
-                UUID.randomUUID().toString(), content, scope, Instant.now(), tags, verbatim);
+                UUID.randomUUID().toString(),
+                null,
+                content,
+                null,
+                scope,
+                importance,
+                null,
+                tags,
+                Instant.now(),
+                null);
     }
 }

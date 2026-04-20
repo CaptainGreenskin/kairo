@@ -35,6 +35,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -83,6 +84,7 @@ public class AgentBuilder {
     private int loopFreqWarn = 50;
     private int loopFreqStop = 100;
     private Duration loopFreqWindow = Duration.ofMinutes(10);
+    private Map<String, Object> toolDependencies = Map.of();
 
     private AgentBuilder() {}
 
@@ -112,6 +114,20 @@ public class AgentBuilder {
     /** Set the tool executor for running tools. */
     public AgentBuilder toolExecutor(ToolExecutor executor) {
         this.toolExecutor = executor;
+        return this;
+    }
+
+    /**
+     * Set runtime dependencies to inject into tools via {@link io.kairo.api.tool.ToolContext}.
+     *
+     * <p>These dependencies (e.g., database connections, API clients) are made available to
+     * context-aware tools at execution time.
+     *
+     * @param dependencies the dependencies map, or null for empty
+     * @return this builder
+     */
+    public AgentBuilder toolDependencies(Map<String, Object> dependencies) {
+        this.toolDependencies = dependencies != null ? Map.copyOf(dependencies) : Map.of();
         return this;
     }
 

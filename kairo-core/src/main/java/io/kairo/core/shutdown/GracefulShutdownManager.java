@@ -119,11 +119,27 @@ public final class GracefulShutdownManager {
     /**
      * Register an active agent. Called when an agent starts processing.
      *
+     * <p>Registration is rejected if the manager is no longer in RUNNING state. Uses double-check
+     * pattern to prevent race with shutdown initiation.
+     *
      * @param agent the agent to track
+     * @return true if the agent was registered, false if shutdown is in progress
      */
-    public void registerAgent(Agent agent) {
-        activeAgentIds.add(agent.id());
-        activeAgents.put(agent.id(), agent);
+    public boolean registerAgent(Agent agent) {
+        if (state.get() != ShutdownState.RUNNING) {
+            log.warn("Rejected agent registration '{}' — shutdown in progress", agent.name());
+            return false;
+        }
+        synchronized (terminationLock) {
+            // Double-check after acquiring lock to prevent race with performShutdown
+            if (state.get() != ShutdownState.RUNNING) {
+                log.warn("Rejected agent registration '{}' — shutdown in progress", agent.name());
+                return false;
+            }
+            activeAgentIds.add(agent.id());
+            activeAgents.put(agent.id(), agent);
+        }
+        return true;
     }
 
     /**
@@ -217,11 +233,11 @@ public final class GracefulShutdownManager {
     }
 
     private void checkTermination() {
-        if (state.get() == ShutdownState.SHUTTING_DOWN && activeAgentIds.isEmpty()) {
-            if (state.compareAndSet(ShutdownState.SHUTTING_DOWN, ShutdownState.TERMINATED)) {
-                log.info("All agents terminated, shutdown complete");
-                if (monitorFuture != null) monitorFuture.cancel(false);
-                synchronized (terminationLock) {
+        synchronized (terminationLock) {
+            if (state.get() == ShutdownState.SHUTTING_DOWN && activeAgentIds.isEmpty()) {
+                if (state.compareAndSet(ShutdownState.SHUTTING_DOWN, ShutdownState.TERMINATED)) {
+                    log.info("All agents terminated, shutdown complete");
+                    if (monitorFuture != null) monitorFuture.cancel(false);
                     terminationLock.notifyAll();
                 }
             }

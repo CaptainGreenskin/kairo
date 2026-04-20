@@ -30,6 +30,7 @@ import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
@@ -51,7 +52,6 @@ class SessionMemoryCompactTest {
 
     @Test
     void saveSession_generatesAndSavesSummary() {
-        // Mock model provider to return a summary
         String summaryText = "Session summary: user worked on a Java project.";
         ModelResponse response =
                 new ModelResponse(
@@ -72,7 +72,6 @@ class SessionMemoryCompactTest {
         StepVerifier.create(sessionMemory.saveSession("test-session", history))
                 .expectNextMatches(
                         entry -> {
-                            // Verify the entry has correct id, scope, and tags
                             return entry.id().equals("session-test-session")
                                     && entry.scope() == MemoryScope.SESSION
                                     && entry.tags().contains("session")
@@ -81,7 +80,6 @@ class SessionMemoryCompactTest {
                         })
                 .verifyComplete();
 
-        // Verify memoryStore.save() was called with correct entry
         verify(memoryStore)
                 .save(
                         argThat(
@@ -95,7 +93,6 @@ class SessionMemoryCompactTest {
     void saveSession_emptyHistory_returnsEmpty() {
         StepVerifier.create(sessionMemory.saveSession("test-session", List.of())).verifyComplete();
 
-        // Model provider should not be called
         verify(modelProvider, never()).call(any(), any());
         verify(memoryStore, never()).save(any());
     }
@@ -109,7 +106,6 @@ class SessionMemoryCompactTest {
 
     @Test
     void saveSession_summaryPromptContainsKeyDimensions() {
-        // Capture the model config to verify the summary prompt
         String summaryText = "Summary";
         ModelResponse response =
                 new ModelResponse(
@@ -128,7 +124,6 @@ class SessionMemoryCompactTest {
                 .expectNextCount(1)
                 .verifyComplete();
 
-        // Verify the model was called and the messages include the summary prompt
         verify(modelProvider).call(any(), any(ModelConfig.class));
     }
 
@@ -138,11 +133,15 @@ class SessionMemoryCompactTest {
         MemoryEntry entry =
                 new MemoryEntry(
                         "session-my-session",
+                        null,
                         sessionContent,
+                        null,
                         MemoryScope.SESSION,
+                        0.7,
+                        null,
+                        Set.of("session", "my-session"),
                         Instant.now(),
-                        List.of("session", "my-session"),
-                        false);
+                        null);
         when(memoryStore.get("session-my-session")).thenReturn(Mono.just(entry));
 
         StepVerifier.create(sessionMemory.loadSession("my-session"))

@@ -92,13 +92,13 @@ class FileMemoryStoreRawTest {
     @DisplayName("Different scopes are isolated")
     void differentScopesAreIsolated() {
         store.saveRaw("key1", "session-data", MemoryScope.SESSION).block();
-        store.saveRaw("key1", "project-data", MemoryScope.PROJECT).block();
+        store.saveRaw("key1", "project-data", MemoryScope.AGENT).block();
 
         StepVerifier.create(store.loadRaw("key1", MemoryScope.SESSION))
                 .assertNext(val -> assertEquals("session-data", val))
                 .verifyComplete();
 
-        StepVerifier.create(store.loadRaw("key1", MemoryScope.PROJECT))
+        StepVerifier.create(store.loadRaw("key1", MemoryScope.AGENT))
                 .assertNext(val -> assertEquals("project-data", val))
                 .verifyComplete();
     }

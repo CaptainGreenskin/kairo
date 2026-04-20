@@ -22,6 +22,7 @@ import io.kairo.api.memory.MemoryStore;
 import io.kairo.api.message.Msg;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
 import org.slf4j.Logger;
@@ -78,6 +79,14 @@ class CompactionTrigger {
         int previousSize = conversationHistory.size();
         log.info("Context pressure high, triggering compaction...");
 
+        // Capture original messages as rawContent before compaction
+        String rawContent =
+                conversationHistory.stream()
+                        .filter(msg -> msg.text() != null && !msg.text().isBlank())
+                        .map(msg -> "[" + msg.role() + "] " + msg.text())
+                        .reduce((a, b) -> a + "\n" + b)
+                        .orElse("");
+
         // Flush important messages to memory before compaction (wait for completion)
         return flushImportantMessages(conversationHistory)
                 .then(
@@ -85,7 +94,7 @@ class CompactionTrigger {
                                 () ->
                                         contextManager
                                                 .compactMessages(conversationHistory)
-                                                .map(
+                                                .flatMap(
                                                         compacted -> {
                                                             if (compacted != null
                                                                     && compacted.size()
@@ -97,10 +106,57 @@ class CompactionTrigger {
                                                                         reactLoop
                                                                                 .getHistory()
                                                                                 .size());
+
+                                                                // Store compaction summary with
+                                                                // rawContent preserved
+                                                                return storeCompactionMemory(
+                                                                                compacted,
+                                                                                rawContent)
+                                                                        .thenReturn(true);
                                                             }
-                                                            return true;
+                                                            return Mono.just(true);
                                                         })
                                                 .defaultIfEmpty(false)));
+    }
+
+    /**
+     * Store a compaction memory entry with the summary as content and original messages as
+     * rawContent. No-op if memoryStore is null.
+     */
+    private Mono<Void> storeCompactionMemory(List<Msg> compacted, String rawContent) {
+        if (memoryStore == null || rawContent.isBlank()) {
+            return Mono.empty();
+        }
+
+        String summary =
+                compacted.stream()
+                        .filter(msg -> msg.text() != null && !msg.text().isBlank())
+                        .map(Msg::text)
+                        .reduce((a, b) -> a + "\n" + b)
+                        .orElse("");
+
+        if (summary.isBlank()) {
+            return Mono.empty();
+        }
+
+        MemoryEntry entry =
+                new MemoryEntry(
+                        UUID.randomUUID().toString(),
+                        null,
+                        summary,
+                        rawContent,
+                        MemoryScope.SESSION,
+                        0.6,
+                        null,
+                        Set.of("compaction-summary"),
+                        Instant.now(),
+                        null);
+
+        return memoryStore
+                .save(entry)
+                .doOnError(e -> log.warn("Failed to store compaction memory: {}", e.getMessage()))
+                .onErrorComplete()
+                .then();
     }
 
     /**
@@ -128,11 +184,15 @@ class CompactionTrigger {
                             MemoryEntry entry =
                                     new MemoryEntry(
                                             UUID.randomUUID().toString(),
+                                            null,
                                             msg.text(),
+                                            null,
                                             MemoryScope.SESSION,
+                                            0.5,
+                                            null,
+                                            Set.of("compaction-flush"),
                                             Instant.now(),
-                                            List.of("compaction-flush"),
-                                            true);
+                                            null);
                             return memoryStore
                                     .save(entry)
                                     .doOnError(

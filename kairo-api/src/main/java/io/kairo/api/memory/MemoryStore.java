@@ -97,10 +97,20 @@ public interface MemoryStore {
             return search(query, scope);
         }
         return search(query, scope)
-                .filter(
-                        entry ->
-                                entry.tags() != null
-                                        && tags.stream()
-                                                .allMatch(tag -> entry.tags().contains(tag)));
+                .filter(entry -> entry.tags() != null && entry.tags().containsAll(tags));
+    }
+
+    /**
+     * Search memory entries using a structured {@link MemoryQuery}.
+     *
+     * <p>The default implementation returns an empty Flux. Implementations should override this
+     * method to provide rich query support including vector similarity search, time range
+     * filtering, and importance thresholds.
+     *
+     * @param query the structured query
+     * @return a Flux of matching entries
+     */
+    default Flux<MemoryEntry> search(MemoryQuery query) {
+        return Flux.empty();
     }
 }

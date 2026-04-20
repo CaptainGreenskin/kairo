@@ -40,11 +40,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Flow;
+import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
+import reactor.util.retry.Retry;
 
 /**
  * {@link ModelProvider} implementation for the OpenAI Chat Completions API.
@@ -63,6 +65,11 @@ public class OpenAIProvider implements ModelProvider {
     private static final Logger log = LoggerFactory.getLogger(OpenAIProvider.class);
     private static final String DEFAULT_BASE_URL = "https://api.openai.com";
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(120);
+    private static final Duration STREAM_IDLE_TIMEOUT = Duration.ofMinutes(5);
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(30);
+    private static final int MAX_RETRY_ATTEMPTS = 3;
+    private static final Duration RETRY_MIN_BACKOFF = Duration.ofSeconds(1);
+    private static final Duration RETRY_MAX_BACKOFF = Duration.ofSeconds(4);
 
     private final String apiKey;
     private final HttpClient httpClient;
@@ -219,11 +226,16 @@ public class OpenAIProvider implements ModelProvider {
                             }
                         })
                 .retryWhen(
-                        reactor.util.retry.Retry.backoff(3, Duration.ofSeconds(1))
-                                .filter(
-                                        ModelProviderException.RateLimitException.class
-                                                ::isInstance))
-                .timeout(DEFAULT_TIMEOUT);
+                        Retry.backoff(MAX_RETRY_ATTEMPTS, RETRY_MIN_BACKOFF)
+                                .maxBackoff(RETRY_MAX_BACKOFF)
+                                .filter(this::isRetryableError)
+                                .doBeforeRetry(
+                                        signal ->
+                                                log.warn(
+                                                        "Retrying API call, attempt {}: {}",
+                                                        signal.totalRetries() + 1,
+                                                        signal.failure().getMessage())))
+                .timeout(CALL_TIMEOUT);
     }
 
     @Override
@@ -261,7 +273,17 @@ public class OpenAIProvider implements ModelProvider {
                                                 "Failed to build streaming request", e));
                             }
                         })
-                .timeout(DEFAULT_TIMEOUT);
+                .timeout(STREAM_IDLE_TIMEOUT)
+                .retryWhen(
+                        Retry.backoff(MAX_RETRY_ATTEMPTS, RETRY_MIN_BACKOFF)
+                                .maxBackoff(RETRY_MAX_BACKOFF)
+                                .filter(this::isRetryableError)
+                                .doBeforeRetry(
+                                        signal ->
+                                                log.warn(
+                                                        "Stream retry attempt {} due to: {}",
+                                                        signal.totalRetries() + 1,
+                                                        signal.failure().getMessage())));
     }
 
     /**
@@ -310,10 +332,39 @@ public class OpenAIProvider implements ModelProvider {
                                                 "Failed to build streaming request", e));
                             }
                         })
-                .timeout(DEFAULT_TIMEOUT);
+                .timeout(STREAM_IDLE_TIMEOUT)
+                .retryWhen(
+                        Retry.backoff(MAX_RETRY_ATTEMPTS, RETRY_MIN_BACKOFF)
+                                .maxBackoff(RETRY_MAX_BACKOFF)
+                                .filter(this::isRetryableError)
+                                .doBeforeRetry(
+                                        signal ->
+                                                log.warn(
+                                                        "Stream retry attempt {} due to: {}",
+                                                        signal.totalRetries() + 1,
+                                                        signal.failure().getMessage())));
     }
 
     // ---- Request building ----
+
+    /**
+     * Determine if an error is retryable (transient).
+     *
+     * <p>Retries on: timeouts, rate limits (429), and server errors (500/502/503).
+     */
+    private boolean isRetryableError(Throwable t) {
+        if (t instanceof TimeoutException) return true;
+        if (t instanceof ModelProviderException.RateLimitException) return true;
+        if (t instanceof ModelProviderException.ApiException ae) {
+            String msg = ae.getMessage();
+            if (msg != null) {
+                return msg.contains("HTTP 500")
+                        || msg.contains("HTTP 502")
+                        || msg.contains("HTTP 503");
+            }
+        }
+        return false;
+    }
 
     private HttpRequest buildHttpRequest(String jsonBody) {
         return HttpRequest.newBuilder()
@@ -392,6 +443,23 @@ public class OpenAIProvider implements ModelProvider {
             jsonSchema.set(
                     "schema",
                     JsonSchemaGenerator.generateSchema(config.responseSchema(), objectMapper));
+        }
+
+        // Effort parameter — maps to OpenAI reasoning_effort
+        if (config.effort() != null) {
+            double effort = config.effort();
+            if (effort >= 0.0 && effort <= 1.0) {
+                // Map 0.0-1.0 to OpenAI reasoning_effort: "low", "medium", "high"
+                String reasoningEffort;
+                if (effort <= 0.33) {
+                    reasoningEffort = "low";
+                } else if (effort <= 0.66) {
+                    reasoningEffort = "medium";
+                } else {
+                    reasoningEffort = "high";
+                }
+                root.put("reasoning_effort", reasoningEffort);
+            }
         }
 
         return objectMapper.writeValueAsString(root);

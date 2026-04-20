@@ -152,13 +152,21 @@ class OpenAIProviderTest {
 
     @Test
     void httpError500() {
+        // Enqueue enough 500 responses for all retry attempts (initial + 3 retries)
+        server.enqueue(new MockResponse().setResponseCode(500).setBody("Internal Server Error"));
+        server.enqueue(new MockResponse().setResponseCode(500).setBody("Internal Server Error"));
+        server.enqueue(new MockResponse().setResponseCode(500).setBody("Internal Server Error"));
         server.enqueue(new MockResponse().setResponseCode(500).setBody("Internal Server Error"));
 
         StepVerifier.create(provider.call(List.of(Msg.of(MsgRole.USER, "hi")), simpleConfig()))
                 .expectErrorMatches(
-                        e ->
-                                e instanceof ModelProviderException.ApiException
-                                        && e.getMessage().contains("500"))
+                        e -> {
+                            // After retries exhausted, the error is wrapped in
+                            // RetryExhaustedException
+                            Throwable cause = e.getCause() != null ? e.getCause() : e;
+                            return cause instanceof ModelProviderException.ApiException
+                                    && cause.getMessage().contains("500");
+                        })
                 .verify();
     }
 

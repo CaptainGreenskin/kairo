@@ -16,11 +16,13 @@
 package io.kairo.core.memory;
 
 import io.kairo.api.memory.MemoryEntry;
+import io.kairo.api.memory.MemoryQuery;
 import io.kairo.api.memory.MemoryScope;
 import io.kairo.api.memory.MemoryStore;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -29,9 +31,6 @@ import reactor.core.publisher.Mono;
  *
  * <p>Stores entries in a thread-safe {@link ConcurrentHashMap}. Suitable for session-scoped or
  * testing use where persistence is not needed.
- *
- * <p>Following the "Facts First" principle, entries are stored verbatim — no auto-summarization is
- * applied.
  */
 public class InMemoryStore implements MemoryStore {
 
@@ -68,7 +67,77 @@ public class InMemoryStore implements MemoryStore {
                                 e.scope() == scope
                                         && matchesQuery(e, lowerQuery)
                                         && e.tags() != null
-                                        && tags.stream().allMatch(tag -> e.tags().contains(tag)));
+                                        && e.tags().containsAll(tags));
+    }
+
+    /**
+     * Search memory entries using a structured {@link MemoryQuery}.
+     *
+     * <p>Supports filtering by agentId, keyword (case-insensitive contains), tags (containsAll),
+     * importance threshold, date range, and limit. When queryVector is present and entries have
+     * non-null embeddings, results are ranked by cosine similarity.
+     *
+     * <p>@Experimental: Cosine similarity search is experimental and may change.
+     */
+    @Override
+    public Flux<MemoryEntry> search(MemoryQuery query) {
+        Stream<MemoryEntry> stream = entries.values().stream();
+
+        // Filter by agentId
+        if (query.agentId() != null) {
+            stream = stream.filter(e -> query.agentId().equals(e.agentId()));
+        }
+
+        // Filter by keyword (case-insensitive contains on content)
+        if (query.keyword() != null && !query.keyword().isBlank()) {
+            String lowerKeyword = query.keyword().toLowerCase();
+            stream = stream.filter(e -> matchesQuery(e, lowerKeyword));
+        }
+
+        // Filter by tags (AND semantics)
+        if (query.tags() != null && !query.tags().isEmpty()) {
+            stream = stream.filter(e -> e.tags() != null && e.tags().containsAll(query.tags()));
+        }
+
+        // Filter by importance threshold
+        if (query.minImportance() > 0.0) {
+            stream = stream.filter(e -> e.importance() >= query.minImportance());
+        }
+
+        // Filter by date range
+        if (query.from() != null) {
+            stream = stream.filter(e -> !e.timestamp().isBefore(query.from()));
+        }
+        if (query.to() != null) {
+            stream = stream.filter(e -> !e.timestamp().isAfter(query.to()));
+        }
+
+        List<MemoryEntry> filtered = stream.toList();
+
+        // @Experimental: Cosine similarity ranking when queryVector is present
+        if (query.queryVector() != null && query.queryVector().length > 0) {
+            List<MemoryEntry> ranked =
+                    filtered.stream()
+                            .filter(e -> e.embedding() != null && e.embedding().length > 0)
+                            .sorted(
+                                    Comparator.comparingDouble(
+                                                    (MemoryEntry e) ->
+                                                            cosineSimilarity(
+                                                                    query.queryVector(),
+                                                                    e.embedding()))
+                                            .reversed())
+                            .limit(query.limit())
+                            .toList();
+            return Flux.fromIterable(ranked);
+        }
+
+        // Default: sort by timestamp descending, apply limit
+        List<MemoryEntry> result =
+                filtered.stream()
+                        .sorted(Comparator.comparing(MemoryEntry::timestamp).reversed())
+                        .limit(query.limit())
+                        .toList();
+        return Flux.fromIterable(result);
     }
 
     @Override
@@ -100,10 +169,27 @@ public class InMemoryStore implements MemoryStore {
 
     private boolean matchesQuery(MemoryEntry entry, String lowerQuery) {
         // Match against content
-        if (entry.content().toLowerCase().contains(lowerQuery)) {
+        if (entry.content() != null && entry.content().toLowerCase().contains(lowerQuery)) {
             return true;
         }
         // Match against tags
         return entry.tags().stream().anyMatch(tag -> tag.toLowerCase().contains(lowerQuery));
+    }
+
+    /** Compute cosine similarity between two vectors. @Experimental */
+    static double cosineSimilarity(float[] a, float[] b) {
+        if (a.length != b.length) {
+            return 0.0;
+        }
+        double dot = 0.0;
+        double normA = 0.0;
+        double normB = 0.0;
+        for (int i = 0; i < a.length; i++) {
+            dot += a[i] * b[i];
+            normA += a[i] * a[i];
+            normB += b[i] * b[i];
+        }
+        double denom = Math.sqrt(normA) * Math.sqrt(normB);
+        return denom == 0.0 ? 0.0 : dot / denom;
     }
 }

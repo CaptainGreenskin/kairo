@@ -14,7 +14,7 @@ hero:
       link: /en/guide/getting-started
     - theme: alt
       text: View on GitHub
-      link: https://github.com/kairo-agent/kairo
+      link: https://github.com/CaptainGreenskin/kairo
 
 features:
   - icon: "\U0001F9E0"

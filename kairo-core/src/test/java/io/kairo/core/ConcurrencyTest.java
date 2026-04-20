@@ -75,11 +75,15 @@ class ConcurrencyTest {
                                 MemoryEntry entry =
                                         new MemoryEntry(
                                                 "entry-" + idx,
+                                                null,
                                                 "content-" + idx,
+                                                null,
                                                 MemoryScope.SESSION,
+                                                0.5,
+                                                null,
+                                                Set.of("tag-" + idx),
                                                 Instant.now(),
-                                                List.of("tag-" + idx),
-                                                true);
+                                                null);
                                 store.save(entry).block();
                             } catch (Throwable t) {
                                 errors.add(t);
@@ -124,11 +128,15 @@ class ConcurrencyTest {
             store.save(
                             new MemoryEntry(
                                     "seed-" + i,
+                                    null,
                                     "seed-content-" + i,
+                                    null,
                                     MemoryScope.SESSION,
+                                    0.5,
+                                    null,
+                                    Set.of(),
                                     Instant.now(),
-                                    List.of(),
-                                    true))
+                                    null))
                     .block();
         }
 
@@ -151,11 +159,15 @@ class ConcurrencyTest {
                                     MemoryEntry entry =
                                             new MemoryEntry(
                                                     "write-" + idx,
+                                                    null,
                                                     "write-content-" + idx,
+                                                    null,
                                                     MemoryScope.SESSION,
+                                                    0.5,
+                                                    null,
+                                                    Set.of(),
                                                     Instant.now(),
-                                                    List.of(),
-                                                    true);
+                                                    null);
                                     store.save(entry).block();
                                     successfulWrites.incrementAndGet();
                                 } else {

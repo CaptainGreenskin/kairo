@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.atLeastOnce;
 
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.context.ContextManager;
@@ -37,6 +38,7 @@ import io.kairo.core.model.ModelFallbackManager;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -60,7 +62,16 @@ class CompactionTriggerFlushTest {
         memoryStore = mock(MemoryStore.class);
         MemoryEntry dummyEntry =
                 new MemoryEntry(
-                        "dummy", "dummy", MemoryScope.SESSION, Instant.now(), List.of(), true);
+                        "dummy",
+                        null,
+                        "dummy",
+                        null,
+                        MemoryScope.SESSION,
+                        0.5,
+                        null,
+                        Set.of(),
+                        Instant.now(),
+                        null);
         when(memoryStore.save(any(MemoryEntry.class))).thenReturn(Mono.just(dummyEntry));
 
         // Create a real ReActLoop to avoid Mockito inline-mock issues with Java 25
@@ -137,13 +148,16 @@ class CompactionTriggerFlushTest {
         StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
 
         ArgumentCaptor<MemoryEntry> captor = ArgumentCaptor.forClass(MemoryEntry.class);
-        verify(memoryStore, times(2)).save(captor.capture());
+        verify(memoryStore, atLeast(2)).save(captor.capture());
 
-        List<MemoryEntry> saved = captor.getAllValues();
+        List<MemoryEntry> saved =
+                captor.getAllValues().stream()
+                        .filter(e -> e.tags().contains("compaction-flush"))
+                        .toList();
+        assertEquals(2, saved.size());
         assertEquals("important fact 1", saved.get(0).content());
         assertEquals("important fact 2", saved.get(1).content());
         assertEquals(MemoryScope.SESSION, saved.get(0).scope());
-        assertTrue(saved.get(0).verbatim());
         assertTrue(saved.get(0).tags().contains("compaction-flush"));
     }
 
@@ -161,7 +175,14 @@ class CompactionTriggerFlushTest {
 
         StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
 
-        verify(memoryStore, never()).save(any());
+        // No compaction-flush saves (only compaction-summary may be saved)
+        ArgumentCaptor<MemoryEntry> captor = ArgumentCaptor.forClass(MemoryEntry.class);
+        verify(memoryStore, atLeast(0)).save(captor.capture());
+        List<MemoryEntry> flushEntries =
+                captor.getAllValues().stream()
+                        .filter(e -> e.tags().contains("compaction-flush"))
+                        .toList();
+        assertTrue(flushEntries.isEmpty(), "No compaction-flush entries should be saved");
     }
 
     @Test
@@ -229,9 +250,13 @@ class CompactionTriggerFlushTest {
 
         // Both USER-role messages should be saved (realUserMsg and verbatimButIgnored)
         ArgumentCaptor<MemoryEntry> captor = ArgumentCaptor.forClass(MemoryEntry.class);
-        verify(memoryStore, times(2)).save(captor.capture());
+        verify(memoryStore, atLeast(2)).save(captor.capture());
 
-        List<String> contents = captor.getAllValues().stream().map(MemoryEntry::content).toList();
+        List<String> contents =
+                captor.getAllValues().stream()
+                        .filter(e -> e.tags().contains("compaction-flush"))
+                        .map(MemoryEntry::content)
+                        .toList();
         assertTrue(contents.contains("user says hello"));
         assertTrue(contents.contains("verbatim but ignored by custom predicate"));
     }
@@ -246,7 +271,16 @@ class CompactionTriggerFlushTest {
         // First save fails, second succeeds
         MemoryEntry dummyEntry =
                 new MemoryEntry(
-                        "dummy", "dummy", MemoryScope.SESSION, Instant.now(), List.of(), true);
+                        "dummy",
+                        null,
+                        "dummy",
+                        null,
+                        MemoryScope.SESSION,
+                        0.5,
+                        null,
+                        Set.of(),
+                        Instant.now(),
+                        null);
         when(memoryStore.save(any(MemoryEntry.class)))
                 .thenReturn(Mono.error(new RuntimeException("Storage failure")))
                 .thenReturn(Mono.just(dummyEntry));
@@ -261,8 +295,8 @@ class CompactionTriggerFlushTest {
         // Compaction should still complete successfully despite save error
         StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
 
-        // Both saves were attempted
-        verify(memoryStore, times(2)).save(any(MemoryEntry.class));
+        // At least 2 flush saves were attempted (plus compaction-summary)
+        verify(memoryStore, atLeast(2)).save(any(MemoryEntry.class));
         // Compaction was still called
         verify(contextManager).compactMessages(anyList());
     }
@@ -284,7 +318,7 @@ class CompactionTriggerFlushTest {
 
         StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
 
-        // All 3 saves must happen before compactMessages
+        // All 3 flush saves must happen before compactMessages
         InOrder inOrder = inOrder(memoryStore, contextManager);
         inOrder.verify(memoryStore, times(3)).save(any(MemoryEntry.class));
         inOrder.verify(contextManager).compactMessages(anyList());
@@ -316,10 +350,15 @@ class CompactionTriggerFlushTest {
 
         StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
 
-        // Only the valid message should be saved
+        // Only the valid message should be saved as compaction-flush
         ArgumentCaptor<MemoryEntry> captor = ArgumentCaptor.forClass(MemoryEntry.class);
-        verify(memoryStore, times(1)).save(captor.capture());
-        assertEquals("valid content", captor.getValue().content());
+        verify(memoryStore, atLeast(1)).save(captor.capture());
+        List<MemoryEntry> flushEntries =
+                captor.getAllValues().stream()
+                        .filter(e -> e.tags().contains("compaction-flush"))
+                        .toList();
+        assertEquals(1, flushEntries.size());
+        assertEquals("valid content", flushEntries.get(0).content());
     }
 
     // ==================== EDGE CASE TESTS ====================
@@ -342,9 +381,10 @@ class CompactionTriggerFlushTest {
         StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
 
         ArgumentCaptor<MemoryEntry> captor = ArgumentCaptor.forClass(MemoryEntry.class);
-        verify(memoryStore, times(3)).save(captor.capture());
+        verify(memoryStore, atLeast(3)).save(captor.capture());
 
-        captor.getAllValues()
+        captor.getAllValues().stream()
+                .filter(e -> e.tags().contains("compaction-flush"))
                 .forEach(
                         entry ->
                                 assertEquals(
@@ -354,8 +394,8 @@ class CompactionTriggerFlushTest {
     }
 
     @Test
-    @DisplayName("All flushed MemoryEntries have verbatim=true")
-    void testFlushedEntryVerbatimAlwaysTrue() {
+    @DisplayName("All flushed MemoryEntries have scope=SESSION and compaction-flush tag")
+    void testFlushedEntryAttributes() {
         when(contextManager.needsCompaction(anyList())).thenReturn(true);
         when(contextManager.compactMessages(anyList()))
                 .thenReturn(Mono.just(List.of(normalMsg("summary"))));
@@ -370,14 +410,20 @@ class CompactionTriggerFlushTest {
         StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
 
         ArgumentCaptor<MemoryEntry> captor = ArgumentCaptor.forClass(MemoryEntry.class);
-        verify(memoryStore, times(2)).save(captor.capture());
+        verify(memoryStore, atLeast(2)).save(captor.capture());
 
-        captor.getAllValues()
+        captor.getAllValues().stream()
+                .filter(e -> e.tags().contains("compaction-flush"))
                 .forEach(
-                        entry ->
-                                assertTrue(
-                                        entry.verbatim(),
-                                        "Every flushed entry must have verbatim=true"));
+                        entry -> {
+                            assertEquals(
+                                    MemoryScope.SESSION,
+                                    entry.scope(),
+                                    "Every flushed entry must have SESSION scope");
+                            assertTrue(
+                                    entry.tags().contains("compaction-flush"),
+                                    "Every flushed entry must have compaction-flush tag");
+                        });
     }
 
     @Test
@@ -395,5 +441,76 @@ class CompactionTriggerFlushTest {
 
         // No save calls since no important messages exist
         verify(memoryStore, never()).save(any());
+    }
+
+    // ==================== rawContent preservation TESTS ====================
+
+    @Test
+    @DisplayName("Compaction stores memory entry with rawContent preserving original messages")
+    void testCompactionPreservesRawContent() {
+        when(contextManager.needsCompaction(anyList())).thenReturn(true);
+        // Compaction produces a summary message
+        Msg summaryMsg = normalMsg("This is a summary of the conversation");
+        when(contextManager.compactMessages(anyList())).thenReturn(Mono.just(List.of(summaryMsg)));
+
+        Msg m1 = normalMsg("Hello, I need help with Java");
+        Msg m2 = normalMsg("Sure, what do you need?");
+        Msg m3 = normalMsg("How do I use streams?");
+        List<Msg> history = List.of(m1, m2, m3);
+
+        CompactionTrigger trigger =
+                new CompactionTrigger(contextManager, reactLoop, memoryStore, null);
+
+        StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
+
+        // Should have saved a compaction-summary entry (no verbatim messages so no flush saves)
+        ArgumentCaptor<MemoryEntry> captor = ArgumentCaptor.forClass(MemoryEntry.class);
+        verify(memoryStore, atLeastOnce()).save(captor.capture());
+
+        // Find the compaction-summary entry
+        List<MemoryEntry> summaryEntries =
+                captor.getAllValues().stream()
+                        .filter(e -> e.tags().contains("compaction-summary"))
+                        .toList();
+        assertFalse(summaryEntries.isEmpty(), "Should have a compaction-summary entry");
+
+        MemoryEntry summaryEntry = summaryEntries.get(0);
+        // content should be the summary
+        assertEquals("This is a summary of the conversation", summaryEntry.content());
+        // rawContent should contain original messages
+        assertNotNull(summaryEntry.rawContent());
+        assertTrue(summaryEntry.rawContent().contains("Hello, I need help with Java"));
+        assertTrue(summaryEntry.rawContent().contains("How do I use streams?"));
+    }
+
+    @Test
+    @DisplayName("Compaction summary entry has correct metadata")
+    void testCompactionSummaryEntryMetadata() {
+        when(contextManager.needsCompaction(anyList())).thenReturn(true);
+        Msg summaryMsg = normalMsg("Conversation summary here");
+        when(contextManager.compactMessages(anyList())).thenReturn(Mono.just(List.of(summaryMsg)));
+
+        Msg m1 = normalMsg("original message");
+        Msg m2 = normalMsg("another message");
+        List<Msg> history = List.of(m1, m2);
+
+        CompactionTrigger trigger =
+                new CompactionTrigger(contextManager, reactLoop, memoryStore, null);
+
+        StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
+
+        ArgumentCaptor<MemoryEntry> captor = ArgumentCaptor.forClass(MemoryEntry.class);
+        verify(memoryStore, atLeastOnce()).save(captor.capture());
+
+        List<MemoryEntry> summaryEntries =
+                captor.getAllValues().stream()
+                        .filter(e -> e.tags().contains("compaction-summary"))
+                        .toList();
+        assertFalse(summaryEntries.isEmpty());
+
+        MemoryEntry entry = summaryEntries.get(0);
+        assertEquals(MemoryScope.SESSION, entry.scope());
+        assertEquals(0.6, entry.importance(), 0.01);
+        assertTrue(entry.tags().contains("compaction-summary"));
     }
 }

@@ -15,7 +15,7 @@ Use the Kairo BOM for version management:
         <dependency>
             <groupId>io.github.captainreenskin</groupId>
             <artifactId>kairo-bom</artifactId>
-            <version>0.4.0-SNAPSHOT</version>
+            <version>0.5.0-SNAPSHOT</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>

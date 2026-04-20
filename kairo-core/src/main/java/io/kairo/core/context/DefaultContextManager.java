@@ -22,11 +22,12 @@ import io.kairo.api.context.TokenBudget;
 import io.kairo.api.message.Msg;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.core.context.compaction.CompactionPipeline;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
@@ -40,7 +41,7 @@ import reactor.core.publisher.Mono;
  * <p>Features:
  *
  * <ul>
- *   <li>Thread-safe message management via {@link CopyOnWriteArrayList}
+ *   <li>Thread-safe message management via {@link AtomicReference} with immutable snapshots
  *   <li>Token budget tracking with pressure calculation
  *   <li>Verbatim protection — messages can be marked as non-compressible
  *   <li>Progressive compaction pipeline with circuit breaker
@@ -51,7 +52,7 @@ public class DefaultContextManager implements ContextManager {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultContextManager.class);
 
-    private final List<Msg> messages = new CopyOnWriteArrayList<>();
+    private final AtomicReference<List<Msg>> messages = new AtomicReference<>(List.of());
     private final TokenBudgetManager budgetManager;
     private final CompactionPipeline compactionPipeline;
     private final BoundaryMarkerManager boundaryMarkerManager;
@@ -87,7 +88,12 @@ public class DefaultContextManager implements ContextManager {
 
     @Override
     public void addMessage(Msg message) {
-        messages.add(message);
+        messages.updateAndGet(
+                current -> {
+                    List<Msg> updated = new ArrayList<>(current);
+                    updated.add(message);
+                    return Collections.unmodifiableList(updated);
+                });
         budgetManager.recordUsage(message.tokenCount());
 
         // Verbatim messages are automatically protected
@@ -105,7 +111,7 @@ public class DefaultContextManager implements ContextManager {
 
     @Override
     public List<Msg> getMessages() {
-        return Collections.unmodifiableList(messages);
+        return messages.get(); // already unmodifiable
     }
 
     @Override
@@ -131,16 +137,14 @@ public class DefaultContextManager implements ContextManager {
         CompactionConfig config = new CompactionConfig(budgetManager.remaining(), true, null);
 
         return compactionPipeline
-                .execute(messages, verbatimMessageIds, pressure, config)
+                .execute(messages.get(), verbatimMessageIds, pressure, config)
                 .doOnSuccess(
                         result -> {
                             if (result != null) {
-                                // Atomic snapshot-and-swap to avoid concurrent read seeing
-                                // empty list between clear() and addAll()
-                                synchronized (messages) {
-                                    messages.clear();
-                                    messages.addAll(result.compactedMessages());
-                                }
+                                // Atomic swap — readers always see a complete list
+                                messages.set(
+                                        Collections.unmodifiableList(
+                                                new ArrayList<>(result.compactedMessages())));
 
                                 // Update budget
                                 budgetManager.releaseUsage(result.tokensSaved());

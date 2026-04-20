@@ -56,6 +56,8 @@ public class AgentRuntimeProperties {
     private Tool tool = new Tool();
     private Memory memory = new Memory();
     private Skills skills = new Skills();
+    private Embedding embedding = new Embedding();
+    private Checkpoint checkpoint = new Checkpoint();
 
     public Model getModel() {
         return model;
@@ -95,6 +97,22 @@ public class AgentRuntimeProperties {
 
     public void setSkills(Skills skills) {
         this.skills = skills;
+    }
+
+    public Embedding getEmbedding() {
+        return embedding;
+    }
+
+    public void setEmbedding(Embedding embedding) {
+        this.embedding = embedding;
+    }
+
+    public Checkpoint getCheckpoint() {
+        return checkpoint;
+    }
+
+    public void setCheckpoint(Checkpoint checkpoint) {
+        this.checkpoint = checkpoint;
     }
 
     /** Model provider configuration. */
@@ -397,11 +415,20 @@ public class AgentRuntimeProperties {
 
     /** Memory store configuration. */
     public static class Memory {
-        /** Memory store type: "in-memory" or "file". */
+        /** Memory store type: "in-memory", "file", or "jdbc". */
         private String type = "in-memory";
+
+        /**
+         * Store type alias (alternative to 'type'). Supports "in-memory", "file", or "jdbc". If
+         * set, takes precedence over 'type'.
+         */
+        private String storeType;
 
         /** File store path (for "file" type). Defaults to ~/.kairo/memory. */
         private String fileStorePath;
+
+        /** Maximum number of entries to retain in the memory store. */
+        private int maxEntries = 10000;
 
         public String getType() {
             return type;
@@ -411,12 +438,61 @@ public class AgentRuntimeProperties {
             this.type = type;
         }
 
+        public String getStoreType() {
+            return storeType;
+        }
+
+        public void setStoreType(String storeType) {
+            this.storeType = storeType;
+        }
+
         public String getFileStorePath() {
             return fileStorePath;
         }
 
         public void setFileStorePath(String fileStorePath) {
             this.fileStorePath = fileStorePath;
+        }
+
+        public int getMaxEntries() {
+            return maxEntries;
+        }
+
+        public void setMaxEntries(int maxEntries) {
+            this.maxEntries = maxEntries;
+        }
+
+        /** Resolve the effective store type (storeType takes precedence over type). */
+        public String resolveStoreType() {
+            return (storeType != null && !storeType.isBlank()) ? storeType : type;
+        }
+    }
+
+    /** Embedding provider configuration. */
+    public static class Embedding {
+        /** Embedding provider type: "noop" or custom. */
+        private String provider = "noop";
+
+        public String getProvider() {
+            return provider;
+        }
+
+        public void setProvider(String provider) {
+            this.provider = provider;
+        }
+    }
+
+    /** Checkpoint configuration. */
+    public static class Checkpoint {
+        /** Whether checkpoint management is enabled. */
+        private boolean enabled = false;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
         }
     }
 }

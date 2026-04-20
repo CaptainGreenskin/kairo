@@ -59,6 +59,7 @@ public class DefaultToolExecutor implements ToolExecutor {
     private volatile boolean planMode = false;
     private final Map<String, ToolPermission> toolPermissions = new ConcurrentHashMap<>();
     private volatile Set<String> activeToolConstraints = null; // null = no restriction
+    private volatile ToolContext toolContext;
 
     /**
      * Create a new executor with the given registry and permission guard.
@@ -150,6 +151,27 @@ public class DefaultToolExecutor implements ToolExecutor {
     @Override
     public void clearAllowedTools() {
         this.activeToolConstraints = null;
+    }
+
+    /**
+     * Set the {@link ToolContext} to be passed to tool handlers during execution.
+     *
+     * <p>When set, the context-aware {@link ToolHandler#execute(Map, ToolContext)} overload is
+     * used, allowing tools to access agent ID, session ID, and injected dependencies.
+     *
+     * @param context the tool context, or null to clear
+     */
+    public void setToolContext(ToolContext context) {
+        this.toolContext = context;
+    }
+
+    /**
+     * Get the current {@link ToolContext}.
+     *
+     * @return the current tool context, or null if not set
+     */
+    public ToolContext getToolContext() {
+        return toolContext;
     }
 
     /**
@@ -315,8 +337,19 @@ public class DefaultToolExecutor implements ToolExecutor {
                                             return Mono.just(errorResult(toolName, msg));
                                         }
                                         // 4. Execute the tool with shutdown guard
+                                        ToolContext ctx = toolContext;
                                         Mono<ToolResult> execution =
-                                                Mono.fromCallable(() -> handler.execute(input))
+                                                Mono.fromCallable(
+                                                                () ->
+                                                                        handler.execute(
+                                                                                input,
+                                                                                ctx != null
+                                                                                        ? ctx
+                                                                                        : new ToolContext(
+                                                                                                null,
+                                                                                                null,
+                                                                                                Map
+                                                                                                        .of())))
                                                         .subscribeOn(Schedulers.boundedElastic())
                                                         .timeout(timeout)
                                                         .onErrorResume(

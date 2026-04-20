@@ -15,6 +15,7 @@
  */
 package io.kairo.core.tool;
 
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import java.util.Map;
 
@@ -34,4 +35,20 @@ public interface ToolHandler {
      * @throws Exception if the tool execution fails
      */
     ToolResult execute(Map<String, Object> input) throws Exception;
+
+    /**
+     * Execute this tool with the given input parameters and runtime context.
+     *
+     * <p>The default implementation delegates to {@link #execute(Map)}, so existing tools continue
+     * to work unchanged. Override this method to access agent/session context or injected
+     * dependencies.
+     *
+     * @param input the input parameters parsed from the LLM's tool-use request
+     * @param context the runtime context (agent ID, session ID, dependencies)
+     * @return the result of the tool execution
+     * @throws Exception if the tool execution fails
+     */
+    default ToolResult execute(Map<String, Object> input, ToolContext context) throws Exception {
+        return execute(input);
+    }
 }

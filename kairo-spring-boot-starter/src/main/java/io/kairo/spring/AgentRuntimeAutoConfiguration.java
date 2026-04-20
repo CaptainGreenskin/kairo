@@ -17,6 +17,7 @@ package io.kairo.spring;
 
 import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentFactory;
+import io.kairo.api.memory.EmbeddingProvider;
 import io.kairo.api.memory.MemoryStore;
 import io.kairo.api.middleware.Middleware;
 import io.kairo.api.model.ModelProvider;
@@ -26,8 +27,11 @@ import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.core.agent.AgentBuilder;
 import io.kairo.core.agent.DefaultAgentFactory;
+import io.kairo.core.agent.snapshot.CheckpointManager;
 import io.kairo.core.memory.FileMemoryStore;
 import io.kairo.core.memory.InMemoryStore;
+import io.kairo.core.memory.JdbcMemoryStore;
+import io.kairo.core.memory.NoopEmbeddingProvider;
 import io.kairo.core.model.AnthropicProvider;
 import io.kairo.core.model.ModelCircuitBreaker;
 import io.kairo.core.model.OpenAIProvider;
@@ -43,8 +47,10 @@ import io.kairo.tools.skill.SkillLoadTool;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -166,12 +172,33 @@ public class AgentRuntimeAutoConfiguration {
         return new DefaultAgentFactory(toolExecutor, gracefulShutdownManager);
     }
 
+    // ---- Embedding Provider ----
+
+    @Bean
+    @ConditionalOnMissingBean
+    public EmbeddingProvider embeddingProvider() {
+        log.info("Using NoopEmbeddingProvider (no vector search)");
+        return new NoopEmbeddingProvider();
+    }
+
     // ---- Memory Store ----
 
     @Bean
     @ConditionalOnMissingBean
-    public MemoryStore memoryStore(AgentRuntimeProperties properties) {
-        return switch (properties.getMemory().getType()) {
+    public MemoryStore memoryStore(
+            AgentRuntimeProperties properties, ObjectProvider<DataSource> dataSource) {
+        String storeType = properties.getMemory().resolveStoreType();
+        return switch (storeType) {
+            case "jdbc" -> {
+                DataSource ds = dataSource.getIfAvailable();
+                if (ds == null) {
+                    throw new IllegalStateException(
+                            "DataSource required for jdbc memory store. "
+                                    + "Add a DataSource bean or spring-boot-starter-jdbc dependency.");
+                }
+                log.info("Using JDBC-based memory store");
+                yield new JdbcMemoryStore(ds);
+            }
             case "file" -> {
                 String path = properties.getMemory().getFileStorePath();
                 if (path == null || path.isBlank()) {
@@ -185,6 +212,19 @@ public class AgentRuntimeAutoConfiguration {
                 yield new InMemoryStore();
             }
         };
+    }
+
+    // ---- Checkpoint Manager ----
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(
+            name = "kairo.checkpoint.enabled",
+            havingValue = "true",
+            matchIfMissing = false)
+    public CheckpointManager checkpointManager(io.kairo.api.agent.SnapshotStore snapshotStore) {
+        log.info("Configured CheckpointManager");
+        return new CheckpointManager(snapshotStore);
     }
 
     // ---- Skill Infrastructure ----

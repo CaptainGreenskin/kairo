@@ -39,11 +39,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Flow;
+import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
+import reactor.util.retry.Retry;
 
 /**
  * {@link ModelProvider} implementation for the Anthropic Messages API.
@@ -58,6 +60,11 @@ public class AnthropicProvider implements ModelProvider {
     private static final Logger log = LoggerFactory.getLogger(AnthropicProvider.class);
     private static final String DEFAULT_BASE_URL = "https://api.anthropic.com";
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(120);
+    private static final Duration STREAM_IDLE_TIMEOUT = Duration.ofMinutes(5);
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(30);
+    private static final int MAX_RETRY_ATTEMPTS = 3;
+    private static final Duration RETRY_MIN_BACKOFF = Duration.ofSeconds(1);
+    private static final Duration RETRY_MAX_BACKOFF = Duration.ofSeconds(4);
 
     private final String apiKey;
     private final String baseUrl;
@@ -123,23 +130,12 @@ public class AnthropicProvider implements ModelProvider {
                                                 "Failed to parse Anthropic response", e));
                             }
                         })
+                .timeout(CALL_TIMEOUT)
                 .retryWhen(
-                        reactor.util.retry.Retry.backoff(3, Duration.ofSeconds(1))
-                                .maxBackoff(Duration.ofSeconds(32))
+                        Retry.backoff(MAX_RETRY_ATTEMPTS, RETRY_MIN_BACKOFF)
+                                .maxBackoff(RETRY_MAX_BACKOFF)
                                 .jitter(0.25)
-                                .filter(
-                                        e ->
-                                                e
-                                                                instanceof
-                                                                ModelProviderException
-                                                                        .RateLimitException
-                                                        || e
-                                                                        instanceof
-                                                                        ModelProviderException
-                                                                                .ApiException
-                                                                && e.getMessage() != null
-                                                                && e.getMessage()
-                                                                        .contains("server error"))
+                                .filter(this::isRetryableError)
                                 .doBeforeRetry(
                                         signal -> {
                                             Throwable failure = signal.failure();
@@ -174,8 +170,7 @@ public class AnthropicProvider implements ModelProvider {
                                         cacheResult.reasons(),
                                         String.format("%.2f", cacheResult.hitRatio()));
                             }
-                        })
-                .timeout(DEFAULT_TIMEOUT);
+                        });
     }
 
     @Override
@@ -209,7 +204,17 @@ public class AnthropicProvider implements ModelProvider {
                                                 "Failed to build streaming request", e));
                             }
                         })
-                .timeout(DEFAULT_TIMEOUT);
+                .timeout(STREAM_IDLE_TIMEOUT)
+                .retryWhen(
+                        Retry.backoff(MAX_RETRY_ATTEMPTS, RETRY_MIN_BACKOFF)
+                                .maxBackoff(RETRY_MAX_BACKOFF)
+                                .filter(this::isRetryableError)
+                                .doBeforeRetry(
+                                        signal ->
+                                                log.warn(
+                                                        "Stream retry attempt {} due to: {}",
+                                                        signal.totalRetries() + 1,
+                                                        signal.failure().getMessage())));
     }
 
     /**
@@ -254,7 +259,17 @@ public class AnthropicProvider implements ModelProvider {
                                                 "Failed to build streaming request", e));
                             }
                         })
-                .timeout(DEFAULT_TIMEOUT);
+                .timeout(STREAM_IDLE_TIMEOUT)
+                .retryWhen(
+                        Retry.backoff(MAX_RETRY_ATTEMPTS, RETRY_MIN_BACKOFF)
+                                .maxBackoff(RETRY_MAX_BACKOFF)
+                                .filter(this::isRetryableError)
+                                .doBeforeRetry(
+                                        signal ->
+                                                log.warn(
+                                                        "Stream retry attempt {} due to: {}",
+                                                        signal.totalRetries() + 1,
+                                                        signal.failure().getMessage())));
     }
 
     /**
@@ -290,6 +305,26 @@ public class AnthropicProvider implements ModelProvider {
                 .map(Msg::text)
                 .reduce((a, b) -> a + "\n" + b)
                 .orElse("");
+    }
+
+    /**
+     * Determine if an error is retryable (transient).
+     *
+     * <p>Retries on: timeouts, rate limits (429), and server errors (500/502/503).
+     */
+    private boolean isRetryableError(Throwable t) {
+        if (t instanceof TimeoutException) return true;
+        if (t instanceof ModelProviderException.RateLimitException) return true;
+        if (t instanceof ModelProviderException.ApiException ae) {
+            String msg = ae.getMessage();
+            if (msg != null) {
+                return msg.contains("server error")
+                        || msg.contains("HTTP 500")
+                        || msg.contains("HTTP 502")
+                        || msg.contains("HTTP 503");
+            }
+        }
+        return false;
     }
 
     // ---- Request building ----
@@ -438,6 +473,24 @@ public class AnthropicProvider implements ModelProvider {
                 ObjectNode thinkingNode = root.putObject("thinking");
                 thinkingNode.put("type", "enabled");
                 thinkingNode.put("budget_tokens", budget);
+            }
+        }
+
+        // Effort parameter — maps to Anthropic thinking budget_tokens scaling
+        if (config.effort() != null) {
+            double effort = config.effort();
+            if (effort >= 0.0 && effort <= 1.0) {
+                // Map effort 0.0-1.0 to a thinking budget scale
+                // If thinking is not already enabled, enable it with effort-derived budget
+                if (!root.has("thinking")) {
+                    int maxBudget = config.maxTokens() * 4; // up to 4x output tokens for thinking
+                    int effortBudget = (int) (effort * maxBudget);
+                    if (effortBudget > 0) {
+                        ObjectNode thinkingNode = root.putObject("thinking");
+                        thinkingNode.put("type", "enabled");
+                        thinkingNode.put("budget_tokens", Math.max(1024, effortBudget));
+                    }
+                }
             }
         }
 

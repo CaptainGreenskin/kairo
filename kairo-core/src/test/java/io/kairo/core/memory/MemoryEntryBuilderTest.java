@@ -19,14 +19,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.memory.MemoryEntry;
 import io.kairo.api.memory.MemoryScope;
-import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 class MemoryEntryBuilderTest {
 
     @Test
-    @DisplayName("session() creates SESSION-scoped entry with verbatim=true")
+    @DisplayName("session() creates SESSION-scoped entry with default importance")
     void testSessionFactory() {
         MemoryEntry entry = MemoryEntryBuilder.session("session data");
 
@@ -35,50 +35,50 @@ class MemoryEntryBuilderTest {
         assertEquals("session data", entry.content());
         assertEquals(MemoryScope.SESSION, entry.scope());
         assertNotNull(entry.timestamp());
-        assertEquals(List.of(), entry.tags());
-        assertTrue(entry.verbatim());
+        assertEquals(Set.of(), entry.tags());
+        assertEquals(0.5, entry.importance());
     }
 
     @Test
-    @DisplayName("project() creates PROJECT-scoped entry with tags")
-    void testProjectFactory() {
-        MemoryEntry entry = MemoryEntryBuilder.project("project data", "java", "kairo");
+    @DisplayName("agent() creates AGENT-scoped entry with tags")
+    void testAgentFactory() {
+        MemoryEntry entry = MemoryEntryBuilder.agent("agent data", "java", "kairo");
 
-        assertEquals("project data", entry.content());
-        assertEquals(MemoryScope.PROJECT, entry.scope());
-        assertEquals(List.of("java", "kairo"), entry.tags());
-        assertTrue(entry.verbatim());
+        assertEquals("agent data", entry.content());
+        assertEquals(MemoryScope.AGENT, entry.scope());
+        assertEquals(Set.of("java", "kairo"), entry.tags());
+        assertEquals(0.5, entry.importance());
     }
 
     @Test
-    @DisplayName("project() with no tags creates empty tag list")
-    void testProjectNoTags() {
-        MemoryEntry entry = MemoryEntryBuilder.project("data");
+    @DisplayName("agent() with no tags creates empty tag set")
+    void testAgentNoTags() {
+        MemoryEntry entry = MemoryEntryBuilder.agent("data");
 
-        assertEquals(List.of(), entry.tags());
+        assertEquals(Set.of(), entry.tags());
     }
 
     @Test
-    @DisplayName("user() creates USER-scoped entry with tags")
-    void testUserFactory() {
-        MemoryEntry entry = MemoryEntryBuilder.user("user pref", "preference", "theme");
+    @DisplayName("global() creates GLOBAL-scoped entry with tags")
+    void testGlobalFactory() {
+        MemoryEntry entry = MemoryEntryBuilder.global("global pref", "preference", "theme");
 
-        assertEquals("user pref", entry.content());
-        assertEquals(MemoryScope.USER, entry.scope());
-        assertEquals(List.of("preference", "theme"), entry.tags());
-        assertTrue(entry.verbatim());
+        assertEquals("global pref", entry.content());
+        assertEquals(MemoryScope.GLOBAL, entry.scope());
+        assertEquals(Set.of("preference", "theme"), entry.tags());
+        assertEquals(0.5, entry.importance());
     }
 
     @Test
     @DisplayName("create() allows full control over all fields")
     void testCreateFactory() {
         MemoryEntry entry =
-                MemoryEntryBuilder.create("custom", MemoryScope.PROJECT, List.of("t1"), false);
+                MemoryEntryBuilder.create("custom", MemoryScope.AGENT, Set.of("t1"), 0.9);
 
         assertEquals("custom", entry.content());
-        assertEquals(MemoryScope.PROJECT, entry.scope());
-        assertEquals(List.of("t1"), entry.tags());
-        assertFalse(entry.verbatim());
+        assertEquals(MemoryScope.AGENT, entry.scope());
+        assertEquals(Set.of("t1"), entry.tags());
+        assertEquals(0.9, entry.importance());
     }
 
     @Test

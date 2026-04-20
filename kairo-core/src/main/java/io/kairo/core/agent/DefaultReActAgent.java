@@ -27,6 +27,7 @@ import io.kairo.api.message.Msg;
 import io.kairo.api.middleware.MiddlewareContext;
 import io.kairo.api.middleware.MiddlewareRejectException;
 import io.kairo.api.model.ModelConfig;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tracing.NoopTracer;
@@ -38,6 +39,7 @@ import io.kairo.core.model.ModelFallbackManager;
 import io.kairo.core.prompt.SystemPromptBuilder;
 import io.kairo.core.prompt.SystemPromptResult;
 import io.kairo.core.shutdown.GracefulShutdownManager;
+import io.kairo.core.tool.DefaultToolExecutor;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
@@ -195,6 +197,37 @@ public class DefaultReActAgent implements Agent {
         this.reactLoop.setCompactionTrigger(this.compactionTrigger);
     }
 
+    /**
+     * Create a new ReAct agent with the given configuration and tool dependencies.
+     *
+     * <p>The tool dependencies are injected into tools via {@link ToolContext} during execution.
+     *
+     * @param config the agent configuration
+     * @param toolExecutor the tool executor for running tools
+     * @param hookChain the hook chain for lifecycle events
+     * @param middlewarePipeline the middleware pipeline
+     * @param shutdownManager the graceful shutdown manager
+     * @param toolDependencies user-provided runtime dependencies for tools
+     */
+    public DefaultReActAgent(
+            AgentConfig config,
+            ToolExecutor toolExecutor,
+            HookChain hookChain,
+            DefaultMiddlewarePipeline middlewarePipeline,
+            GracefulShutdownManager shutdownManager,
+            Map<String, Object> toolDependencies) {
+        this(config, toolExecutor, hookChain, middlewarePipeline, shutdownManager);
+        // Wire ToolContext into the executor if it supports it
+        if (toolExecutor instanceof DefaultToolExecutor dte) {
+            ToolContext ctx =
+                    new ToolContext(
+                            this.id,
+                            config.sessionId(),
+                            toolDependencies != null ? toolDependencies : Map.of());
+            dte.setToolContext(ctx);
+        }
+    }
+
     /** Create a new ReAct agent with a pre-built system prompt (used for sub-agents). */
     DefaultReActAgent(
             AgentConfig config,
@@ -240,7 +273,13 @@ public class DefaultReActAgent implements Agent {
                                     currentIteration.set(0);
 
                                     // Register with shutdown manager
-                                    shutdownManager.registerAgent(this);
+                                    if (!shutdownManager.registerAgent(this)) {
+                                        return Mono.error(
+                                                new IllegalStateException(
+                                                        "Agent '"
+                                                                + name
+                                                                + "' rejected — shutdown in progress"));
+                                    }
 
                                     // Add user input to conversation history
                                     reactLoop.injectMessages(List.of(input));

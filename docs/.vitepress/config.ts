@@ -42,7 +42,7 @@ export default defineConfig({
           ],
         },
         socialLinks: [
-          { icon: 'github', link: 'https://github.com/kairo-agent/kairo' },
+          { icon: 'github', link: 'https://github.com/CaptainGreenskin/kairo' },
         ],
       },
     },
@@ -78,7 +78,7 @@ export default defineConfig({
           ],
         },
         socialLinks: [
-          { icon: 'github', link: 'https://github.com/kairo-agent/kairo' },
+          { icon: 'github', link: 'https://github.com/CaptainGreenskin/kairo' },
         ],
       },
     },

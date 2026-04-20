@@ -67,6 +67,8 @@ class DefaultToolExecutorAllowedToolsTest {
         ToolHandler handler = mock(ToolHandler.class);
         try {
             when(handler.execute(any())).thenReturn(new ToolResult(name, "ok", false, Map.of()));
+            when(handler.execute(any(), any()))
+                    .thenReturn(new ToolResult(name, "ok", false, Map.of()));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

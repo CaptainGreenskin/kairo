@@ -21,9 +21,9 @@ public enum MemoryScope {
     /** Memory scoped to the current session only. */
     SESSION,
 
-    /** Memory scoped to the current project. */
-    PROJECT,
+    /** Memory scoped to a specific agent. */
+    AGENT,
 
-    /** Memory scoped to the user across all projects. */
-    USER
+    /** Memory shared globally across all agents and sessions. */
+    GLOBAL
 }
