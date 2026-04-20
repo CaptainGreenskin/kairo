@@ -73,7 +73,7 @@
         <junit.version>5.11.4</junit.version>
         <jackson.version>2.18.2</jackson.version>
         <mcp-sdk.version>1.1.1</mcp-sdk.version>
-        <opentelemetry.version>1.44.1</opentelemetry.version>
+        <opentelemetry.version>1.61.0</opentelemetry.version>
         <swagger-parser.version>2.1.22</swagger-parser.version>
         <jacoco.line.threshold>0</jacoco.line.threshold>
     </properties>
