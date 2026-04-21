@@ -82,6 +82,9 @@
         <mcp-sdk.version>1.1.1</mcp-sdk.version>
         <opentelemetry.version>1.44.1</opentelemetry.version>
         <swagger-parser.version>2.1.22</swagger-parser.version>
+        <spring-boot.version>3.3.0</spring-boot.version>
+        <mockito.version>5.11.0</mockito.version>
+        <mockwebserver.version>4.12.0</mockwebserver.version>
         <jacoco.line.threshold>0</jacoco.line.threshold>
     </properties>
 
@@ -90,7 +93,7 @@
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
-                <version>3.3.0</version>
+                <version>${spring-boot.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -144,7 +147,7 @@
             <dependency>
                 <groupId>org.mockito</groupId>
                 <artifactId>mockito-core</artifactId>
-                <version>5.11.0</version>
+                <version>${mockito.version}</version>
                 <scope>test</scope>
             </dependency>
             <dependency>
@@ -156,7 +159,7 @@
             <dependency>
                 <groupId>com.squareup.okhttp3</groupId>
                 <artifactId>mockwebserver</artifactId>
-                <version>4.12.0</version>
+                <version>${mockwebserver.version}</version>
                 <scope>test</scope>
             </dependency>
             <!-- MCP SDK (split into core + jackson2 for Jackson 2.x compatibility) -->

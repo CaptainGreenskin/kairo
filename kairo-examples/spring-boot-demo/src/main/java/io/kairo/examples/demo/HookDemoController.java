@@ -36,11 +36,11 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * REST controller demonstrating Kairo hook capabilities for observability and auditing.
  *
- * <p>This controller builds an agent with {@link TimingHook} and {@link AuditHook}
- * attached, and exposes endpoints to interact with the agent and inspect the
- * collected metrics and audit log.
+ * <p>This controller builds an agent with {@link TimingHook} and {@link AuditHook} attached, and
+ * exposes endpoints to interact with the agent and inspect the collected metrics and audit log.
  *
  * <p>Usage:
+ *
  * <pre>{@code
  * # Chat with the hook-instrumented agent
  * curl -X POST http://localhost:8080/hooks/chat \
@@ -67,8 +67,8 @@ public class HookDemoController {
      * Construct the controller, building an agent with timing and audit hooks.
      *
      * @param modelProvider the model provider for LLM calls
-     * @param toolRegistry  the tool registry for available tools
-     * @param toolExecutor  the tool executor for running tools
+     * @param toolRegistry the tool registry for available tools
+     * @param toolExecutor the tool executor for running tools
      */
     public HookDemoController(
             ModelProvider modelProvider,
@@ -79,25 +79,27 @@ public class HookDemoController {
         this.auditHook = new AuditHook();
         this.modelName = modelName;
 
-        this.agent = AgentBuilder.create()
-                .name("hook-demo-agent")
-                .model(modelProvider)
-                .modelName(modelName)
-                .tools(toolRegistry)
-                .toolExecutor(toolExecutor)
-                .systemPrompt("You are a helpful assistant. Use available tools when "
-                        + "appropriate. Your interactions are being monitored for timing "
-                        + "and audit purposes.")
-                .maxIterations(10)
-                .tokenBudget(50_000)
-                .hook(timingHook)
-                .hook(auditHook)
-                .build();
+        this.agent =
+                AgentBuilder.create()
+                        .name("hook-demo-agent")
+                        .model(modelProvider)
+                        .modelName(modelName)
+                        .tools(toolRegistry)
+                        .toolExecutor(toolExecutor)
+                        .systemPrompt(
+                                "You are a helpful assistant. Use available tools when "
+                                        + "appropriate. Your interactions are being monitored for timing "
+                                        + "and audit purposes.")
+                        .maxIterations(10)
+                        .tokenBudget(50_000)
+                        .hook(timingHook)
+                        .hook(auditHook)
+                        .build();
     }
 
     /**
-     * Chat with the hook-instrumented agent. Timing and audit data are collected
-     * automatically during execution.
+     * Chat with the hook-instrumented agent. Timing and audit data are collected automatically
+     * during execution.
      *
      * @param request the chat request containing the user message
      * @return a JSON response with the agent's reply

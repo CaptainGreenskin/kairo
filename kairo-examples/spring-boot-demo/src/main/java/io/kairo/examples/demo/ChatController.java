@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
  * REST controller exposing the Kairo agent as a simple chat API.
  *
  * <p>Usage:
+ *
  * <pre>{@code
  * curl -X POST http://localhost:8080/chat \
  *   -H "Content-Type: application/json" \

@@ -25,9 +25,9 @@ import java.util.Map;
 /**
  * A mock weather lookup tool that returns simulated weather data for known cities.
  *
- * <p>This tool demonstrates how to create a custom read-only tool using the Kairo tool
- * annotation pattern. It maintains a static map of city-to-weather data and returns
- * a friendly weather report for each supported city.
+ * <p>This tool demonstrates how to create a custom read-only tool using the Kairo tool annotation
+ * pattern. It maintains a static map of city-to-weather data and returns a friendly weather report
+ * for each supported city.
  *
  * <p>Supported cities: Beijing, Shanghai, Tokyo, New York, London, Paris, Sydney.
  */
@@ -38,14 +38,15 @@ import java.util.Map;
 public class WeatherTool implements ToolHandler {
 
     /** Mock weather data keyed by lowercase city name. */
-    private static final Map<String, String> WEATHER_DATA = Map.of(
-            "beijing", "Beijing: 22°C, Sunny",
-            "shanghai", "Shanghai: 26°C, Partly Cloudy",
-            "tokyo", "Tokyo: 18°C, Rainy",
-            "new york", "New York: 15°C, Overcast",
-            "london", "London: 12°C, Foggy",
-            "paris", "Paris: 20°C, Clear",
-            "sydney", "Sydney: 28°C, Sunny");
+    private static final Map<String, String> WEATHER_DATA =
+            Map.of(
+                    "beijing", "Beijing: 22°C, Sunny",
+                    "shanghai", "Shanghai: 26°C, Partly Cloudy",
+                    "tokyo", "Tokyo: 18°C, Rainy",
+                    "new york", "New York: 15°C, Overcast",
+                    "london", "London: 12°C, Foggy",
+                    "paris", "Paris: 20°C, Clear",
+                    "sydney", "Sydney: 28°C, Sunny");
 
     @ToolParam(description = "The city name to look up weather for", required = true)
     private String city;
@@ -67,9 +68,18 @@ public class WeatherTool implements ToolHandler {
         if (weather == null) {
             return new ToolResult(
                     "weather",
-                    "Unknown city: " + cityName + ". Supported cities: "
-                            + String.join(", ", "Beijing", "Shanghai", "Tokyo",
-                                    "New York", "London", "Paris", "Sydney"),
+                    "Unknown city: "
+                            + cityName
+                            + ". Supported cities: "
+                            + String.join(
+                                    ", ",
+                                    "Beijing",
+                                    "Shanghai",
+                                    "Tokyo",
+                                    "New York",
+                                    "London",
+                                    "Paris",
+                                    "Sydney"),
                     false,
                     Map.of("city", cityName));
         }

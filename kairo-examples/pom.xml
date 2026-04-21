@@ -11,8 +11,13 @@
     </parent>
 
     <artifactId>kairo-examples</artifactId>
+    <packaging>pom</packaging>
     <name>Kairo — Examples</name>
     <description>Example applications showcasing Kairo features and usage patterns</description>
+
+    <modules>
+        <module>spring-boot-demo</module>
+    </modules>
 
     <properties>
         <maven.deploy.skip>true</maven.deploy.skip>

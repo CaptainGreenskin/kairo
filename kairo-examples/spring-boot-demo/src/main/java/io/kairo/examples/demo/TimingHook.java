@@ -32,14 +32,15 @@ import java.util.concurrent.atomic.AtomicLong;
  * Hook that records timing metrics for reasoning and acting phases of the agent loop.
  *
  * <p>Tracks the following metrics:
+ *
  * <ul>
- *   <li>Iteration count (number of complete reasoning + acting cycles)</li>
- *   <li>Total time spent in reasoning (model call) phases</li>
- *   <li>Total time spent in acting (tool execution) phases</li>
+ *   <li>Iteration count (number of complete reasoning + acting cycles)
+ *   <li>Total time spent in reasoning (model call) phases
+ *   <li>Total time spent in acting (tool execution) phases
  * </ul>
  *
- * <p>All metrics are stored in thread-safe data structures and can be retrieved
- * via {@link #getMetrics()} for external inspection.
+ * <p>All metrics are stored in thread-safe data structures and can be retrieved via {@link
+ * #getMetrics()} for external inspection.
  */
 public class TimingHook {
 
@@ -115,9 +116,7 @@ public class TimingHook {
                 "totalActingTimeMs", totalActingTimeMs.get());
     }
 
-    /**
-     * Reset all timing metrics to their initial values.
-     */
+    /** Reset all timing metrics to their initial values. */
     public void reset() {
         iterationCount.set(0);
         totalReasoningTimeMs.set(0);

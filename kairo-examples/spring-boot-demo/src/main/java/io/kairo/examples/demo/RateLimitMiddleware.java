@@ -66,8 +66,9 @@ public class RateLimitMiddleware implements Middleware {
         long count = counter.incrementAndGet();
 
         if (count > maxRequests) {
-            return Mono.error(new MiddlewareRejectException(
-                    "rate-limiter", "Rate limit exceeded for session " + sessionId));
+            return Mono.error(
+                    new MiddlewareRejectException(
+                            "rate-limiter", "Rate limit exceeded for session " + sessionId));
         }
 
         return chain.next(context.withAttribute("requestCount", count));

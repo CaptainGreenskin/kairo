@@ -25,20 +25,23 @@ import java.util.Map;
 /**
  * A simple calculator tool that evaluates basic two-operand arithmetic expressions.
  *
- * <p>Supports the four basic operations: addition (+), subtraction (-),
- * multiplication (*), and division (/). Expressions must be in the form
- * {@code "operand operator operand"} (e.g., {@code "2 + 3"}, {@code "10 / 4"}).
+ * <p>Supports the four basic operations: addition (+), subtraction (-), multiplication (*), and
+ * division (/). Expressions must be in the form {@code "operand operator operand"} (e.g., {@code "2
+ * + 3"}, {@code "10 / 4"}).
  *
  * <p>Division by zero is handled gracefully with an error result.
  */
 @Tool(
         name = "calculator",
-        description = "Evaluate a basic arithmetic expression with two numbers. "
-                + "Supports: +, -, *, /. Format: 'number operator number' (e.g., '2 + 3').",
+        description =
+                "Evaluate a basic arithmetic expression with two numbers. "
+                        + "Supports: +, -, *, /. Format: 'number operator number' (e.g., '2 + 3').",
         category = ToolCategory.INFORMATION)
 public class CalculatorTool implements ToolHandler {
 
-    @ToolParam(description = "The arithmetic expression to evaluate (e.g., '2 + 3 * 4')", required = true)
+    @ToolParam(
+            description = "The arithmetic expression to evaluate (e.g., '2 + 3 * 4')",
+            required = true)
     private String expression;
 
     /**
@@ -59,9 +62,10 @@ public class CalculatorTool implements ToolHandler {
         try {
             double result = evaluate(expr);
             // Format as integer if the result is a whole number
-            String formatted = (result == Math.floor(result) && !Double.isInfinite(result))
-                    ? String.valueOf((long) result)
-                    : String.valueOf(result);
+            String formatted =
+                    (result == Math.floor(result) && !Double.isInfinite(result))
+                            ? String.valueOf((long) result)
+                            : String.valueOf(result);
             return new ToolResult(
                     "calculator",
                     expr + " = " + formatted,
@@ -70,8 +74,11 @@ public class CalculatorTool implements ToolHandler {
         } catch (ArithmeticException e) {
             return error("Arithmetic error: " + e.getMessage());
         } catch (Exception e) {
-            return error("Invalid expression: " + expr + ". Use format: 'number operator number' "
-                    + "(e.g., '2 + 3'). Supported operators: +, -, *, /");
+            return error(
+                    "Invalid expression: "
+                            + expr
+                            + ". Use format: 'number operator number' "
+                            + "(e.g., '2 + 3'). Supported operators: +, -, *, /");
         }
     }
 

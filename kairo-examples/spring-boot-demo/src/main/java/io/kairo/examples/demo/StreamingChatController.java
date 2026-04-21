@@ -30,14 +30,15 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 
 /**
- * REST controller demonstrating Server-Sent Events (SSE) streaming with Kairo's
- * {@link ModelProvider#stream(List, ModelConfig)} API.
+ * REST controller demonstrating Server-Sent Events (SSE) streaming with Kairo's {@link
+ * ModelProvider#stream(List, ModelConfig)} API.
  *
  * <p>Streams partial model responses as SSE events, allowing clients to display tokens
- * incrementally as they arrive from the LLM provider. This is the preferred pattern for
- * interactive chat UIs where perceived latency matters.
+ * incrementally as they arrive from the LLM provider. This is the preferred pattern for interactive
+ * chat UIs where perceived latency matters.
  *
  * <p>Usage:
+ *
  * <pre>{@code
  * curl -N "http://localhost:8080/stream/chat?message=Tell+me+a+joke"
  * }</pre>
@@ -54,9 +55,9 @@ public class StreamingChatController {
     /**
      * Stream a chat response as Server-Sent Events.
      *
-     * <p>Calls {@link ModelProvider#stream(List, ModelConfig)} and emits each partial
-     * text chunk as an SSE {@code data} event. A final {@code [DONE]} event signals
-     * that the stream has completed.
+     * <p>Calls {@link ModelProvider#stream(List, ModelConfig)} and emits each partial text chunk as
+     * an SSE {@code data} event. A final {@code [DONE]} event signals that the stream has
+     * completed.
      *
      * @param message the user's input message
      * @return a Flux of SSE events containing text chunks
@@ -65,41 +66,40 @@ public class StreamingChatController {
     public Flux<ServerSentEvent<String>> streamChat(
             @RequestParam(defaultValue = "Hello!") String message) {
 
-        ModelConfig config = ModelConfig.builder()
-                .model(modelProvider.name().equals("anthropic")
-                        ? ModelConfig.DEFAULT_MODEL
-                        : "qwen-plus")
-                .maxTokens(ModelConfig.DEFAULT_MAX_TOKENS)
-                .temperature(0.7)
-                .systemPrompt("You are a helpful assistant. Keep responses concise.")
-                .build();
+        ModelConfig config =
+                ModelConfig.builder()
+                        .model(
+                                modelProvider.name().equals("anthropic")
+                                        ? ModelConfig.DEFAULT_MODEL
+                                        : "qwen-plus")
+                        .maxTokens(ModelConfig.DEFAULT_MAX_TOKENS)
+                        .temperature(0.7)
+                        .systemPrompt("You are a helpful assistant. Keep responses concise.")
+                        .build();
 
         Msg userMsg = Msg.of(MsgRole.USER, message);
 
-        Flux<ServerSentEvent<String>> dataEvents = modelProvider.stream(List.of(userMsg), config)
-                .map(this::extractText)
-                .filter(text -> !text.isEmpty())
-                .map(text -> ServerSentEvent.<String>builder()
-                        .data(text)
-                        .build());
+        Flux<ServerSentEvent<String>> dataEvents =
+                modelProvider.stream(List.of(userMsg), config)
+                        .map(this::extractText)
+                        .filter(text -> !text.isEmpty())
+                        .map(text -> ServerSentEvent.<String>builder().data(text).build());
 
-        Flux<ServerSentEvent<String>> doneEvent = Flux.just(
-                ServerSentEvent.<String>builder()
-                        .data("[DONE]")
-                        .build());
+        Flux<ServerSentEvent<String>> doneEvent =
+                Flux.just(ServerSentEvent.<String>builder().data("[DONE]").build());
 
         return dataEvents
                 .concatWith(doneEvent)
-                .onErrorResume(e -> Flux.just(
-                        ServerSentEvent.<String>builder()
-                                .event("error")
-                                .data("Error: " + e.getMessage())
-                                .build()));
+                .onErrorResume(
+                        e ->
+                                Flux.just(
+                                        ServerSentEvent.<String>builder()
+                                                .event("error")
+                                                .data("Error: " + e.getMessage())
+                                                .build()));
     }
 
-    /**
-     * Extract the first text content from a partial model response.
-     */
+    /** Extract the first text content from a partial model response. */
     private String extractText(ModelResponse response) {
         if (response == null || response.contents() == null) {
             return "";

@@ -35,6 +35,7 @@ import org.springframework.web.bind.annotation.RestController;
  * and {@link ModelResponse#contentAs(Class)} to deserialize the JSON response.
  *
  * <p>Usage:
+ *
  * <pre>{@code
  * curl -X POST http://localhost:8080/extract \
  *   -H "Content-Type: application/json" \

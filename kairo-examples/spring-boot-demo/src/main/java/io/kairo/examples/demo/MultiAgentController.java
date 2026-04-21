@@ -25,7 +25,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -38,11 +37,12 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * REST controller demonstrating Kairo's multi-agent orchestration primitives.
  *
- * <p>This is a pure orchestration demo — no LLM API key is required. It exposes
- * {@link DefaultTaskBoard} for DAG-based task management and {@link InProcessMessageBus}
- * for inter-agent messaging over HTTP.
+ * <p>This is a pure orchestration demo — no LLM API key is required. It exposes {@link
+ * DefaultTaskBoard} for DAG-based task management and {@link InProcessMessageBus} for inter-agent
+ * messaging over HTTP.
  *
  * <p>Usage:
+ *
  * <pre>{@code
  * # Create a plan with dependency DAG
  * curl -X POST http://localhost:8080/multi-agent/plan \
@@ -89,8 +89,8 @@ public class MultiAgentController {
     /**
      * Create a plan by submitting a list of tasks with optional dependency relationships.
      *
-     * <p>Each task in the request may reference other tasks via {@code blockedBy}, using
-     * the 1-based index that corresponds to creation order (the first task created gets ID "1").
+     * <p>Each task in the request may reference other tasks via {@code blockedBy}, using the
+     * 1-based index that corresponds to creation order (the first task created gets ID "1").
      *
      * @param request the plan request containing the task list
      * @return the created tasks with their assigned IDs and dependency info
@@ -102,8 +102,8 @@ public class MultiAgentController {
         // Resolve task inputs: support both "task" (single string) and "tasks" (list)
         List<TaskInput> taskInputs = request.resolveTaskInputs();
         if (taskInputs.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "error", "Either 'task' or 'tasks' must be provided"));
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Either 'task' or 'tasks' must be provided"));
         }
 
         // Phase 1: create all tasks
@@ -128,11 +128,12 @@ public class MultiAgentController {
             createdTasks.add(toTaskMap(taskBoard.get(task.id())));
         }
 
-        return ResponseEntity.ok(Map.of(
-                "plan", createdTasks,
-                "unblockedTasks", taskBoard.getUnblockedTasks().stream()
-                        .map(t -> t.id())
-                        .toList()));
+        return ResponseEntity.ok(
+                Map.of(
+                        "plan",
+                        createdTasks,
+                        "unblockedTasks",
+                        taskBoard.getUnblockedTasks().stream().map(t -> t.id()).toList()));
     }
 
     /**
@@ -144,16 +145,17 @@ public class MultiAgentController {
     public ResponseEntity<Map<String, Object>> listTasks() {
         List<Task> allTasks = taskBoard.list();
         List<Task> unblocked = taskBoard.getUnblockedTasks();
-        return ResponseEntity.ok(Map.of(
-                "tasks", allTasks.stream().map(this::toTaskMap).toList(),
-                "unblockedTasks", unblocked.stream().map(t -> t.id()).toList()));
+        return ResponseEntity.ok(
+                Map.of(
+                        "tasks", allTasks.stream().map(this::toTaskMap).toList(),
+                        "unblockedTasks", unblocked.stream().map(t -> t.id()).toList()));
     }
 
     /**
      * Update the status of a task by its ID.
      *
-     * <p>When a task is marked {@code COMPLETED}, all downstream tasks that were blocked
-     * by it are automatically unblocked.
+     * <p>When a task is marked {@code COMPLETED}, all downstream tasks that were blocked by it are
+     * automatically unblocked.
      *
      * @param id the task ID
      * @param request the status update request
@@ -164,11 +166,11 @@ public class MultiAgentController {
             @PathVariable String id, @RequestBody StatusUpdateRequest request) {
         TaskStatus status = TaskStatus.valueOf(request.status());
         Task updated = taskBoard.update(id, status);
-        return ResponseEntity.ok(Map.of(
-                "task", toTaskMap(updated),
-                "unblockedTasks", taskBoard.getUnblockedTasks().stream()
-                        .map(t -> t.id())
-                        .toList()));
+        return ResponseEntity.ok(
+                Map.of(
+                        "task", toTaskMap(updated),
+                        "unblockedTasks",
+                                taskBoard.getUnblockedTasks().stream().map(t -> t.id()).toList()));
     }
 
     /**
@@ -185,11 +187,12 @@ public class MultiAgentController {
         messageBus.registerAgent(request.to());
         Msg msg = Msg.of(MsgRole.ASSISTANT, request.content());
         messageBus.send(request.from(), request.to(), msg).block();
-        return ResponseEntity.ok(Map.of(
-                "status", "sent",
-                "from", request.from(),
-                "to", request.to(),
-                "content", request.content()));
+        return ResponseEntity.ok(
+                Map.of(
+                        "status", "sent",
+                        "from", request.from(),
+                        "to", request.to(),
+                        "content", request.content()));
     }
 
     /**
@@ -204,13 +207,15 @@ public class MultiAgentController {
     public ResponseEntity<Map<String, Object>> pollInbox(@PathVariable String agentName) {
         messageBus.registerAgent(agentName);
         List<Msg> messages = messageBus.poll(agentName);
-        List<Map<String, String>> messageList = messages.stream()
-                .map(m -> Map.of("role", m.role().name(), "text", m.text()))
-                .toList();
-        return ResponseEntity.ok(Map.of(
-                "agent", agentName,
-                "messageCount", messageList.size(),
-                "messages", messageList));
+        List<Map<String, String>> messageList =
+                messages.stream()
+                        .map(m -> Map.of("role", m.role().name(), "text", m.text()))
+                        .toList();
+        return ResponseEntity.ok(
+                Map.of(
+                        "agent", agentName,
+                        "messageCount", messageList.size(),
+                        "messages", messageList));
     }
 
     /**
@@ -222,8 +227,8 @@ public class MultiAgentController {
     public ResponseEntity<Map<String, String>> reset() {
         this.taskBoard = new DefaultTaskBoard();
         this.messageBus = new InProcessMessageBus();
-        return ResponseEntity.ok(Map.of("status", "reset", "message",
-                "TaskBoard and MessageBus have been reset"));
+        return ResponseEntity.ok(
+                Map.of("status", "reset", "message", "TaskBoard and MessageBus have been reset"));
     }
 
     private Map<String, Object> toTaskMap(Task task) {
@@ -237,7 +242,10 @@ public class MultiAgentController {
         return map;
     }
 
-    /** Request body for creating a plan. Accepts either a single {@code task} string or a {@code tasks} list. */
+    /**
+     * Request body for creating a plan. Accepts either a single {@code task} string or a {@code
+     * tasks} list.
+     */
     public record PlanRequest(String task, List<TaskInput> tasks) {
         /** Resolves task inputs from either the single task string or the tasks list. */
         public List<TaskInput> resolveTaskInputs() {

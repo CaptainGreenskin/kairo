@@ -19,15 +19,22 @@ import io.kairo.api.tool.ToolDefinition;
 import io.modelcontextprotocol.client.McpAsyncClient;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.io.Closeable;
+import java.io.IOException;
+import java.net.ConnectException;
+import java.net.SocketException;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
+import reactor.util.retry.RetryBackoffSpec;
 
 /**
  * Central registry managing multiple MCP server connections and their tools.
@@ -47,6 +54,9 @@ import reactor.core.publisher.Mono;
 public class McpClientRegistry implements Closeable {
 
     private static final Logger logger = LoggerFactory.getLogger(McpClientRegistry.class);
+    private static final int REGISTER_RETRY_ATTEMPTS = 3;
+    private static final Duration REGISTER_RETRY_MIN_BACKOFF = Duration.ofMillis(250);
+    private static final Duration REGISTER_RETRY_MAX_BACKOFF = Duration.ofSeconds(2);
 
     private final ConcurrentHashMap<String, McpAsyncClient> clients = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, McpToolGroup> toolGroups = new ConcurrentHashMap<>();
@@ -67,8 +77,7 @@ public class McpClientRegistry implements Closeable {
         logger.info("Registering MCP server: {}", config.name());
         McpAsyncClient client = McpClientBuilder.fromConfig(config).build();
 
-        return client.initialize()
-                .then(client.listTools())
+        return initializeAndListTools(client, config.name())
                 .map(
                         listToolsResult -> {
                             List<McpSchema.Tool> mcpTools = listToolsResult.tools();
@@ -106,7 +115,8 @@ public class McpClientRegistry implements Closeable {
                                                 client,
                                                 mcpTool.name(),
                                                 definition.name(),
-                                                toolPresetArgs);
+                                                toolPresetArgs,
+                                                config.requestTimeout());
 
                                 group.addTool(definition, executor);
                                 logger.debug(
@@ -136,6 +146,44 @@ public class McpClientRegistry implements Closeable {
                                 // ignore close errors during failed registration
                             }
                         });
+    }
+
+    private Mono<McpSchema.ListToolsResult> initializeAndListTools(
+            McpAsyncClient client, String serverName) {
+        return client.initialize()
+                .then(client.listTools())
+                .retryWhen(registerRetrySpec(serverName));
+    }
+
+    private RetryBackoffSpec registerRetrySpec(String serverName) {
+        return Retry.backoff(REGISTER_RETRY_ATTEMPTS, REGISTER_RETRY_MIN_BACKOFF)
+                .maxBackoff(REGISTER_RETRY_MAX_BACKOFF)
+                .filter(this::isTransientConnectionError)
+                .doBeforeRetry(
+                        signal ->
+                                logger.warn(
+                                        "Retrying MCP server '{}' registration (attempt {}): {}",
+                                        serverName,
+                                        signal.totalRetries() + 1,
+                                        signal.failure() == null
+                                                ? "unknown"
+                                                : signal.failure().getMessage()));
+    }
+
+    private boolean isTransientConnectionError(Throwable t) {
+        if (t == null) {
+            return false;
+        }
+        if (t instanceof TimeoutException
+                || t instanceof ConnectException
+                || t instanceof SocketException
+                || t instanceof IOException) {
+            return true;
+        }
+        String simpleName = t.getClass().getSimpleName().toLowerCase();
+        return simpleName.contains("timeout")
+                || simpleName.contains("connect")
+                || simpleName.contains("temporar");
     }
 
     /**

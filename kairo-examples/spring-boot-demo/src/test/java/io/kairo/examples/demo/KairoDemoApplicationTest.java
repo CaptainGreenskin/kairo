@@ -35,11 +35,12 @@ import org.springframework.context.ApplicationContext;
  * Integration tests validating that the Spring Boot auto-configuration works correctly.
  *
  * <p>These tests verify:
+ *
  * <ul>
- *   <li>The application context loads without errors</li>
- *   <li>All expected Kairo beans are present and properly configured</li>
- *   <li>An agent can be created programmatically from Spring-managed beans</li>
- *   <li>MCP auto-configuration activates when kairo-mcp is on the classpath</li>
+ *   <li>The application context loads without errors
+ *   <li>All expected Kairo beans are present and properly configured
+ *   <li>An agent can be created programmatically from Spring-managed beans
+ *   <li>MCP auto-configuration activates when kairo-mcp is on the classpath
  * </ul>
  *
  * <p>No real LLM API calls are made — these are purely context-load tests.
@@ -47,8 +48,7 @@ import org.springframework.context.ApplicationContext;
 @SpringBootTest
 class KairoDemoApplicationTest {
 
-    @Autowired
-    private ApplicationContext context;
+    @Autowired private ApplicationContext context;
 
     @Test
     void contextLoads() {
