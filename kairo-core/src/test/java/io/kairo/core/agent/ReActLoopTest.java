@@ -608,6 +608,65 @@ class ReActLoopTest {
         assertTrue(history.stream().anyMatch(m -> m.role() == MsgRole.TOOL));
     }
 
+    @Test
+    void testNoToolExecutorWithSkillLoadToolCallDoesNotThrowNpe() {
+        AgentConfig config =
+                AgentConfig.builder()
+                        .name("no-exec-skill-agent")
+                        .modelProvider(modelProvider)
+                        .modelName("test-model")
+                        .maxIterations(10)
+                        .tokenBudget(200_000)
+                        .build();
+
+        ReActLoopContext ctx =
+                new ReActLoopContext(
+                        "agent-3s",
+                        "no-exec-skill-agent",
+                        config,
+                        hookChain,
+                        null,
+                        null, // no toolExecutor
+                        errorRecovery,
+                        tokenBudgetManager,
+                        shutdownManager,
+                        null);
+
+        ModelConfig modelConfig =
+                ModelConfig.builder()
+                        .model("test-model")
+                        .maxTokens(4096)
+                        .temperature(0.7)
+                        .tools(List.of())
+                        .build();
+
+        AtomicInteger callCount = new AtomicInteger(0);
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(toolCallResponse("tc-1", "skill_load", Map.of()));
+                            }
+                            return Mono.just(textResponse("Handled skill_load without executor."));
+                        });
+
+        ReActLoop loop =
+                new ReActLoop(
+                        ctx, interrupted, currentIteration, totalTokensUsed, () -> modelConfig);
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "load skill")));
+
+        StepVerifier.create(loop.runLoop())
+                .assertNext(
+                        msg -> {
+                            assertEquals(MsgRole.ASSISTANT, msg.role());
+                            assertTrue(msg.text().contains("without executor"));
+                        })
+                .verifyComplete();
+
+        assertEquals(2, callCount.get());
+    }
+
     // ===== 12. Token budget guard =====
 
     @Test

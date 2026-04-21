@@ -56,6 +56,8 @@ public record AgentConfig(
         String sessionId,
         Tracer tracer,
         List<Object> mcpServerConfigs,
+        int mcpMaxToolsPerServer,
+        boolean mcpStrictSchemaAlignment,
         int loopHashWarnThreshold,
         int loopHashHardLimit,
         int loopFreqWarnThreshold,
@@ -99,6 +101,8 @@ public record AgentConfig(
                 sessionId,
                 tracer,
                 mcpServerConfigs,
+                128,
+                true,
                 loopHashWarnThreshold,
                 loopHashHardLimit,
                 loopFreqWarnThreshold,
@@ -135,6 +139,8 @@ public record AgentConfig(
         private String sessionId;
         private Tracer tracer;
         private final List<Object> mcpServerConfigs = new ArrayList<>();
+        private int mcpMaxToolsPerServer = 128;
+        private boolean mcpStrictSchemaAlignment = true;
         private int loopHashWarnThreshold = 3;
         private int loopHashHardLimit = 5;
         private int loopFreqWarnThreshold = 50;
@@ -313,6 +319,30 @@ public record AgentConfig(
         }
 
         /**
+         * Set max MCP tools to register per server.
+         *
+         * <p>Provides a hard upper bound so one remote server cannot flood the runtime with an
+         * unbounded tool list.
+         */
+        public Builder mcpMaxToolsPerServer(int maxTools) {
+            if (maxTools < 1) {
+                throw new IllegalArgumentException("mcpMaxToolsPerServer must be >= 1");
+            }
+            this.mcpMaxToolsPerServer = maxTools;
+            return this;
+        }
+
+        /**
+         * Enable/disable strict schema alignment when importing MCP tool schemas.
+         *
+         * <p>When enabled, schema mismatches are normalized conservatively by the runtime.
+         */
+        public Builder mcpStrictSchemaAlignment(boolean strict) {
+            this.mcpStrictSchemaAlignment = strict;
+            return this;
+        }
+
+        /**
          * Configure loop detection thresholds.
          *
          * @param hashWarn consecutive identical hash count to trigger WARN (default 3)
@@ -357,6 +387,8 @@ public record AgentConfig(
                     sessionId,
                     tracer,
                     List.copyOf(mcpServerConfigs),
+                    mcpMaxToolsPerServer,
+                    mcpStrictSchemaAlignment,
                     loopHashWarnThreshold,
                     loopHashHardLimit,
                     loopFreqWarnThreshold,

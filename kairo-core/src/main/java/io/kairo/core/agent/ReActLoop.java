@@ -872,6 +872,9 @@ class ReActLoop {
     /** Apply skill_load tool restrictions from tool results. */
     private void applySkillToolRestrictions(
             List<Content.ToolUseContent> toolCalls, List<ToolResult> toolResults) {
+        if (ctx.toolExecutor() == null) {
+            return;
+        }
         for (int i = 0; i < toolResults.size(); i++) {
             ToolResult tr = toolResults.get(i);
             String toolName = i < toolCalls.size() ? toolCalls.get(i).toolName() : null;

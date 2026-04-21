@@ -16,12 +16,20 @@
 package io.kairo.core.agent;
 
 import io.kairo.api.agent.AgentConfig;
+import io.kairo.api.mcp.McpPlugin;
+import io.kairo.api.mcp.McpPluginRegistration;
+import io.kairo.api.mcp.McpPluginTool;
+import io.kairo.api.tool.JsonSchema;
+import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.core.tool.ToolHandler;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.ServiceLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
@@ -40,8 +48,7 @@ class SkillToolManager {
     private final AgentConfig config;
     private final ToolExecutor toolExecutor;
     private volatile boolean mcpInitialized = false;
-    private AutoCloseable
-            mcpRegistry; // McpClientRegistry, held as AutoCloseable to avoid compile dep
+    private AutoCloseable mcpRegistryPlugin;
 
     SkillToolManager(AgentConfig config, ToolExecutor toolExecutor) {
         this.config = config;
@@ -61,36 +68,43 @@ class SkillToolManager {
         return Mono.fromCallable(
                         () -> {
                             mcpInitialized = true;
-                            // Runtime check for kairo-mcp on classpath
-                            Class<?> registryClass =
-                                    Class.forName("io.kairo.mcp.McpClientRegistry");
-                            Object registry = registryClass.getDeclaredConstructor().newInstance();
-                            this.mcpRegistry = (AutoCloseable) registry;
-
-                            // Get the register(McpServerConfig) method
-                            Class<?> configClass = Class.forName("io.kairo.mcp.McpServerConfig");
-                            var registerMethod = registryClass.getMethod("register", configClass);
+                            McpPlugin plugin =
+                                    ServiceLoader.load(McpPlugin.class).findFirst().orElse(null);
+                            if (plugin == null) {
+                                log.warn(
+                                        "No McpPlugin found via ServiceLoader; skipping MCP initialization");
+                                return false;
+                            }
+                            this.mcpRegistryPlugin = plugin;
 
                             for (Object serverConfig : config.mcpServerConfigs()) {
-                                // register() returns Mono<McpToolGroup> — block to get group
-                                @SuppressWarnings("unchecked")
-                                Mono<Object> groupMono =
-                                        (Mono<Object>)
-                                                registerMethod.invoke(registry, serverConfig);
-                                Object toolGroup = groupMono.block();
+                                if (!plugin.supports(serverConfig)) {
+                                    log.warn(
+                                            "MCP config type '{}' is not supported by plugin '{}'; skipping",
+                                            serverConfig == null
+                                                    ? "null"
+                                                    : serverConfig.getClass().getName(),
+                                            plugin.getClass().getName());
+                                    continue;
+                                }
+                                McpPluginRegistration registration =
+                                        plugin.register(serverConfig).block();
+                                if (registration == null || registration.tools() == null) {
+                                    continue;
+                                }
 
-                                // Get tool definitions and executors from the group
-                                var getAllDefs =
-                                        toolGroup.getClass().getMethod("getAllToolDefinitions");
-                                @SuppressWarnings("unchecked")
-                                List<io.kairo.api.tool.ToolDefinition> defs =
-                                        (List<io.kairo.api.tool.ToolDefinition>)
-                                                getAllDefs.invoke(toolGroup);
-
-                                var getExecutor =
-                                        toolGroup.getClass().getMethod("getExecutor", String.class);
-
-                                for (var def : defs) {
+                                List<McpPluginTool> governed =
+                                        applyMcpGovernance(
+                                                registration.serverName(), registration.tools());
+                                for (McpPluginTool tool : governed) {
+                                    ToolDefinition def = tool.definition();
+                                    Object executor = tool.executor();
+                                    if (executor == null) {
+                                        log.warn(
+                                                "Skipping MCP tool '{}' because executor is null",
+                                                def.name());
+                                        continue;
+                                    }
                                     // Register definition into ToolRegistry
                                     if (config.toolRegistry() != null) {
                                         config.toolRegistry().register(def);
@@ -99,24 +113,17 @@ class SkillToolManager {
                                     // McpToolExecutor lives in kairo-mcp and does not implement
                                     // ToolHandler (kairo-core type), so wrap it in a reflective
                                     // adapter to satisfy DefaultToolExecutor's handler contract.
-                                    Object executor = getExecutor.invoke(toolGroup, def.name());
                                     ToolHandler adapter = adaptMcpExecutor(executor);
                                     toolExecutor.registerToolInstance(def.name(), adapter);
                                 }
                                 log.info(
-                                        "MCP server registered {} tool(s) into agent", defs.size());
+                                        "MCP server '{}' registered {} tool(s) into agent",
+                                        registration.serverName(),
+                                        governed.size());
                             }
                             return true;
                         })
                 .subscribeOn(Schedulers.boundedElastic())
-                .onErrorResume(
-                        ClassNotFoundException.class,
-                        e -> {
-                            log.warn(
-                                    "kairo-mcp not on classpath, skipping MCP initialization: {}",
-                                    e.getMessage());
-                            return Mono.empty();
-                        })
                 .onErrorResume(
                         e -> {
                             log.error("Failed to initialize MCP servers: {}", e.getMessage(), e);
@@ -127,9 +134,9 @@ class SkillToolManager {
 
     /** Close the MCP registry if it was initialized. */
     void closeMcpRegistry() {
-        if (mcpRegistry != null) {
+        if (mcpRegistryPlugin != null) {
             try {
-                mcpRegistry.close();
+                mcpRegistryPlugin.close();
                 log.debug("MCP registry closed");
             } catch (Exception e) {
                 log.warn("Error closing MCP registry: {}", e.getMessage());
@@ -178,5 +185,74 @@ class SkillToolManager {
                 throw new RuntimeException(cause);
             }
         };
+    }
+
+    private List<McpPluginTool> applyMcpGovernance(
+            String serverName, List<McpPluginTool> discoveredTools) {
+        int maxTools = Math.max(1, config.mcpMaxToolsPerServer());
+        List<McpPluginTool> bounded = discoveredTools;
+        if (discoveredTools.size() > maxTools) {
+            log.warn(
+                    "MCP server '{}' discovered {} tools, capping registration at {}",
+                    serverName,
+                    discoveredTools.size(),
+                    maxTools);
+            bounded = discoveredTools.subList(0, maxTools);
+        }
+
+        List<McpPluginTool> normalized = new ArrayList<>();
+        for (McpPluginTool tool : bounded) {
+            ToolDefinition normalizedDef =
+                    normalizeToolDefinition(tool.definition(), config.mcpStrictSchemaAlignment());
+            normalized.add(new McpPluginTool(normalizedDef, tool.executor()));
+        }
+        return normalized;
+    }
+
+    private ToolDefinition normalizeToolDefinition(ToolDefinition def, boolean strictSchema) {
+        JsonSchema schema = def.inputSchema();
+        if (schema == null) {
+            schema = new JsonSchema("object", Map.of(), List.of(), null);
+        }
+
+        String type = schema.type() == null || schema.type().isBlank() ? "object" : schema.type();
+        Map<String, JsonSchema> properties =
+                schema.properties() == null ? Map.of() : new LinkedHashMap<>(schema.properties());
+        List<String> required =
+                schema.required() == null ? new ArrayList<>() : new ArrayList<>(schema.required());
+
+        if (strictSchema) {
+            required.removeIf(
+                    key -> {
+                        boolean missing = !properties.containsKey(key);
+                        if (missing) {
+                            log.warn(
+                                    "MCP tool '{}' schema required key '{}' missing in properties; dropping key",
+                                    def.name(),
+                                    key);
+                        }
+                        return missing;
+                    });
+            if (!"object".equals(type)) {
+                log.warn(
+                        "MCP tool '{}' schema type '{}' coerced to 'object' for runtime alignment",
+                        def.name(),
+                        type);
+                type = "object";
+            }
+        }
+
+        JsonSchema normalizedSchema =
+                new JsonSchema(
+                        type, Map.copyOf(properties), List.copyOf(required), schema.description());
+        return new ToolDefinition(
+                def.name(),
+                def.description(),
+                def.category(),
+                normalizedSchema,
+                def.implementationClass(),
+                def.timeout(),
+                def.sideEffect(),
+                def.usageGuidance());
     }
 }
