@@ -209,4 +209,22 @@ class InProcessA2aClientTest {
                     .isInstanceOf(NullPointerException.class);
         }
     }
+
+    @Test
+    @DisplayName("scoped target id routes to scoped agent instance")
+    void scopedTargetIdRoutesCorrectly() {
+        resolver.registerScoped("team-a", AgentCard.of("same", "Team A", "desc"));
+        resolver.registerScoped("team-b", AgentCard.of("same", "Team B", "desc"));
+        client.registerScopedAgent(
+                "team-a", stubAgent("same", Mono.just(Msg.of(MsgRole.ASSISTANT, "A"))));
+        client.registerScopedAgent(
+                "team-b", stubAgent("same", Mono.just(Msg.of(MsgRole.ASSISTANT, "B"))));
+
+        StepVerifier.create(client.send("team-a:same", Msg.of(MsgRole.USER, "hello")))
+                .assertNext(msg -> assertThat(msg.text()).isEqualTo("A"))
+                .verifyComplete();
+        StepVerifier.create(client.send("team-b:same", Msg.of(MsgRole.USER, "hello")))
+                .assertNext(msg -> assertThat(msg.text()).isEqualTo("B"))
+                .verifyComplete();
+    }
 }

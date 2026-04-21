@@ -97,7 +97,7 @@ class TeamAwareA2aClientTest {
             client.registerTeamAgent(card, agent);
 
             // Card registered
-            assertThat(resolver.resolve("a1")).isPresent();
+            assertThat(resolver.resolveScoped(teamName, "a1")).isPresent();
             // Agent instance registered
             assertThat(delegate.supportsAgentRegistration()).isTrue();
             // Team membership

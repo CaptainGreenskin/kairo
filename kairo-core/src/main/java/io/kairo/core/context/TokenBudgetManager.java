@@ -47,6 +47,7 @@ public class TokenBudgetManager {
     private final ModelRegistry.ModelSpec modelSpec;
     private volatile ModelResponse.Usage lastApiUsage;
     private volatile int lastApiUsageTurn = -1;
+    private volatile int lastAccountedUsageTurn = -1;
     private volatile int currentTurn = 0;
 
     /**
@@ -203,6 +204,25 @@ public class TokenBudgetManager {
     }
 
     /**
+     * Record model usage and account it into the unified token ledger.
+     *
+     * <p>This method is idempotent within the same turn and should be called once after each model
+     * invocation response is received.
+     *
+     * @param usage usage from the model response
+     */
+    public void recordModelUsage(ModelResponse.Usage usage) {
+        if (usage == null) {
+            return;
+        }
+        updateFromApiUsage(usage);
+        if (lastAccountedUsageTurn != currentTurn) {
+            usedTokens.addAndGet(usage.inputTokens() + usage.outputTokens());
+            lastAccountedUsageTurn = currentTurn;
+        }
+    }
+
+    /**
      * Estimate token count for a list of messages.
      *
      * <p>If the last API usage is fresh (same turn), returns the API-reported {@code inputTokens}.
@@ -256,6 +276,15 @@ public class TokenBudgetManager {
     /** Advance the turn counter (call after each model invocation). */
     public void advanceTurn() {
         currentTurn++;
+    }
+
+    /**
+     * Return total accounted tokens in the unified ledger.
+     *
+     * @return total accounted token usage
+     */
+    public long totalAccountedTokens() {
+        return usedTokens.get();
     }
 
     /**

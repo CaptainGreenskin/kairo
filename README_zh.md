@@ -138,6 +138,14 @@ Agent agent = AgentBuilder.create()
 Msg result = agent.call(MsgBuilder.user("创建一个 HelloWorld.java 并编译运行")).block();
 ```
 
+如果你已经有 Spring 注入的 `Agent` Bean，那么 "Hello World" 只需要 3 行：
+
+```java
+@Autowired Agent agent;
+Msg reply = agent.call(MsgBuilder.user("你好，Kairo！")).block();
+System.out.println(reply.getTextContent());
+```
+
 ### 3. Spring Boot 集成
 
 添加 starter 依赖，通过 `application.yml` 配置：
@@ -169,7 +177,7 @@ public String chat(@RequestBody String message) {
 }
 ```
 
-五行配置，Agent 即可使用。
+几行配置，Agent 即可使用。
 
 ## 模型支持
 

@@ -59,7 +59,8 @@ public class DefaultToolExecutor implements ToolExecutor {
     private volatile boolean planMode = false;
     private final Map<String, ToolPermission> toolPermissions = new ConcurrentHashMap<>();
     private volatile Set<String> activeToolConstraints = null; // null = no restriction
-    private volatile ToolContext toolContext;
+    private final ThreadLocal<ToolContext> legacyToolContext = new InheritableThreadLocal<>();
+    private volatile ToolContext legacyFallbackToolContext;
 
     /**
      * Create a new executor with the given registry and permission guard.
@@ -171,7 +172,12 @@ public class DefaultToolExecutor implements ToolExecutor {
      */
     @Deprecated
     public void setToolContext(ToolContext context) {
-        this.toolContext = context;
+        legacyFallbackToolContext = context;
+        if (context == null) {
+            legacyToolContext.remove();
+        } else {
+            legacyToolContext.set(context);
+        }
     }
 
     /**
@@ -182,7 +188,8 @@ public class DefaultToolExecutor implements ToolExecutor {
      * @return the current tool context, or null if not set
      */
     public ToolContext getToolContext() {
-        return toolContext;
+        ToolContext fromThread = legacyToolContext.get();
+        return fromThread != null ? fromThread : legacyFallbackToolContext;
     }
 
     /**
@@ -363,7 +370,7 @@ public class DefaultToolExecutor implements ToolExecutor {
                                                                                     ? contextView
                                                                                             .get(
                                                                                                     CONTEXT_KEY)
-                                                                                    : toolContext;
+                                                                                    : getToolContext();
                                                                     if (ctx == null) {
                                                                         ctx =
                                                                                 new ToolContext(

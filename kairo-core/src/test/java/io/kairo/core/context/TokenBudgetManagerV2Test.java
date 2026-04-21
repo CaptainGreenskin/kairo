@@ -183,4 +183,21 @@ class TokenBudgetManagerV2Test {
         mgr.advanceTurn();
         assertEquals(42, mgr.estimateTokens(List.of(Msg.of(MsgRole.USER, "stale"))));
     }
+
+    @Test
+    @DisplayName("recordModelUsage updates unified accounted tokens once per turn")
+    void testRecordModelUsageSingleSourceAccounting() {
+        TokenBudgetManager mgr = TokenBudgetManager.forModel("claude-sonnet-4-20250514");
+        ModelResponse.Usage usage = new ModelResponse.Usage(120, 30, 0, 0);
+
+        mgr.recordModelUsage(usage);
+        mgr.recordModelUsage(usage);
+
+        assertEquals(150, mgr.totalAccountedTokens());
+        assertEquals(150, mgr.used());
+
+        mgr.advanceTurn();
+        mgr.recordModelUsage(new ModelResponse.Usage(10, 5, 0, 0));
+        assertEquals(165, mgr.totalAccountedTokens());
+    }
 }

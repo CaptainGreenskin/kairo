@@ -51,12 +51,25 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "kairo")
 public class AgentRuntimeProperties {
 
+    /** Model/provider configuration under {@code kairo.model.*}. */
     private Model model = new Model();
+
+    /** Runtime loop behavior under {@code kairo.agent.*}. */
     private Agent agent = new Agent();
+
+    /** Tooling switches and safety patterns under {@code kairo.tool.*}. */
     private Tool tool = new Tool();
+
+    /** Memory backend configuration under {@code kairo.memory.*}. */
     private Memory memory = new Memory();
+
+    /** Skill loading/search configuration under {@code kairo.skills.*}. */
     private Skills skills = new Skills();
+
+    /** Embedding provider selection under {@code kairo.embedding.*}. */
     private Embedding embedding = new Embedding();
+
+    /** Agent checkpoint enablement under {@code kairo.checkpoint.*}. */
     private Checkpoint checkpoint = new Checkpoint();
 
     public Model getModel() {

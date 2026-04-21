@@ -24,12 +24,14 @@ import io.kairo.api.hook.PostCompactEvent;
 import io.kairo.api.hook.PreCompactEvent;
 import io.kairo.api.message.Msg;
 import io.kairo.api.model.ModelProvider;
+import io.kairo.core.context.CompactionPolicyDefaults;
 import io.kairo.core.model.ModelRegistry;
+import io.kairo.core.resilience.CircuitBreakerPrimitive;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
@@ -57,7 +59,7 @@ public class CompactionPipeline {
     private static final Logger log = LoggerFactory.getLogger(CompactionPipeline.class);
 
     private final List<CompactionStrategy> stages;
-    private final CircuitBreaker circuitBreaker;
+    private final CircuitBreakerPrimitive circuitBreaker;
     private final String modelId;
     private final HookChain hookChain;
 
@@ -112,7 +114,9 @@ public class CompactionPipeline {
                 stages.stream()
                         .sorted(Comparator.comparingInt(CompactionStrategy::priority))
                         .toList();
-        this.circuitBreaker = new CircuitBreaker(3);
+        this.circuitBreaker =
+                new CircuitBreakerPrimitive(
+                        CompactionPolicyDefaults.PIPELINE_CIRCUIT_BREAKER_THRESHOLD, Duration.ZERO);
         this.modelId = modelId;
         this.hookChain = hookChain;
     }
@@ -292,32 +296,5 @@ public class CompactionPipeline {
     /** Reset the circuit breaker. */
     public void resetCircuitBreaker() {
         circuitBreaker.reset();
-    }
-
-    /** Internal circuit breaker to prevent runaway compaction attempts. */
-    static class CircuitBreaker {
-
-        private final int threshold;
-        private final AtomicInteger consecutiveFailures = new AtomicInteger(0);
-
-        CircuitBreaker(int threshold) {
-            this.threshold = threshold;
-        }
-
-        boolean isOpen() {
-            return consecutiveFailures.get() >= threshold;
-        }
-
-        void recordSuccess() {
-            consecutiveFailures.set(0);
-        }
-
-        void recordFailure() {
-            consecutiveFailures.incrementAndGet();
-        }
-
-        void reset() {
-            consecutiveFailures.set(0);
-        }
     }
 }

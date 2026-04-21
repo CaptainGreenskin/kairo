@@ -17,6 +17,7 @@ package io.kairo.core.a2a;
 
 import io.kairo.api.a2a.A2aClient;
 import io.kairo.api.a2a.A2aException;
+import io.kairo.api.a2a.A2aNamespaces;
 import io.kairo.api.a2a.AgentCard;
 import io.kairo.api.a2a.AgentCardResolver;
 import io.kairo.api.agent.Agent;
@@ -62,6 +63,11 @@ public final class InProcessA2aClient implements A2aClient {
         agents.put(agent.id(), agent);
     }
 
+    public void registerScopedAgent(String namespace, Agent agent) {
+        Objects.requireNonNull(agent, "agent must not be null");
+        agents.put(A2aNamespaces.scoped(namespace, agent.id()), agent);
+    }
+
     /**
      * Unregister an agent instance.
      *
@@ -69,6 +75,10 @@ public final class InProcessA2aClient implements A2aClient {
      */
     public void unregisterAgent(String agentId) {
         agents.remove(agentId);
+    }
+
+    public void unregisterScopedAgent(String namespace, String agentId) {
+        agents.remove(A2aNamespaces.scoped(namespace, agentId));
     }
 
     @Override
@@ -112,8 +122,24 @@ public final class InProcessA2aClient implements A2aClient {
         if (agent != null) {
             return Mono.just(agent);
         }
+        if (targetAgentId != null && targetAgentId.contains(":")) {
+            String rawAgentId = targetAgentId.substring(targetAgentId.indexOf(':') + 1);
+            Agent raw = agents.get(rawAgentId);
+            if (raw != null) {
+                return Mono.just(raw);
+            }
+        }
         // Distinguish between "card not found" and "no agent instance"
-        if (resolver.resolve(targetAgentId).isEmpty()) {
+        boolean cardMissing = resolver.resolve(targetAgentId).isEmpty();
+        if (cardMissing
+                && resolver instanceof InProcessAgentCardResolver inProcess
+                && targetAgentId != null
+                && targetAgentId.contains(":")) {
+            String namespace = targetAgentId.substring(0, targetAgentId.indexOf(':'));
+            String rawAgentId = targetAgentId.substring(targetAgentId.indexOf(':') + 1);
+            cardMissing = inProcess.resolveScoped(namespace, rawAgentId).isEmpty();
+        }
+        if (cardMissing) {
             return Mono.error(
                     new A2aException(
                             targetAgentId, "No agent card registered for id: " + targetAgentId));

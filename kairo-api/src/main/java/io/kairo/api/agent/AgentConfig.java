@@ -58,6 +58,7 @@ public record AgentConfig(
         List<Object> mcpServerConfigs,
         int mcpMaxToolsPerServer,
         boolean mcpStrictSchemaAlignment,
+        String mcpToolSearchQuery,
         int loopHashWarnThreshold,
         int loopHashHardLimit,
         int loopFreqWarnThreshold,
@@ -103,6 +104,7 @@ public record AgentConfig(
                 mcpServerConfigs,
                 128,
                 true,
+                null,
                 loopHashWarnThreshold,
                 loopHashHardLimit,
                 loopFreqWarnThreshold,
@@ -141,6 +143,7 @@ public record AgentConfig(
         private final List<Object> mcpServerConfigs = new ArrayList<>();
         private int mcpMaxToolsPerServer = 128;
         private boolean mcpStrictSchemaAlignment = true;
+        private String mcpToolSearchQuery;
         private int loopHashWarnThreshold = 3;
         private int loopHashHardLimit = 5;
         private int loopFreqWarnThreshold = 50;
@@ -343,6 +346,16 @@ public record AgentConfig(
         }
 
         /**
+         * Restrict MCP tool registration using a case-insensitive name/description search query.
+         *
+         * <p>When set, only MCP tools that match this query are registered into the runtime.
+         */
+        public Builder mcpToolSearchQuery(String query) {
+            this.mcpToolSearchQuery = query;
+            return this;
+        }
+
+        /**
          * Configure loop detection thresholds.
          *
          * @param hashWarn consecutive identical hash count to trigger WARN (default 3)
@@ -389,6 +402,7 @@ public record AgentConfig(
                     List.copyOf(mcpServerConfigs),
                     mcpMaxToolsPerServer,
                     mcpStrictSchemaAlignment,
+                    mcpToolSearchQuery,
                     loopHashWarnThreshold,
                     loopHashHardLimit,
                     loopFreqWarnThreshold,

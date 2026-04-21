@@ -251,4 +251,20 @@ class InProcessAgentCardResolverTest {
                             });
         }
     }
+
+    @Test
+    @DisplayName("scoped registration isolates same agent id across namespaces")
+    void scopedRegistrationIsIsolated() {
+        AgentCard t1 = AgentCard.of("agent-1", "Team1 Agent", "desc");
+        AgentCard t2 = AgentCard.of("agent-1", "Team2 Agent", "desc");
+
+        resolver.registerScoped("team-1", t1);
+        resolver.registerScoped("team-2", t2);
+
+        assertThat(resolver.resolveScoped("team-1", "agent-1"))
+                .hasValueSatisfying(card -> assertThat(card.name()).isEqualTo("Team1 Agent"));
+        assertThat(resolver.resolveScoped("team-2", "agent-1"))
+                .hasValueSatisfying(card -> assertThat(card.name()).isEqualTo("Team2 Agent"));
+        assertThat(resolver.resolve("agent-1")).isEmpty();
+    }
 }

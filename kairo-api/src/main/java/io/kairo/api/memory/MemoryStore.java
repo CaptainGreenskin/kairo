@@ -114,9 +114,10 @@ public interface MemoryStore {
         if (query == null) {
             return Flux.empty();
         }
-        String keyword = query.keyword() != null ? query.keyword() : "";
+        String normalizedKeyword = normalizeKeyword(query.keyword());
         return Flux.fromArray(MemoryScope.values())
-                .concatMap(scope -> search(keyword, scope))
+                .concatMap(this::list)
+                .distinct(MemoryEntry::id)
                 .filter(
                         entry ->
                                 query.agentId() == null
@@ -136,13 +137,40 @@ public interface MemoryStore {
                                                 && !entry.timestamp().isAfter(query.to())))
                 .filter(
                         entry ->
-                                query.keyword() == null
-                                        || query.keyword().isBlank()
+                                normalizedKeyword == null
                                         || (entry.content() != null
                                                 && entry.content()
                                                         .toLowerCase()
-                                                        .contains(query.keyword().toLowerCase())))
+                                                        .contains(normalizedKeyword))
+                                        || (entry.rawContent() != null
+                                                && entry.rawContent()
+                                                        .toLowerCase()
+                                                        .contains(normalizedKeyword)))
+                .filter(
+                        entry ->
+                                query.namespace() == null
+                                        || query.namespace().equals(resolveNamespace(entry)))
                 .take(query.limit());
+    }
+
+    private static String normalizeKeyword(String keyword) {
+        if (keyword == null) {
+            return null;
+        }
+        String trimmed = keyword.trim();
+        return trimmed.isEmpty() ? null : trimmed.toLowerCase();
+    }
+
+    private static String resolveNamespace(MemoryEntry entry) {
+        if (entry == null || entry.metadata() == null) {
+            return null;
+        }
+        Object raw = entry.metadata().get("namespace");
+        if (raw instanceof String text) {
+            String trimmed = text.trim();
+            return trimmed.isEmpty() ? null : trimmed;
+        }
+        return null;
     }
 
     /**
@@ -154,7 +182,21 @@ public interface MemoryStore {
      * @return a Flux of entries ordered by timestamp descending (most recent first)
      */
     default Flux<MemoryEntry> recent(String agentId, int limit) {
-        return search(MemoryQuery.builder().agentId(agentId).limit(limit).build());
+        return search(MemoryQuery.builder().agentId(agentId).limit(limit).build())
+                .sort(
+                        (a, b) -> {
+                            if (a.timestamp() == null && b.timestamp() == null) {
+                                return 0;
+                            }
+                            if (a.timestamp() == null) {
+                                return 1;
+                            }
+                            if (b.timestamp() == null) {
+                                return -1;
+                            }
+                            return b.timestamp().compareTo(a.timestamp());
+                        })
+                .take(limit);
     }
 
     /** Get the 20 most recent memory entries for an agent. */

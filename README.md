@@ -138,6 +138,14 @@ Agent agent = AgentBuilder.create()
 Msg result = agent.call(MsgBuilder.user("Create a HelloWorld.java, compile and run it.")).block();
 ```
 
+If you already have a Spring-managed `Agent` bean, your "Hello World" can be just 3 lines:
+
+```java
+@Autowired Agent agent;
+Msg reply = agent.call(MsgBuilder.user("Hello, Kairo!")).block();
+System.out.println(reply.getTextContent());
+```
+
 ### 3. Spring Boot Integration
 
 Add the starter dependency and configure via `application.yml`:
@@ -169,7 +177,7 @@ public String chat(@RequestBody String message) {
 }
 ```
 
-That's it — five lines of YAML and the agent is ready.
+That's it — a few lines of YAML and the agent is ready.
 
 ## Model Support
 

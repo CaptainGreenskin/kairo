@@ -41,10 +41,30 @@ public record MemoryQuery(
         Instant to,
         Set<String> tags,
         double minImportance,
-        int limit) {
+        int limit,
+        String namespace,
+        String embeddingModelId,
+        RankingMode rankingMode,
+        FusionStrategy fusionStrategy,
+        int lexicalTopK,
+        int vectorTopK) {
+
+    /** Ranking mode hint for hybrid memory retrieval. */
+    public enum RankingMode {
+        LEXICAL_ONLY,
+        VECTOR_ONLY,
+        HYBRID
+    }
+
+    /** Fusion strategy hint for combining lexical/vector candidates. */
+    public enum FusionStrategy {
+        RRF,
+        SCORE_SUM
+    }
 
     /** Compact constructor — applies defaults for tags. */
     public MemoryQuery {
+        queryVector = queryVector == null ? null : queryVector.clone();
         tags = tags == null ? Set.of() : Set.copyOf(tags);
         if (limit <= 0) {
             limit = 20;
@@ -52,6 +72,20 @@ public record MemoryQuery(
         if (minImportance < 0.0) {
             minImportance = 0.0;
         }
+        namespace = normalizeBlankToNull(namespace);
+        embeddingModelId = normalizeBlankToNull(embeddingModelId);
+        rankingMode =
+                rankingMode != null
+                        ? rankingMode
+                        : (queryVector == null ? RankingMode.LEXICAL_ONLY : RankingMode.HYBRID);
+        fusionStrategy = fusionStrategy == null ? FusionStrategy.RRF : fusionStrategy;
+        lexicalTopK = lexicalTopK > 0 ? lexicalTopK : limit;
+        vectorTopK = vectorTopK > 0 ? vectorTopK : limit;
+    }
+
+    @Override
+    public float[] queryVector() {
+        return queryVector == null ? null : queryVector.clone();
     }
 
     /**
@@ -73,6 +107,12 @@ public record MemoryQuery(
         private Set<String> tags;
         private double minImportance = 0.0;
         private int limit = 20;
+        private String namespace;
+        private String embeddingModelId;
+        private RankingMode rankingMode;
+        private FusionStrategy fusionStrategy;
+        private int lexicalTopK;
+        private int vectorTopK;
 
         private Builder() {}
 
@@ -116,9 +156,60 @@ public record MemoryQuery(
             return this;
         }
 
+        public Builder namespace(String namespace) {
+            this.namespace = namespace;
+            return this;
+        }
+
+        public Builder embeddingModelId(String embeddingModelId) {
+            this.embeddingModelId = embeddingModelId;
+            return this;
+        }
+
+        public Builder rankingMode(RankingMode rankingMode) {
+            this.rankingMode = rankingMode;
+            return this;
+        }
+
+        public Builder fusionStrategy(FusionStrategy fusionStrategy) {
+            this.fusionStrategy = fusionStrategy;
+            return this;
+        }
+
+        public Builder lexicalTopK(int lexicalTopK) {
+            this.lexicalTopK = lexicalTopK;
+            return this;
+        }
+
+        public Builder vectorTopK(int vectorTopK) {
+            this.vectorTopK = vectorTopK;
+            return this;
+        }
+
         public MemoryQuery build() {
             return new MemoryQuery(
-                    agentId, keyword, queryVector, from, to, tags, minImportance, limit);
+                    agentId,
+                    keyword,
+                    queryVector,
+                    from,
+                    to,
+                    tags,
+                    minImportance,
+                    limit,
+                    namespace,
+                    embeddingModelId,
+                    rankingMode,
+                    fusionStrategy,
+                    lexicalTopK,
+                    vectorTopK);
         }
+    }
+
+    private static String normalizeBlankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

@@ -128,27 +128,25 @@ public class McpClientBuilder {
                 builder.activeTransport = TransportType.STDIO;
             }
             case STREAMABLE_HTTP -> {
-                builder.httpUrl = config.url();
-                if (config.headers() != null) {
-                    builder.httpHeaders.putAll(config.headers());
-                }
-                if (config.queryParams() != null) {
-                    builder.httpQueryParams.putAll(config.queryParams());
-                }
+                applyHttpTransportConfig(builder, config);
                 builder.activeTransport = TransportType.STREAMABLE_HTTP;
             }
             case SSE -> {
-                builder.httpUrl = config.url();
-                if (config.headers() != null) {
-                    builder.httpHeaders.putAll(config.headers());
-                }
-                if (config.queryParams() != null) {
-                    builder.httpQueryParams.putAll(config.queryParams());
-                }
+                applyHttpTransportConfig(builder, config);
                 builder.activeTransport = TransportType.SSE;
             }
         }
         return builder;
+    }
+
+    private static void applyHttpTransportConfig(McpClientBuilder builder, McpServerConfig config) {
+        builder.httpUrl = config.url();
+        if (config.headers() != null) {
+            builder.httpHeaders.putAll(config.headers());
+        }
+        if (config.queryParams() != null) {
+            builder.httpQueryParams.putAll(config.queryParams());
+        }
     }
 
     /** Configures Stdio transport. */

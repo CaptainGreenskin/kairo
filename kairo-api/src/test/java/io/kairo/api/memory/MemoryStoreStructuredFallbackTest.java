@@ -120,4 +120,271 @@ class MemoryStoreStructuredFallbackTest {
         assertEquals(1, result.size());
         assertEquals("1", result.get(0).id());
     }
+
+    @Test
+    void structuredSearchMatchesRawContentFallback() {
+        Instant now = Instant.now();
+        MemoryEntry entry =
+                new MemoryEntry(
+                        "raw-1",
+                        "agent-raw",
+                        "summary only",
+                        "contains hidden needle",
+                        MemoryScope.AGENT,
+                        0.8,
+                        null,
+                        Set.of("raw"),
+                        now,
+                        Map.of());
+
+        MemoryStore store = new LegacyOnlyStore(List.of(entry));
+
+        List<MemoryEntry> result =
+                store.search(
+                                MemoryQuery.builder()
+                                        .agentId("agent-raw")
+                                        .keyword("needle")
+                                        .limit(5)
+                                        .build())
+                        .collectList()
+                        .block();
+
+        assertEquals(1, result.size());
+        assertEquals("raw-1", result.get(0).id());
+    }
+
+    @Test
+    void structuredSearchAppliesTimeWindowAndImportance() {
+        Instant now = Instant.now();
+        MemoryEntry tooOld =
+                new MemoryEntry(
+                        "old",
+                        "agent-time",
+                        "java old",
+                        null,
+                        MemoryScope.AGENT,
+                        0.9,
+                        null,
+                        Set.of("time"),
+                        now.minusSeconds(3600),
+                        Map.of());
+        MemoryEntry tooLowImportance =
+                new MemoryEntry(
+                        "low",
+                        "agent-time",
+                        "java low",
+                        null,
+                        MemoryScope.AGENT,
+                        0.2,
+                        null,
+                        Set.of("time"),
+                        now.minusSeconds(30),
+                        Map.of());
+        MemoryEntry keep =
+                new MemoryEntry(
+                        "keep",
+                        "agent-time",
+                        "java keep",
+                        null,
+                        MemoryScope.AGENT,
+                        0.8,
+                        null,
+                        Set.of("time"),
+                        now.minusSeconds(30),
+                        Map.of());
+
+        MemoryStore store = new LegacyOnlyStore(List.of(tooOld, tooLowImportance, keep));
+
+        List<MemoryEntry> result =
+                store.search(
+                                MemoryQuery.builder()
+                                        .agentId("agent-time")
+                                        .keyword("java")
+                                        .from(now.minusSeconds(60))
+                                        .to(now)
+                                        .minImportance(0.7)
+                                        .limit(10)
+                                        .build())
+                        .collectList()
+                        .block();
+
+        assertEquals(1, result.size());
+        assertEquals("keep", result.get(0).id());
+    }
+
+    @Test
+    void structuredSearchDeduplicatesSameIdAcrossScopes() {
+        Instant now = Instant.now();
+        MemoryEntry agent =
+                new MemoryEntry(
+                        "same-id",
+                        "agent-dupe",
+                        "java in agent",
+                        null,
+                        MemoryScope.AGENT,
+                        0.7,
+                        null,
+                        Set.of("dupe"),
+                        now,
+                        Map.of());
+        MemoryEntry shared =
+                new MemoryEntry(
+                        "same-id",
+                        "agent-dupe",
+                        "java in shared",
+                        null,
+                        MemoryScope.GLOBAL,
+                        0.8,
+                        null,
+                        Set.of("dupe"),
+                        now,
+                        Map.of());
+
+        MemoryStore store = new LegacyOnlyStore(List.of(agent, shared));
+
+        List<MemoryEntry> result =
+                store.search(
+                                MemoryQuery.builder()
+                                        .agentId("agent-dupe")
+                                        .keyword("java")
+                                        .limit(10)
+                                        .build())
+                        .collectList()
+                        .block();
+
+        assertEquals(1, result.size());
+        assertEquals("same-id", result.get(0).id());
+    }
+
+    @Test
+    void structuredSearchKeywordTrimmedBeforeMatching() {
+        Instant now = Instant.now();
+        MemoryEntry entry =
+                new MemoryEntry(
+                        "trim-1",
+                        "agent-trim",
+                        "memory about java",
+                        null,
+                        MemoryScope.AGENT,
+                        0.9,
+                        null,
+                        Set.of("trim"),
+                        now,
+                        Map.of());
+
+        MemoryStore store = new LegacyOnlyStore(List.of(entry));
+
+        List<MemoryEntry> result =
+                store.search(
+                                MemoryQuery.builder()
+                                        .agentId("agent-trim")
+                                        .keyword("  java  ")
+                                        .limit(10)
+                                        .build())
+                        .collectList()
+                        .block();
+
+        assertEquals(1, result.size());
+        assertEquals("trim-1", result.get(0).id());
+    }
+
+    @Test
+    void structuredSearchRespectsLimitAfterFiltering() {
+        Instant now = Instant.now();
+        MemoryEntry first =
+                new MemoryEntry(
+                        "l1",
+                        "agent-limit",
+                        "java one",
+                        null,
+                        MemoryScope.AGENT,
+                        0.8,
+                        null,
+                        Set.of("limit"),
+                        now.minusSeconds(3),
+                        Map.of());
+        MemoryEntry second =
+                new MemoryEntry(
+                        "l2",
+                        "agent-limit",
+                        "java two",
+                        null,
+                        MemoryScope.AGENT,
+                        0.8,
+                        null,
+                        Set.of("limit"),
+                        now.minusSeconds(2),
+                        Map.of());
+        MemoryEntry third =
+                new MemoryEntry(
+                        "l3",
+                        "agent-limit",
+                        "java three",
+                        null,
+                        MemoryScope.AGENT,
+                        0.8,
+                        null,
+                        Set.of("limit"),
+                        now.minusSeconds(1),
+                        Map.of());
+
+        MemoryStore store = new LegacyOnlyStore(List.of(first, second, third));
+
+        List<MemoryEntry> result =
+                store.search(
+                                MemoryQuery.builder()
+                                        .agentId("agent-limit")
+                                        .keyword("java")
+                                        .limit(2)
+                                        .build())
+                        .collectList()
+                        .block();
+
+        assertEquals(2, result.size());
+    }
+
+    @Test
+    void structuredSearchFiltersByNamespace() {
+        Instant now = Instant.now();
+        MemoryEntry keep =
+                new MemoryEntry(
+                        "ns-1",
+                        "agent-ns",
+                        "java in alpha namespace",
+                        null,
+                        MemoryScope.AGENT,
+                        0.8,
+                        null,
+                        Set.of("ns"),
+                        now,
+                        Map.of("namespace", "alpha"));
+        MemoryEntry filtered =
+                new MemoryEntry(
+                        "ns-2",
+                        "agent-ns",
+                        "java in beta namespace",
+                        null,
+                        MemoryScope.AGENT,
+                        0.8,
+                        null,
+                        Set.of("ns"),
+                        now,
+                        Map.of("namespace", "beta"));
+
+        MemoryStore store = new LegacyOnlyStore(List.of(keep, filtered));
+
+        List<MemoryEntry> result =
+                store.search(
+                                MemoryQuery.builder()
+                                        .agentId("agent-ns")
+                                        .keyword("java")
+                                        .namespace("alpha")
+                                        .limit(10)
+                                        .build())
+                        .collectList()
+                        .block();
+
+        assertEquals(1, result.size());
+        assertEquals("ns-1", result.get(0).id());
+    }
 }

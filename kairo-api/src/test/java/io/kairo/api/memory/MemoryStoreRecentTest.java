@@ -17,8 +17,11 @@ package io.kairo.api.memory;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -84,5 +87,56 @@ class MemoryStoreRecentTest {
         MemoryQuery captured = store.capturedQueries.get(0);
         assertEquals("agent-99", captured.agentId());
         assertEquals(20, captured.limit());
+    }
+
+    @Test
+    void recentSortsByTimestampDescending() {
+        MemoryEntry oldest =
+                new MemoryEntry(
+                        "1",
+                        "agent-1",
+                        "old",
+                        null,
+                        MemoryScope.AGENT,
+                        0.5,
+                        null,
+                        Set.of(),
+                        Instant.parse("2025-01-01T00:00:00Z"),
+                        Map.of());
+        MemoryEntry newest =
+                new MemoryEntry(
+                        "2",
+                        "agent-1",
+                        "new",
+                        null,
+                        MemoryScope.AGENT,
+                        0.5,
+                        null,
+                        Set.of(),
+                        Instant.parse("2025-01-03T00:00:00Z"),
+                        Map.of());
+        MemoryEntry middle =
+                new MemoryEntry(
+                        "3",
+                        "agent-1",
+                        "mid",
+                        null,
+                        MemoryScope.AGENT,
+                        0.5,
+                        null,
+                        Set.of(),
+                        Instant.parse("2025-01-02T00:00:00Z"),
+                        Map.of());
+
+        MemoryStore store =
+                new CapturingMemoryStore() {
+                    @Override
+                    public Flux<MemoryEntry> search(MemoryQuery query) {
+                        return Flux.just(oldest, newest, middle);
+                    }
+                };
+
+        List<MemoryEntry> entries = store.recent("agent-1", 3).collectList().block();
+        assertEquals(List.of("2", "3", "1"), entries.stream().map(MemoryEntry::id).toList());
     }
 }

@@ -15,8 +15,8 @@
  */
 package io.kairo.core.model;
 
+import io.kairo.core.resilience.CircuitBreakerPrimitive;
 import java.time.Duration;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,12 +46,7 @@ public class ModelCircuitBreaker {
     }
 
     private final String modelId;
-    private final int failureThreshold;
-    private final Duration resetTimeout;
-
-    private volatile State state = State.CLOSED;
-    private final AtomicInteger failureCount = new AtomicInteger(0);
-    private volatile long lastFailureTime = 0;
+    private final CircuitBreakerPrimitive delegate;
 
     /**
      * Create a circuit breaker with default settings (threshold=5, timeout=60s).
@@ -71,8 +66,7 @@ public class ModelCircuitBreaker {
      */
     public ModelCircuitBreaker(String modelId, int failureThreshold, Duration resetTimeout) {
         this.modelId = modelId;
-        this.failureThreshold = failureThreshold;
-        this.resetTimeout = resetTimeout;
+        this.delegate = new CircuitBreakerPrimitive(failureThreshold, resetTimeout);
     }
 
     /**
@@ -81,56 +75,41 @@ public class ModelCircuitBreaker {
      * @return true if the call is allowed, false if the circuit is open
      */
     public boolean allowCall() {
-        return switch (state) {
-            case CLOSED -> true;
-            case OPEN -> {
-                long elapsed = System.currentTimeMillis() - lastFailureTime;
-                if (elapsed >= resetTimeout.toMillis()) {
-                    state = State.HALF_OPEN;
-                    log.info(
-                            "Circuit breaker for model '{}' transitioning OPEN → HALF_OPEN"
-                                    + " ({}ms elapsed since last failure)",
-                            modelId,
-                            elapsed);
-                    yield true;
-                }
-                yield false;
-            }
-            case HALF_OPEN -> true;
-        };
+        State before = getState();
+        boolean allowed = delegate.allowCall();
+        State after = getState();
+        if (before == State.OPEN && after == State.HALF_OPEN && allowed) {
+            log.info("Circuit breaker for model '{}' transitioning OPEN → HALF_OPEN", modelId);
+        }
+        return allowed;
     }
 
     /** Record a successful call. Resets the circuit breaker to CLOSED state. */
     public void recordSuccess() {
-        if (state == State.HALF_OPEN) {
+        if (getState() == State.HALF_OPEN) {
             log.info("Circuit breaker for model '{}' transitioning HALF_OPEN → CLOSED", modelId);
         }
-        failureCount.set(0);
-        state = State.CLOSED;
+        delegate.recordSuccess();
     }
 
     /** Record a failed call. Increments failure count and may open the circuit. */
     public void recordFailure() {
-        lastFailureTime = System.currentTimeMillis();
-
-        if (state == State.HALF_OPEN) {
-            state = State.OPEN;
+        State before = getState();
+        delegate.recordFailure();
+        State after = getState();
+        if (before == State.HALF_OPEN && after == State.OPEN) {
             log.warn(
                     "Circuit breaker for model '{}' transitioning HALF_OPEN → OPEN"
                             + " (probe call failed)",
                     modelId);
             return;
         }
-
-        int count = failureCount.incrementAndGet();
-        if (count >= failureThreshold && state == State.CLOSED) {
-            state = State.OPEN;
+        if (before == State.CLOSED && after == State.OPEN) {
             log.warn(
                     "Circuit breaker for model '{}' transitioning CLOSED → OPEN"
-                            + " ({} consecutive failures >= threshold {})",
+                            + " (consecutive failures >= threshold {})",
                     modelId,
-                    count,
-                    failureThreshold);
+                    delegate.failureThreshold());
         }
     }
 
@@ -140,7 +119,11 @@ public class ModelCircuitBreaker {
      * @return the current state
      */
     public State getState() {
-        return state;
+        return switch (delegate.state()) {
+            case CLOSED -> State.CLOSED;
+            case OPEN -> State.OPEN;
+            case HALF_OPEN -> State.HALF_OPEN;
+        };
     }
 
     /**

@@ -85,6 +85,7 @@
         <spring-boot.version>3.3.0</spring-boot.version>
         <mockito.version>5.11.0</mockito.version>
         <mockwebserver.version>4.12.0</mockwebserver.version>
+        <assertj.version>3.26.3</assertj.version>
         <jacoco.line.threshold>0</jacoco.line.threshold>
     </properties>
 
@@ -148,6 +149,12 @@
                 <groupId>org.mockito</groupId>
                 <artifactId>mockito-core</artifactId>
                 <version>${mockito.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.assertj</groupId>
+                <artifactId>assertj-core</artifactId>
+                <version>${assertj.version}</version>
                 <scope>test</scope>
             </dependency>
             <dependency>

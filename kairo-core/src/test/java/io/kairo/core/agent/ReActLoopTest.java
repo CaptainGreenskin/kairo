@@ -768,6 +768,88 @@ class ReActLoopTest {
     }
 
     @Test
+    void testPreActingModifiedInputFlowsIntoToolExecutor() {
+        class ModifyInputHook {
+            @PreActing
+            public HookResult<PreActingEvent> pre(PreActingEvent event) {
+                return HookResult.modify(event, Map.of("q", "patched"));
+            }
+        }
+        hookChain.register(new ModifyInputHook());
+
+        AtomicInteger callCount = new AtomicInteger(0);
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(
+                                        toolCallResponse("tc-1", "search", Map.of("q", "origin")));
+                            }
+                            return Mono.just(textResponse("done"));
+                        });
+
+        when(toolExecutor.execute(eq("search"), any()))
+                .thenAnswer(
+                        inv -> {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> input = inv.getArgument(1);
+                            assertEquals("patched", input.get("q"));
+                            return Mono.just(new ToolResult("tc-1", "ok", false, Map.of()));
+                        });
+
+        ReActLoop loop = createDefaultLoop();
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "search hello")));
+
+        StepVerifier.create(loop.runLoop())
+                .assertNext(msg -> assertEquals(MsgRole.ASSISTANT, msg.role()))
+                .verifyComplete();
+
+        verify(toolExecutor).execute(eq("search"), any());
+    }
+
+    @Test
+    void testPreActingInjectedContextAppearsOnceInHistory() {
+        class InjectContextHook {
+            @PreActing
+            public HookResult<PreActingEvent> pre(PreActingEvent event) {
+                return HookResult.withContext(event, "tool context");
+            }
+        }
+        hookChain.register(new InjectContextHook());
+
+        AtomicInteger callCount = new AtomicInteger(0);
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(toolCallResponse("tc-1", "search", Map.of()));
+                            }
+                            return Mono.just(textResponse("done"));
+                        });
+        when(toolExecutor.execute(eq("search"), any()))
+                .thenReturn(Mono.just(new ToolResult("tc-1", "ok", false, Map.of())));
+
+        ReActLoop loop = createDefaultLoop();
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "search hello")));
+
+        StepVerifier.create(loop.runLoop())
+                .assertNext(msg -> assertEquals(MsgRole.ASSISTANT, msg.role()))
+                .verifyComplete();
+
+        long contextMsgCount =
+                loop.getHistory().stream()
+                        .filter(m -> m.role() == MsgRole.SYSTEM)
+                        .filter(
+                                m ->
+                                        m.text() != null
+                                                && m.text().contains("[Hook Context] tool context"))
+                        .count();
+        assertEquals(1, contextMsgCount);
+    }
+
+    @Test
     void testHistoryManagement() {
         ReActLoop loop = createDefaultLoop();
 

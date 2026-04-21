@@ -21,6 +21,7 @@ import io.kairo.api.agent.Agent;
 import io.kairo.api.team.MessageBus;
 import io.kairo.api.team.Team;
 import io.kairo.api.team.TeamManager;
+import io.kairo.core.a2a.InProcessAgentCardResolver;
 import io.kairo.multiagent.task.DefaultTaskBoard;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -114,7 +115,11 @@ public class DefaultTeamManager implements TeamManager {
         // Register agent card for A2A discovery
         if (agentCardResolver != null) {
             AgentCard card = AgentCard.of(agent.id(), agent.name(), "");
-            agentCardResolver.register(card);
+            if (agentCardResolver instanceof InProcessAgentCardResolver inProcessResolver) {
+                inProcessResolver.registerScoped(teamName, card);
+            } else {
+                agentCardResolver.register(card);
+            }
             log.debug("Registered AgentCard for '{}'", agent.id());
         }
         log.info("Added agent '{}' to team '{}'", agent.id(), teamName);
@@ -134,7 +139,11 @@ public class DefaultTeamManager implements TeamManager {
         }
         // Unregister agent card from A2A discovery
         if (agentCardResolver != null) {
-            agentCardResolver.unregister(agentId);
+            if (agentCardResolver instanceof InProcessAgentCardResolver inProcessResolver) {
+                inProcessResolver.unregisterScoped(teamName, agentId);
+            } else {
+                agentCardResolver.unregister(agentId);
+            }
             log.debug("Unregistered AgentCard for '{}'", agentId);
         }
         log.info("Removed agent '{}' from team '{}'", agentId, teamName);

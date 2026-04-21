@@ -23,6 +23,7 @@ import io.kairo.api.context.ContextState;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
+import io.kairo.core.context.CompactionPolicyDefaults;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -49,7 +50,8 @@ public class TimeBasedMicrocompact implements CompactionStrategy {
     public boolean shouldTrigger(ContextState state) {
         // ContextState does not carry timestamps, so the final idle check still happens in
         // compact(). We gate this stage here to avoid entering it on low-pressure turns.
-        return state.messageCount() > 0 && state.pressure() >= 0.80f;
+        return state.messageCount() > 0
+                && state.pressure() >= CompactionPolicyDefaults.PRESSURE_THRESHOLD;
     }
 
     @Override

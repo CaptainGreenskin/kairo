@@ -16,6 +16,7 @@
 package io.kairo.mcp;
 
 import io.kairo.api.tool.ToolResult;
+import io.kairo.core.tool.ToolHandler;
 import io.modelcontextprotocol.client.McpAsyncClient;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.io.IOException;
@@ -39,7 +40,7 @@ import reactor.util.retry.RetryBackoffSpec;
  * <p>This class bridges Kairo's tool execution model with the MCP protocol. It supports preset
  * arguments that are merged with each invocation's input (input takes precedence).
  */
-public class McpToolExecutor {
+public class McpToolExecutor implements ToolHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(McpToolExecutor.class);
     private static final Duration DEFAULT_EXECUTION_TIMEOUT = Duration.ofSeconds(30);
@@ -140,6 +141,11 @@ public class McpToolExecutor {
      * @param input the input parameters
      * @return the tool result
      */
+    @Override
+    public ToolResult execute(Map<String, Object> input) {
+        return executeSync(input);
+    }
+
     public ToolResult executeSync(Map<String, Object> input) {
         return execute(input, "").block(executionTimeout.plusSeconds(1));
     }

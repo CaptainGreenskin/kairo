@@ -20,6 +20,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
 import reactor.util.retry.RetryBackoffSpec;
 
@@ -74,6 +76,24 @@ public final class ProviderRetry {
                 .jitter(DEFAULT_JITTER)
                 .filter(shouldRetry)
                 .doBeforeRetry(signal -> logBeforeRetry(providerName, signal));
+    }
+
+    /** Apply Kairo's default retry+timeout policy to a provider {@link Mono} call path. */
+    public static <T> Mono<T> withPolicy(
+            Mono<T> source,
+            String providerName,
+            Predicate<Throwable> shouldRetry,
+            Duration timeout) {
+        return source.retryWhen(defaultSpec(providerName, shouldRetry)).timeout(timeout);
+    }
+
+    /** Apply Kairo's default retry+timeout policy to a provider {@link Flux} streaming path. */
+    public static <T> Flux<T> withPolicy(
+            Flux<T> source,
+            String providerName,
+            Predicate<Throwable> shouldRetry,
+            Duration idleTimeout) {
+        return source.timeout(idleTimeout).retryWhen(defaultSpec(providerName, shouldRetry));
     }
 
     /**

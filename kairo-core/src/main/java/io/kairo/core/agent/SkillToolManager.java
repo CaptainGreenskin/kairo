@@ -158,6 +158,9 @@ class SkillToolManager {
      * per-invocation cost stays at a single reflective call.
      */
     private static ToolHandler adaptMcpExecutor(Object mcpExecutor) {
+        if (mcpExecutor instanceof ToolHandler toolHandler) {
+            return toolHandler;
+        }
         final Method executeSync;
         try {
             executeSync = mcpExecutor.getClass().getMethod("executeSync", Map.class);
@@ -189,15 +192,16 @@ class SkillToolManager {
 
     private List<McpPluginTool> applyMcpGovernance(
             String serverName, List<McpPluginTool> discoveredTools) {
+        List<McpPluginTool> filtered = filterToolsBySearchQuery(serverName, discoveredTools);
         int maxTools = Math.max(1, config.mcpMaxToolsPerServer());
-        List<McpPluginTool> bounded = discoveredTools;
-        if (discoveredTools.size() > maxTools) {
+        List<McpPluginTool> bounded = filtered;
+        if (filtered.size() > maxTools) {
             log.warn(
                     "MCP server '{}' discovered {} tools, capping registration at {}",
                     serverName,
-                    discoveredTools.size(),
+                    filtered.size(),
                     maxTools);
-            bounded = discoveredTools.subList(0, maxTools);
+            bounded = filtered.subList(0, maxTools);
         }
 
         List<McpPluginTool> normalized = new ArrayList<>();
@@ -207,6 +211,34 @@ class SkillToolManager {
             normalized.add(new McpPluginTool(normalizedDef, tool.executor()));
         }
         return normalized;
+    }
+
+    private List<McpPluginTool> filterToolsBySearchQuery(
+            String serverName, List<McpPluginTool> discoveredTools) {
+        String query = config.mcpToolSearchQuery();
+        if (query == null || query.isBlank()) {
+            return discoveredTools;
+        }
+        String needle = query.toLowerCase();
+        List<McpPluginTool> filtered =
+                discoveredTools.stream().filter(tool -> matchesToolQuery(tool, needle)).toList();
+        log.info(
+                "MCP server '{}' tool search query '{}' matched {}/{} tool(s)",
+                serverName,
+                query,
+                filtered.size(),
+                discoveredTools.size());
+        return filtered;
+    }
+
+    private boolean matchesToolQuery(McpPluginTool tool, String needle) {
+        ToolDefinition def = tool.definition();
+        if (def == null) {
+            return false;
+        }
+        String name = def.name() == null ? "" : def.name().toLowerCase();
+        String desc = def.description() == null ? "" : def.description().toLowerCase();
+        return name.contains(needle) || desc.contains(needle);
     }
 
     private ToolDefinition normalizeToolDefinition(ToolDefinition def, boolean strictSchema) {

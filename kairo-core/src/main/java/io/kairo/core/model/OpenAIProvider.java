@@ -221,8 +221,10 @@ public class OpenAIProvider implements RawStreamingModelProvider {
                                                 "Failed to parse OpenAI response", e));
                             }
                         })
-                .retryWhen(ProviderRetry.defaultSpec("openai", this::isRetryableError))
-                .timeout(CALL_TIMEOUT);
+                .transform(
+                        mono ->
+                                ProviderRetry.withPolicy(
+                                        mono, "openai", this::isRetryableError, CALL_TIMEOUT));
     }
 
     @Override
@@ -260,8 +262,13 @@ public class OpenAIProvider implements RawStreamingModelProvider {
                                                 "Failed to build streaming request", e));
                             }
                         })
-                .timeout(STREAM_IDLE_TIMEOUT)
-                .retryWhen(ProviderRetry.defaultSpec("openai-stream", this::isRetryableError));
+                .transform(
+                        flux ->
+                                ProviderRetry.withPolicy(
+                                        flux,
+                                        "openai-stream",
+                                        this::isRetryableError,
+                                        STREAM_IDLE_TIMEOUT));
     }
 
     /**
@@ -311,8 +318,13 @@ public class OpenAIProvider implements RawStreamingModelProvider {
                                                 "Failed to build streaming request", e));
                             }
                         })
-                .timeout(STREAM_IDLE_TIMEOUT)
-                .retryWhen(ProviderRetry.defaultSpec("openai-stream-raw", this::isRetryableError));
+                .transform(
+                        flux ->
+                                ProviderRetry.withPolicy(
+                                        flux,
+                                        "openai-stream-raw",
+                                        this::isRetryableError,
+                                        STREAM_IDLE_TIMEOUT));
     }
 
     // ---- Request building ----

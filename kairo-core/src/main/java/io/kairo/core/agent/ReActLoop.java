@@ -15,6 +15,7 @@
  */
 package io.kairo.core.agent;
 
+import io.kairo.api.agent.CancellationSignal;
 import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.hook.*;
 import io.kairo.api.message.Content;
@@ -172,11 +173,12 @@ class ReActLoop {
                     "I've reached my maximum iteration limit. Here is what I have so far.");
         }
 
-        if (totalTokensUsed.get() >= ctx.config().tokenBudget()) {
+        long accountedTokens = ctx.tokenBudgetManager().totalAccountedTokens();
+        if (accountedTokens >= ctx.config().tokenBudget()) {
             log.warn(
                     "Agent '{}' exceeded token budget ({}/{})",
                     ctx.agentName(),
-                    totalTokensUsed.get(),
+                    accountedTokens,
                     ctx.config().tokenBudget());
             return buildFinalResponse("I've reached my token budget. Here is what I have so far.");
         }
@@ -186,90 +188,80 @@ class ReActLoop {
 
     /** Execute one reasoning cycle: pre-hook -> model call -> post-hook -> response processing. */
     private Mono<Msg> executeReasoningIteration(ModelConfig modelConfig) {
+        return firePreReasoning(modelConfig)
+                .flatMap(hookResult -> handlePreReasoningHookResult(hookResult, modelConfig));
+    }
+
+    private Mono<HookResult<PreReasoningEvent>> firePreReasoning(ModelConfig modelConfig) {
         PreReasoningEvent preEvent =
                 new PreReasoningEvent(
                         Collections.unmodifiableList(conversationHistory), modelConfig, false);
+        return ctx.hookChain().<PreReasoningEvent>firePreReasoningWithResult(preEvent);
+    }
 
-        return ctx.hookChain()
-                .<PreReasoningEvent>firePreReasoningWithResult(preEvent)
-                .flatMap(
-                        hookResult -> {
-                            if (!hookResult.shouldProceed()) {
-                                log.info(
-                                        "Agent '{}' reasoning aborted by hook: {}",
-                                        ctx.agentName(),
-                                        hookResult.reason());
-                                String abortReason =
-                                        hookResult.reason() != null
-                                                ? hookResult.reason()
-                                                : "Reasoning aborted by hook.";
-                                return Mono.just(buildFinalResponse(abortReason));
-                            }
+    private Mono<Msg> handlePreReasoningHookResult(
+            HookResult<PreReasoningEvent> hookResult, ModelConfig baseModelConfig) {
+        if (!hookResult.shouldProceed()) {
+            log.info(
+                    "Agent '{}' reasoning aborted by hook: {}",
+                    ctx.agentName(),
+                    hookResult.reason());
+            String abortReason =
+                    hookResult.reason() != null
+                            ? hookResult.reason()
+                            : "Reasoning aborted by hook.";
+            return Mono.just(buildFinalResponse(abortReason));
+        }
 
-                            if (hookResult.shouldSkip()) {
-                                log.info(
-                                        "Agent '{}' reasoning skipped by hook: {}",
-                                        ctx.agentName(),
-                                        hookResult.reason());
-                                currentIteration.incrementAndGet();
-                                return runLoop();
-                            }
+        if (hookResult.shouldSkip()) {
+            log.info(
+                    "Agent '{}' reasoning skipped by hook: {}",
+                    ctx.agentName(),
+                    hookResult.reason());
+            currentIteration.incrementAndGet();
+            return runLoop();
+        }
 
-                            PreReasoningEvent pre = hookResult.event();
-                            if (pre.cancelled()) {
-                                log.info("Agent '{}' reasoning cancelled by hook", ctx.agentName());
-                                return Mono.just(
-                                        buildFinalResponse("Processing cancelled by hook."));
-                            }
+        PreReasoningEvent pre = hookResult.event();
+        if (pre.cancelled()) {
+            log.info("Agent '{}' reasoning cancelled by hook", ctx.agentName());
+            return Mono.just(buildFinalResponse("Processing cancelled by hook."));
+        }
 
-                            if (hookResult.hasInjectedMessage()) {
-                                Msg injected =
-                                        Msg.builder()
-                                                .role(hookResult.injectedMessage().role())
-                                                .contents(hookResult.injectedMessage().contents())
-                                                .metadata("hook_source", hookResult.hookSource())
-                                                .metadata("hook_decision", "INJECT")
-                                                .verbatimPreserved(true)
-                                                .build();
-                                conversationHistory.add(injected);
-                            }
+        applyPreReasoningInjections(hookResult);
 
-                            ModelConfig effectiveConfig =
-                                    hookResult.hasModifiedInput()
-                                            ? applyReasoningConfigOverrides(
-                                                    modelConfig, hookResult.modifiedInput())
-                                            : modelConfig;
+        ModelConfig effectiveConfig =
+                hookResult.hasModifiedInput()
+                        ? applyReasoningConfigOverrides(baseModelConfig, hookResult.modifiedInput())
+                        : baseModelConfig;
 
-                            if (hookResult.hasInjectedContext()) {
-                                Msg contextMsg =
-                                        Msg.builder()
-                                                .role(MsgRole.SYSTEM)
-                                                .addContent(
-                                                        new Content.TextContent(
-                                                                "[Hook Context] "
-                                                                        + hookResult
-                                                                                .injectedContext()))
-                                                .build();
-                                conversationHistory.add(contextMsg);
-                            }
+        log.debug(
+                "Agent '{}' iteration {}: calling model", ctx.agentName(), currentIteration.get());
+        Mono<ModelResponse> responseMono =
+                streamingEnabled
+                        ? callModelStreamingWithFallback(conversationHistory, effectiveConfig)
+                        : ctx.errorRecovery()
+                                .callModelWithRecovery(conversationHistory, effectiveConfig, 0);
 
-                            log.debug(
-                                    "Agent '{}' iteration {}: calling model",
-                                    ctx.agentName(),
-                                    currentIteration.get());
+        return withCooperativeCancellation(responseMono)
+                .flatMap(this::handleModelResponseWithPostHook);
+    }
 
-                            Mono<ModelResponse> responseMono =
-                                    streamingEnabled
-                                            ? callModelStreamingWithFallback(
-                                                    conversationHistory, effectiveConfig)
-                                            : ctx.errorRecovery()
-                                                    .callModelWithRecovery(
-                                                            conversationHistory,
-                                                            effectiveConfig,
-                                                            0);
-
-                            return responseMono.flatMap(this::handleModelResponseWithPostHook);
-                        });
+    private void applyPreReasoningInjections(HookResult<PreReasoningEvent> hookResult) {
+        if (hookResult.hasInjectedMessage()) {
+            Msg injected =
+                    Msg.builder()
+                            .role(hookResult.injectedMessage().role())
+                            .contents(hookResult.injectedMessage().contents())
+                            .metadata("hook_source", hookResult.hookSource())
+                            .metadata("hook_decision", "INJECT")
+                            .verbatimPreserved(true)
+                            .build();
+            conversationHistory.add(injected);
+        }
+        if (hookResult.hasInjectedContext()) {
+            conversationHistory.add(systemHookContextMessage(hookResult.injectedContext()));
+        }
     }
 
     /** Apply hook-provided override fields onto the base model config. */
@@ -309,11 +301,16 @@ class ReActLoop {
     /** Update budgets, run post-reasoning hook, then process tool/final response flow. */
     private Mono<Msg> handleModelResponseWithPostHook(ModelResponse response) {
         ctx.errorRecovery().fallbackManager().reset();
+        applyTokenAccounting(response);
+        ctx.tokenBudgetManager().advanceTurn();
 
+        return firePostReasoning(response);
+    }
+
+    private void applyTokenAccounting(ModelResponse response) {
         if (response.usage() != null) {
-            ctx.tokenBudgetManager().updateFromApiUsage(response.usage());
-            totalTokensUsed.addAndGet(
-                    (long) response.usage().inputTokens() + response.usage().outputTokens());
+            ctx.tokenBudgetManager().recordModelUsage(response.usage());
+            totalTokensUsed.set(ctx.tokenBudgetManager().totalAccountedTokens());
 
             log.info(
                     "[Iteration {}] input={} output={} cache_read={} cache_write={}",
@@ -325,85 +322,85 @@ class ReActLoop {
         } else {
             log.warn("Model response missing usage data — token tracking may be inaccurate");
         }
-        ctx.tokenBudgetManager().advanceTurn();
+    }
 
-        PostReasoningEvent postEvent = new PostReasoningEvent(response, false);
+    private Mono<Msg> firePostReasoning(ModelResponse response) {
         return ctx.hookChain()
-                .<PostReasoningEvent>firePostReasoningWithResult(postEvent)
-                .flatMap(
-                        postResult -> {
-                            if (!postResult.shouldProceed()) {
-                                log.info(
-                                        "Agent '{}' post-reasoning aborted by hook: {}",
-                                        ctx.agentName(),
-                                        postResult.reason());
-                                String reason =
-                                        postResult.reason() != null
-                                                ? postResult.reason()
-                                                : "Post-reasoning aborted by hook.";
-                                return Mono.just(buildFinalResponse(reason));
-                            }
+                .<PostReasoningEvent>firePostReasoningWithResult(
+                        new PostReasoningEvent(response, false))
+                .flatMap(postResult -> handlePostReasoningHookResult(postResult, response));
+    }
 
-                            if (postResult.hasInjectedContext()) {
-                                Msg contextMsg =
-                                        Msg.builder()
-                                                .role(MsgRole.SYSTEM)
-                                                .addContent(
-                                                        new Content.TextContent(
-                                                                "[Hook Context] "
-                                                                        + postResult
-                                                                                .injectedContext()))
-                                                .build();
-                                conversationHistory.add(contextMsg);
-                            }
-                            return processModelResponse(response);
-                        });
+    private Mono<Msg> handlePostReasoningHookResult(
+            HookResult<PostReasoningEvent> postResult, ModelResponse response) {
+        if (!postResult.shouldProceed()) {
+            log.info(
+                    "Agent '{}' post-reasoning aborted by hook: {}",
+                    ctx.agentName(),
+                    postResult.reason());
+            String reason =
+                    postResult.reason() != null
+                            ? postResult.reason()
+                            : "Post-reasoning aborted by hook.";
+            return Mono.just(buildFinalResponse(reason));
+        }
+
+        if (postResult.hasInjectedContext()) {
+            conversationHistory.add(systemHookContextMessage(postResult.injectedContext()));
+        }
+        return processModelResponse(response);
     }
 
     /** Process the model response: convert to Msg, check for tool calls, execute if needed. */
     private Mono<Msg> processModelResponse(ModelResponse response) {
-        // 5. Convert response to assistant message and add to history
+        Msg assistantMsg = appendAssistantResponse(response);
+        List<Content.ToolUseContent> toolCalls = extractToolCalls(response);
+        return routeModelResponseByToolCalls(assistantMsg, toolCalls);
+    }
+
+    private Msg appendAssistantResponse(ModelResponse response) {
         Msg assistantMsg = convertResponseToMsg(response);
         conversationHistory.add(assistantMsg);
+        return assistantMsg;
+    }
 
-        // 6. Check for tool calls
-        List<Content.ToolUseContent> toolCalls = extractToolCalls(response);
-
+    private Mono<Msg> routeModelResponseByToolCalls(
+            Msg assistantMsg, List<Content.ToolUseContent> toolCalls) {
         if (toolCalls.isEmpty()) {
-            // No tool calls — this is the final answer
             log.debug("Agent '{}' produced final answer (no tool calls)", ctx.agentName());
             return Mono.just(assistantMsg);
         }
-
-        // 6b. Check if these tool calls were already executed by the streaming path.
-        // Streaming-executed tools have a "_streaming_result" key in their input.
-        boolean streamingPreExecuted =
-                toolCalls.stream()
-                        .allMatch(
-                                tc ->
-                                        tc.input() != null
-                                                && tc.input().containsKey("_streaming_result"));
-        if (streamingPreExecuted) {
-            log.debug(
-                    "Streaming path already executed {} tool(s), using pre-computed results",
-                    toolCalls.size());
-            List<ToolResult> preResults =
-                    toolCalls.stream()
-                            .map(
-                                    tc ->
-                                            new ToolResult(
-                                                    tc.toolId(),
-                                                    (String) tc.input().get("_streaming_result"),
-                                                    false,
-                                                    Map.of()))
-                            .toList();
-            Msg toolMsg = buildToolResultMsg(preResults);
-            conversationHistory.add(toolMsg);
-
-            currentIteration.incrementAndGet();
-            return runLoop();
+        if (isStreamingPreExecuted(toolCalls)) {
+            return handleStreamingPreExecutedTools(toolCalls);
         }
+        return executeToolCallsWithGuards(toolCalls);
+    }
 
+    private boolean isStreamingPreExecuted(List<Content.ToolUseContent> toolCalls) {
+        return toolCalls.stream()
+                .allMatch(tc -> tc.input() != null && tc.input().containsKey("_streaming_result"));
+    }
+
+    private Mono<Msg> handleStreamingPreExecutedTools(List<Content.ToolUseContent> toolCalls) {
+        log.debug(
+                "Streaming path already executed {} tool(s), using pre-computed results",
+                toolCalls.size());
+        List<ToolResult> preResults =
+                toolCalls.stream()
+                        .map(
+                                tc ->
+                                        new ToolResult(
+                                                tc.toolId(),
+                                                (String) tc.input().get("_streaming_result"),
+                                                false,
+                                                Map.of()))
+                        .toList();
+        conversationHistory.add(buildToolResultMsg(preResults));
+        currentIteration.incrementAndGet();
+        return runLoop();
+    }
+
+    private Mono<Msg> executeToolCallsWithGuards(List<Content.ToolUseContent> toolCalls) {
         log.debug(
                 "Agent '{}' requesting {} tool call(s): {}",
                 ctx.agentName(),
@@ -412,63 +409,65 @@ class ReActLoop {
                         .map(Content.ToolUseContent::toolName)
                         .collect(Collectors.joining(", ")));
 
-        // Loop detection: check BEFORE tool execution
+        Mono<Msg> loopDecision = evaluateLoopDetection(toolCalls);
+        if (loopDecision != null) {
+            return loopDecision;
+        }
+
+        return runToolExecutionPipeline(toolCalls);
+    }
+
+    private Mono<Msg> runToolExecutionPipeline(List<Content.ToolUseContent> toolCalls) {
+        return checkCancelled()
+                .then(executeToolsWithHooks(toolCalls))
+                .flatMap(toolResults -> continueAfterToolExecution(toolCalls, toolResults));
+    }
+
+    private Mono<Msg> evaluateLoopDetection(List<Content.ToolUseContent> toolCalls) {
         var detection = loopDetector.check(toolCalls);
         if (detection.level() == LoopDetector.DetectionResult.Level.HARD_STOP) {
             return Mono.error(new LoopDetectionException(detection.message()));
         }
         if (detection.level() == LoopDetector.DetectionResult.Level.WARN) {
-            // Inject warning as USER message and re-enter reasoning without executing tools
             conversationHistory.add(Msg.of(MsgRole.USER, "[Loop Warning] " + detection.message()));
             return runLoop();
         }
+        return null;
+    }
 
-        // 7. Execute tools with hooks (check cancellation before starting)
-        return checkCancelled()
-                .then(executeToolsWithHooks(toolCalls))
-                .flatMap(
-                        toolResults -> {
-                            // 7b. Detect allowedTools from skill_load results
-                            applySkillToolRestrictions(toolCalls, toolResults);
+    private Mono<Msg> continueAfterToolExecution(
+            List<Content.ToolUseContent> toolCalls, List<ToolResult> toolResults) {
+        applySkillToolRestrictions(toolCalls, toolResults);
+        conversationHistory.add(buildToolResultMsg(toolResults));
+        currentIteration.incrementAndGet();
 
-                            // 8. Build tool result message and add to history
-                            Msg toolMsg = buildToolResultMsg(toolResults);
-                            conversationHistory.add(toolMsg);
-
-                            currentIteration.incrementAndGet();
-
-                            // Auto-compaction check (delegated to CompactionTrigger)
-                            if (compactionTrigger != null) {
-                                return checkCancelled()
-                                        .then(
-                                                compactionTrigger.checkAndCompact(
-                                                        conversationHistory))
-                                        .flatMap(compacted -> runLoop());
-                            }
-
-                            // 9. Recurse into next loop iteration
-                            return checkCancelled().then(runLoop());
-                        });
+        if (compactionTrigger != null) {
+            return checkCancelled()
+                    .then(compactionTrigger.checkAndCompact(conversationHistory))
+                    .flatMap(compacted -> runLoop());
+        }
+        return checkCancelled().then(runLoop());
     }
 
     /** Execute a list of tool calls, firing PreActing/PostActing hooks for each. */
     private Mono<List<ToolResult>> executeToolsWithHooks(List<Content.ToolUseContent> toolCalls) {
         if (ctx.toolExecutor() == null) {
-            // No tool executor — return error results
-            List<ToolResult> errors =
-                    toolCalls.stream()
-                            .map(
-                                    tc ->
-                                            new ToolResult(
-                                                    tc.toolId(),
-                                                    "No tool executor configured",
-                                                    true,
-                                                    Map.of()))
-                            .toList();
-            return Mono.just(errors);
+            return Mono.just(noToolExecutorResults(toolCalls));
         }
+        return executeToolCallsSequentially(toolCalls);
+    }
 
-        // Execute tools sequentially with hooks
+    private List<ToolResult> noToolExecutorResults(List<Content.ToolUseContent> toolCalls) {
+        return toolCalls.stream()
+                .map(
+                        tc ->
+                                new ToolResult(
+                                        tc.toolId(), "No tool executor configured", true, Map.of()))
+                .toList();
+    }
+
+    private Mono<List<ToolResult>> executeToolCallsSequentially(
+            List<Content.ToolUseContent> toolCalls) {
         return Flux.fromIterable(toolCalls)
                 .concatMap(toolCall -> checkCancelled().then(executeSingleToolWithHooks(toolCall)))
                 .collectList();
@@ -477,164 +476,166 @@ class ReActLoop {
     /** Execute a single tool call with PreActing and PostActing hooks. */
     private Mono<ToolResult> executeSingleToolWithHooks(Content.ToolUseContent toolCall) {
         Instant toolStart = Instant.now();
-        // Fire PreActing hook with structured result support
-        PreActingEvent preEvent = new PreActingEvent(toolCall.toolName(), toolCall.input(), false);
+        return firePreActing(toolCall)
+                .map(hookResult -> planToolExecution(toolCall, hookResult))
+                .flatMap(this::executePlannedTool)
+                .flatMap(
+                        result ->
+                                finishToolExecutionPipeline(
+                                        toolCall.toolName(), result, toolStart));
+    }
 
+    private Mono<HookResult<PreActingEvent>> firePreActing(Content.ToolUseContent toolCall) {
         return checkCancelled()
-                .then(ctx.hookChain().<PreActingEvent>firePreActingWithResult(preEvent))
-                .flatMap(
-                        hookResult -> {
-                            // 1. Check ABORT decision
-                            if (!hookResult.shouldProceed()) {
-                                log.info(
-                                        "Tool '{}' blocked by hook: {}",
-                                        toolCall.toolName(),
-                                        hookResult.reason());
-                                return Mono.just(
-                                        new ToolResult(
-                                                toolCall.toolId(),
-                                                "Tool execution blocked by hook: "
-                                                        + (hookResult.reason() != null
-                                                                ? hookResult.reason()
-                                                                : "no reason given"),
-                                                true,
-                                                Map.of()));
-                            }
+                .then(
+                        ctx.hookChain()
+                                .<PreActingEvent>firePreActingWithResult(
+                                        new PreActingEvent(
+                                                toolCall.toolName(), toolCall.input(), false)));
+    }
 
-                            // 1b. Check SKIP — return neutral result, continue loop
-                            if (hookResult.shouldSkip()) {
-                                log.info(
-                                        "Tool '{}' skipped by hook: {}",
-                                        toolCall.toolName(),
-                                        hookResult.reason());
-                                return Mono.just(
-                                        new ToolResult(
-                                                toolCall.toolId(),
-                                                "Tool execution skipped by hook",
-                                                false,
-                                                Map.of("skipped_by_hook", true)));
-                            }
+    private Mono<ToolResult> finishToolExecutionPipeline(
+            String toolName, ToolResult result, Instant toolStart) {
+        return emitToolResultEvent(toolName, result, toolStart)
+                .flatMap(emitted -> firePostActingAndReturn(toolName, emitted));
+    }
 
-                            // 1c. Handle INJECT — add message before tool execution
-                            if (hookResult.hasInjectedMessage()) {
-                                Msg injected =
-                                        Msg.builder()
-                                                .role(hookResult.injectedMessage().role())
-                                                .contents(hookResult.injectedMessage().contents())
-                                                .metadata("hook_source", hookResult.hookSource())
-                                                .metadata("hook_decision", "INJECT")
-                                                .verbatimPreserved(true)
-                                                .build();
-                                conversationHistory.add(injected);
-                            }
+    private ToolExecutionPlan planToolExecution(
+            Content.ToolUseContent toolCall, HookResult<PreActingEvent> hookResult) {
+        if (!hookResult.shouldProceed()) {
+            log.info("Tool '{}' blocked by hook: {}", toolCall.toolName(), hookResult.reason());
+            return ToolExecutionPlan.terminal(
+                    toolCall.toolId(),
+                    toolCall.toolName(),
+                    blockedByHookToolResult(toolCall.toolId(), hookResult.reason()));
+        }
 
-                            // 2. Check cancelled event (backward compat with old-style hooks)
-                            PreActingEvent pre = hookResult.event();
-                            if (pre.cancelled()) {
-                                log.info(
-                                        "Tool '{}' execution cancelled by hook",
-                                        toolCall.toolName());
-                                return Mono.just(
-                                        new ToolResult(
-                                                toolCall.toolId(),
-                                                "Tool execution cancelled by hook",
-                                                true,
-                                                Map.of()));
-                            }
+        if (hookResult.shouldSkip()) {
+            log.info("Tool '{}' skipped by hook: {}", toolCall.toolName(), hookResult.reason());
+            return ToolExecutionPlan.terminal(
+                    toolCall.toolId(),
+                    toolCall.toolName(),
+                    skippedByHookToolResult(toolCall.toolId()));
+        }
 
-                            // 3. Apply modified input if provided
-                            Map<String, Object> effectiveInput =
-                                    hookResult.hasModifiedInput()
-                                            ? hookResult.modifiedInput()
-                                            : toolCall.input();
+        applyPreActingInjections(hookResult);
 
-                            // 4. Inject additional context if provided
-                            if (hookResult.hasInjectedContext()) {
-                                Msg contextMsg =
-                                        Msg.builder()
-                                                .role(MsgRole.SYSTEM)
-                                                .addContent(
-                                                        new Content.TextContent(
-                                                                "[Hook Context] "
-                                                                        + hookResult
-                                                                                .injectedContext()))
-                                                .build();
-                                conversationHistory.add(contextMsg);
-                            }
+        PreActingEvent pre = hookResult.event();
+        if (pre.cancelled()) {
+            log.info("Tool '{}' execution cancelled by hook", toolCall.toolName());
+            return ToolExecutionPlan.terminal(
+                    toolCall.toolId(),
+                    toolCall.toolName(),
+                    cancelledByHookToolResult(toolCall.toolId()));
+        }
 
-                            // 5. Execute the tool with (possibly modified) input
-                            return checkCancelled()
-                                    .then(
-                                            Mono.defer(
-                                                    () ->
-                                                            ctx.toolExecutor()
-                                                                    .execute(
-                                                                            toolCall.toolName(),
-                                                                            effectiveInput)))
-                                    .map(
-                                            result ->
-                                                    new ToolResult(
-                                                            toolCall.toolId(),
-                                                            result.content(),
-                                                            result.isError(),
-                                                            result.metadata()))
-                                    .onErrorResume(
-                                            e -> {
-                                                log.error(
-                                                        "Tool '{}' execution failed: {}",
-                                                        toolCall.toolName(),
-                                                        e.getMessage());
-                                                return Mono.just(
-                                                        new ToolResult(
-                                                                toolCall.toolId(),
-                                                                "Error executing tool: "
-                                                                        + e.getMessage(),
-                                                                true,
-                                                                Map.of()));
-                                            });
-                        })
-                .flatMap(result -> emitToolResultEvent(toolCall.toolName(), result, toolStart))
-                .flatMap(
-                        result -> {
-                            // 6. Fire PostActing hook with structured result
-                            PostActingEvent postEvent =
-                                    new PostActingEvent(toolCall.toolName(), result);
-                            return checkCancelled()
-                                    .then(
-                                            Mono.defer(
-                                                    () ->
-                                                            ctx.hookChain()
-                                                                    .<PostActingEvent>
-                                                                            firePostActingWithResult(
-                                                                                    postEvent)
-                                                                    .map(
-                                                                            postResult -> {
-                                                                                // Inject
-                                                                                // post-acting
-                                                                                // context if
-                                                                                // provided
-                                                                                if (postResult
-                                                                                        .hasInjectedContext()) {
-                                                                                    Msg contextMsg =
-                                                                                            Msg
-                                                                                                    .builder()
-                                                                                                    .role(
-                                                                                                            MsgRole
-                                                                                                                    .SYSTEM)
-                                                                                                    .addContent(
-                                                                                                            new Content
-                                                                                                                    .TextContent(
-                                                                                                                    "[Hook Context] "
-                                                                                                                            + postResult
-                                                                                                                                    .injectedContext()))
-                                                                                                    .build();
-                                                                                    conversationHistory
-                                                                                            .add(
-                                                                                                    contextMsg);
-                                                                                }
-                                                                                return result;
-                                                                            })));
+        return ToolExecutionPlan.execute(
+                toolCall.toolId(),
+                toolCall.toolName(),
+                resolveEffectiveToolInput(toolCall, hookResult));
+    }
+
+    private Map<String, Object> resolveEffectiveToolInput(
+            Content.ToolUseContent toolCall, HookResult<PreActingEvent> hookResult) {
+        return hookResult.hasModifiedInput() ? hookResult.modifiedInput() : toolCall.input();
+    }
+
+    private Mono<ToolResult> executePlannedTool(ToolExecutionPlan plan) {
+        if (!plan.shouldExecute()) {
+            return Mono.just(plan.terminalResult());
+        }
+        return executeToolCall(plan.toolUseId(), plan.toolName(), plan.input());
+    }
+
+    private ToolResult blockedByHookToolResult(String toolUseId, String reason) {
+        return new ToolResult(
+                toolUseId,
+                "Tool execution blocked by hook: " + (reason != null ? reason : "no reason given"),
+                true,
+                Map.of());
+    }
+
+    private ToolResult skippedByHookToolResult(String toolUseId) {
+        return new ToolResult(
+                toolUseId,
+                "Tool execution skipped by hook",
+                false,
+                Map.of("skipped_by_hook", true));
+    }
+
+    private ToolResult cancelledByHookToolResult(String toolUseId) {
+        return new ToolResult(toolUseId, "Tool execution cancelled by hook", true, Map.of());
+    }
+
+    private void applyPreActingInjections(HookResult<PreActingEvent> hookResult) {
+        if (hookResult.hasInjectedMessage()) {
+            Msg injected =
+                    Msg.builder()
+                            .role(hookResult.injectedMessage().role())
+                            .contents(hookResult.injectedMessage().contents())
+                            .metadata("hook_source", hookResult.hookSource())
+                            .metadata("hook_decision", "INJECT")
+                            .verbatimPreserved(true)
+                            .build();
+            conversationHistory.add(injected);
+        }
+        if (hookResult.hasInjectedContext()) {
+            conversationHistory.add(systemHookContextMessage(hookResult.injectedContext()));
+        }
+    }
+
+    private Mono<ToolResult> executeToolCall(
+            String toolUseId, String toolName, Map<String, Object> input) {
+        return checkCancelled()
+                .then(
+                        withCancellationSignal(
+                                Mono.defer(() -> ctx.toolExecutor().execute(toolName, input))))
+                .transform(this::withCooperativeCancellation)
+                .map(
+                        result ->
+                                new ToolResult(
+                                        toolUseId,
+                                        result.content(),
+                                        result.isError(),
+                                        result.metadata()))
+                .onErrorResume(
+                        e -> {
+                            log.error("Tool '{}' execution failed: {}", toolName, e.getMessage());
+                            return Mono.just(
+                                    new ToolResult(
+                                            toolUseId,
+                                            "Error executing tool: " + e.getMessage(),
+                                            true,
+                                            Map.of()));
                         });
+    }
+
+    private Mono<ToolResult> firePostActingAndReturn(String toolName, ToolResult result) {
+        PostActingEvent postEvent = new PostActingEvent(toolName, result);
+        return checkCancelled()
+                .then(
+                        Mono.defer(
+                                () ->
+                                        ctx.hookChain()
+                                                .<PostActingEvent>firePostActingWithResult(
+                                                        postEvent)
+                                                .map(
+                                                        postResult -> {
+                                                            if (postResult.hasInjectedContext()) {
+                                                                conversationHistory.add(
+                                                                        systemHookContextMessage(
+                                                                                postResult
+                                                                                        .injectedContext()));
+                                                            }
+                                                            return result;
+                                                        })));
+    }
+
+    private Msg systemHookContextMessage(String injectedContext) {
+        return Msg.builder()
+                .role(MsgRole.SYSTEM)
+                .addContent(new Content.TextContent("[Hook Context] " + injectedContext))
+                .build();
     }
 
     /** Emit OnToolResult hook as a best-effort side-effect without breaking tool flow. */
@@ -671,49 +672,20 @@ class ReActLoop {
             return;
         }
 
-        // Find the last ASSISTANT message by scanning from the end
-        int lastAssistantIdx = -1;
-        for (int i = conversationHistory.size() - 1; i >= 0; i--) {
-            if (conversationHistory.get(i).role() == MsgRole.ASSISTANT) {
-                lastAssistantIdx = i;
-                break;
-            }
-        }
-
+        int lastAssistantIdx = findLastAssistantIndex();
         if (lastAssistantIdx < 0) {
             return;
         }
 
         Msg lastAssistant = conversationHistory.get(lastAssistantIdx);
-
-        // Extract tool_use IDs from the ASSISTANT message
-        List<String> toolCallIds =
-                lastAssistant.contents().stream()
-                        .filter(Content.ToolUseContent.class::isInstance)
-                        .map(Content.ToolUseContent.class::cast)
-                        .map(Content.ToolUseContent::toolId)
-                        .toList();
+        List<String> toolCallIds = extractToolCallIds(lastAssistant);
 
         if (toolCallIds.isEmpty()) {
             return;
         }
 
-        // Collect tool_use IDs that already have matching TOOL result messages
-        Set<String> answeredIds = new HashSet<>();
-        for (int i = lastAssistantIdx + 1; i < conversationHistory.size(); i++) {
-            Msg msg = conversationHistory.get(i);
-            if (msg.role() == MsgRole.TOOL) {
-                for (Content c : msg.contents()) {
-                    if (c instanceof Content.ToolResultContent trc) {
-                        answeredIds.add(trc.toolUseId());
-                    }
-                }
-            }
-        }
-
-        // Find dangling (unanswered) tool call IDs
-        List<String> danglingIds =
-                toolCallIds.stream().filter(id -> !answeredIds.contains(id)).toList();
+        Set<String> answeredIds = collectAnsweredToolUseIds(lastAssistantIdx);
+        List<String> danglingIds = findDanglingToolUseIds(toolCallIds, answeredIds);
 
         if (danglingIds.isEmpty()) {
             return;
@@ -725,19 +697,58 @@ class ReActLoop {
                 danglingIds.size(),
                 danglingIds);
 
-        // Build and inject an error TOOL message for each dangling call
-        List<ToolResult> errorResults =
-                danglingIds.stream()
-                        .map(
-                                id ->
-                                        new ToolResult(
-                                                id,
-                                                "Tool call interrupted \u2014 no result available",
-                                                true,
-                                                Map.of()))
-                        .toList();
+        List<ToolResult> errorResults = buildDanglingErrorResults(danglingIds);
         Msg toolMsg = buildToolResultMsg(errorResults);
         conversationHistory.add(toolMsg);
+    }
+
+    private int findLastAssistantIndex() {
+        for (int i = conversationHistory.size() - 1; i >= 0; i--) {
+            if (conversationHistory.get(i).role() == MsgRole.ASSISTANT) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private List<String> extractToolCallIds(Msg assistantMsg) {
+        return assistantMsg.contents().stream()
+                .filter(Content.ToolUseContent.class::isInstance)
+                .map(Content.ToolUseContent.class::cast)
+                .map(Content.ToolUseContent::toolId)
+                .toList();
+    }
+
+    private Set<String> collectAnsweredToolUseIds(int lastAssistantIdx) {
+        Set<String> answeredIds = new HashSet<>();
+        for (int i = lastAssistantIdx + 1; i < conversationHistory.size(); i++) {
+            Msg msg = conversationHistory.get(i);
+            if (msg.role() != MsgRole.TOOL) {
+                continue;
+            }
+            for (Content c : msg.contents()) {
+                if (c instanceof Content.ToolResultContent trc) {
+                    answeredIds.add(trc.toolUseId());
+                }
+            }
+        }
+        return answeredIds;
+    }
+
+    private List<String> findDanglingToolUseIds(List<String> toolCallIds, Set<String> answeredIds) {
+        return toolCallIds.stream().filter(id -> !answeredIds.contains(id)).toList();
+    }
+
+    private List<ToolResult> buildDanglingErrorResults(List<String> danglingIds) {
+        return danglingIds.stream()
+                .map(
+                        id ->
+                                new ToolResult(
+                                        id,
+                                        "Tool call interrupted \u2014 no result available",
+                                        true,
+                                        Map.of()))
+                .toList();
     }
 
     // ---- Streaming Execution ----
@@ -753,71 +764,78 @@ class ReActLoop {
 
         if (ctx.toolExecutor() == null) {
             log.debug("Streaming eager tool execution disabled: no ToolExecutor configured");
-            return ctx.errorRecovery().callModelWithRecovery(messages, modelConfig, 0);
+            return fallbackModelCall(messages, modelConfig);
         }
 
-        Flux<StreamChunk> rawStream;
-        if (provider instanceof RawStreamingModelProvider rawProvider) {
-            rawStream = rawProvider.streamRaw(messages, modelConfig);
-        } else {
+        if (!(provider instanceof RawStreamingModelProvider rawProvider)) {
             log.debug("Provider '{}' does not support streamRaw, falling back", provider.name());
-            return ctx.errorRecovery().callModelWithRecovery(messages, modelConfig, 0);
+            return fallbackModelCall(messages, modelConfig);
         }
+        Flux<StreamChunk> rawStream = rawProvider.streamRaw(messages, modelConfig);
 
         // Detect tool calls incrementally
         var detector = new StreamingToolDetector();
         Flux<DetectedToolCall> detectedTools = detector.detect(rawStream);
 
         // If the tool executor supports streaming dispatch
-        if (ctx.toolExecutor().supportsStreaming()) {
-            var streamingExecutor = new StreamingToolExecutor(ctx.toolExecutor());
-            // Track tool call ID → tool name mapping for building the synthetic response
-            var toolNameMap = new java.util.concurrent.ConcurrentHashMap<String, String>();
-            Flux<DetectedToolCall> trackedTools =
-                    detectedTools.doOnNext(
-                            tool -> {
-                                if (tool.toolName() != null) {
-                                    toolNameMap.put(tool.toolCallId(), tool.toolName());
-                                }
-                            });
-            return streamingExecutor
-                    .executeEager(trackedTools)
-                    .collectList()
-                    .flatMap(
-                            toolResults -> {
-                                if (toolResults.isEmpty()) {
-                                    // No tools detected — stream was text-only
-                                    // Fall back to non-streaming to get a proper ModelResponse
-                                    return ctx.errorRecovery()
-                                            .callModelWithRecovery(messages, modelConfig, 0);
-                                }
-                                log.debug(
-                                        "Streaming execution completed {} tool results",
-                                        toolResults.size());
-                                // Build a synthetic ModelResponse with tool_use contents
-                                var contents = new ArrayList<Content>();
-                                for (var tr : toolResults) {
-                                    String toolName =
-                                            toolNameMap.getOrDefault(
-                                                    tr.toolUseId(), tr.toolUseId());
-                                    contents.add(
-                                            new Content.ToolUseContent(
-                                                    tr.toolUseId(),
-                                                    toolName,
-                                                    Map.of("_streaming_result", tr.content())));
-                                }
-                                return Mono.just(
-                                        new ModelResponse(
-                                                "streaming",
-                                                contents,
-                                                new ModelResponse.Usage(0, 0, 0, 0),
-                                                ModelResponse.StopReason.TOOL_USE,
-                                                modelConfig.model()));
-                            });
+        if (!ctx.toolExecutor().supportsStreaming()) {
+            return fallbackModelCall(messages, modelConfig);
         }
+        return executeStreamingTools(messages, modelConfig, detectedTools);
+    }
 
-        // No DefaultToolExecutor — fall back
-        return ctx.errorRecovery().callModelWithRecovery(messages, modelConfig, 0);
+    private Mono<ModelResponse> fallbackModelCall(List<Msg> messages, ModelConfig modelConfig) {
+        return withCancellationSignal(
+                ctx.errorRecovery().callModelWithRecovery(messages, modelConfig, 0));
+    }
+
+    private Mono<ModelResponse> executeStreamingTools(
+            List<Msg> messages, ModelConfig modelConfig, Flux<DetectedToolCall> detectedTools) {
+        var streamingExecutor = new StreamingToolExecutor(ctx.toolExecutor());
+        // Track tool call ID → tool name mapping for building the synthetic response
+        var toolNameMap = new java.util.concurrent.ConcurrentHashMap<String, String>();
+        Flux<DetectedToolCall> trackedTools =
+                detectedTools.doOnNext(
+                        tool -> {
+                            if (tool.toolName() != null) {
+                                toolNameMap.put(tool.toolCallId(), tool.toolName());
+                            }
+                        });
+        return streamingExecutor
+                .executeEager(trackedTools)
+                .collectList()
+                .flatMap(
+                        toolResults -> {
+                            if (toolResults.isEmpty()) {
+                                // No tools detected — stream was text-only
+                                // Fall back to non-streaming to get a proper ModelResponse
+                                return fallbackModelCall(messages, modelConfig);
+                            }
+                            log.debug(
+                                    "Streaming execution completed {} tool results",
+                                    toolResults.size());
+                            return Mono.just(
+                                    buildSyntheticStreamingResponse(
+                                            toolResults, toolNameMap, modelConfig.model()));
+                        })
+                .transform(this::withCooperativeCancellation);
+    }
+
+    private ModelResponse buildSyntheticStreamingResponse(
+            List<ToolResult> toolResults, Map<String, String> toolNameMap, String modelName) {
+        var contents = new ArrayList<Content>();
+        for (var tr : toolResults) {
+            String toolName = toolNameMap.getOrDefault(tr.toolUseId(), tr.toolUseId());
+            contents.add(
+                    new Content.ToolUseContent(
+                            tr.toolUseId(), toolName, Map.of("_streaming_result", tr.content())));
+        }
+        return new ModelResponse(
+                "streaming",
+                contents,
+                new ModelResponse.Usage(0, 0, 0, 0),
+                ModelResponse.StopReason.TOOL_USE,
+                modelName);
     }
 
     // ---- Conversion helpers ----
@@ -891,6 +909,36 @@ class ReActLoop {
         return Mono.empty();
     }
 
+    private <T> Mono<T> withCancellationSignal(Mono<T> source) {
+        return source.contextWrite(
+                ctxView ->
+                        ctxView.put(
+                                CancellationSignal.CONTEXT_KEY,
+                                (CancellationSignal) interrupted::get));
+    }
+
+    private <T> Mono<T> withCooperativeCancellation(Mono<T> source) {
+        return source.takeUntilOther(cancellationTrigger())
+                .switchIfEmpty(
+                        Mono.defer(
+                                () ->
+                                        interrupted.get()
+                                                ? Mono.error(
+                                                        new AgentInterruptedException(
+                                                                "Agent '"
+                                                                        + ctx.agentName()
+                                                                        + "' interrupted at iteration "
+                                                                        + currentIteration))
+                                                : Mono.empty()));
+    }
+
+    private Mono<Long> cancellationTrigger() {
+        if (interrupted.get()) {
+            return Mono.just(0L);
+        }
+        return Flux.interval(Duration.ofMillis(50)).filter(tick -> interrupted.get()).next();
+    }
+
     /** Apply skill_load tool restrictions from tool results. */
     private void applySkillToolRestrictions(
             List<Content.ToolUseContent> toolCalls, List<ToolResult> toolResults) {
@@ -900,20 +948,44 @@ class ReActLoop {
         for (int i = 0; i < toolResults.size(); i++) {
             ToolResult tr = toolResults.get(i);
             String toolName = i < toolCalls.size() ? toolCalls.get(i).toolName() : null;
-            if ("skill_load".equals(toolName) && tr.metadata() != null) {
-                Object allowedTools = tr.metadata().get("allowedTools");
-                if (allowedTools instanceof List<?> toolList) {
-                    Set<String> allowed =
-                            toolList.stream()
-                                    .filter(String.class::isInstance)
-                                    .map(String.class::cast)
-                                    .collect(Collectors.toSet());
-                    if (!allowed.isEmpty()) {
-                        ctx.toolExecutor().setAllowedTools(allowed);
-                        log.info("Skill tool restrictions activated: {}", allowed);
-                    }
-                }
+            if (!"skill_load".equals(toolName) || tr.metadata() == null) {
+                continue;
             }
+            Set<String> allowed = parseAllowedTools(tr.metadata().get("allowedTools"));
+            if (!allowed.isEmpty()) {
+                ctx.toolExecutor().setAllowedTools(allowed);
+                log.info("Skill tool restrictions activated: {}", allowed);
+            }
+        }
+    }
+
+    private Set<String> parseAllowedTools(Object allowedTools) {
+        if (!(allowedTools instanceof List<?> toolList)) {
+            return Set.of();
+        }
+        return toolList.stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .collect(Collectors.toSet());
+    }
+
+    private record ToolExecutionPlan(
+            String toolUseId,
+            String toolName,
+            Map<String, Object> input,
+            ToolResult terminalResult) {
+        static ToolExecutionPlan execute(
+                String toolUseId, String toolName, Map<String, Object> input) {
+            return new ToolExecutionPlan(toolUseId, toolName, input, null);
+        }
+
+        static ToolExecutionPlan terminal(
+                String toolUseId, String toolName, ToolResult terminalResult) {
+            return new ToolExecutionPlan(toolUseId, toolName, null, terminalResult);
+        }
+
+        boolean shouldExecute() {
+            return terminalResult == null;
         }
     }
 }

@@ -51,7 +51,8 @@ import reactor.core.publisher.Mono;
 public class DefaultContextManager implements ContextManager {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultContextManager.class);
-    private static final float DEFAULT_COMPACTION_PRESSURE_THRESHOLD = 0.80f;
+    private static final float DEFAULT_COMPACTION_PRESSURE_THRESHOLD =
+            CompactionPolicyDefaults.PRESSURE_THRESHOLD;
 
     private final AtomicReference<List<Msg>> messages = new AtomicReference<>(List.of());
     private final TokenBudgetManager budgetManager;

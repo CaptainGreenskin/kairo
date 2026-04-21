@@ -126,8 +126,10 @@ public class AnthropicProvider implements RawStreamingModelProvider {
                                                 "Failed to parse Anthropic response", e));
                             }
                         })
-                .timeout(CALL_TIMEOUT)
-                .retryWhen(ProviderRetry.defaultSpec("anthropic", this::isRetryableError))
+                .transform(
+                        mono ->
+                                ProviderRetry.withPolicy(
+                                        mono, "anthropic", this::isRetryableError, CALL_TIMEOUT))
                 .doOnNext(
                         response -> {
                             String sysPrompt = resolveSystemPrompt(messages, config);
@@ -175,8 +177,13 @@ public class AnthropicProvider implements RawStreamingModelProvider {
                                                 "Failed to build streaming request", e));
                             }
                         })
-                .timeout(STREAM_IDLE_TIMEOUT)
-                .retryWhen(ProviderRetry.defaultSpec("anthropic-stream", this::isRetryableError));
+                .transform(
+                        flux ->
+                                ProviderRetry.withPolicy(
+                                        flux,
+                                        "anthropic-stream",
+                                        this::isRetryableError,
+                                        STREAM_IDLE_TIMEOUT));
     }
 
     /**
@@ -222,9 +229,13 @@ public class AnthropicProvider implements RawStreamingModelProvider {
                                                 "Failed to build streaming request", e));
                             }
                         })
-                .timeout(STREAM_IDLE_TIMEOUT)
-                .retryWhen(
-                        ProviderRetry.defaultSpec("anthropic-stream-raw", this::isRetryableError));
+                .transform(
+                        flux ->
+                                ProviderRetry.withPolicy(
+                                        flux,
+                                        "anthropic-stream-raw",
+                                        this::isRetryableError,
+                                        STREAM_IDLE_TIMEOUT));
     }
 
     /**

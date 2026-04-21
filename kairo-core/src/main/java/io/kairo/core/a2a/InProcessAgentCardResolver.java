@@ -15,6 +15,7 @@
  */
 package io.kairo.core.a2a;
 
+import io.kairo.api.a2a.A2aNamespaces;
 import io.kairo.api.a2a.AgentCard;
 import io.kairo.api.a2a.AgentCardResolver;
 import java.util.*;
@@ -28,36 +29,82 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class InProcessAgentCardResolver implements AgentCardResolver {
 
+    private static final String GLOBAL_NAMESPACE = "__global__";
     private final Map<String, AgentCard> registry = new ConcurrentHashMap<>();
 
     @Override
     public Optional<AgentCard> resolve(String agentId) {
-        return Optional.ofNullable(registry.get(agentId));
+        return resolveScoped(GLOBAL_NAMESPACE, agentId);
     }
 
     @Override
     public List<AgentCard> discover(Set<String> requiredTags) {
+        return discoverScoped(GLOBAL_NAMESPACE, requiredTags);
+    }
+
+    public Optional<AgentCard> resolveScoped(String namespace, String agentId) {
+        return Optional.ofNullable(registry.get(scopedKey(namespace, agentId)));
+    }
+
+    public List<AgentCard> discoverScoped(String namespace, Set<String> requiredTags) {
+        String nsPrefix = namespacePrefix(namespace);
+        List<AgentCard> cards =
+                registry.entrySet().stream()
+                        .filter(e -> e.getKey().startsWith(nsPrefix))
+                        .map(Map.Entry::getValue)
+                        .toList();
         if (requiredTags == null || requiredTags.isEmpty()) {
-            return List.copyOf(registry.values());
+            return cards;
         }
-        return registry.values().stream()
+        return cards.stream()
                 .filter(card -> new HashSet<>(card.tags()).containsAll(requiredTags))
                 .toList();
     }
 
     @Override
     public List<AgentCard> listAll() {
-        return List.copyOf(registry.values());
+        return listAllScoped(GLOBAL_NAMESPACE);
+    }
+
+    public List<AgentCard> listAllScoped(String namespace) {
+        String nsPrefix = namespacePrefix(namespace);
+        return registry.entrySet().stream()
+                .filter(e -> e.getKey().startsWith(nsPrefix))
+                .map(Map.Entry::getValue)
+                .toList();
     }
 
     @Override
     public void register(AgentCard card) {
+        registerScoped(GLOBAL_NAMESPACE, card);
+    }
+
+    public void registerScoped(String namespace, AgentCard card) {
         Objects.requireNonNull(card, "card must not be null");
-        registry.put(card.id(), card);
+        registry.put(scopedKey(namespace, card.id()), card);
     }
 
     @Override
     public void unregister(String agentId) {
-        registry.remove(agentId);
+        unregisterScoped(GLOBAL_NAMESPACE, agentId);
+    }
+
+    public void unregisterScoped(String namespace, String agentId) {
+        registry.remove(scopedKey(namespace, agentId));
+    }
+
+    private String scopedKey(String namespace, String agentId) {
+        return A2aNamespaces.scoped(namespaceOrGlobal(namespace), agentId);
+    }
+
+    private String namespacePrefix(String namespace) {
+        return namespaceOrGlobal(namespace) + ":";
+    }
+
+    private String namespaceOrGlobal(String namespace) {
+        if (namespace == null || namespace.isBlank()) {
+            return GLOBAL_NAMESPACE;
+        }
+        return namespace;
     }
 }
