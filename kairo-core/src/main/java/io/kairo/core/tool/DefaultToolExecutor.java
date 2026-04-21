@@ -248,12 +248,30 @@ public class DefaultToolExecutor implements ToolExecutor {
         }
     }
 
+    /**
+     * Build a composite circuit-breaker key scoped to both tool name and session.
+     *
+     * <p>Format: {@code toolName::sessionId} when a session is available, plain {@code toolName}
+     * otherwise. This prevents one tenant's failures from tripping the breaker for another.
+     */
+    private String circuitBreakerKey(
+            String toolName, reactor.util.context.ContextView contextView) {
+        if (contextView.hasKey(CONTEXT_KEY)) {
+            ToolContext ctx = contextView.get(CONTEXT_KEY);
+            if (ctx.sessionId() != null) {
+                return toolName + "::" + ctx.sessionId();
+            }
+        }
+        return toolName;
+    }
+
     private Mono<ToolResult> executeInternal(
             String toolName, Map<String, Object> input, Duration timeout) {
-        return Mono.defer(
-                () -> {
-                    // 0. Circuit breaker check
-                    AtomicInteger failures = consecutiveFailures.get(toolName);
+        return Mono.deferContextual(
+                contextView -> {
+                    // 0. Circuit breaker check (session-scoped key)
+                    String cbKey = circuitBreakerKey(toolName, contextView);
+                    AtomicInteger failures = consecutiveFailures.get(cbKey);
                     if (failures != null && failures.get() >= circuitBreakerThreshold) {
                         return Mono.just(
                                 errorResult(
@@ -327,11 +345,11 @@ public class DefaultToolExecutor implements ToolExecutor {
                                         //      (2) a fresh empty context as a last resort.
                                         Mono<ToolResult> execution =
                                                 Mono.deferContextual(
-                                                                contextView -> {
+                                                                innerCtxView -> {
                                                                     ToolContext ctx =
-                                                                            contextView.hasKey(
+                                                                            innerCtxView.hasKey(
                                                                                             CONTEXT_KEY)
-                                                                                    ? contextView
+                                                                                    ? innerCtxView
                                                                                             .get(
                                                                                                     CONTEXT_KEY)
                                                                                     : null;
@@ -354,6 +372,10 @@ public class DefaultToolExecutor implements ToolExecutor {
                                                         .timeout(timeout)
                                                         .onErrorResume(
                                                                 e -> {
+                                                                    if (isCancellationException(
+                                                                            e)) {
+                                                                        return Mono.error(e);
+                                                                    }
                                                                     if (e
                                                                             instanceof
                                                                             java.util.concurrent
@@ -395,8 +417,7 @@ public class DefaultToolExecutor implements ToolExecutor {
                                         return Mono.firstWithSignal(execution, shutdownGuard)
                                                 .doOnNext(
                                                         result ->
-                                                                trackCircuitBreaker(
-                                                                        toolName, result))
+                                                                trackCircuitBreaker(cbKey, result))
                                                 .map(this::applySanitizer);
                                     });
                 });
@@ -638,15 +659,14 @@ public class DefaultToolExecutor implements ToolExecutor {
     /**
      * Track consecutive failures for circuit breaker logic.
      *
+     * @param cbKey the composite circuit-breaker key ({@code toolName::sessionId} or plain name)
      * @param result the tool result to evaluate
      */
-    private void trackCircuitBreaker(String toolName, ToolResult result) {
+    private void trackCircuitBreaker(String cbKey, ToolResult result) {
         if (result.isError()) {
-            consecutiveFailures
-                    .computeIfAbsent(toolName, k -> new AtomicInteger())
-                    .incrementAndGet();
+            consecutiveFailures.computeIfAbsent(cbKey, k -> new AtomicInteger()).incrementAndGet();
         } else {
-            consecutiveFailures.remove(toolName);
+            consecutiveFailures.remove(cbKey);
         }
     }
 
@@ -656,10 +676,12 @@ public class DefaultToolExecutor implements ToolExecutor {
         consecutiveFailures.clear();
     }
 
-    /** Reset circuit breaker state for a specific tool. */
+    /** Reset circuit breaker state for a specific tool (across all sessions). */
     @Override
     public void resetCircuitBreaker(String toolName) {
-        consecutiveFailures.remove(toolName);
+        consecutiveFailures
+                .keySet()
+                .removeIf(key -> key.equals(toolName) || key.startsWith(toolName + "::"));
     }
 
     /**
@@ -694,5 +716,22 @@ public class DefaultToolExecutor implements ToolExecutor {
     /** Create an error {@link ToolResult}. */
     private ToolResult errorResult(String toolName, String message) {
         return new ToolResult(toolName, message, true, Map.of());
+    }
+
+    /**
+     * Check if the given exception represents a cancellation that should propagate instead of being
+     * converted to an error result.
+     */
+    private static boolean isCancellationException(Throwable e) {
+        if (e instanceof AgentInterruptedException) {
+            return true;
+        }
+        if (e instanceof java.util.concurrent.CancellationException) {
+            return true;
+        }
+        Throwable cause = e.getCause();
+        return cause != null
+                && (cause instanceof AgentInterruptedException
+                        || cause instanceof java.util.concurrent.CancellationException);
     }
 }

@@ -223,8 +223,12 @@ public class OpenAIProvider implements RawStreamingModelProvider {
                         })
                 .transform(
                         mono ->
-                                ProviderRetry.withPolicy(
-                                        mono, "openai", this::isRetryableError, CALL_TIMEOUT));
+                                ProviderRetry.withConfigPolicy(
+                                        mono,
+                                        config,
+                                        "openai",
+                                        this::isRetryableError,
+                                        CALL_TIMEOUT));
     }
 
     @Override
@@ -264,8 +268,9 @@ public class OpenAIProvider implements RawStreamingModelProvider {
                         })
                 .transform(
                         flux ->
-                                ProviderRetry.withPolicy(
+                                ProviderRetry.withConfigPolicy(
                                         flux,
+                                        config,
                                         "openai-stream",
                                         this::isRetryableError,
                                         STREAM_IDLE_TIMEOUT));
@@ -320,8 +325,9 @@ public class OpenAIProvider implements RawStreamingModelProvider {
                         })
                 .transform(
                         flux ->
-                                ProviderRetry.withPolicy(
+                                ProviderRetry.withConfigPolicy(
                                         flux,
+                                        config,
                                         "openai-stream-raw",
                                         this::isRetryableError,
                                         STREAM_IDLE_TIMEOUT));

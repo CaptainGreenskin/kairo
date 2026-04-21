@@ -17,10 +17,12 @@ package io.kairo.core.tool;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.tool.JsonSchema;
 import io.kairo.api.tool.PermissionGuard;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import java.time.Duration;
 import java.util.Map;
@@ -248,5 +250,40 @@ class DefaultToolExecutorTest {
         public ToolResult execute(Map<String, Object> input) {
             return new ToolResult("slow", "done", false, Map.of());
         }
+    }
+
+    // ==================== CANCELLATION PROPAGATION ====================
+
+    @Test
+    void toolThrowingAgentInterruptedExceptionPropagatesNotWrapped() {
+        registerToolHandler(
+                "cancelling_tool",
+                input -> {
+                    throw new AgentInterruptedException("Tool execution cancelled");
+                });
+
+        StepVerifier.create(executor.execute("cancelling_tool", Map.of()))
+                .expectErrorMatches(
+                        e ->
+                                e instanceof AgentInterruptedException
+                                        && e.getMessage().contains("cancelled"))
+                .verify();
+    }
+
+    @Test
+    void toolThrowingWrappedAgentInterruptedExceptionPropagates() {
+        registerToolHandler(
+                "wrapped_cancel_tool",
+                input -> {
+                    throw new RuntimeException(
+                            "wrapper", new AgentInterruptedException("Tool execution cancelled"));
+                });
+
+        StepVerifier.create(executor.execute("wrapped_cancel_tool", Map.of()))
+                .expectErrorMatches(
+                        e ->
+                                e.getCause() != null
+                                        && e.getCause() instanceof AgentInterruptedException)
+                .verify();
     }
 }

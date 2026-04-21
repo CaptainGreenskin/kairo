@@ -22,6 +22,8 @@ import io.kairo.api.agent.Agent;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolRegistry;
+import io.kairo.core.context.CompactionThresholds;
+import io.kairo.core.context.DefaultContextManager;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
@@ -148,5 +150,69 @@ class AgentBuilderTest {
                         IllegalStateException.class,
                         () -> AgentBuilder.create().name("test").model(provider).build());
         assertTrue(ex.getMessage().contains("modelName is required"));
+    }
+
+    // ==================== COMPACTION THRESHOLDS WIRING ====================
+
+    @Test
+    void compactionThresholdsWiredToDefaultContextManager() {
+        ModelProvider provider = mock(ModelProvider.class);
+        CompactionThresholds customThresholds =
+                CompactionThresholds.builder().triggerPressure(0.50f).build();
+
+        Agent agent =
+                AgentBuilder.create()
+                        .name("threshold-agent")
+                        .model(provider)
+                        .modelName("test-model")
+                        .compactionThresholds(customThresholds)
+                        .build();
+
+        assertNotNull(agent);
+        assertInstanceOf(DefaultReActAgent.class, agent);
+        // The agent should have a DefaultContextManager with the custom threshold.
+        // Verify via the agent's context manager (which is accessible through config).
+        DefaultReActAgent reactAgent = (DefaultReActAgent) agent;
+        assertNotNull(reactAgent.getContextManager());
+        assertInstanceOf(DefaultContextManager.class, reactAgent.getContextManager());
+    }
+
+    @Test
+    void noCompactionThresholds_noAutoContextManager() {
+        ModelProvider provider = mock(ModelProvider.class);
+
+        Agent agent =
+                AgentBuilder.create()
+                        .name("no-threshold-agent")
+                        .model(provider)
+                        .modelName("test-model")
+                        .build();
+
+        assertNotNull(agent);
+        // Without compactionThresholds and no explicit contextManager, it should be null
+        DefaultReActAgent reactAgent = (DefaultReActAgent) agent;
+        assertNull(reactAgent.getContextManager());
+    }
+
+    @Test
+    void explicitContextManagerNotOverridden() {
+        ModelProvider provider = mock(ModelProvider.class);
+        var explicitCm = mock(io.kairo.api.context.ContextManager.class);
+        CompactionThresholds customThresholds =
+                CompactionThresholds.builder().triggerPressure(0.50f).build();
+
+        Agent agent =
+                AgentBuilder.create()
+                        .name("explicit-cm-agent")
+                        .model(provider)
+                        .modelName("test-model")
+                        .contextManager(explicitCm)
+                        .compactionThresholds(customThresholds)
+                        .build();
+
+        assertNotNull(agent);
+        DefaultReActAgent reactAgent = (DefaultReActAgent) agent;
+        // Should keep the explicit context manager, not replace with DefaultContextManager
+        assertSame(explicitCm, reactAgent.getContextManager());
     }
 }

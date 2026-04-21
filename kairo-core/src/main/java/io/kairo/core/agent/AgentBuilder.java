@@ -26,6 +26,9 @@ import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.api.tool.UserApprovalHandler;
 import io.kairo.api.tracing.Tracer;
+import io.kairo.core.context.CompactionThresholds;
+import io.kairo.core.context.DefaultContextManager;
+import io.kairo.core.context.TokenBudgetManager;
 import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.middleware.DefaultMiddlewarePipeline;
 import io.kairo.core.session.SessionManager;
@@ -85,6 +88,7 @@ public class AgentBuilder {
     private int loopFreqStop = 100;
     private Duration loopFreqWindow = Duration.ofMinutes(10);
     private Map<String, Object> toolDependencies = Map.of();
+    private CompactionThresholds compactionThresholds;
 
     private AgentBuilder() {}
 
@@ -362,6 +366,20 @@ public class AgentBuilder {
     }
 
     /**
+     * Set compaction thresholds for the agent's context compaction pipeline.
+     *
+     * <p>These thresholds control when each compaction stage triggers, the circuit breaker limit,
+     * and the token buffer. If not set, sensible defaults are used (Principle #6).
+     *
+     * @param thresholds the compaction thresholds
+     * @return this builder
+     */
+    public AgentBuilder compactionThresholds(CompactionThresholds thresholds) {
+        this.compactionThresholds = thresholds;
+        return this;
+    }
+
+    /**
      * Build the agent, validating required parameters.
      *
      * @return a new {@link Agent} instance
@@ -369,6 +387,13 @@ public class AgentBuilder {
      * @throws IllegalArgumentException if parameters are invalid
      */
     public Agent build() {
+        // Wire compactionThresholds into a DefaultContextManager if user didn't provide one
+        if (contextManager == null && compactionThresholds != null) {
+            TokenBudgetManager budgetMgr = TokenBudgetManager.forModel(modelName);
+            contextManager =
+                    new DefaultContextManager(budgetMgr, modelProvider, compactionThresholds);
+        }
+
         AgentConfig config = buildConfig();
 
         // Wire approval handler into tool executor if configured

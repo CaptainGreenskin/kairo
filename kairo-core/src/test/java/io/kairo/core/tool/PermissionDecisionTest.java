@@ -22,6 +22,7 @@ import io.kairo.api.tool.PermissionDecision;
 import io.kairo.api.tool.PermissionGuard;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
 import java.util.Collections;

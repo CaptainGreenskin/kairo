@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-04-21 — ToolHandler SPI Uplift
+
+### Breaking Changes
+- **ToolHandler moved to kairo-api**: `ToolHandler` interface relocated from `io.kairo.core.tool.ToolHandler` to `io.kairo.api.tool.ToolHandler`
+  - Migration: update import statements from `io.kairo.core.tool.ToolHandler` → `io.kairo.api.tool.ToolHandler`
+- **kairo-mcp decoupled from kairo-core**: `kairo-mcp` module no longer depends on `kairo-core` — it now depends only on `kairo-api`
+
+### Test Counts
+- kairo-api: 228
+- kairo-core: 1,250
+- kairo-multi-agent: 96
+- kairo-tools: 199
+- kairo-mcp: 80 (observability)
+- kairo-spring-boot-starter: 50
+- spring-boot-demo: 18
+- Total: 1,921, 0 failures
+
 ## [0.3.1] - 2026-04-17 — Deferred Items Cleanup
 
 ### Refactoring

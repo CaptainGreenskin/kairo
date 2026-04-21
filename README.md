@@ -23,18 +23,18 @@
 
 Kairo is not a wrapper — it's infrastructure. Think Netty for networking, Jackson for serialization, Kairo for AI Agents.
 
-| OS Concept | Kairo Mapping | Description |
-|------------|---------------|-------------|
-| Memory | Context | Context window as bounded memory with intelligent compaction |
-| System Call | Tool | 21+ specialized tools — the agent's interface to the outside world |
-| Process | Agent | Independent execution unit driven by a ReAct loop |
-| File System | Memory | Persistent knowledge storage (file / in-memory) |
-| Signal | Hook | 10 hook points with CONTINUE/MODIFY/SKIP/ABORT/INJECT decisions |
-| Executable | Skill | Plug-and-play capability packs in Markdown format |
-| Job Scheduling | Task + Team | Multi-agent task orchestration and team collaboration |
-| IPC | A2A Protocol | Agent-to-Agent communication for cross-agent invocation |
-| Middleware | Middleware Pipeline | Declarative request/response interception |
-| Checkpoint | Snapshot | Agent state serialization and restoration |
+| OS Concept | Kairo Mapping | Description | Status |
+|------------|---------------|-------------|--------|
+| Memory | Context | Context window as bounded memory with intelligent compaction | Implemented |
+| System Call | Tool | 21+ specialized tools — the agent's interface to the outside world | Implemented |
+| Process | Agent | Independent execution unit driven by a ReAct loop | Implemented |
+| File System | Memory | Persistent knowledge storage (file / in-memory / JDBC) | Implemented |
+| Signal | Hook | 10 hook points with CONTINUE/MODIFY/SKIP/ABORT/INJECT decisions | Implemented |
+| Executable | Skill | Plug-and-play capability packs in Markdown format | Implemented |
+| Job Scheduling | Task + Team | Multi-agent task orchestration and team collaboration | Implemented |
+| IPC | A2A Protocol | Agent-to-Agent communication for cross-agent invocation | Implemented |
+| Middleware | Middleware Pipeline | Declarative request/response interception | Implemented |
+| Checkpoint | Snapshot | Agent state serialization and restoration | Implemented |
 
 Kairo is built on Project Reactor for fully reactive, non-blocking execution and supports Claude, GLM, Qwen, GPT, and other models out of the box. The framework is model-agnostic — swap providers without changing agent logic.
 
@@ -48,7 +48,7 @@ kairo-parent
 ├── kairo-tools                — Built-in tool suite (21 tools)
 ├── kairo-mcp                  — MCP protocol integration (StreamableHTTP)
 ├── kairo-multi-agent          — Multi-agent orchestration (A2A Protocol, Team, TaskBoard)
-├── kairo-observability        — OpenTelemetry integration
+├── kairo-observability        — OpenTelemetry tracing integration (spans + attributes)
 ├── kairo-spring-boot-starter  — Spring Boot auto-configuration
 └── kairo-examples             — Example applications
 ```
@@ -181,12 +181,12 @@ That's it — a few lines of YAML and the agent is ready.
 
 ## Model Support
 
-| Provider | Models | API Type | Environment Variable |
-|----------|--------|----------|---------------------|
-| **Anthropic** | Claude Sonnet, Claude Opus, Claude Haiku | Native Anthropic API | `ANTHROPIC_API_KEY` |
-| **Zhipu AI** | GLM-4-Plus, GLM-4 | OpenAI-compatible | `GLM_API_KEY` |
-| **DashScope** | Qwen-Plus, Qwen-Max, Qwen-Turbo | OpenAI-compatible | `QWEN_API_KEY` |
-| **OpenAI** | GPT-4o, GPT-4, GPT-3.5 | OpenAI-compatible | `OPENAI_API_KEY` |
+| Provider | Models | API Type | Environment Variable | Status |
+|----------|--------|----------|---------------------|--------|
+| **Anthropic** | Claude Sonnet, Claude Opus, Claude Haiku | Native Anthropic API | `ANTHROPIC_API_KEY` | Implemented |
+| **Zhipu AI** | GLM-4-Plus, GLM-4 | OpenAI-compatible | `GLM_API_KEY` | Implemented |
+| **DashScope** | Qwen-Plus, Qwen-Max, Qwen-Turbo | OpenAI-compatible | `QWEN_API_KEY` | Implemented |
+| **OpenAI** | GPT-4o, GPT-4, GPT-3.5 | OpenAI-compatible | `OPENAI_API_KEY` | Implemented |
 
 ```java
 // Anthropic (native API)
@@ -249,10 +249,10 @@ More demos available:
 
 | Version | Theme | Status |
 |---------|-------|--------|
-| v0.1–v0.4 | Core Runtime + SPI + A2A + Middleware + Snapshot | ✅ Complete |
-| v0.5 | Agents That Remember — Memory SPI + Embedding + Checkpoint/Rollback | Next |
-| v0.6 | Agents That Are Safe — Guardrail SPI + Team Patterns | Planned |
-| v0.7+ | Channel SPI + Dashboard + Execution Replay | Planned |
+| v0.1–v0.4 | Core Runtime + SPI + A2A + Middleware + Snapshot | Implemented |
+| v0.5 | Agents That Remember — Memory SPI + Embedding + Checkpoint/Rollback | Implemented |
+| v0.6 | Agents That Are Safe — Guardrail SPI + Interrupt/Resume + Team Patterns | Planned v0.6 |
+| v0.7+ | Metrics + Execution Event Stream + Dashboard + Execution Replay | Planned v0.7 |
 
 ## Contributing
 

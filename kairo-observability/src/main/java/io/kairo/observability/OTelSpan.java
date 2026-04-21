@@ -20,6 +20,9 @@ import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.StatusCode;
 import java.util.Map;
+import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * OpenTelemetry-backed implementation of the Kairo {@link Span} interface.
@@ -27,21 +30,34 @@ import java.util.Map;
  * <p>Package-private — users create spans via {@link OTelTracer}, not directly. Kairo semantic
  * attribute keys are mapped to OpenTelemetry GenAI semantic convention attribute keys before being
  * set on the underlying OTel span.
+ *
+ * <p><strong>Allow-list filtering:</strong> Only keys registered in {@link
+ * GenAiSemanticAttributes#allMappings()} or explicitly added to {@code additionalAllowedKeys} are
+ * accepted. Unknown keys are rejected with a warning log to prevent high-cardinality tag explosion.
  */
 class OTelSpan implements Span {
 
-    // Kairo short-key → OTel attribute key mapping is the single source of truth in
-    // {@link GenAiSemanticAttributes}. This class delegates every lookup so that adding a
-    // new Kairo key only requires editing the registry.
+    private static final Logger LOG = Logger.getLogger(OTelSpan.class.getName());
 
     private final io.opentelemetry.api.trace.Span otelSpan;
     private final String spanName;
     private final OTelSpan parentSpan;
+    private final Set<String> additionalAllowedKeys;
 
     OTelSpan(io.opentelemetry.api.trace.Span otelSpan, String name, OTelSpan parent) {
+        this(otelSpan, name, parent, Set.of());
+    }
+
+    OTelSpan(
+            io.opentelemetry.api.trace.Span otelSpan,
+            String name,
+            OTelSpan parent,
+            Set<String> additionalAllowedKeys) {
         this.otelSpan = otelSpan;
         this.spanName = name;
         this.parentSpan = parent;
+        this.additionalAllowedKeys =
+                additionalAllowedKeys != null ? additionalAllowedKeys : Set.of();
     }
 
     /** Returns the underlying OTel span for context propagation. */
@@ -69,10 +85,17 @@ class OTelSpan implements Span {
         if (key == null || value == null) {
             return;
         }
-        // Resolve the canonical OTel AttributeKey from the single registry. Falls back to a
-        // string-keyed attribute when the key is unknown so users can still stash arbitrary
-        // metadata without registering it.
+        // Resolve the canonical OTel AttributeKey from the single registry.
+        // Unknown keys are rejected to prevent high-cardinality tag explosion.
         AttributeKey<?> canonical = GenAiSemanticAttributes.kairoKeyToOTel(key);
+        if (canonical == null && !additionalAllowedKeys.contains(key)) {
+            LOG.log(
+                    Level.WARNING,
+                    "Rejecting unknown span attribute key ''{0}'' on span ''{1}''. "
+                            + "Register it in GenAiSemanticAttributes or add to additionalAllowedKeys.",
+                    new Object[] {key, spanName});
+            return;
+        }
         String otelKey = canonical != null ? canonical.getKey() : key;
         if (value instanceof Long longVal) {
             otelSpan.setAttribute(AttributeKey.longKey(otelKey), longVal);

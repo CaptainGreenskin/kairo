@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.kairo.api.tool.JsonSchema;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;

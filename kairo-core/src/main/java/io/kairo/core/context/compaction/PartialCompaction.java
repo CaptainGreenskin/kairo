@@ -24,6 +24,7 @@ import io.kairo.api.context.ContextState;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
+import io.kairo.core.context.CompactionThresholds;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -47,13 +48,28 @@ import reactor.core.publisher.Mono;
 public class PartialCompaction implements CompactionStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(PartialCompaction.class);
-    private static final float TRIGGER_THRESHOLD = 0.98f;
     private static final int ABSOLUTE_BUFFER = 5_000;
     private static final int PRESERVE_TAIL_MESSAGES = 5;
 
+    private final float triggerThreshold;
+
+    /** Create with default threshold. */
+    public PartialCompaction() {
+        this(CompactionThresholds.DEFAULT_PARTIAL_PRESSURE);
+    }
+
+    /**
+     * Create with a custom trigger threshold.
+     *
+     * @param triggerThreshold pressure threshold to trigger this stage
+     */
+    public PartialCompaction(float triggerThreshold) {
+        this.triggerThreshold = triggerThreshold;
+    }
+
     @Override
     public boolean shouldTrigger(ContextState state) {
-        return HybridThreshold.shouldTrigger(state, TRIGGER_THRESHOLD, ABSOLUTE_BUFFER);
+        return HybridThreshold.shouldTrigger(state, triggerThreshold, ABSOLUTE_BUFFER);
     }
 
     @Override

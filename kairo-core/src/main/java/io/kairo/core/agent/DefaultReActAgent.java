@@ -263,6 +263,15 @@ public class DefaultReActAgent implements Agent {
         return state;
     }
 
+    /**
+     * Get the context manager (nullable). Package-private for testing.
+     *
+     * @return the context manager, or null if none configured
+     */
+    ContextManager getContextManager() {
+        return contextManager;
+    }
+
     @Override
     public Mono<Msg> call(Msg input) {
         MiddlewareContext mwCtx = MiddlewareContext.of(name, config.sessionId(), input);

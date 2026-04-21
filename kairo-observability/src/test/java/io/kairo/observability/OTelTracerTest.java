@@ -98,6 +98,10 @@ class OTelTracerTest {
         SpanData agentData = spans.get(1);
 
         assertEquals(agentData.getSpanId(), iterationData.getParentSpanId());
+        // Verify agent.iteration attribute is set and mapped to GenAI semconv
+        assertEquals(
+                3L,
+                iterationData.getAttributes().get(AttributeKey.longKey("gen_ai.agent.iteration")));
     }
 
     // --- startReasoningSpan ---
@@ -258,6 +262,71 @@ class OTelTracerTest {
                 "test error",
                 data.getAttributes().get(AttributeKey.stringKey("exception.message")));
         assertEquals(StatusCode.ERROR, data.getStatus().getStatusCode());
+    }
+
+    @Test
+    void recordExceptionTruncatesLongMessage() {
+        String longMsg = "x".repeat(2000);
+        Span span = tracer.startAgentSpan("agent", testInput());
+        tracer.recordException(span, new RuntimeException(longMsg));
+        span.end();
+
+        SpanData data = exporter.getFinishedSpanItems().get(0);
+        String recorded = data.getAttributes().get(AttributeKey.stringKey("exception.message"));
+        assertNotNull(recorded);
+        assertTrue(
+                recorded.length() <= OTelTracer.MAX_EXCEPTION_MESSAGE_LENGTH + 20,
+                "Message should be truncated to safe max length");
+        assertTrue(recorded.endsWith("...[truncated]"));
+    }
+
+    @Test
+    void recordExceptionStripsEmailPII() {
+        Span span = tracer.startAgentSpan("agent", testInput());
+        tracer.recordException(span, new RuntimeException("Error for user@example.com"));
+        span.end();
+
+        SpanData data = exporter.getFinishedSpanItems().get(0);
+        String recorded = data.getAttributes().get(AttributeKey.stringKey("exception.message"));
+        assertFalse(recorded.contains("user@example.com"), "Email should be redacted");
+        assertTrue(recorded.contains("[REDACTED_EMAIL]"));
+    }
+
+    @Test
+    void recordExceptionStripsApiKeyLikeSecrets() {
+        Span span = tracer.startAgentSpan("agent", testInput());
+        tracer.recordException(span, new RuntimeException("Failed with api_key=sk-12345abcde"));
+        span.end();
+
+        SpanData data = exporter.getFinishedSpanItems().get(0);
+        String recorded = data.getAttributes().get(AttributeKey.stringKey("exception.message"));
+        assertFalse(recorded.contains("sk-12345abcde"), "API key should be redacted");
+        assertTrue(recorded.contains("[REDACTED_SECRET]"));
+    }
+
+    @Test
+    void recordExceptionWithNullMessage() {
+        Span span = tracer.startAgentSpan("agent", testInput());
+        tracer.recordException(span, new RuntimeException((String) null));
+        span.end();
+
+        SpanData data = exporter.getFinishedSpanItems().get(0);
+        assertEquals("", data.getAttributes().get(AttributeKey.stringKey("exception.message")));
+        assertEquals(StatusCode.ERROR, data.getStatus().getStatusCode());
+    }
+
+    // --- additionalAllowedKeys ---
+
+    @Test
+    void tracerWithAdditionalAllowedKeysAcceptsCustomAttributes() {
+        OTelTracer customTracer =
+                new OTelTracer(tracerProvider.get("custom"), java.util.Set.of("my.custom"));
+        Span span = customTracer.startAgentSpan("agent", testInput());
+        span.setAttribute("my.custom", "hello");
+        span.end();
+
+        SpanData data = exporter.getFinishedSpanItems().get(0);
+        assertEquals("hello", data.getAttributes().get(AttributeKey.stringKey("my.custom")));
     }
 
     // --- Null safety ---

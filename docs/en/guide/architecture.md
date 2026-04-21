@@ -10,7 +10,7 @@ kairo-parent
 ├── kairo-tools                — Built-in tool suite (21 tools)
 ├── kairo-mcp                  — MCP protocol integration (StreamableHTTP)
 ├── kairo-multi-agent          — Multi-agent orchestration (A2A Protocol, Team, TaskBoard)
-├── kairo-observability        — OpenTelemetry integration
+├── kairo-observability        — OpenTelemetry tracing integration (spans + attributes)
 ├── kairo-spring-boot-starter  — Spring Boot auto-configuration
 └── kairo-examples             — Example applications
 ```
@@ -51,7 +51,7 @@ Multi-agent orchestration layer:
 
 ### kairo-observability
 
-OpenTelemetry integration centered on distributed tracing (span tree + attributes/events).
+OpenTelemetry tracing integration centered on distributed tracing (span tree + attributes/events). Currently provides `OTelTracer`, `OTelSpan`, and `GenAiSemanticAttributes` for GenAI-standard span instrumentation. Metrics collection and dashboards are planned for v0.7.
 
 ### kairo-spring-boot-starter
 

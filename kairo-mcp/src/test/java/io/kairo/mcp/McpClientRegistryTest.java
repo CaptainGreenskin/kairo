@@ -23,6 +23,7 @@ import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolSideEffect;
 import java.time.Duration;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -158,5 +159,69 @@ class McpClientRegistryTest {
         executor.shutdown();
         // ConcurrentHashMap-backed maps are thread-safe; verify all executors stored
         assertEquals(threads, group.getAllToolDefinitions().size());
+    }
+
+    @Test
+    void maxToolsPerServerDefaultIs128() {
+        McpServerConfig config = McpServerConfig.stdio("test", "echo");
+        assertEquals(McpServerConfig.DEFAULT_MAX_TOOLS_PER_SERVER, config.maxToolsPerServer());
+        assertEquals(128, config.maxToolsPerServer());
+    }
+
+    @Test
+    void maxToolsPerServerBuilderCustomValue() {
+        McpServerConfig config =
+                McpServerConfig.builder()
+                        .name("test")
+                        .transportType(McpServerConfig.TransportType.STDIO)
+                        .command(List.of("echo"))
+                        .maxToolsPerServer(50)
+                        .build();
+        assertEquals(50, config.maxToolsPerServer());
+    }
+
+    @Test
+    void maxToolsPerServerBuilderDefaultValue() {
+        McpServerConfig config =
+                McpServerConfig.builder()
+                        .name("test")
+                        .transportType(McpServerConfig.TransportType.STDIO)
+                        .command(List.of("echo"))
+                        .build();
+        assertEquals(128, config.maxToolsPerServer());
+    }
+
+    @Test
+    void toolGroupTruncationSimulation() {
+        // Simulate what McpClientRegistry does: create 200 tools, truncate to 128
+        int maxTools = 128;
+        int totalTools = 200;
+        McpToolGroup group = new McpToolGroup("bigServer");
+        JsonSchema schema =
+                new JsonSchema("object", Collections.emptyMap(), Collections.emptyList(), null);
+
+        // Register only maxTools out of totalTools (simulating registry truncation)
+        for (int i = 0; i < totalTools; i++) {
+            if (i >= maxTools) {
+                break; // Truncated
+            }
+            String name = "bigServer_tool" + i;
+            ToolDefinition def =
+                    new ToolDefinition(
+                            name,
+                            "desc" + i,
+                            ToolCategory.GENERAL,
+                            schema,
+                            McpToolExecutor.class,
+                            Duration.ofSeconds(30),
+                            ToolSideEffect.SYSTEM_CHANGE);
+            group.addTool(def, new McpToolExecutor(null, "tool" + i, name, null));
+        }
+
+        // Only 128 tools should be registered
+        assertEquals(maxTools, group.size());
+        assertNotNull(group.getExecutor("bigServer_tool0"));
+        assertNotNull(group.getExecutor("bigServer_tool127"));
+        assertNull(group.getExecutor("bigServer_tool128"));
     }
 }

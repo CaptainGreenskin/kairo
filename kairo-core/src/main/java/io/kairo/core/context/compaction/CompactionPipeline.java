@@ -24,7 +24,7 @@ import io.kairo.api.hook.PostCompactEvent;
 import io.kairo.api.hook.PreCompactEvent;
 import io.kairo.api.message.Msg;
 import io.kairo.api.model.ModelProvider;
-import io.kairo.core.context.CompactionPolicyDefaults;
+import io.kairo.core.context.CompactionThresholds;
 import io.kairo.core.model.ModelRegistry;
 import io.kairo.core.resilience.CircuitBreakerPrimitive;
 import java.time.Duration;
@@ -69,7 +69,7 @@ public class CompactionPipeline {
      * @param modelProvider the model provider for AutoCompaction (may be null)
      */
     public CompactionPipeline(ModelProvider modelProvider) {
-        this(modelProvider, null, null);
+        this(modelProvider, null, null, CompactionThresholds.DEFAULTS);
     }
 
     /**
@@ -80,16 +80,29 @@ public class CompactionPipeline {
      * @param hookChain the hook chain for pre/post compact events (may be null)
      */
     public CompactionPipeline(ModelProvider modelProvider, String modelId, HookChain hookChain) {
+        this(modelProvider, modelId, hookChain, CompactionThresholds.DEFAULTS);
+    }
+
+    /**
+     * Create a pipeline with default stages, model ID, hook chain, and custom thresholds.
+     *
+     * @param modelProvider the model provider for AutoCompaction (may be null)
+     * @param modelId the model ID for resolving context window (may be null)
+     * @param hookChain the hook chain for pre/post compact events (may be null)
+     * @param thresholds compaction thresholds (uses sensible defaults if null)
+     */
+    public CompactionPipeline(
+            ModelProvider modelProvider,
+            String modelId,
+            HookChain hookChain,
+            CompactionThresholds thresholds) {
         this(
-                List.of(
-                        new TimeBasedMicrocompact(),
-                        new SnipCompaction(),
-                        new MicroCompaction(),
-                        new CollapseCompaction(),
-                        new AutoCompaction(modelProvider),
-                        new PartialCompaction()),
+                buildDefaultStages(
+                        modelProvider,
+                        thresholds != null ? thresholds : CompactionThresholds.DEFAULTS),
                 modelId,
-                hookChain);
+                hookChain,
+                thresholds != null ? thresholds : CompactionThresholds.DEFAULTS);
     }
 
     /**
@@ -98,7 +111,7 @@ public class CompactionPipeline {
      * @param stages the compaction strategies to use, in priority order
      */
     public CompactionPipeline(List<CompactionStrategy> stages) {
-        this(stages, null, null);
+        this(stages, null, null, CompactionThresholds.DEFAULTS);
     }
 
     /**
@@ -110,15 +123,43 @@ public class CompactionPipeline {
      */
     public CompactionPipeline(
             List<CompactionStrategy> stages, String modelId, HookChain hookChain) {
+        this(stages, modelId, hookChain, CompactionThresholds.DEFAULTS);
+    }
+
+    /**
+     * Create a pipeline with custom stages, model ID, hook chain, and custom thresholds.
+     *
+     * @param stages the compaction strategies to use, in priority order
+     * @param modelId the model ID for resolving context window (may be null)
+     * @param hookChain the hook chain for pre/post compact events (may be null)
+     * @param thresholds compaction thresholds for circuit breaker configuration
+     */
+    public CompactionPipeline(
+            List<CompactionStrategy> stages,
+            String modelId,
+            HookChain hookChain,
+            CompactionThresholds thresholds) {
+        CompactionThresholds t = thresholds != null ? thresholds : CompactionThresholds.DEFAULTS;
         this.stages =
                 stages.stream()
                         .sorted(Comparator.comparingInt(CompactionStrategy::priority))
                         .toList();
         this.circuitBreaker =
                 new CircuitBreakerPrimitive(
-                        CompactionPolicyDefaults.PIPELINE_CIRCUIT_BREAKER_THRESHOLD, Duration.ZERO);
+                        t.cbFailureLimit(), Duration.ofSeconds(t.cbCooldownSeconds()));
         this.modelId = modelId;
         this.hookChain = hookChain;
+    }
+
+    private static List<CompactionStrategy> buildDefaultStages(
+            ModelProvider modelProvider, CompactionThresholds t) {
+        return List.of(
+                new TimeBasedMicrocompact(),
+                new SnipCompaction(t.snipPressure()),
+                new MicroCompaction(t.microPressure()),
+                new CollapseCompaction(t.collapsePressure()),
+                new AutoCompaction(modelProvider, t.autoPressure()),
+                new PartialCompaction(t.partialPressure()));
     }
 
     /**
@@ -139,7 +180,7 @@ public class CompactionPipeline {
             Set<String> verbatimIds,
             float currentPressure,
             CompactionConfig config) {
-        if (circuitBreaker.isOpen()) {
+        if (!circuitBreaker.allowCall()) {
             log.warn("CompactionPipeline circuit breaker is OPEN — skipping compaction");
             return Mono.empty();
         }

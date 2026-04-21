@@ -15,8 +15,8 @@
  */
 package io.kairo.mcp;
 
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
-import io.kairo.core.tool.ToolHandler;
 import io.modelcontextprotocol.client.McpAsyncClient;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.io.IOException;

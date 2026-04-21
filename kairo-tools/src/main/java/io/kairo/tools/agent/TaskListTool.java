@@ -19,8 +19,8 @@ import io.kairo.api.task.Task;
 import io.kairo.api.task.TaskBoard;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
-import io.kairo.core.tool.ToolHandler;
 import java.util.List;
 import java.util.Map;
 

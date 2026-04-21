@@ -23,18 +23,18 @@
 
 Kairo 不是封装层 — 它是基础设施。正如 Netty 之于网络、Jackson 之于序列化，Kairo 之于 AI Agent。
 
-| OS 概念 | Kairo 映射 | 说明 |
-|---------|-----------|------|
-| 内存管理 | Context | 上下文窗口 = 有限内存，需要智能压缩 |
-| 系统调用 | Tool | 21+ 专用工具，Agent 与外部世界的接口 |
-| 进程 | Agent | ReAct 循环驱动的独立执行单元 |
-| 文件系统 | Memory | 持久化知识存储（文件 / 内存） |
-| 信号处理 | Hook | 10 个钩子点，支持 CONTINUE/MODIFY/SKIP/ABORT/INJECT 决策 |
-| 可执行文件 | Skill | Markdown 格式的即插即用能力包 |
-| 作业调度 | Task + Team | 多 Agent 任务编排与团队协作 |
-| IPC | A2A 协议 | Agent-to-Agent 通信，跨 Agent 调用 |
-| 中间件 | 中间件管道 | 声明式请求/响应拦截 |
-| 检查点 | 快照 | Agent 状态序列化与恢复 |
+| OS 概念 | Kairo 映射 | 说明 | 状态 |
+|---------|-----------|------|------|
+| 内存管理 | Context | 上下文窗口 = 有限内存，需要智能压缩 | Implemented |
+| 系统调用 | Tool | 21+ 专用工具，Agent 与外部世界的接口 | Implemented |
+| 进程 | Agent | ReAct 循环驱动的独立执行单元 | Implemented |
+| 文件系统 | Memory | 持久化知识存储（文件 / 内存 / JDBC） | Implemented |
+| 信号处理 | Hook | 10 个钩子点，支持 CONTINUE/MODIFY/SKIP/ABORT/INJECT 决策 | Implemented |
+| 可执行文件 | Skill | Markdown 格式的即插即用能力包 | Implemented |
+| 作业调度 | Task + Team | 多 Agent 任务编排与团队协作 | Implemented |
+| IPC | A2A 协议 | Agent-to-Agent 通信，跨 Agent 调用 | Implemented |
+| 中间件 | 中间件管道 | 声明式请求/响应拦截 | Implemented |
+| 检查点 | 快照 | Agent 状态序列化与恢复 | Implemented |
 
 基于 Project Reactor 构建，完全响应式、非阻塞执行，开箱即用支持 Claude、GLM、Qwen、GPT 等模型。框架与模型无关 — 切换提供者无需修改 Agent 逻辑。
 
@@ -181,12 +181,12 @@ public String chat(@RequestBody String message) {
 
 ## 模型支持
 
-| 提供商 | 模型 | API 类型 | 环境变量 |
-|--------|------|----------|---------|
-| **Anthropic** | Claude Sonnet, Claude Opus, Claude Haiku | 原生 Anthropic API | `ANTHROPIC_API_KEY` |
-| **智谱 AI** | GLM-4-Plus, GLM-4 | OpenAI 兼容 | `GLM_API_KEY` |
-| **DashScope** | Qwen-Plus, Qwen-Max, Qwen-Turbo | OpenAI 兼容 | `QWEN_API_KEY` |
-| **OpenAI** | GPT-4o, GPT-4, GPT-3.5 | OpenAI 兼容 | `OPENAI_API_KEY` |
+| 提供商 | 模型 | API 类型 | 环境变量 | 状态 |
+|--------|------|----------|---------|------|
+| **Anthropic** | Claude Sonnet, Claude Opus, Claude Haiku | 原生 Anthropic API | `ANTHROPIC_API_KEY` | Implemented |
+| **智谱 AI** | GLM-4-Plus, GLM-4 | OpenAI 兼容 | `GLM_API_KEY` | Implemented |
+| **DashScope** | Qwen-Plus, Qwen-Max, Qwen-Turbo | OpenAI 兼容 | `QWEN_API_KEY` | Implemented |
+| **OpenAI** | GPT-4o, GPT-4, GPT-3.5 | OpenAI 兼容 | `OPENAI_API_KEY` | Implemented |
 
 ```java
 // Anthropic（原生 API）
@@ -249,10 +249,10 @@ mvn exec:java -pl kairo-examples \
 
 | Version | Theme | Status |
 |---------|-------|--------|
-| v0.1–v0.4 | Core Runtime + SPI + A2A + Middleware + Snapshot | ✅ Complete |
-| v0.5 | Agents That Remember — Memory SPI + Embedding + Checkpoint/Rollback | Next |
-| v0.6 | Agents That Are Safe — Guardrail SPI + Team Patterns | Planned |
-| v0.7+ | Channel SPI + Dashboard + Execution Replay | Planned |
+| v0.1–v0.4 | Core Runtime + SPI + A2A + Middleware + Snapshot | Implemented |
+| v0.5 | Agents That Remember — Memory SPI + Embedding + Checkpoint/Rollback | Implemented |
+| v0.6 | Agents That Are Safe — Guardrail SPI + Interrupt/Resume + Team Patterns | Planned v0.6 |
+| v0.7+ | Metrics + Execution Event Stream + Dashboard + Execution Replay | Planned v0.7 |
 
 ## 贡献
 

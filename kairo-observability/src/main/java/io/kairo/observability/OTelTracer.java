@@ -15,12 +15,16 @@
  */
 package io.kairo.observability;
 
+import static io.kairo.observability.GenAiSemanticAttributes.*;
+
 import io.kairo.api.message.Msg;
 import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
 import io.opentelemetry.context.Context;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * OpenTelemetry-backed implementation of the Kairo {@link Tracer} interface.
@@ -52,7 +56,21 @@ import java.util.Objects;
  */
 public class OTelTracer implements Tracer {
 
+    /** Maximum length for exception messages recorded on spans to prevent PII/secret leakage. */
+    static final int MAX_EXCEPTION_MESSAGE_LENGTH = 1024;
+
+    /** Pattern matching email-like strings (best-effort PII filter). */
+    private static final Pattern EMAIL_PATTERN =
+            Pattern.compile("[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}");
+
+    /**
+     * Pattern matching API-key-like strings: long alphanumeric sequences with dashes/underscores.
+     */
+    private static final Pattern API_KEY_PATTERN =
+            Pattern.compile("(?i)(?:api[_-]?key|token|secret|password|bearer)[=:\\s]+\\S+");
+
     private final io.opentelemetry.api.trace.Tracer otelTracer;
+    private final Set<String> additionalAllowedKeys;
 
     /**
      * Creates a new OTelTracer wrapping the given OpenTelemetry tracer.
@@ -61,7 +79,21 @@ public class OTelTracer implements Tracer {
      * @throws NullPointerException if {@code otelTracer} is null
      */
     public OTelTracer(io.opentelemetry.api.trace.Tracer otelTracer) {
+        this(otelTracer, Set.of());
+    }
+
+    /**
+     * Creates a new OTelTracer with additional allowed attribute keys beyond the standard registry.
+     *
+     * @param otelTracer the OpenTelemetry tracer to delegate span creation to; must not be null
+     * @param additionalAllowedKeys extra attribute keys allowed on spans (for user custom attrs)
+     * @throws NullPointerException if {@code otelTracer} is null
+     */
+    public OTelTracer(
+            io.opentelemetry.api.trace.Tracer otelTracer, Set<String> additionalAllowedKeys) {
         this.otelTracer = Objects.requireNonNull(otelTracer, "otelTracer must not be null");
+        this.additionalAllowedKeys =
+                additionalAllowedKeys != null ? Set.copyOf(additionalAllowedKeys) : Set.of();
     }
 
     /**
@@ -74,8 +106,8 @@ public class OTelTracer implements Tracer {
     public Span startAgentSpan(String agentName, Msg input) {
         io.opentelemetry.api.trace.Span otelSpan =
                 otelTracer.spanBuilder("agent:" + agentName).startSpan();
-        OTelSpan span = new OTelSpan(otelSpan, "agent:" + agentName, null);
-        span.setAttribute("agent.name", agentName);
+        OTelSpan span = new OTelSpan(otelSpan, "agent:" + agentName, null, additionalAllowedKeys);
+        span.setAttribute(KEY_AGENT_NAME, agentName);
         return span;
     }
 
@@ -89,7 +121,7 @@ public class OTelTracer implements Tracer {
     public Span startIterationSpan(Span parent, int iteration) {
         String spanName = "iteration-" + iteration;
         OTelSpan span = (OTelSpan) startChildSpan(parent, spanName);
-        span.setAttribute("agent.iteration", (long) iteration);
+        span.setAttribute(KEY_AGENT_ITERATION, (long) iteration);
         return span;
     }
 
@@ -104,7 +136,7 @@ public class OTelTracer implements Tracer {
     public Span startReasoningSpan(Span parent, String modelName, int messageCount) {
         String spanName = "reasoning:" + modelName;
         OTelSpan span = (OTelSpan) startChildSpan(parent, spanName);
-        span.setAttribute("message.count", messageCount);
+        span.setAttribute(KEY_MESSAGE_COUNT, messageCount);
         return span;
     }
 
@@ -118,6 +150,20 @@ public class OTelTracer implements Tracer {
         return startChildSpan(parent, "tool:" + toolName);
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Records the exception on the span with message truncation and best-effort PII stripping to
+     * prevent secret/PII leakage in telemetry backends.
+     */
+    @Override
+    public void recordException(Span span, Throwable exception) {
+        span.setAttribute(KEY_EXCEPTION_TYPE, exception.getClass().getName());
+        String sanitized = sanitizeExceptionMessage(exception.getMessage());
+        span.setAttribute(KEY_EXCEPTION_MESSAGE, sanitized);
+        span.setStatus(false, sanitized);
+    }
+
     /** Creates a child OTel span linked to the given parent span via OTel context propagation. */
     private Span startChildSpan(Span parent, String spanName) {
         OTelSpan otelParent = (parent instanceof OTelSpan) ? (OTelSpan) parent : null;
@@ -128,6 +174,26 @@ public class OTelTracer implements Tracer {
         } else {
             otelSpan = otelTracer.spanBuilder(spanName).startSpan();
         }
-        return new OTelSpan(otelSpan, spanName, otelParent);
+        return new OTelSpan(otelSpan, spanName, otelParent, additionalAllowedKeys);
+    }
+
+    /**
+     * Sanitize an exception message: truncate to safe max length and strip potential PII patterns.
+     *
+     * @param message the raw exception message (may be null)
+     * @return a sanitized, truncated message safe for telemetry recording
+     */
+    static String sanitizeExceptionMessage(String message) {
+        if (message == null) {
+            return "";
+        }
+        // Strip PII patterns (best-effort)
+        String sanitized = EMAIL_PATTERN.matcher(message).replaceAll("[REDACTED_EMAIL]");
+        sanitized = API_KEY_PATTERN.matcher(sanitized).replaceAll("[REDACTED_SECRET]");
+        // Truncate to safe max length
+        if (sanitized.length() > MAX_EXCEPTION_MESSAGE_LENGTH) {
+            sanitized = sanitized.substring(0, MAX_EXCEPTION_MESSAGE_LENGTH) + "...[truncated]";
+        }
+        return sanitized;
     }
 }

@@ -37,10 +37,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class TokenBudgetManager {
 
     /** Buffer reserved beyond model output tokens for overhead (tool schemas, framing, etc.). */
-    private static final int BUFFER = 13_000;
+    private static final int DEFAULT_BUFFER = CompactionThresholds.DEFAULT_BUFFER_TOKENS;
 
     private final int totalBudget;
     private final int reservedForResponse;
+    private final int buffer;
     private final AtomicInteger usedTokens = new AtomicInteger(0);
     private final TokenEstimator tokenEstimator;
 
@@ -69,8 +70,25 @@ public class TokenBudgetManager {
      */
     public TokenBudgetManager(
             int totalBudget, int reservedForResponse, TokenEstimator tokenEstimator) {
+        this(totalBudget, reservedForResponse, tokenEstimator, DEFAULT_BUFFER);
+    }
+
+    /**
+     * Create a new TokenBudgetManager with a custom buffer.
+     *
+     * @param totalBudget the total token capacity of the model's context window
+     * @param reservedForResponse tokens reserved for the model's response
+     * @param tokenEstimator fallback estimator used when fresh API usage is unavailable
+     * @param bufferTokens overhead buffer reserved for tool schemas, framing, etc.
+     */
+    public TokenBudgetManager(
+            int totalBudget,
+            int reservedForResponse,
+            TokenEstimator tokenEstimator,
+            int bufferTokens) {
         this.totalBudget = totalBudget;
         this.reservedForResponse = reservedForResponse;
+        this.buffer = bufferTokens >= 0 ? bufferTokens : DEFAULT_BUFFER;
         this.modelSpec = new ModelRegistry.ModelSpec(totalBudget, reservedForResponse);
         this.tokenEstimator = tokenEstimator;
     }
@@ -81,7 +99,7 @@ public class TokenBudgetManager {
      * @param modelId the model identifier (e.g. "claude-sonnet-4-20250514")
      */
     public TokenBudgetManager(String modelId) {
-        this(modelId, new HeuristicTokenEstimator());
+        this(modelId, new HeuristicTokenEstimator(), DEFAULT_BUFFER);
     }
 
     /**
@@ -91,9 +109,21 @@ public class TokenBudgetManager {
      * @param tokenEstimator fallback estimator used when fresh API usage is unavailable
      */
     public TokenBudgetManager(String modelId, TokenEstimator tokenEstimator) {
+        this(modelId, tokenEstimator, DEFAULT_BUFFER);
+    }
+
+    /**
+     * Create a TokenBudgetManager derived from a model ID with custom estimator and buffer.
+     *
+     * @param modelId the model identifier (e.g. "claude-sonnet-4-20250514")
+     * @param tokenEstimator fallback estimator used when fresh API usage is unavailable
+     * @param bufferTokens overhead buffer reserved for tool schemas, framing, etc.
+     */
+    public TokenBudgetManager(String modelId, TokenEstimator tokenEstimator, int bufferTokens) {
         this.modelSpec = ModelRegistry.getSpec(modelId);
         this.totalBudget = modelSpec.contextWindow();
         this.reservedForResponse = modelSpec.maxOutputTokens();
+        this.buffer = bufferTokens >= 0 ? bufferTokens : DEFAULT_BUFFER;
         this.tokenEstimator = tokenEstimator;
     }
 
@@ -244,7 +274,7 @@ public class TokenBudgetManager {
      * @return the effective budget in tokens
      */
     public int getEffectiveBudget() {
-        return modelSpec.contextWindow() - modelSpec.maxOutputTokens() - BUFFER;
+        return modelSpec.contextWindow() - modelSpec.maxOutputTokens() - buffer;
     }
 
     /**

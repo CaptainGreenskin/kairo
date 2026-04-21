@@ -47,6 +47,11 @@ public interface ModelProvider {
     /**
      * Invoke the model and return a complete response.
      *
+     * <p>Implementations <b>SHOULD</b> respect upstream subscription cancellation (dispose
+     * propagation). The framework wraps calls with cooperative cancellation signals via {@link
+     * CancellationSignal} in the Reactor Context (key: {@link CancellationSignal#CONTEXT_KEY}).
+     * When the signal fires, in-flight HTTP requests should be abandoned promptly.
+     *
      * @param messages the conversation history
      * @param config model configuration (model name, tokens, tools, etc.)
      * @return a Mono emitting the model response
@@ -57,6 +62,11 @@ public interface ModelProvider {
      * Invoke the model in streaming mode.
      *
      * <p>Emits partial {@link ModelResponse} objects as they arrive from the provider.
+     *
+     * <p>Implementations <b>SHOULD</b> respect upstream subscription cancellation (dispose
+     * propagation). The framework wraps calls with cooperative cancellation signals via {@link
+     * CancellationSignal} in the Reactor Context (key: {@link CancellationSignal#CONTEXT_KEY}).
+     * When the signal fires, the streaming connection should be closed promptly.
      *
      * @param messages the conversation history
      * @param config model configuration

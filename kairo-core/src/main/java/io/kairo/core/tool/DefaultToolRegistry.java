@@ -17,6 +17,7 @@ package io.kairo.core.tool;
 
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolRegistry;
 import java.util.List;
 import java.util.Optional;

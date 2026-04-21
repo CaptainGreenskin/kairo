@@ -13,10 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.kairo.core.tool;
+package io.kairo.api.tool;
 
-import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolResult;
 import java.util.Map;
 
 /**

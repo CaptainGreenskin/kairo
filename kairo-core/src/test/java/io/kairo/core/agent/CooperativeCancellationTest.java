@@ -39,6 +39,7 @@ import io.kairo.core.context.TokenBudgetManager;
 import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.model.ModelFallbackManager;
 import io.kairo.core.shutdown.GracefulShutdownManager;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -351,5 +352,103 @@ class CooperativeCancellationTest {
                 .verify();
 
         verify(toolExecutor, never()).execute(eq("guarded"), any());
+    }
+
+    // ===== 7. Mid-model-call cancellation via cooperative signal =====
+
+    @Test
+    void interruptDuringModelCall_cooperativeCancellationTerminatesLoop() {
+        // Model call is slow (simulated with a delayed Mono). We fire the interrupt
+        // after 100ms — the cooperative cancellation (50ms polling) should terminate
+        // the model call well before the 5-second timeout.
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenReturn(
+                        Mono.delay(Duration.ofSeconds(5))
+                                .map(
+                                        tick ->
+                                                textResponse(
+                                                        "Should not reach — cancelled mid-call")));
+
+        ReActLoop loop = createLoop(10);
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "slow model")));
+
+        // Fire interrupt after 100ms
+        Mono.delay(Duration.ofMillis(100)).doOnNext(tick -> interrupted.set(true)).subscribe();
+
+        StepVerifier.create(loop.runLoop())
+                .expectErrorMatches(
+                        e ->
+                                e instanceof AgentInterruptedException
+                                        && e.getMessage().contains("interrupted at iteration"))
+                .verify(Duration.ofSeconds(2));
+
+        // Model was called once, but the response never completed
+        verify(modelProvider).call(anyList(), any(ModelConfig.class));
+        verify(toolExecutor, never()).execute(any(), any());
+    }
+
+    // ===== 8. Mid-tool-execution cancellation via cooperative signal =====
+
+    @Test
+    void interruptDuringToolExecution_cooperativeCancellationTerminatesTool() {
+        // Model returns a tool call immediately, then the tool is slow.
+        // The cooperative cancellation signal should terminate the tool execution.
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenReturn(Mono.just(toolCallResponse("tc-1", "slow_tool", Map.of())));
+
+        when(toolExecutor.execute(eq("slow_tool"), any()))
+                .thenReturn(
+                        Mono.delay(Duration.ofSeconds(5))
+                                .map(
+                                        tick ->
+                                                new ToolResult(
+                                                        "tc-1",
+                                                        "Should not reach — cancelled mid-tool",
+                                                        false,
+                                                        Map.of())));
+
+        ReActLoop loop = createLoop(10);
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "run slow tool")));
+
+        // Fire interrupt after 100ms (tool is executing)
+        Mono.delay(Duration.ofMillis(100)).doOnNext(tick -> interrupted.set(true)).subscribe();
+
+        StepVerifier.create(loop.runLoop())
+                .expectErrorMatches(
+                        e ->
+                                e instanceof AgentInterruptedException
+                                        && e.getMessage().contains("interrupted at iteration"))
+                .verify(Duration.ofSeconds(2));
+
+        // The model was called once, the tool was invoked once but never completed
+        verify(modelProvider).call(anyList(), any(ModelConfig.class));
+        verify(toolExecutor).execute(eq("slow_tool"), any());
+    }
+
+    // ===== 9. Tool throwing AgentInterruptedException propagates (not swallowed as ToolResult)
+    // =====
+
+    @Test
+    void toolThrowingAgentInterruptedException_propagatesNotSwallowed() {
+        // Model returns a tool call; the tool executor throws AgentInterruptedException.
+        // Before the fix, the onErrorResume in ToolPhase would convert this into a ToolResult
+        // and the loop would continue. After the fix, it must propagate as an error.
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenReturn(Mono.just(toolCallResponse("tc-1", "cancel_tool", Map.of())));
+
+        when(toolExecutor.execute(eq("cancel_tool"), any()))
+                .thenReturn(
+                        Mono.error(
+                                new AgentInterruptedException("Tool execution cancelled mid-run")));
+
+        ReActLoop loop = createLoop(10);
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "run cancel tool")));
+
+        StepVerifier.create(loop.runLoop())
+                .expectErrorMatches(
+                        e ->
+                                e instanceof AgentInterruptedException
+                                        && e.getMessage().contains("cancelled mid-run"))
+                .verify(Duration.ofSeconds(5));
     }
 }

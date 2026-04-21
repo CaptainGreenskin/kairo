@@ -128,8 +128,12 @@ public class AnthropicProvider implements RawStreamingModelProvider {
                         })
                 .transform(
                         mono ->
-                                ProviderRetry.withPolicy(
-                                        mono, "anthropic", this::isRetryableError, CALL_TIMEOUT))
+                                ProviderRetry.withConfigPolicy(
+                                        mono,
+                                        config,
+                                        "anthropic",
+                                        this::isRetryableError,
+                                        CALL_TIMEOUT))
                 .doOnNext(
                         response -> {
                             String sysPrompt = resolveSystemPrompt(messages, config);
@@ -179,8 +183,9 @@ public class AnthropicProvider implements RawStreamingModelProvider {
                         })
                 .transform(
                         flux ->
-                                ProviderRetry.withPolicy(
+                                ProviderRetry.withConfigPolicy(
                                         flux,
+                                        config,
                                         "anthropic-stream",
                                         this::isRetryableError,
                                         STREAM_IDLE_TIMEOUT));
@@ -231,8 +236,9 @@ public class AnthropicProvider implements RawStreamingModelProvider {
                         })
                 .transform(
                         flux ->
-                                ProviderRetry.withPolicy(
+                                ProviderRetry.withConfigPolicy(
                                         flux,
+                                        config,
                                         "anthropic-stream-raw",
                                         this::isRetryableError,
                                         STREAM_IDLE_TIMEOUT));

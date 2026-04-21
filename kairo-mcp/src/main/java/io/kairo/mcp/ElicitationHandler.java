@@ -39,7 +39,8 @@ import reactor.core.publisher.Mono;
  *
  * @see ElicitationRequest
  * @see ElicitationResponse
- * @see AutoApproveElicitationHandler
+ * @see DevOnlyAutoApproveHandler
+ * @see AutoDeclineElicitationHandler
  */
 @FunctionalInterface
 public interface ElicitationHandler {

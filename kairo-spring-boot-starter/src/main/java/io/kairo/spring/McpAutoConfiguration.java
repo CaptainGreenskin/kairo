@@ -15,7 +15,7 @@
  */
 package io.kairo.spring;
 
-import io.kairo.mcp.AutoApproveElicitationHandler;
+import io.kairo.mcp.AutoDeclineElicitationHandler;
 import io.kairo.mcp.ElicitationHandler;
 import io.kairo.mcp.McpClientRegistry;
 import io.kairo.mcp.McpServerConfig;
@@ -48,7 +48,7 @@ public class McpAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public ElicitationHandler defaultElicitationHandler() {
-        return new AutoApproveElicitationHandler();
+        return new AutoDeclineElicitationHandler();
     }
 
     @Bean

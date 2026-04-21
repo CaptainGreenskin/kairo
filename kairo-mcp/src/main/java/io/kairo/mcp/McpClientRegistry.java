@@ -81,6 +81,27 @@ public class McpClientRegistry implements Closeable {
                 .map(
                         listToolsResult -> {
                             List<McpSchema.Tool> mcpTools = listToolsResult.tools();
+                            int maxTools = config.maxToolsPerServer();
+
+                            // Enforce tool limit per server
+                            if (mcpTools.size() > maxTools) {
+                                logger.warn(
+                                        "MCP server '{}' exposes {} tools, exceeding the"
+                                                + " limit of {}. Only the first {} tools will be"
+                                                + " registered. Consider using enableTools/"
+                                                + "disableTools to select specific tools.",
+                                        config.name(),
+                                        mcpTools.size(),
+                                        maxTools,
+                                        maxTools);
+                                mcpTools = mcpTools.subList(0, maxTools);
+                            }
+
+                            // TODO: Future enhancement — support "tool search" lazy-load mode
+                            //  where tools are not eagerly registered but discovered on-demand
+                            //  via a search/query mechanism. This would allow MCP servers with
+                            //  very large tool catalogs to be used without hitting the limit.
+
                             McpToolGroup group = new McpToolGroup(config.name());
 
                             for (McpSchema.Tool mcpTool : mcpTools) {

@@ -29,7 +29,7 @@ class ElicitationHandlerTest {
 
     @Test
     void autoApproveHandlerReturnsAccept() {
-        AutoApproveElicitationHandler handler = new AutoApproveElicitationHandler();
+        DevOnlyAutoApproveHandler handler = new DevOnlyAutoApproveHandler();
         ElicitationRequest request =
                 new ElicitationRequest("Please provide your name", Map.of("type", "string"));
 
@@ -163,5 +163,48 @@ class ElicitationHandlerTest {
                         .onElicitation(handler)
                         .build();
         assertNotNull(client);
+    }
+
+    @Test
+    void elicitationPolicyAliasWiresHandler() throws Exception {
+        ElicitationHandler handler = request -> Mono.just(ElicitationResponse.decline());
+
+        McpClientBuilder builder =
+                McpClientBuilder.create("test")
+                        .stdioTransport("echo", "hello")
+                        .elicitationPolicy(handler);
+
+        Field field = McpClientBuilder.class.getDeclaredField("elicitationHandler");
+        field.setAccessible(true);
+        ElicitationHandler wired = (ElicitationHandler) field.get(builder);
+        assertSame(handler, wired);
+    }
+
+    @Test
+    void elicitationPolicyWithAutoApproveBuildsClient() {
+        McpAsyncClient client =
+                McpClientBuilder.create("test")
+                        .stdioTransport("echo", "hello")
+                        .elicitationPolicy(new DevOnlyAutoApproveHandler())
+                        .build();
+        assertNotNull(client);
+    }
+
+    @SuppressWarnings("deprecation")
+    @Test
+    void deprecatedAutoApproveElicitationHandlerStillWorks() {
+        AutoApproveElicitationHandler handler = new AutoApproveElicitationHandler();
+        ElicitationRequest request = new ElicitationRequest("Test", Map.of());
+
+        StepVerifier.create(handler.handle(request))
+                .assertNext(
+                        response -> {
+                            assertEquals(ElicitationAction.ACCEPT, response.action());
+                            assertTrue(response.data().isEmpty());
+                        })
+                .verifyComplete();
+
+        // Verify it's a subclass of DevOnlyAutoApproveHandler
+        assertInstanceOf(DevOnlyAutoApproveHandler.class, handler);
     }
 }

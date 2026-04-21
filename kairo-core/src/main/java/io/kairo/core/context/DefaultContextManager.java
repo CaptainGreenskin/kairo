@@ -83,6 +83,26 @@ public class DefaultContextManager implements ContextManager {
     }
 
     /**
+     * Create a DefaultContextManager with externalized compaction thresholds.
+     *
+     * <p>The thresholds configure both the pipeline stages and the overall trigger pressure.
+     *
+     * @param budgetManager the token budget manager
+     * @param modelProvider the model provider for auto-compaction (may be null)
+     * @param thresholds compaction thresholds (uses sensible defaults if null)
+     */
+    public DefaultContextManager(
+            TokenBudgetManager budgetManager,
+            ModelProvider modelProvider,
+            CompactionThresholds thresholds) {
+        CompactionThresholds t = thresholds != null ? thresholds : CompactionThresholds.DEFAULTS;
+        this.budgetManager = budgetManager;
+        this.compactionPipeline = new CompactionPipeline(modelProvider, null, null, t);
+        this.boundaryMarkerManager = new BoundaryMarkerManager();
+        this.compactionPressureThreshold = t.triggerPressure();
+    }
+
+    /**
      * Create a DefaultContextManager with full control over components.
      *
      * @param budgetManager the token budget manager

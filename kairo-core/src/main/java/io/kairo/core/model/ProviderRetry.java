@@ -17,6 +17,8 @@ package io.kairo.core.model;
 
 import io.kairo.api.agent.CancellationSignal;
 import io.kairo.api.exception.AgentInterruptedException;
+import io.kairo.api.model.ModelConfig;
+import io.kairo.api.model.RetryConfig;
 import java.time.Duration;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
@@ -24,26 +26,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.util.retry.Retry;
 import reactor.util.retry.RetryBackoffSpec;
 
 /**
  * Shared retry/backoff policy for model providers.
  *
- * <p>Before this helper, each provider ({@code AnthropicProvider}, {@code OpenAIProvider}, …)
- * redeclared its own {@code MAX_RETRY_ATTEMPTS}, backoff constants and {@code isRetryableError}
- * predicate. That duplication made it easy for providers to drift apart on retry semantics. This
- * class concentrates:
+ * <p>Concentrates retry semantics so providers don't duplicate backoff/filter/logging logic. All
+ * retry behavior is driven by {@link RetryConfig} via {@link ReactiveRetryPolicy}. The static
+ * {@code withPolicy} helpers remain for backward compatibility but now delegate to {@link
+ * ReactiveRetryPolicy} internally.
  *
- * <ul>
- *   <li>the default retry budget (3 attempts, 1–4s exponential backoff, 25% jitter);
- *   <li>the canonical "transient error" predicate (timeouts, 429 rate limits, 5xx); and
- *   <li>the hook that logs each retry with the server-suggested {@code Retry-After} seconds
- *       surfaced by {@link ModelProviderException.RateLimitException}.
- * </ul>
- *
- * <p>The backoff spec is non-blocking (delays are executed on the Reactor scheduler). Provider
- * callers pass the returned spec to {@link reactor.core.publisher.Mono#retryWhen(Retry)}.
+ * <p>Providers should prefer creating a {@link ReactiveRetryPolicy} from the per-call {@link
+ * ModelConfig#retryConfig()} and using its {@code applyMono}/{@code applyFlux} methods directly.
  */
 public final class ProviderRetry {
 
@@ -61,6 +55,19 @@ public final class ProviderRetry {
     /** Default jitter fraction (0.0–1.0) applied to computed backoff. */
     public static final double DEFAULT_JITTER = 0.25;
 
+    /**
+     * Legacy default {@link RetryConfig} that mirrors the old hardcoded constants. Providers that
+     * don't receive a per-call {@link RetryConfig} via {@link ModelConfig} use this.
+     */
+    static final RetryConfig LEGACY_DEFAULTS =
+            RetryConfig.builder()
+                    .maxAttempts(4) // 3 retries + 1 initial = Retry.backoff(3, ...)
+                    .initialBackoff(DEFAULT_MIN_BACKOFF)
+                    .maxBackoff(DEFAULT_MAX_BACKOFF)
+                    .jitter(DEFAULT_JITTER)
+                    .retryOn(RetryConfig.RETRYABLE_API_ERRORS)
+                    .build();
+
     private ProviderRetry() {}
 
     /**
@@ -73,11 +80,7 @@ public final class ProviderRetry {
      */
     public static RetryBackoffSpec defaultSpec(
             String providerName, Predicate<Throwable> shouldRetry) {
-        return Retry.backoff(DEFAULT_MAX_ATTEMPTS, DEFAULT_MIN_BACKOFF)
-                .maxBackoff(DEFAULT_MAX_BACKOFF)
-                .jitter(DEFAULT_JITTER)
-                .filter(shouldRetry)
-                .doBeforeRetry(signal -> logBeforeRetry(providerName, signal));
+        return new ReactiveRetryPolicy(LEGACY_DEFAULTS, providerName, shouldRetry).buildRetrySpec();
     }
 
     /** Apply Kairo's default retry+timeout policy to a provider {@link Mono} call path. */
@@ -86,9 +89,9 @@ public final class ProviderRetry {
             String providerName,
             Predicate<Throwable> shouldRetry,
             Duration timeout) {
-        return withCooperativeCancellation(source)
-                .retryWhen(defaultSpec(providerName, shouldRetry))
-                .timeout(timeout);
+        ReactiveRetryPolicy policy =
+                new ReactiveRetryPolicy(LEGACY_DEFAULTS, providerName, shouldRetry);
+        return withCooperativeCancellation(policy.applyMono(source, timeout));
     }
 
     /** Apply Kairo's default retry+timeout policy to a provider {@link Flux} streaming path. */
@@ -97,9 +100,64 @@ public final class ProviderRetry {
             String providerName,
             Predicate<Throwable> shouldRetry,
             Duration idleTimeout) {
-        return withCooperativeCancellation(source)
-                .timeout(idleTimeout)
-                .retryWhen(defaultSpec(providerName, shouldRetry));
+        ReactiveRetryPolicy policy =
+                new ReactiveRetryPolicy(LEGACY_DEFAULTS, providerName, shouldRetry);
+        return withCooperativeCancellation(policy.applyFlux(source, idleTimeout));
+    }
+
+    /**
+     * Apply retry+timeout from a per-call {@link ModelConfig}, falling back to defaults.
+     *
+     * @param source the source Mono
+     * @param config the per-call model config (may contain a custom retryConfig/timeout)
+     * @param providerName short provider identifier
+     * @param shouldRetry provider-specific retry predicate
+     * @param defaultTimeout fallback timeout when config.timeout() is null
+     * @return the source with retry, timeout, and cooperative cancellation applied
+     */
+    public static <T> Mono<T> withConfigPolicy(
+            Mono<T> source,
+            ModelConfig config,
+            String providerName,
+            Predicate<Throwable> shouldRetry,
+            Duration defaultTimeout) {
+        ReactiveRetryPolicy policy = resolvePolicy(config, providerName, shouldRetry);
+        Duration timeout = config.timeout() != null ? config.timeout() : defaultTimeout;
+        return withCooperativeCancellation(policy.applyMono(source, timeout));
+    }
+
+    /**
+     * Apply retry+timeout from a per-call {@link ModelConfig}, falling back to defaults.
+     *
+     * @param source the source Flux
+     * @param config the per-call model config (may contain a custom retryConfig/timeout)
+     * @param providerName short provider identifier
+     * @param shouldRetry provider-specific retry predicate
+     * @param defaultIdleTimeout fallback idle timeout when config.timeout() is null
+     * @return the source with retry, timeout, and cooperative cancellation applied
+     */
+    public static <T> Flux<T> withConfigPolicy(
+            Flux<T> source,
+            ModelConfig config,
+            String providerName,
+            Predicate<Throwable> shouldRetry,
+            Duration defaultIdleTimeout) {
+        ReactiveRetryPolicy policy = resolvePolicy(config, providerName, shouldRetry);
+        Duration idleTimeout = config.timeout() != null ? config.timeout() : defaultIdleTimeout;
+        return withCooperativeCancellation(policy.applyFlux(source, idleTimeout));
+    }
+
+    /**
+     * Resolve a {@link ReactiveRetryPolicy} from a {@link ModelConfig}, falling back to legacy
+     * defaults.
+     */
+    static ReactiveRetryPolicy resolvePolicy(
+            ModelConfig config, String providerName, Predicate<Throwable> shouldRetry) {
+        RetryConfig retryConfig =
+                config != null && config.retryConfig() != null
+                        ? config.retryConfig()
+                        : LEGACY_DEFAULTS;
+        return new ReactiveRetryPolicy(retryConfig, providerName, shouldRetry);
     }
 
     /**
@@ -125,25 +183,6 @@ public final class ProviderRetry {
                     || msg.contains("server error");
         }
         return false;
-    }
-
-    private static void logBeforeRetry(String providerName, Retry.RetrySignal signal) {
-        Throwable failure = signal.failure();
-        long attempt = signal.totalRetries() + 1;
-        if (failure instanceof ModelProviderException.RateLimitException rle
-                && rle.getRetryAfterSeconds() != null) {
-            log.warn(
-                    "[{}] Rate limited, retry {} (server suggests {}s wait)",
-                    providerName,
-                    attempt,
-                    rle.getRetryAfterSeconds());
-        } else {
-            log.warn(
-                    "[{}] Retrying API call, attempt {}: {}",
-                    providerName,
-                    attempt,
-                    failure.getMessage());
-        }
     }
 
     private static <T> Mono<T> withCooperativeCancellation(Mono<T> source) {

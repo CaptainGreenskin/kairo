@@ -19,9 +19,9 @@ import io.kairo.api.team.Team;
 import io.kairo.api.team.TeamManager;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
-import io.kairo.core.tool.ToolHandler;
 import java.util.Map;
 
 /**

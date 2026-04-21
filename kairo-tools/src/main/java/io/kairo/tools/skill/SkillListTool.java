@@ -20,10 +20,10 @@ import io.kairo.api.skill.SkillDefinition;
 import io.kairo.api.skill.SkillRegistry;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.core.prompt.PromptBudgetFormatter;
-import io.kairo.core.tool.ToolHandler;
 import java.util.List;
 import java.util.Map;
 

@@ -6,18 +6,18 @@ Kairo is not a wrapper — it's infrastructure. Think Netty for networking, Jack
 
 ## OS Concept Mapping
 
-| OS Concept | Kairo Mapping | Description |
-|------------|---------------|-------------|
-| Memory | Context | Context window as bounded memory with intelligent compaction |
-| System Call | Tool | 21+ specialized tools — the agent's interface to the outside world |
-| Process | Agent | Independent execution unit driven by a ReAct loop |
-| File System | Memory | Persistent knowledge storage (file / in-memory) |
-| Signal | Hook | 10 hook points with CONTINUE/MODIFY/SKIP/ABORT/INJECT decisions |
-| Executable | Skill | Plug-and-play capability packs in Markdown format |
-| Job Scheduling | Task + Team | Multi-agent task orchestration and team collaboration |
-| IPC | A2A Protocol | Agent-to-Agent communication for cross-agent invocation |
-| Middleware | Middleware Pipeline | Declarative request/response interception |
-| Checkpoint | Snapshot | Agent state serialization and restoration |
+| OS Concept | Kairo Mapping | Description | Status |
+|------------|---------------|-------------|--------|
+| Memory | Context | Context window as bounded memory with intelligent compaction | Implemented |
+| System Call | Tool | 21+ specialized tools — the agent's interface to the outside world | Implemented |
+| Process | Agent | Independent execution unit driven by a ReAct loop | Implemented |
+| File System | Memory | Persistent knowledge storage (file / in-memory / JDBC) | Implemented |
+| Signal | Hook | 10 hook points with CONTINUE/MODIFY/SKIP/ABORT/INJECT decisions | Implemented |
+| Executable | Skill | Plug-and-play capability packs in Markdown format | Implemented |
+| Job Scheduling | Task + Team | Multi-agent task orchestration and team collaboration | Implemented |
+| IPC | A2A Protocol | Agent-to-Agent communication for cross-agent invocation | Implemented |
+| Middleware | Middleware Pipeline | Declarative request/response interception | Implemented |
+| Checkpoint | Snapshot | Agent state serialization and restoration | Implemented |
 
 ## Why Kairo
 

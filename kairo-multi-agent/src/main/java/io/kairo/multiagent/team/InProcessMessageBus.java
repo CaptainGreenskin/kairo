@@ -62,7 +62,14 @@ public class InProcessMessageBus implements MessageBus {
                     // Notify reactive sink if one exists
                     Sinks.Many<Msg> sink = sinks.get(toAgentId);
                     if (sink != null) {
-                        sink.tryEmitNext(message);
+                        Sinks.EmitResult result = sink.tryEmitNext(message);
+                        if (result.isFailure()) {
+                            log.warn(
+                                    "MessageBus overflow: failed to emit message to '{}' "
+                                            + "(result={}, buffer may be full)",
+                                    toAgentId,
+                                    result);
+                        }
                     }
                     log.debug("Message sent from agent '{}' to agent '{}'", fromAgentId, toAgentId);
                 });

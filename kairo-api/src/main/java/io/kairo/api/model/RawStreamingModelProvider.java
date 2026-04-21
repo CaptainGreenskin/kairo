@@ -31,6 +31,11 @@ public interface RawStreamingModelProvider extends ModelProvider {
     /**
      * Stream provider-native chunks suitable for incremental tool-call detection.
      *
+     * <p>Implementations <b>SHOULD</b> respect upstream subscription cancellation (dispose
+     * propagation). The framework wraps calls with cooperative cancellation signals via {@link
+     * io.kairo.api.agent.CancellationSignal} in the Reactor Context. When the signal fires, the
+     * streaming connection should be closed promptly.
+     *
      * @param messages the conversation history
      * @param config model configuration
      * @return raw streaming chunks

@@ -17,6 +17,7 @@ package io.kairo.api.model;
 
 import io.kairo.api.context.SystemPromptSegment;
 import io.kairo.api.tool.ToolDefinition;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -48,7 +49,9 @@ public record ModelConfig(
         ToolVerbosity toolVerbosity,
         List<SystemPromptSegment> systemPromptSegments,
         Class<?> responseSchema,
-        Double effort) {
+        Double effort,
+        RetryConfig retryConfig,
+        Duration timeout) {
 
     /**
      * Default model name used when no model is explicitly configured.
@@ -114,6 +117,8 @@ public record ModelConfig(
                 toolVerbosity,
                 null,
                 null,
+                null,
+                null,
                 null);
     }
 
@@ -145,6 +150,8 @@ public record ModelConfig(
                 thinking,
                 systemPrompt,
                 systemPromptParts,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -187,6 +194,8 @@ public record ModelConfig(
                 toolVerbosity,
                 systemPromptSegments,
                 null,
+                null,
+                null,
                 null);
     }
 
@@ -217,6 +226,8 @@ public record ModelConfig(
         private List<SystemPromptSegment> systemPromptSegments;
         private Class<?> responseSchema;
         private Double effort;
+        private RetryConfig retryConfig;
+        private Duration timeout;
 
         private Builder() {}
 
@@ -401,6 +412,33 @@ public record ModelConfig(
         }
 
         /**
+         * Set the retry configuration for model API calls.
+         *
+         * <p>When {@code null}, providers fall back to {@link RetryConfig#MODEL_DEFAULTS}.
+         *
+         * @param retryConfig the retry config, or {@code null} for defaults
+         * @return this builder
+         */
+        public Builder retryConfig(RetryConfig retryConfig) {
+            this.retryConfig = retryConfig;
+            return this;
+        }
+
+        /**
+         * Set the overall timeout for a model call.
+         *
+         * <p>When {@code null}, providers use their own default timeout (typically 30s for
+         * non-streaming, 5min idle timeout for streaming).
+         *
+         * @param timeout the timeout duration, or {@code null} for provider default
+         * @return this builder
+         */
+        public Builder timeout(Duration timeout) {
+            this.timeout = timeout;
+            return this;
+        }
+
+        /**
          * Build an immutable {@link ModelConfig} from the current builder state.
          *
          * @return the constructed config
@@ -421,7 +459,9 @@ public record ModelConfig(
                     toolVerbosity,
                     systemPromptSegments != null ? List.copyOf(systemPromptSegments) : null,
                     responseSchema,
-                    effort);
+                    effort,
+                    retryConfig,
+                    timeout);
         }
     }
 }

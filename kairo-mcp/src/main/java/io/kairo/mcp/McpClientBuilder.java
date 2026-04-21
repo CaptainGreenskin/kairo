@@ -221,6 +221,25 @@ public class McpClientBuilder {
     }
 
     /**
+     * Sets the elicitation policy for MCP server elicitation requests.
+     *
+     * <p>Alias for {@link #onElicitation(ElicitationHandler)}. If not set, an {@link
+     * AutoDeclineElicitationHandler} is used by default (safe for CI/server environments).
+     *
+     * <p>To opt-in to auto-approve (development/testing only):
+     *
+     * <pre>{@code
+     * builder.elicitationPolicy(new DevOnlyAutoApproveHandler());
+     * }</pre>
+     *
+     * @param handler the elicitation handler
+     * @return this builder
+     */
+    public McpClientBuilder elicitationPolicy(ElicitationHandler handler) {
+        return onElicitation(handler);
+    }
+
+    /**
      * Builds a blocking synchronous client with the default timeout of 30 seconds.
      *
      * <p>The returned {@link McpSyncClient} wraps the async client and calls {@code .block()} on

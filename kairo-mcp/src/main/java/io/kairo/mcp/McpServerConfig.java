@@ -37,6 +37,8 @@ import java.util.Map;
  * @param disableTools tool name blacklist
  * @param presetArgs preset arguments per tool name
  * @param requestTimeout per-request timeout (default 30s)
+ * @param maxToolsPerServer maximum number of tools to register from this server (default 128);
+ *     tools beyond this limit are truncated with a warning log
  */
 public record McpServerConfig(
         String name,
@@ -50,7 +52,11 @@ public record McpServerConfig(
         List<String> enableTools,
         List<String> disableTools,
         Map<String, Map<String, Object>> presetArgs,
-        Duration requestTimeout) {
+        Duration requestTimeout,
+        int maxToolsPerServer) {
+
+    /** Default maximum number of tools that can be registered from a single MCP server. */
+    public static final int DEFAULT_MAX_TOOLS_PER_SERVER = 128;
 
     /** Supported MCP transport types. */
     public enum TransportType {
@@ -73,7 +79,8 @@ public record McpServerConfig(
                 null,
                 null,
                 Collections.emptyMap(),
-                Duration.ofSeconds(30));
+                Duration.ofSeconds(30),
+                DEFAULT_MAX_TOOLS_PER_SERVER);
     }
 
     /** Creates a Streamable HTTP config with the given URL. */
@@ -90,7 +97,8 @@ public record McpServerConfig(
                 null,
                 null,
                 Collections.emptyMap(),
-                Duration.ofSeconds(30));
+                Duration.ofSeconds(30),
+                DEFAULT_MAX_TOOLS_PER_SERVER);
     }
 
     /** Creates an SSE config with the given URL. */
@@ -107,7 +115,8 @@ public record McpServerConfig(
                 null,
                 null,
                 Collections.emptyMap(),
-                Duration.ofSeconds(30));
+                Duration.ofSeconds(30),
+                DEFAULT_MAX_TOOLS_PER_SERVER);
     }
 
     /** Returns a new builder. */
@@ -129,6 +138,7 @@ public record McpServerConfig(
         private List<String> disableTools;
         private Map<String, Map<String, Object>> presetArgs = new HashMap<>();
         private Duration requestTimeout = Duration.ofSeconds(30);
+        private int maxToolsPerServer = DEFAULT_MAX_TOOLS_PER_SERVER;
 
         public Builder name(String name) {
             this.name = name;
@@ -191,6 +201,17 @@ public record McpServerConfig(
             return this;
         }
 
+        /**
+         * Sets the maximum number of tools to register from this server.
+         *
+         * @param maxToolsPerServer the tool limit (default 128)
+         * @return this builder
+         */
+        public Builder maxToolsPerServer(int maxToolsPerServer) {
+            this.maxToolsPerServer = maxToolsPerServer;
+            return this;
+        }
+
         public McpServerConfig build() {
             if (name == null || name.isBlank()) {
                 throw new IllegalArgumentException("Server name must not be null or blank");
@@ -210,7 +231,8 @@ public record McpServerConfig(
                     enableTools,
                     disableTools,
                     presetArgs,
-                    requestTimeout);
+                    requestTimeout,
+                    maxToolsPerServer);
         }
     }
 }

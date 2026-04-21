@@ -136,6 +136,55 @@ public final class GenAiSemanticAttributes {
             AttributeKey.stringKey("exception.message");
 
     // ---------------------------------------------------------------------------
+    // Kairo short key string constants
+    // ---------------------------------------------------------------------------
+
+    /** Kairo short key for input token count. */
+    public static final String KEY_TOKEN_INPUT = "token.input";
+
+    /** Kairo short key for output token count. */
+    public static final String KEY_TOKEN_OUTPUT = "token.output";
+
+    /** Kairo short key for cache-read token count. */
+    public static final String KEY_TOKEN_CACHE_READ = "token.cache_read";
+
+    /** Kairo short key for cache-write token count. */
+    public static final String KEY_TOKEN_CACHE_WRITE = "token.cache_write";
+
+    /** Kairo short key for tool name. */
+    public static final String KEY_TOOL_NAME = "tool.name";
+
+    /** Kairo short key for tool success flag. */
+    public static final String KEY_TOOL_SUCCESS = "tool.success";
+
+    /** Kairo short key for tool duration in milliseconds. */
+    public static final String KEY_TOOL_DURATION_MS = "tool.duration_ms";
+
+    /** Kairo short key for agent name. */
+    public static final String KEY_AGENT_NAME = "agent.name";
+
+    /** Kairo short key for agent iteration index. */
+    public static final String KEY_AGENT_ITERATION = "agent.iteration";
+
+    /** Kairo short key for model name. */
+    public static final String KEY_MODEL_NAME = "model.name";
+
+    /** Kairo short key for message count. */
+    public static final String KEY_MESSAGE_COUNT = "message.count";
+
+    /** Kairo short key for compaction strategy. */
+    public static final String KEY_COMPACTION_STRATEGY = "compaction.strategy";
+
+    /** Kairo short key for compaction tokens saved. */
+    public static final String KEY_COMPACTION_TOKENS_SAVED = "compaction.tokens_saved";
+
+    /** Kairo short key for exception type. */
+    public static final String KEY_EXCEPTION_TYPE = "exception.type";
+
+    /** Kairo short key for exception message. */
+    public static final String KEY_EXCEPTION_MESSAGE = "exception.message";
+
+    // ---------------------------------------------------------------------------
     // Kairo key → OTel AttributeKey mapping
     // ---------------------------------------------------------------------------
 
@@ -152,25 +201,25 @@ public final class GenAiSemanticAttributes {
         Map<String, AttributeKey<?>> map = new HashMap<>();
 
         // Token usage
-        map.put("token.input", USAGE_INPUT_TOKENS);
-        map.put("token.output", USAGE_OUTPUT_TOKENS);
-        map.put("token.cache_read", USAGE_CACHE_READ_TOKENS);
-        map.put("token.cache_write", USAGE_CACHE_CREATION_TOKENS);
+        map.put(KEY_TOKEN_INPUT, USAGE_INPUT_TOKENS);
+        map.put(KEY_TOKEN_OUTPUT, USAGE_OUTPUT_TOKENS);
+        map.put(KEY_TOKEN_CACHE_READ, USAGE_CACHE_READ_TOKENS);
+        map.put(KEY_TOKEN_CACHE_WRITE, USAGE_CACHE_CREATION_TOKENS);
 
         // Tool execution
-        map.put("tool.name", TOOL_NAME);
-        map.put("tool.success", TOOL_SUCCESS);
-        map.put("tool.duration_ms", TOOL_DURATION_MS);
+        map.put(KEY_TOOL_NAME, TOOL_NAME);
+        map.put(KEY_TOOL_SUCCESS, TOOL_SUCCESS);
+        map.put(KEY_TOOL_DURATION_MS, TOOL_DURATION_MS);
 
         // Agent
-        map.put("agent.name", AGENT_NAME);
-        map.put("agent.iteration", AGENT_ITERATION);
-        map.put("model.name", MODEL_NAME);
-        map.put("message.count", MESSAGE_COUNT);
+        map.put(KEY_AGENT_NAME, AGENT_NAME);
+        map.put(KEY_AGENT_ITERATION, AGENT_ITERATION);
+        map.put(KEY_MODEL_NAME, MODEL_NAME);
+        map.put(KEY_MESSAGE_COUNT, MESSAGE_COUNT);
 
         // Compaction
-        map.put("compaction.strategy", COMPACTION_STRATEGY);
-        map.put("compaction.tokens_saved", COMPACTION_TOKENS_SAVED);
+        map.put(KEY_COMPACTION_STRATEGY, COMPACTION_STRATEGY);
+        map.put(KEY_COMPACTION_TOKENS_SAVED, COMPACTION_TOKENS_SAVED);
 
         // Cache
         map.put("cache.hit_ratio", CACHE_HIT_RATIO);
@@ -178,8 +227,8 @@ public final class GenAiSemanticAttributes {
         map.put("cache.break_reasons", CACHE_BREAK_REASONS);
 
         // Exception
-        map.put("exception.type", EXCEPTION_TYPE);
-        map.put("exception.message", EXCEPTION_MESSAGE);
+        map.put(KEY_EXCEPTION_TYPE, EXCEPTION_TYPE);
+        map.put(KEY_EXCEPTION_MESSAGE, EXCEPTION_MESSAGE);
 
         KAIRO_KEY_MAP = Collections.unmodifiableMap(map);
     }

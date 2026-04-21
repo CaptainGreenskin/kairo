@@ -15,14 +15,24 @@
  */
 package io.kairo.core.context;
 
-/** Single source of truth for compaction policy defaults. */
+/**
+ * Single source of truth for compaction policy defaults.
+ *
+ * <p>All constants delegate to {@link CompactionThresholds} so the runtime can be reconfigured
+ * without touching this class.
+ */
 public final class CompactionPolicyDefaults {
 
     private CompactionPolicyDefaults() {}
 
     /** Default pressure threshold to trigger compaction-oriented stages. */
-    public static final float PRESSURE_THRESHOLD = 0.80f;
+    public static final float PRESSURE_THRESHOLD = CompactionThresholds.DEFAULT_TRIGGER_PRESSURE;
 
     /** Consecutive failures that open compaction pipeline circuit breaker. */
-    public static final int PIPELINE_CIRCUIT_BREAKER_THRESHOLD = 3;
+    public static final int PIPELINE_CIRCUIT_BREAKER_THRESHOLD =
+            CompactionThresholds.DEFAULT_CB_FAILURE_LIMIT;
+
+    /** Cooldown before the compaction pipeline circuit breaker allows a probe call (seconds). */
+    public static final long PIPELINE_CIRCUIT_BREAKER_COOLDOWN_SECONDS =
+            CompactionThresholds.DEFAULT_CB_COOLDOWN_SECONDS;
 }
