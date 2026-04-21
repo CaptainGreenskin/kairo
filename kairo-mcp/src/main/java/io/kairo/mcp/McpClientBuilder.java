@@ -212,7 +212,7 @@ public class McpClientBuilder {
     /**
      * Sets the elicitation handler for MCP server elicitation requests.
      *
-     * <p>If not set, an {@link AutoApproveElicitationHandler} is used by default.
+     * <p>If not set, an {@link AutoDeclineElicitationHandler} is used by default.
      *
      * @param handler the elicitation handler
      * @return this builder
@@ -257,11 +257,11 @@ public class McpClientBuilder {
         McpSchema.Implementation clientInfo =
                 new McpSchema.Implementation(CLIENT_NAME, CLIENT_VERSION);
 
-        // Use AutoApproveElicitationHandler as default if no handler is set
+        // Use security-first default if no handler is set
         ElicitationHandler effectiveHandler =
                 elicitationHandler != null
                         ? elicitationHandler
-                        : new AutoApproveElicitationHandler();
+                        : new AutoDeclineElicitationHandler();
 
         // Adapt Kairo ElicitationHandler to MCP SDK Function
         Function<McpSchema.ElicitRequest, reactor.core.publisher.Mono<McpSchema.ElicitResult>>
@@ -320,23 +320,31 @@ public class McpClientBuilder {
     }
 
     private McpClientTransport createStreamableHttpTransport() {
-        String resolvedUrl = appendQueryParams(httpUrl);
+        String resolvedUrl = resolvedHttpUrl();
         HttpClientStreamableHttpTransport.Builder builder =
                 HttpClientStreamableHttpTransport.builder(resolvedUrl);
         if (!httpHeaders.isEmpty()) {
-            builder.customizeRequest(requestBuilder -> httpHeaders.forEach(requestBuilder::header));
+            builder.customizeRequest(requestCustomizer());
         }
         return builder.build();
     }
 
     private McpClientTransport createSseTransport() {
-        String resolvedUrl = appendQueryParams(httpUrl);
+        String resolvedUrl = resolvedHttpUrl();
         HttpClientSseClientTransport.Builder builder =
                 HttpClientSseClientTransport.builder(resolvedUrl);
         if (!httpHeaders.isEmpty()) {
-            builder.customizeRequest(requestBuilder -> httpHeaders.forEach(requestBuilder::header));
+            builder.customizeRequest(requestCustomizer());
         }
         return builder.build();
+    }
+
+    private String resolvedHttpUrl() {
+        return appendQueryParams(httpUrl);
+    }
+
+    private java.util.function.Consumer<java.net.http.HttpRequest.Builder> requestCustomizer() {
+        return requestBuilder -> httpHeaders.forEach(requestBuilder::header);
     }
 
     private String appendQueryParams(String baseUrl) {

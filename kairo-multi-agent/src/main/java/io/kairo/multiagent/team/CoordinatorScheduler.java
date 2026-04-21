@@ -16,7 +16,6 @@
 package io.kairo.multiagent.team;
 
 import io.kairo.api.agent.Agent;
-import io.kairo.api.agent.AgentState;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.task.Task;
@@ -48,20 +47,14 @@ public class CoordinatorScheduler implements TeamScheduler {
 
     @Override
     public Mono<Void> dispatch(TaskBoard taskBoard, List<Agent> agents) {
-        List<Task> unblockedTasks = taskBoard.getUnblockedTasks();
+        List<Task> unblockedTasks = SchedulingPrelude.unblockedTasks(taskBoard);
 
         if (unblockedTasks.isEmpty()) {
             log.debug("No unblocked tasks to dispatch");
             return Mono.empty();
         }
 
-        List<Agent> availableAgents =
-                agents.stream()
-                        .filter(
-                                a ->
-                                        a.state() == AgentState.IDLE
-                                                || a.state() == AgentState.COMPLETED)
-                        .toList();
+        List<Agent> availableAgents = SchedulingPrelude.availableAgents(agents);
 
         String taskSummary = summarizeTasks(unblockedTasks);
         String agentSummary = summarizeAgents(availableAgents);

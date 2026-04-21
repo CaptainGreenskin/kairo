@@ -134,9 +134,23 @@ class ElicitationHandlerTest {
         ElicitationHandler wired = (ElicitationHandler) field.get(builder);
         assertNull(wired);
 
-        // Build should succeed without error (uses AutoApproveElicitationHandler internally)
+        // Build should succeed without error (uses AutoDeclineElicitationHandler internally)
         McpAsyncClient client = builder.build();
         assertNotNull(client);
+    }
+
+    @Test
+    void autoDeclineHandlerReturnsDecline() {
+        AutoDeclineElicitationHandler handler = new AutoDeclineElicitationHandler();
+        ElicitationRequest request = new ElicitationRequest("Need confirmation", Map.of());
+
+        StepVerifier.create(handler.handle(request))
+                .assertNext(
+                        response -> {
+                            assertEquals(ElicitationAction.DECLINE, response.action());
+                            assertTrue(response.data().isEmpty());
+                        })
+                .verifyComplete();
     }
 
     @Test

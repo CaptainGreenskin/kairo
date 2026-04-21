@@ -47,10 +47,9 @@ public class TimeBasedMicrocompact implements CompactionStrategy {
 
     @Override
     public boolean shouldTrigger(ContextState state) {
-        // This strategy is purely time-based; actual time check is done in compact()
-        // since ContextState doesn't carry timestamps. We always return true and
-        // let compact() decide based on message timestamps.
-        return state.messageCount() > 0;
+        // ContextState does not carry timestamps, so the final idle check still happens in
+        // compact(). We gate this stage here to avoid entering it on low-pressure turns.
+        return state.messageCount() > 0 && state.pressure() >= 0.80f;
     }
 
     @Override
