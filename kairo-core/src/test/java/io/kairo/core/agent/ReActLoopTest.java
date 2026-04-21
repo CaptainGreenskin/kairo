@@ -493,6 +493,56 @@ class ReActLoopTest {
                 .verifyComplete();
     }
 
+    @Test
+    void testStreamingEnabledWithNoToolExecutorFallsBackWithoutNpe() {
+        AgentConfig config =
+                AgentConfig.builder()
+                        .name("no-tool-streaming-agent")
+                        .modelProvider(modelProvider)
+                        .modelName("test-model")
+                        .maxIterations(10)
+                        .tokenBudget(200_000)
+                        .build();
+
+        ReActLoopContext ctx =
+                new ReActLoopContext(
+                        "agent-2s",
+                        "no-tool-streaming-agent",
+                        config,
+                        hookChain,
+                        null,
+                        null, // no toolExecutor
+                        errorRecovery,
+                        tokenBudgetManager,
+                        shutdownManager,
+                        null);
+
+        ModelConfig modelConfig =
+                ModelConfig.builder()
+                        .model("test-model")
+                        .maxTokens(4096)
+                        .temperature(0.7)
+                        .tools(List.of())
+                        .build();
+
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenReturn(Mono.just(textResponse("Streaming fallback with no executor works.")));
+
+        ReActLoop loop =
+                new ReActLoop(
+                        ctx, interrupted, currentIteration, totalTokensUsed, () -> modelConfig);
+        loop.setStreamingEnabled(true);
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "simple question")));
+
+        StepVerifier.create(loop.runLoop())
+                .assertNext(
+                        msg -> {
+                            assertEquals(MsgRole.ASSISTANT, msg.role());
+                            assertTrue(msg.text().contains("fallback with no executor"));
+                        })
+                .verifyComplete();
+    }
+
     // ===== 11. No tool executor returns error results for tool calls =====
 
     @Test

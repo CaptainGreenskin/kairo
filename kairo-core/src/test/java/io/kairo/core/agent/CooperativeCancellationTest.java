@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
@@ -277,5 +278,48 @@ class CooperativeCancellationTest {
 
         // Model should only be called once (the tool-call response)
         assertEquals(1, callCount.get());
+    }
+
+    @Test
+    void interruptBetweenSequentialTools_secondToolIsNotExecuted() {
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenReturn(
+                        Mono.just(
+                                new ModelResponse(
+                                        "resp-multi",
+                                        List.of(
+                                                new Content.ToolUseContent(
+                                                        "tc-1", "first", Map.of()),
+                                                new Content.ToolUseContent(
+                                                        "tc-2", "second", Map.of())),
+                                        new ModelResponse.Usage(10, 20, 0, 0),
+                                        ModelResponse.StopReason.TOOL_USE,
+                                        "test-model")));
+
+        AtomicReference<String> lastTool = new AtomicReference<>();
+        when(toolExecutor.execute(any(), any()))
+                .thenAnswer(
+                        inv -> {
+                            String toolName = inv.getArgument(0);
+                            lastTool.set(toolName);
+                            if ("first".equals(toolName)) {
+                                interrupted.set(true);
+                            }
+                            return Mono.just(
+                                    new ToolResult("tc-" + toolName, "ok", false, Map.of()));
+                        });
+
+        ReActLoop loop = createLoop(10);
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "run both tools")));
+
+        StepVerifier.create(loop.runLoop())
+                .expectErrorMatches(
+                        e ->
+                                e instanceof AgentInterruptedException
+                                        && e.getMessage().contains("interrupted at iteration"))
+                .verify();
+
+        verify(toolExecutor, times(1)).execute(any(), any());
+        assertEquals("first", lastTool.get());
     }
 }

@@ -470,7 +470,7 @@ class ReActLoop {
 
         // Execute tools sequentially with hooks
         return Flux.fromIterable(toolCalls)
-                .concatMap(toolCall -> executeSingleToolWithHooks(toolCall))
+                .concatMap(toolCall -> checkCancelled().then(executeSingleToolWithHooks(toolCall)))
                 .collectList();
     }
 
@@ -728,6 +728,11 @@ class ReActLoop {
     private Mono<ModelResponse> callModelStreamingWithFallback(
             List<Msg> messages, ModelConfig modelConfig) {
         var provider = ctx.config().modelProvider();
+
+        if (ctx.toolExecutor() == null) {
+            log.debug("Streaming eager tool execution disabled: no ToolExecutor configured");
+            return ctx.errorRecovery().callModelWithRecovery(messages, modelConfig, 0);
+        }
 
         Flux<StreamChunk> rawStream;
         if (provider instanceof RawStreamingModelProvider rawProvider) {
