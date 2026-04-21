@@ -420,7 +420,10 @@ public class DefaultToolExecutor implements ToolExecutor {
                                                                                         + " system"
                                                                                         + " shutdown")));
                                         return Mono.firstWithSignal(execution, shutdownGuard)
-                                                .doOnNext(this::trackCircuitBreaker)
+                                                .doOnNext(
+                                                        result ->
+                                                                trackCircuitBreaker(
+                                                                        toolName, result))
                                                 .map(this::applySanitizer);
                                     });
                 });
@@ -637,13 +640,13 @@ public class DefaultToolExecutor implements ToolExecutor {
      *
      * @param result the tool result to evaluate
      */
-    private void trackCircuitBreaker(ToolResult result) {
+    private void trackCircuitBreaker(String toolName, ToolResult result) {
         if (result.isError()) {
             consecutiveFailures
-                    .computeIfAbsent(result.toolUseId(), k -> new AtomicInteger())
+                    .computeIfAbsent(toolName, k -> new AtomicInteger())
                     .incrementAndGet();
         } else {
-            consecutiveFailures.remove(result.toolUseId());
+            consecutiveFailures.remove(toolName);
         }
     }
 

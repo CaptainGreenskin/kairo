@@ -111,7 +111,38 @@ public interface MemoryStore {
      * @return a Flux of matching entries
      */
     default Flux<MemoryEntry> search(MemoryQuery query) {
-        return Flux.empty();
+        if (query == null) {
+            return Flux.empty();
+        }
+        String keyword = query.keyword() != null ? query.keyword() : "";
+        return Flux.fromArray(MemoryScope.values())
+                .concatMap(scope -> search(keyword, scope))
+                .filter(
+                        entry ->
+                                query.agentId() == null
+                                        || (entry.agentId() != null
+                                                && query.agentId().equals(entry.agentId())))
+                .filter(entry -> query.tags().isEmpty() || entry.tags().containsAll(query.tags()))
+                .filter(entry -> entry.importance() >= query.minImportance())
+                .filter(
+                        entry ->
+                                query.from() == null
+                                        || (entry.timestamp() != null
+                                                && !entry.timestamp().isBefore(query.from())))
+                .filter(
+                        entry ->
+                                query.to() == null
+                                        || (entry.timestamp() != null
+                                                && !entry.timestamp().isAfter(query.to())))
+                .filter(
+                        entry ->
+                                query.keyword() == null
+                                        || query.keyword().isBlank()
+                                        || (entry.content() != null
+                                                && entry.content()
+                                                        .toLowerCase()
+                                                        .contains(query.keyword().toLowerCase())))
+                .take(query.limit());
     }
 
     /**

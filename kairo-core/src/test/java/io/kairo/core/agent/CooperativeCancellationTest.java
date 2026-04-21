@@ -24,6 +24,9 @@ import static org.mockito.Mockito.*;
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.hook.HookChain;
+import io.kairo.api.hook.HookResult;
+import io.kairo.api.hook.PreActing;
+import io.kairo.api.hook.PreActingEvent;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
@@ -321,5 +324,32 @@ class CooperativeCancellationTest {
 
         verify(toolExecutor, times(1)).execute(any(), any());
         assertEquals("first", lastTool.get());
+    }
+
+    @Test
+    void interruptAfterPreActingHook_toolExecutionIsSkipped() {
+        class InterruptingPreActingHook {
+            @PreActing
+            public HookResult<PreActingEvent> pre(PreActingEvent event) {
+                interrupted.set(true);
+                return HookResult.proceed(event);
+            }
+        }
+        hookChain.register(new InterruptingPreActingHook());
+
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenReturn(Mono.just(toolCallResponse("tc-1", "guarded", Map.of())));
+
+        ReActLoop loop = createLoop(10);
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "run guarded tool")));
+
+        StepVerifier.create(loop.runLoop())
+                .expectErrorMatches(
+                        e ->
+                                e instanceof AgentInterruptedException
+                                        && e.getMessage().contains("interrupted at iteration"))
+                .verify();
+
+        verify(toolExecutor, never()).execute(eq("guarded"), any());
     }
 }

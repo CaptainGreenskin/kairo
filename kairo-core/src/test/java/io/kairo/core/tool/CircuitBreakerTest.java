@@ -292,6 +292,33 @@ class CircuitBreakerTest {
     }
 
     @Test
+    void circuitBreakerTracksByToolNameNotToolResultId() {
+        DefaultToolExecutor executor = executorWithThreshold(2);
+
+        registerToolHandler(
+                "unstable_tool",
+                input ->
+                        // Simulate tools returning invocation-scoped IDs instead of static tool
+                        // names
+                        new ToolResult(
+                                "invocation-" + System.nanoTime(),
+                                "Error: transient",
+                                true,
+                                Map.of()));
+
+        StepVerifier.create(executor.execute("unstable_tool", Map.of()))
+                .assertNext(r -> assertTrue(r.isError()))
+                .verifyComplete();
+        StepVerifier.create(executor.execute("unstable_tool", Map.of()))
+                .assertNext(r -> assertTrue(r.isError()))
+                .verifyComplete();
+
+        StepVerifier.create(executor.execute("unstable_tool", Map.of()))
+                .assertNext(r -> assertTrue(r.content().contains("circuit-broken")))
+                .verifyComplete();
+    }
+
+    @Test
     void defaultThresholdIsThree() {
         // Use the 4-arg constructor (no explicit threshold)
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard, null, null);

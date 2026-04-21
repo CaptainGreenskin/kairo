@@ -51,16 +51,21 @@ import reactor.core.publisher.Mono;
 public class DefaultContextManager implements ContextManager {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultContextManager.class);
+    private static final float DEFAULT_COMPACTION_PRESSURE_THRESHOLD = 0.80f;
 
     private final AtomicReference<List<Msg>> messages = new AtomicReference<>(List.of());
     private final TokenBudgetManager budgetManager;
     private final CompactionPipeline compactionPipeline;
     private final BoundaryMarkerManager boundaryMarkerManager;
     private final Set<String> verbatimMessageIds = ConcurrentHashMap.newKeySet();
+    private final float compactionPressureThreshold;
 
     /** Create a DefaultContextManager with default Claude 200K budget and no model provider. */
     public DefaultContextManager() {
-        this(TokenBudgetManager.forClaude200K(), new CompactionPipeline((ModelProvider) null));
+        this(
+                TokenBudgetManager.forClaude200K(),
+                new CompactionPipeline((ModelProvider) null),
+                DEFAULT_COMPACTION_PRESSURE_THRESHOLD);
     }
 
     /**
@@ -70,7 +75,10 @@ public class DefaultContextManager implements ContextManager {
      * @param modelProvider the model provider for auto-compaction (may be null)
      */
     public DefaultContextManager(TokenBudgetManager budgetManager, ModelProvider modelProvider) {
-        this(budgetManager, new CompactionPipeline(modelProvider));
+        this(
+                budgetManager,
+                new CompactionPipeline(modelProvider),
+                DEFAULT_COMPACTION_PRESSURE_THRESHOLD);
     }
 
     /**
@@ -81,9 +89,28 @@ public class DefaultContextManager implements ContextManager {
      */
     public DefaultContextManager(
             TokenBudgetManager budgetManager, CompactionPipeline compactionPipeline) {
+        this(budgetManager, compactionPipeline, DEFAULT_COMPACTION_PRESSURE_THRESHOLD);
+    }
+
+    /**
+     * Create a DefaultContextManager with full control over components and compaction trigger
+     * threshold.
+     *
+     * @param budgetManager the token budget manager
+     * @param compactionPipeline the compaction pipeline
+     * @param compactionPressureThreshold compaction trigger pressure in [0.0, 1.0]
+     */
+    public DefaultContextManager(
+            TokenBudgetManager budgetManager,
+            CompactionPipeline compactionPipeline,
+            float compactionPressureThreshold) {
         this.budgetManager = budgetManager;
         this.compactionPipeline = compactionPipeline;
         this.boundaryMarkerManager = new BoundaryMarkerManager();
+        this.compactionPressureThreshold =
+                compactionPressureThreshold > 0.0f && compactionPressureThreshold <= 1.0f
+                        ? compactionPressureThreshold
+                        : DEFAULT_COMPACTION_PRESSURE_THRESHOLD;
     }
 
     @Override
@@ -129,8 +156,8 @@ public class DefaultContextManager implements ContextManager {
         float pressure = budgetManager.pressure();
         log.info("Compaction requested. Current pressure: {}", pressure);
 
-        if (pressure < 0.80f) {
-            log.info("Pressure below 80% — no compaction needed");
+        if (pressure < compactionPressureThreshold) {
+            log.info("Pressure below {} — no compaction needed", compactionPressureThreshold);
             return Mono.empty();
         }
 
@@ -203,7 +230,7 @@ public class DefaultContextManager implements ContextManager {
      */
     public boolean needsCompaction(List<Msg> msgs) {
         double pressure = budgetManager.getPressure(msgs);
-        return pressure > 0.80;
+        return pressure > compactionPressureThreshold;
     }
 
     /**
@@ -220,8 +247,8 @@ public class DefaultContextManager implements ContextManager {
         float pressure = (float) budgetManager.getPressure(msgs);
         log.info("Compaction requested for {} messages, pressure: {}", msgs.size(), pressure);
 
-        if (pressure < 0.80f) {
-            log.info("Pressure below 80%% — no compaction needed");
+        if (pressure < compactionPressureThreshold) {
+            log.info("Pressure below {} — no compaction needed", compactionPressureThreshold);
             return Mono.just(msgs);
         }
 

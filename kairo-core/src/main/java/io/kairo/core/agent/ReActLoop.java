@@ -480,8 +480,8 @@ class ReActLoop {
         // Fire PreActing hook with structured result support
         PreActingEvent preEvent = new PreActingEvent(toolCall.toolName(), toolCall.input(), false);
 
-        return ctx.hookChain()
-                .<PreActingEvent>firePreActingWithResult(preEvent)
+        return checkCancelled()
+                .then(ctx.hookChain().<PreActingEvent>firePreActingWithResult(preEvent))
                 .flatMap(
                         hookResult -> {
                             // 1. Check ABORT decision
@@ -563,8 +563,14 @@ class ReActLoop {
                             }
 
                             // 5. Execute the tool with (possibly modified) input
-                            return ctx.toolExecutor()
-                                    .execute(toolCall.toolName(), effectiveInput)
+                            return checkCancelled()
+                                    .then(
+                                            Mono.defer(
+                                                    () ->
+                                                            ctx.toolExecutor()
+                                                                    .execute(
+                                                                            toolCall.toolName(),
+                                                                            effectiveInput)))
                                     .map(
                                             result ->
                                                     new ToolResult(
@@ -593,25 +599,41 @@ class ReActLoop {
                             // 6. Fire PostActing hook with structured result
                             PostActingEvent postEvent =
                                     new PostActingEvent(toolCall.toolName(), result);
-                            return ctx.hookChain()
-                                    .<PostActingEvent>firePostActingWithResult(postEvent)
-                                    .map(
-                                            postResult -> {
-                                                // Inject post-acting context if provided
-                                                if (postResult.hasInjectedContext()) {
-                                                    Msg contextMsg =
-                                                            Msg.builder()
-                                                                    .role(MsgRole.SYSTEM)
-                                                                    .addContent(
-                                                                            new Content.TextContent(
-                                                                                    "[Hook Context] "
-                                                                                            + postResult
-                                                                                                    .injectedContext()))
-                                                                    .build();
-                                                    conversationHistory.add(contextMsg);
-                                                }
-                                                return result;
-                                            });
+                            return checkCancelled()
+                                    .then(
+                                            Mono.defer(
+                                                    () ->
+                                                            ctx.hookChain()
+                                                                    .<PostActingEvent>
+                                                                            firePostActingWithResult(
+                                                                                    postEvent)
+                                                                    .map(
+                                                                            postResult -> {
+                                                                                // Inject
+                                                                                // post-acting
+                                                                                // context if
+                                                                                // provided
+                                                                                if (postResult
+                                                                                        .hasInjectedContext()) {
+                                                                                    Msg contextMsg =
+                                                                                            Msg
+                                                                                                    .builder()
+                                                                                                    .role(
+                                                                                                            MsgRole
+                                                                                                                    .SYSTEM)
+                                                                                                    .addContent(
+                                                                                                            new Content
+                                                                                                                    .TextContent(
+                                                                                                                    "[Hook Context] "
+                                                                                                                            + postResult
+                                                                                                                                    .injectedContext()))
+                                                                                                    .build();
+                                                                                    conversationHistory
+                                                                                            .add(
+                                                                                                    contextMsg);
+                                                                                }
+                                                                                return result;
+                                                                            })));
                         });
     }
 
