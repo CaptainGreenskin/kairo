@@ -231,12 +231,6 @@ public class DefaultReActAgent implements Agent {
                         this.id,
                         config.sessionId(),
                         toolDependencies != null ? toolDependencies : Map.of());
-        // Legacy compatibility: some code paths / tests still read the executor's mutable
-        // field. This is safe for single-agent-per-executor deployments; the authoritative
-        // source for concurrent setups is the Reactor Context written in call().
-        if (toolExecutor instanceof DefaultToolExecutor dte) {
-            dte.setToolContext(this.toolContext);
-        }
     }
 
     /** Create a new ReAct agent with a pre-built system prompt (used for sub-agents). */
@@ -368,8 +362,7 @@ public class DefaultReActAgent implements Agent {
                         })
                 // Propagate this agent's ToolContext through the Reactor Context so every
                 // downstream tool invocation (even in concurrent agents sharing a single
-                // ToolExecutor) sees the correct context. The legacy mutable field on the
-                // executor remains as a fallback for tests / single-agent setups.
+                // ToolExecutor) sees the correct context.
                 .contextWrite(
                         ctx ->
                                 toolContext != null

@@ -143,14 +143,15 @@ class ReActLoop {
             recoverDanglingToolCalls();
         }
 
-        return Mono.defer(
-                () -> {
-                    Msg guardResult = evaluateLoopGuards();
-                    if (guardResult != null) {
-                        return Mono.just(guardResult);
-                    }
-                    return executeReasoningIteration(modelConfigSupplier.get());
-                });
+        return Mono.defer(this::runSingleIteration);
+    }
+
+    private Mono<Msg> runSingleIteration() {
+        Msg guardResult = evaluateLoopGuards();
+        if (guardResult != null) {
+            return Mono.just(guardResult);
+        }
+        return executeReasoningIteration(modelConfigSupplier.get());
     }
 
     /** Evaluate guard conditions before each iteration and optionally return a final response. */
@@ -240,8 +241,10 @@ class ReActLoop {
         Mono<ModelResponse> responseMono =
                 streamingEnabled
                         ? callModelStreamingWithFallback(conversationHistory, effectiveConfig)
-                        : ctx.errorRecovery()
-                                .callModelWithRecovery(conversationHistory, effectiveConfig, 0);
+                        : withCancellationSignal(
+                                ctx.errorRecovery()
+                                        .callModelWithRecovery(
+                                                conversationHistory, effectiveConfig, 0));
 
         return withCooperativeCancellation(responseMono)
                 .flatMap(this::handleModelResponseWithPostHook);
@@ -441,6 +444,10 @@ class ReActLoop {
         conversationHistory.add(buildToolResultMsg(toolResults));
         currentIteration.incrementAndGet();
 
+        return proceedWithCompactionIfNeeded();
+    }
+
+    private Mono<Msg> proceedWithCompactionIfNeeded() {
         if (compactionTrigger != null) {
             return checkCancelled()
                     .then(compactionTrigger.checkAndCompact(conversationHistory))
@@ -771,7 +778,8 @@ class ReActLoop {
             log.debug("Provider '{}' does not support streamRaw, falling back", provider.name());
             return fallbackModelCall(messages, modelConfig);
         }
-        Flux<StreamChunk> rawStream = rawProvider.streamRaw(messages, modelConfig);
+        Flux<StreamChunk> rawStream =
+                withCancellationSignal(rawProvider.streamRaw(messages, modelConfig));
 
         // Detect tool calls incrementally
         var detector = new StreamingToolDetector();
@@ -910,6 +918,14 @@ class ReActLoop {
     }
 
     private <T> Mono<T> withCancellationSignal(Mono<T> source) {
+        return source.contextWrite(
+                ctxView ->
+                        ctxView.put(
+                                CancellationSignal.CONTEXT_KEY,
+                                (CancellationSignal) interrupted::get));
+    }
+
+    private <T> Flux<T> withCancellationSignal(Flux<T> source) {
         return source.contextWrite(
                 ctxView ->
                         ctxView.put(

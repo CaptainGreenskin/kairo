@@ -13,19 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.kairo.core.model;
+package io.kairo.api.model;
 
-import io.kairo.api.model.ModelUnavailableException;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/** Thrown when a model call is rejected because the circuit breaker is in OPEN state. */
-public class CircuitBreakerOpenException extends ModelUnavailableException {
+import org.junit.jupiter.api.Test;
 
-    /**
-     * Create a new circuit breaker open exception.
-     *
-     * @param modelId the model whose circuit breaker is open
-     */
-    public CircuitBreakerOpenException(String modelId) {
-        super(modelId, "circuit_open", "Circuit breaker is open for model: " + modelId);
+class ModelUnavailableExceptionTest {
+
+    @Test
+    void storesModelIdAndReason() {
+        ModelUnavailableException ex =
+                new ModelUnavailableException(
+                        "claude-sonnet", "circuit_open", "temporarily unavailable");
+
+        assertEquals("claude-sonnet", ex.getModelId());
+        assertEquals("circuit_open", ex.getReason());
+        assertEquals("temporarily unavailable", ex.getMessage());
     }
 }

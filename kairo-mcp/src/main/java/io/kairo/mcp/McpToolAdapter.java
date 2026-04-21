@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -114,23 +115,36 @@ public final class McpToolAdapter {
             required.removeAll(excludeParams);
         }
 
-        return new JsonSchema(type, properties, required, null);
+        return new JsonSchema(type, properties, required, describeSchema(mcpSchema));
     }
 
     @SuppressWarnings("unchecked")
     private static JsonSchema convertPropertyValue(Object value) {
-        if (value instanceof Map) {
-            Map<String, Object> map = (Map<String, Object>) value;
+        if (value instanceof Map<?, ?> rawMap) {
+            Map<String, Object> map = toStringObjectMap(rawMap);
+            if (map.containsKey("oneOf") || map.containsKey("anyOf") || map.containsKey("allOf")) {
+                return convertCompositeSchema(map);
+            }
             String propType = map.containsKey("type") ? String.valueOf(map.get("type")) : null;
             String propDesc =
                     map.containsKey("description") ? String.valueOf(map.get("description")) : null;
+            if (propType == null && map.containsKey("properties")) {
+                propType = "object";
+            }
+            if (propType == null && map.containsKey("items")) {
+                propType = "array";
+            }
+            if (propType == null && map.containsKey("$ref")) {
+                propType = "object";
+                propDesc = appendHint(propDesc, "ref=" + map.get("$ref"));
+            }
 
             // Recursively convert nested properties (for object types)
             Map<String, JsonSchema> nestedProps = Collections.emptyMap();
             List<String> nestedRequired = Collections.emptyList();
             if (map.containsKey("properties") && map.get("properties") instanceof Map) {
                 Map<String, Object> rawProps = (Map<String, Object>) map.get("properties");
-                nestedProps = new HashMap<>();
+                nestedProps = new LinkedHashMap<>();
                 for (Map.Entry<String, Object> e : rawProps.entrySet()) {
                     nestedProps.put(e.getKey(), convertPropertyValue(e.getValue()));
                 }
@@ -138,9 +152,66 @@ public final class McpToolAdapter {
             if (map.containsKey("required") && map.get("required") instanceof List) {
                 nestedRequired = (List<String>) map.get("required");
             }
+            if ("array".equals(propType) && map.get("items") != null) {
+                Map<String, JsonSchema> arrayProps = new LinkedHashMap<>();
+                arrayProps.put("$items", convertPropertyValue(map.get("items")));
+                nestedProps = arrayProps;
+                propDesc = appendHint(propDesc, "array item schema preserved in properties.$items");
+            }
+            if (map.containsKey("enum") && map.get("enum") instanceof List<?> enums) {
+                propDesc = appendHint(propDesc, "enum=" + enums);
+            }
 
             return new JsonSchema(propType, nestedProps, nestedRequired, propDesc);
         }
         return new JsonSchema("string", Collections.emptyMap(), Collections.emptyList(), null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static JsonSchema convertCompositeSchema(Map<String, Object> schema) {
+        Object oneOf =
+                schema.getOrDefault("oneOf", schema.getOrDefault("anyOf", schema.get("allOf")));
+        if (!(oneOf instanceof List<?> variants) || variants.isEmpty()) {
+            return new JsonSchema(
+                    "object",
+                    Collections.emptyMap(),
+                    Collections.emptyList(),
+                    "empty composite schema");
+        }
+        for (Object variant : variants) {
+            if (variant instanceof Map<?, ?> mapVariant) {
+                JsonSchema chosen = convertPropertyValue(mapVariant);
+                String desc =
+                        appendHint(chosen.description(), "composite variants=" + variants.size());
+                return new JsonSchema(chosen.type(), chosen.properties(), chosen.required(), desc);
+            }
+        }
+        return new JsonSchema(
+                "object",
+                Collections.emptyMap(),
+                Collections.emptyList(),
+                "composite schema variants=" + variants.size());
+    }
+
+    private static String describeSchema(McpSchema.JsonSchema schema) {
+        return null;
+    }
+
+    private static String appendHint(String existing, String hint) {
+        if (hint == null || hint.isBlank()) {
+            return existing;
+        }
+        if (existing == null || existing.isBlank()) {
+            return hint;
+        }
+        return existing + "; " + hint;
+    }
+
+    private static Map<String, Object> toStringObjectMap(Map<?, ?> map) {
+        Map<String, Object> converted = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            converted.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return converted;
     }
 }

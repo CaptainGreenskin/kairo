@@ -81,9 +81,14 @@ class ToolContextInjectionTest {
                 };
 
         registerToolHandler("ctx-tool", contextTool);
-        executor.setToolContext(new ToolContext("agent-123", "session-456", Map.of()));
-
-        StepVerifier.create(executor.execute("ctx-tool", Map.of()))
+        ToolContext toolContext = new ToolContext("agent-123", "session-456", Map.of());
+        StepVerifier.create(
+                        executor.execute("ctx-tool", Map.of())
+                                .contextWrite(
+                                        ctx ->
+                                                ctx.put(
+                                                        DefaultToolExecutor.CONTEXT_KEY,
+                                                        toolContext)))
                 .assertNext(result -> assertFalse(result.isError()))
                 .verifyComplete();
 
@@ -112,9 +117,14 @@ class ToolContextInjectionTest {
                 };
 
         registerToolHandler("ctx-tool", contextTool);
-        executor.setToolContext(new ToolContext("agent-1", "session-XYZ", Map.of()));
-
-        StepVerifier.create(executor.execute("ctx-tool", Map.of()))
+        ToolContext toolContext = new ToolContext("agent-1", "session-XYZ", Map.of());
+        StepVerifier.create(
+                        executor.execute("ctx-tool", Map.of())
+                                .contextWrite(
+                                        ctx ->
+                                                ctx.put(
+                                                        DefaultToolExecutor.CONTEXT_KEY,
+                                                        toolContext)))
                 .assertNext(result -> assertFalse(result.isError()))
                 .verifyComplete();
 
@@ -143,9 +153,14 @@ class ToolContextInjectionTest {
 
         registerToolHandler("ctx-tool", contextTool);
         Map<String, Object> deps = Map.of("dbConn", "jdbc:h2:mem:test", "apiKey", "secret-key");
-        executor.setToolContext(new ToolContext("agent-1", "session-1", deps));
-
-        StepVerifier.create(executor.execute("ctx-tool", Map.of()))
+        ToolContext toolContext = new ToolContext("agent-1", "session-1", deps);
+        StepVerifier.create(
+                        executor.execute("ctx-tool", Map.of())
+                                .contextWrite(
+                                        ctx ->
+                                                ctx.put(
+                                                        DefaultToolExecutor.CONTEXT_KEY,
+                                                        toolContext)))
                 .assertNext(result -> assertFalse(result.isError()))
                 .verifyComplete();
 
@@ -164,9 +179,14 @@ class ToolContextInjectionTest {
                                 "legacy", "legacy-result: " + input.get("x"), false, Map.of());
 
         registerToolHandler("legacy", legacyTool);
-        executor.setToolContext(new ToolContext("agent-1", "session-1", Map.of("key", "value")));
-
-        StepVerifier.create(executor.execute("legacy", Map.of("x", "42")))
+        ToolContext toolContext = new ToolContext("agent-1", "session-1", Map.of("key", "value"));
+        StepVerifier.create(
+                        executor.execute("legacy", Map.of("x", "42"))
+                                .contextWrite(
+                                        ctx ->
+                                                ctx.put(
+                                                        DefaultToolExecutor.CONTEXT_KEY,
+                                                        toolContext)))
                 .assertNext(
                         result -> {
                             assertFalse(result.isError());
@@ -252,7 +272,7 @@ class ToolContextInjectionTest {
                         tool1.getClass());
         registry1.register(def1);
         registry1.registerInstance("tool", tool1);
-        executor1.setToolContext(new ToolContext("agent-A", "session-A", Map.of("env", "prod")));
+        ToolContext context1 = new ToolContext("agent-A", "session-A", Map.of("env", "prod"));
 
         // Executor 2 with deps B
         DefaultToolRegistry registry2 = new DefaultToolRegistry();
@@ -280,13 +300,21 @@ class ToolContextInjectionTest {
                         tool2.getClass());
         registry2.register(def2);
         registry2.registerInstance("tool", tool2);
-        executor2.setToolContext(new ToolContext("agent-B", "session-B", Map.of("env", "staging")));
+        ToolContext context2 = new ToolContext("agent-B", "session-B", Map.of("env", "staging"));
 
-        StepVerifier.create(executor1.execute("tool", Map.of()))
+        StepVerifier.create(
+                        executor1
+                                .execute("tool", Map.of())
+                                .contextWrite(
+                                        ctx -> ctx.put(DefaultToolExecutor.CONTEXT_KEY, context1)))
                 .assertNext(result -> assertFalse(result.isError()))
                 .verifyComplete();
 
-        StepVerifier.create(executor2.execute("tool", Map.of()))
+        StepVerifier.create(
+                        executor2
+                                .execute("tool", Map.of())
+                                .contextWrite(
+                                        ctx -> ctx.put(DefaultToolExecutor.CONTEXT_KEY, context2)))
                 .assertNext(result -> assertFalse(result.isError()))
                 .verifyComplete();
 
@@ -329,14 +357,11 @@ class ToolContextInjectionTest {
         assertTrue(capturedCtx.get().dependencies().isEmpty());
     }
 
-    // --- Test: Reactor Context propagation overrides the executor's mutable field ---
+    // --- Test: Reactor Context propagation provides per-subscription isolation ---
 
     /**
-     * When a ToolContext is written into the Reactor Context (per-subscription), the executor
-     * should see it <em>instead of</em> the mutable field value. This is the mechanism that keeps
-     * multiple agents sharing a single executor isolated from each other: each subscription carries
-     * its own context, so there is no window in which the mutable field can be clobbered by a
-     * concurrent agent.
+     * When a ToolContext is written into the Reactor Context (per-subscription), the executor sees
+     * that context and keeps multiple agents sharing a single executor isolated from each other.
      */
     @Test
     void reactorContextOverridesMutableField() {
@@ -355,9 +380,6 @@ class ToolContextInjectionTest {
                     }
                 };
         registerToolHandler("ctx-tool", contextTool);
-
-        // Seed the mutable field with a "wrong" value that a concurrent agent might have written.
-        executor.setToolContext(new ToolContext("wrong-agent", "wrong-session", Map.of()));
 
         // The Reactor Context wins: per-subscription isolation preserved.
         ToolContext isolated = new ToolContext("right-agent", "right-session", Map.of("k", "v"));

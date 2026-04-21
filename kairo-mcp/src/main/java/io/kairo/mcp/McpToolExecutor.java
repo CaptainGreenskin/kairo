@@ -115,6 +115,15 @@ public class McpToolExecutor implements ToolHandler {
         return mcpClient
                 .callTool(new McpSchema.CallToolRequest(mcpToolName, mergedArgs))
                 .timeout(executionTimeout)
+                .onErrorResume(
+                        this::isTransientConnectionError,
+                        error ->
+                                mcpClient
+                                        .initialize()
+                                        .then(
+                                                mcpClient.callTool(
+                                                        new McpSchema.CallToolRequest(
+                                                                mcpToolName, mergedArgs))))
                 .retryWhen(executionRetrySpec())
                 .map(result -> McpContentConverter.convert(result, toolUseId))
                 .doOnSuccess(r -> logger.debug("MCP tool '{}' completed", mcpToolName))

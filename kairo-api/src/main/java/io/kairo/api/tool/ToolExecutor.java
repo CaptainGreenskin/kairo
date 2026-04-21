@@ -15,6 +15,7 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.agent.CancellationSignal;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,10 @@ import reactor.core.publisher.Mono;
  *
  * <p>Implementations should be thread-safe: parallel tool execution via {@link
  * #executeParallel(List)} may invoke multiple handlers concurrently.
+ *
+ * <p><strong>Cooperative cancellation:</strong> implementations should observe {@link
+ * CancellationSignal} from Reactor Context (key: {@link CancellationSignal#CONTEXT_KEY}) and
+ * terminate long-running tool work promptly when cancelled.
  *
  * @see ToolResult
  * @see ToolInvocation

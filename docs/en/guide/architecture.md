@@ -51,8 +51,7 @@ Multi-agent orchestration layer:
 
 ### kairo-observability
 
-OpenTelemetry integration centered on distributed tracing, with metrics/log emission support through
-the same instrumentation pipeline and hook events.
+OpenTelemetry integration centered on distributed tracing (span tree + attributes/events).
 
 ### kairo-spring-boot-starter
 

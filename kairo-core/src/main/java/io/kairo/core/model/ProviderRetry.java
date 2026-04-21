@@ -15,6 +15,8 @@
  */
 package io.kairo.core.model;
 
+import io.kairo.api.agent.CancellationSignal;
+import io.kairo.api.exception.AgentInterruptedException;
 import java.time.Duration;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
@@ -84,7 +86,9 @@ public final class ProviderRetry {
             String providerName,
             Predicate<Throwable> shouldRetry,
             Duration timeout) {
-        return source.retryWhen(defaultSpec(providerName, shouldRetry)).timeout(timeout);
+        return withCooperativeCancellation(source)
+                .retryWhen(defaultSpec(providerName, shouldRetry))
+                .timeout(timeout);
     }
 
     /** Apply Kairo's default retry+timeout policy to a provider {@link Flux} streaming path. */
@@ -93,7 +97,9 @@ public final class ProviderRetry {
             String providerName,
             Predicate<Throwable> shouldRetry,
             Duration idleTimeout) {
-        return source.timeout(idleTimeout).retryWhen(defaultSpec(providerName, shouldRetry));
+        return withCooperativeCancellation(source)
+                .timeout(idleTimeout)
+                .retryWhen(defaultSpec(providerName, shouldRetry));
     }
 
     /**
@@ -138,5 +144,50 @@ public final class ProviderRetry {
                     attempt,
                     failure.getMessage());
         }
+    }
+
+    private static <T> Mono<T> withCooperativeCancellation(Mono<T> source) {
+        return Mono.deferContextual(
+                ctx -> {
+                    CancellationSignal signal = resolveSignal(ctx);
+                    if (signal == null) {
+                        return source;
+                    }
+                    return source.takeUntilOther(cancellationTrigger(signal))
+                            .switchIfEmpty(interruptedError(signal));
+                });
+    }
+
+    private static <T> Flux<T> withCooperativeCancellation(Flux<T> source) {
+        return Flux.deferContextual(
+                ctx -> {
+                    CancellationSignal signal = resolveSignal(ctx);
+                    if (signal == null) {
+                        return source;
+                    }
+                    return source.takeUntilOther(cancellationTrigger(signal))
+                            .concatWith(ProviderRetry.<T>interruptedError(signal).flux());
+                });
+    }
+
+    private static Mono<Long> cancellationTrigger(CancellationSignal signal) {
+        if (signal.isCancelled()) {
+            return Mono.just(0L);
+        }
+        return Flux.interval(Duration.ofMillis(50)).filter(tick -> signal.isCancelled()).next();
+    }
+
+    private static <T> Mono<T> interruptedError(CancellationSignal signal) {
+        return signal.isCancelled()
+                ? Mono.error(new AgentInterruptedException("Provider execution cancelled"))
+                : Mono.empty();
+    }
+
+    private static CancellationSignal resolveSignal(reactor.util.context.ContextView ctx) {
+        if (!ctx.hasKey(CancellationSignal.CONTEXT_KEY)) {
+            return null;
+        }
+        Object value = ctx.get(CancellationSignal.CONTEXT_KEY);
+        return value instanceof CancellationSignal signal ? signal : null;
     }
 }

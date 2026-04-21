@@ -51,7 +51,7 @@ MCP（Model Context Protocol）协议集成，通过 StreamableHTTP + Elicitatio
 
 ### kairo-observability
 
-OpenTelemetry 集成以分布式追踪为核心，指标/日志通过同一套埋点链路和 Hook 事件输出。
+OpenTelemetry 集成以分布式追踪为核心（span 树与属性/事件）。
 
 ### kairo-spring-boot-starter
 

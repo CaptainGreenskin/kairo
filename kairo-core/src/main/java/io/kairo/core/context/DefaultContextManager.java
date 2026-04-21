@@ -154,7 +154,10 @@ public class DefaultContextManager implements ContextManager {
 
     @Override
     public Mono<CompactionResult> compact() {
-        float pressure = budgetManager.pressure();
+        float pressure =
+                Math.max(
+                        budgetManager.pressure(),
+                        (float) budgetManager.getPressure(messages.get()));
         log.info("Compaction requested. Current pressure: {}", pressure);
 
         if (pressure < compactionPressureThreshold) {
@@ -183,7 +186,7 @@ public class DefaultContextManager implements ContextManager {
                                 log.info(
                                         "Compaction applied: saved {} tokens, pressure now {}",
                                         result.tokensSaved(),
-                                        budgetManager.pressure());
+                                        budgetManager.getPressure(messages.get()));
                             }
                         });
     }

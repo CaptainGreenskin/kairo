@@ -15,6 +15,7 @@
  */
 package io.kairo.api.model;
 
+import io.kairo.api.agent.CancellationSignal;
 import io.kairo.api.message.Msg;
 import java.util.List;
 import reactor.core.publisher.Flux;
@@ -33,6 +34,10 @@ import reactor.core.publisher.Mono;
  *
  * <p><strong>Thread safety:</strong> Implementations must be safe for concurrent use; the same
  * provider instance may serve multiple agents simultaneously.
+ *
+ * <p><strong>Cooperative cancellation:</strong> implementations should observe {@link
+ * CancellationSignal} from Reactor Context (key: {@link CancellationSignal#CONTEXT_KEY}) and stop
+ * network/work execution quickly when cancelled.
  *
  * @see ModelConfig
  * @see ModelResponse

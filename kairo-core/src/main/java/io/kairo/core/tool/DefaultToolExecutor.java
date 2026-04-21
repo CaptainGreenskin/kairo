@@ -15,6 +15,8 @@
  */
 package io.kairo.core.tool;
 
+import io.kairo.api.agent.CancellationSignal;
+import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.exception.PlanModeViolationException;
 import io.kairo.api.tool.*;
 import io.kairo.api.tracing.Span;
@@ -59,8 +61,6 @@ public class DefaultToolExecutor implements ToolExecutor {
     private volatile boolean planMode = false;
     private final Map<String, ToolPermission> toolPermissions = new ConcurrentHashMap<>();
     private volatile Set<String> activeToolConstraints = null; // null = no restriction
-    private final ThreadLocal<ToolContext> legacyToolContext = new InheritableThreadLocal<>();
-    private volatile ToolContext legacyFallbackToolContext;
 
     /**
      * Create a new executor with the given registry and permission guard.
@@ -156,41 +156,6 @@ public class DefaultToolExecutor implements ToolExecutor {
 
     /** Reactor Context key used to propagate {@link ToolContext} through the reactive pipeline. */
     public static final Class<ToolContext> CONTEXT_KEY = ToolContext.class;
-
-    /**
-     * Set the {@link ToolContext} to be passed to tool handlers during execution.
-     *
-     * <p><strong>Deprecated in favour of Reactor Context propagation.</strong> When multiple agents
-     * share a single {@code DefaultToolExecutor} (common in Spring Boot setups and sub-agent
-     * spawning) this mutable field becomes a data race: the last writer wins, so a tool invoked by
-     * agent A may see agent B's context. Callers should instead wrap their subscription with {@code
-     * Mono.contextWrite(ctx -> ctx.put(DefaultToolExecutor.CONTEXT_KEY, toolContext))} — the
-     * executor reads from Reactor Context first and only falls back to this field for backwards
-     * compatibility.
-     *
-     * @param context the tool context, or null to clear
-     */
-    @Deprecated
-    public void setToolContext(ToolContext context) {
-        legacyFallbackToolContext = context;
-        if (context == null) {
-            legacyToolContext.remove();
-        } else {
-            legacyToolContext.set(context);
-        }
-    }
-
-    /**
-     * Get the current {@link ToolContext} held on this executor's (legacy) mutable field.
-     *
-     * <p>Note: this does <strong>not</strong> reflect values propagated via Reactor Context.
-     *
-     * @return the current tool context, or null if not set
-     */
-    public ToolContext getToolContext() {
-        ToolContext fromThread = legacyToolContext.get();
-        return fromThread != null ? fromThread : legacyFallbackToolContext;
-    }
 
     /**
      * Set plan mode on or off.
@@ -359,8 +324,7 @@ public class DefaultToolExecutor implements ToolExecutor {
                                         //      (1) Reactor Context (safe for concurrent agents
                                         //          sharing one executor — the per-subscription
                                         //          context is naturally isolated);
-                                        //      (2) the legacy mutable field (deprecated);
-                                        //      (3) a fresh empty context as a last resort.
+                                        //      (2) a fresh empty context as a last resort.
                                         Mono<ToolResult> execution =
                                                 Mono.deferContextual(
                                                                 contextView -> {
@@ -370,7 +334,7 @@ public class DefaultToolExecutor implements ToolExecutor {
                                                                                     ? contextView
                                                                                             .get(
                                                                                                     CONTEXT_KEY)
-                                                                                    : getToolContext();
+                                                                                    : null;
                                                                     if (ctx == null) {
                                                                         ctx =
                                                                                 new ToolContext(
@@ -385,6 +349,8 @@ public class DefaultToolExecutor implements ToolExecutor {
                                                                                             effective));
                                                                 })
                                                         .subscribeOn(Schedulers.boundedElastic())
+                                                        .transform(
+                                                                this::withCooperativeCancellation)
                                                         .timeout(timeout)
                                                         .onErrorResume(
                                                                 e -> {
@@ -434,6 +400,33 @@ public class DefaultToolExecutor implements ToolExecutor {
                                                 .map(this::applySanitizer);
                                     });
                 });
+    }
+
+    private <T> Mono<T> withCooperativeCancellation(Mono<T> source) {
+        return Mono.deferContextual(
+                contextView -> {
+                    if (!contextView.hasKey(CancellationSignal.CONTEXT_KEY)) {
+                        return source;
+                    }
+                    Object raw = contextView.get(CancellationSignal.CONTEXT_KEY);
+                    if (!(raw instanceof CancellationSignal signal)) {
+                        return source;
+                    }
+                    return source.takeUntilOther(cancellationTrigger(signal))
+                            .switchIfEmpty(
+                                    signal.isCancelled()
+                                            ? Mono.error(
+                                                    new AgentInterruptedException(
+                                                            "Tool execution cancelled"))
+                                            : Mono.empty());
+                });
+    }
+
+    private Mono<Long> cancellationTrigger(CancellationSignal signal) {
+        if (signal.isCancelled()) {
+            return Mono.just(0L);
+        }
+        return Flux.interval(Duration.ofMillis(50)).filter(tick -> signal.isCancelled()).next();
     }
 
     @Override

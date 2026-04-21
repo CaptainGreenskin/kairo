@@ -20,6 +20,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.NestedConfigurationProperty;
 
 /**
  * Configuration properties for Kairo, bound to the {@code kairo} prefix.
@@ -52,25 +53,25 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class AgentRuntimeProperties {
 
     /** Model/provider configuration under {@code kairo.model.*}. */
-    private Model model = new Model();
+    @NestedConfigurationProperty private Model model = new Model();
 
     /** Runtime loop behavior under {@code kairo.agent.*}. */
-    private Agent agent = new Agent();
+    @NestedConfigurationProperty private Agent agent = new Agent();
 
     /** Tooling switches and safety patterns under {@code kairo.tool.*}. */
-    private Tool tool = new Tool();
+    @NestedConfigurationProperty private Tool tool = new Tool();
 
     /** Memory backend configuration under {@code kairo.memory.*}. */
-    private Memory memory = new Memory();
+    @NestedConfigurationProperty private Memory memory = new Memory();
 
     /** Skill loading/search configuration under {@code kairo.skills.*}. */
-    private Skills skills = new Skills();
+    @NestedConfigurationProperty private Skills skills = new Skills();
 
     /** Embedding provider selection under {@code kairo.embedding.*}. */
-    private Embedding embedding = new Embedding();
+    @NestedConfigurationProperty private Embedding embedding = new Embedding();
 
     /** Agent checkpoint enablement under {@code kairo.checkpoint.*}. */
-    private Checkpoint checkpoint = new Checkpoint();
+    @NestedConfigurationProperty private Checkpoint checkpoint = new Checkpoint();
 
     public Model getModel() {
         return model;
