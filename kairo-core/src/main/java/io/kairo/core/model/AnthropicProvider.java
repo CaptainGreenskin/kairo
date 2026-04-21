@@ -28,6 +28,7 @@ import io.kairo.api.model.ModelCapability;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
+import io.kairo.api.model.RawStreamingModelProvider;
 import io.kairo.api.model.StreamChunk;
 import io.kairo.api.model.ToolVerbosity;
 import io.kairo.api.tool.ToolDefinition;
@@ -53,7 +54,7 @@ import reactor.core.publisher.Sinks;
  *
  * <p>Uses JDK 11+ built-in {@link HttpClient} for non-blocking HTTP calls.
  */
-public class AnthropicProvider implements ModelProvider {
+public class AnthropicProvider implements RawStreamingModelProvider {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicProvider.class);
     private static final String DEFAULT_BASE_URL = "https://api.anthropic.com";
@@ -189,6 +190,7 @@ public class AnthropicProvider implements ModelProvider {
      * @param config model configuration
      * @return a Flux of raw streaming chunks
      */
+    @Override
     public Flux<StreamChunk> streamRaw(List<Msg> messages, ModelConfig config) {
         return Flux.defer(
                         () -> {

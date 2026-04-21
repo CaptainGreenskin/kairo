@@ -307,22 +307,18 @@ public class DefaultReActAgent implements Agent {
                                     return sessionResumption
                                             .loadSessionIfConfigured()
                                             .then(skillToolManager.initMcpIfConfigured())
-                                            .then(
-                                                    Mono.defer(
-                                                            () -> {
-                                                                hookChain
-                                                                        .fireOnSessionStart(
-                                                                                new SessionStartEvent(
-                                                                                        name,
-                                                                                        input,
-                                                                                        config
-                                                                                                .modelName(),
-                                                                                        config
-                                                                                                .maxIterations()))
-                                                                        .subscribe();
-                                                                return reactLoop.runLoop();
-                                                            }))
-                                            .doOnSuccess(
+                                            .then(fireSessionStartBestEffort(input))
+                                            .then(reactLoop.runLoop())
+                                            .timeout(config.timeout())
+                                            .onErrorMap(
+                                                    java.util.concurrent.TimeoutException.class,
+                                                    e ->
+                                                            new AgentInterruptedException(
+                                                                    "Agent '"
+                                                                            + name
+                                                                            + "' timed out after "
+                                                                            + config.timeout()))
+                                            .flatMap(
                                                     result -> {
                                                         agentSpan.setStatus(true, "completed");
                                                         state = AgentState.COMPLETED;
@@ -333,27 +329,11 @@ public class DefaultReActAgent implements Agent {
                                                                 name,
                                                                 currentIteration.get(),
                                                                 totalTokensUsed.get());
-                                                        Duration elapsed =
-                                                                sessionStartTime != null
-                                                                        ? Duration.between(
-                                                                                sessionStartTime,
-                                                                                Instant.now())
-                                                                        : Duration.ZERO;
-                                                        hookChain
-                                                                .fireOnSessionEnd(
-                                                                        new SessionEndEvent(
-                                                                                name,
-                                                                                AgentState
-                                                                                        .COMPLETED,
-                                                                                currentIteration
-                                                                                        .get(),
-                                                                                totalTokensUsed
-                                                                                        .get(),
-                                                                                elapsed,
-                                                                                null))
-                                                                .subscribe();
+                                                        return fireSessionEndBestEffort(
+                                                                        AgentState.COMPLETED, null)
+                                                                .thenReturn(result);
                                                     })
-                                            .doOnError(
+                                            .onErrorResume(
                                                     e -> {
                                                         agentSpan.setStatus(false, e.getMessage());
                                                         state = AgentState.FAILED;
@@ -363,24 +343,10 @@ public class DefaultReActAgent implements Agent {
                                                                 name,
                                                                 currentIteration.get(),
                                                                 e.getMessage());
-                                                        Duration elapsed =
-                                                                sessionStartTime != null
-                                                                        ? Duration.between(
-                                                                                sessionStartTime,
-                                                                                Instant.now())
-                                                                        : Duration.ZERO;
-                                                        hookChain
-                                                                .fireOnSessionEnd(
-                                                                        new SessionEndEvent(
-                                                                                name,
-                                                                                AgentState.FAILED,
-                                                                                currentIteration
-                                                                                        .get(),
-                                                                                totalTokensUsed
-                                                                                        .get(),
-                                                                                elapsed,
-                                                                                e.getMessage()))
-                                                                .subscribe();
+                                                        return fireSessionEndBestEffort(
+                                                                        AgentState.FAILED,
+                                                                        e.getMessage())
+                                                                .then(Mono.error(e));
                                                     })
                                             .doFinally(
                                                     signal -> {
@@ -388,16 +354,7 @@ public class DefaultReActAgent implements Agent {
                                                         shutdownManager.unregisterAgent(this);
                                                         skillToolManager.clearSkillRestrictions();
                                                         skillToolManager.closeMcpRegistry();
-                                                    })
-                                            .timeout(config.timeout())
-                                            .onErrorMap(
-                                                    java.util.concurrent.TimeoutException.class,
-                                                    e ->
-                                                            new AgentInterruptedException(
-                                                                    "Agent '"
-                                                                            + name
-                                                                            + "' timed out after "
-                                                                            + config.timeout()));
+                                                    });
                                 }))
                 .onErrorResume(
                         MiddlewareRejectException.class,
@@ -418,6 +375,47 @@ public class DefaultReActAgent implements Agent {
                                 toolContext != null
                                         ? ctx.put(DefaultToolExecutor.CONTEXT_KEY, toolContext)
                                         : ctx);
+    }
+
+    private Mono<Void> fireSessionStartBestEffort(Msg input) {
+        return hookChain
+                .fireOnSessionStart(
+                        new SessionStartEvent(
+                                name, input, config.modelName(), config.maxIterations()))
+                .onErrorResume(
+                        e -> {
+                            log.warn(
+                                    "OnSessionStart hook failed for agent '{}': {}",
+                                    name,
+                                    e.getMessage());
+                            return Mono.empty();
+                        })
+                .then();
+    }
+
+    private Mono<Void> fireSessionEndBestEffort(AgentState endState, String errorMessage) {
+        Duration elapsed =
+                sessionStartTime != null
+                        ? Duration.between(sessionStartTime, Instant.now())
+                        : Duration.ZERO;
+        return hookChain
+                .fireOnSessionEnd(
+                        new SessionEndEvent(
+                                name,
+                                endState,
+                                currentIteration.get(),
+                                totalTokensUsed.get(),
+                                elapsed,
+                                errorMessage))
+                .onErrorResume(
+                        e -> {
+                            log.warn(
+                                    "OnSessionEnd hook failed for agent '{}': {}",
+                                    name,
+                                    e.getMessage());
+                            return Mono.empty();
+                        })
+                .then();
     }
 
     @Override

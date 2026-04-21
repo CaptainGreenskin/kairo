@@ -42,6 +42,7 @@ public class TokenBudgetManager {
     private final int totalBudget;
     private final int reservedForResponse;
     private final AtomicInteger usedTokens = new AtomicInteger(0);
+    private final TokenEstimator tokenEstimator;
 
     private final ModelRegistry.ModelSpec modelSpec;
     private volatile ModelResponse.Usage lastApiUsage;
@@ -55,9 +56,22 @@ public class TokenBudgetManager {
      * @param reservedForResponse tokens reserved for the model's response
      */
     public TokenBudgetManager(int totalBudget, int reservedForResponse) {
+        this(totalBudget, reservedForResponse, new HeuristicTokenEstimator());
+    }
+
+    /**
+     * Create a new TokenBudgetManager with a custom fallback token estimator.
+     *
+     * @param totalBudget the total token capacity of the model's context window
+     * @param reservedForResponse tokens reserved for the model's response
+     * @param tokenEstimator fallback estimator used when fresh API usage is unavailable
+     */
+    public TokenBudgetManager(
+            int totalBudget, int reservedForResponse, TokenEstimator tokenEstimator) {
         this.totalBudget = totalBudget;
         this.reservedForResponse = reservedForResponse;
         this.modelSpec = new ModelRegistry.ModelSpec(totalBudget, reservedForResponse);
+        this.tokenEstimator = tokenEstimator;
     }
 
     /**
@@ -66,9 +80,20 @@ public class TokenBudgetManager {
      * @param modelId the model identifier (e.g. "claude-sonnet-4-20250514")
      */
     public TokenBudgetManager(String modelId) {
+        this(modelId, new HeuristicTokenEstimator());
+    }
+
+    /**
+     * Create a TokenBudgetManager derived from a model ID with a custom fallback estimator.
+     *
+     * @param modelId the model identifier (e.g. "claude-sonnet-4-20250514")
+     * @param tokenEstimator fallback estimator used when fresh API usage is unavailable
+     */
+    public TokenBudgetManager(String modelId, TokenEstimator tokenEstimator) {
         this.modelSpec = ModelRegistry.getSpec(modelId);
         this.totalBudget = modelSpec.contextWindow();
         this.reservedForResponse = modelSpec.maxOutputTokens();
+        this.tokenEstimator = tokenEstimator;
     }
 
     /**
@@ -190,12 +215,7 @@ public class TokenBudgetManager {
         if (lastApiUsage != null && lastApiUsageTurn == currentTurn) {
             return lastApiUsage.inputTokens();
         }
-        // Conservative fallback: chars * 4/3
-        int totalChars = 0;
-        for (Msg msg : messages) {
-            totalChars += msg.text().length();
-        }
-        return totalChars * 4 / 3;
+        return tokenEstimator.estimate(messages);
     }
 
     /**

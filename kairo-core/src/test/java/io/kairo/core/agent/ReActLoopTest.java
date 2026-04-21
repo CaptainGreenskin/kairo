@@ -23,6 +23,11 @@ import static org.mockito.Mockito.*;
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.hook.HookChain;
+import io.kairo.api.hook.HookResult;
+import io.kairo.api.hook.OnToolResult;
+import io.kairo.api.hook.PreActing;
+import io.kairo.api.hook.PreActingEvent;
+import io.kairo.api.hook.ToolResultEvent;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
@@ -40,6 +45,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
@@ -605,6 +611,52 @@ class ReActLoopTest {
     }
 
     // ===== 14. History management =====
+
+    @Test
+    void testOnToolResultHookFiresWhenToolIsSkipped() {
+        class SkipToolHook {
+            @PreActing
+            public HookResult<PreActingEvent> pre(PreActingEvent event) {
+                return HookResult.skip(event, "skip for policy");
+            }
+        }
+        AtomicReference<ToolResultEvent> captured = new AtomicReference<>();
+        class ToolResultCaptureHook {
+            @OnToolResult
+            public ToolResultEvent onResult(ToolResultEvent event) {
+                captured.set(event);
+                return event;
+            }
+        }
+        hookChain.register(new SkipToolHook());
+        hookChain.register(new ToolResultCaptureHook());
+
+        AtomicInteger callCount = new AtomicInteger(0);
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(
+                                        toolCallResponse("tc-1", "search", Map.of("q", "hello")));
+                            }
+                            return Mono.just(textResponse("done"));
+                        });
+
+        ReActLoop loop = createDefaultLoop();
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "search hello")));
+
+        StepVerifier.create(loop.runLoop())
+                .assertNext(msg -> assertEquals(MsgRole.ASSISTANT, msg.role()))
+                .verifyComplete();
+
+        verifyNoInteractions(toolExecutor);
+        assertNotNull(captured.get());
+        assertEquals("search", captured.get().toolName());
+        assertFalse(captured.get().result().isError());
+        assertTrue(Boolean.TRUE.equals(captured.get().result().metadata().get("skipped_by_hook")));
+        assertTrue(captured.get().success());
+    }
 
     @Test
     void testHistoryManagement() {

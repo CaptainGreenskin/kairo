@@ -22,6 +22,7 @@ import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelResponse;
+import io.kairo.api.model.RawStreamingModelProvider;
 import io.kairo.api.model.StreamChunk;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.core.message.MsgBuilder;
@@ -143,291 +144,220 @@ class ReActLoop {
 
         return Mono.defer(
                 () -> {
-                    // Check if interrupted
-                    if (interrupted.get()) {
-                        return Mono.error(
-                                new AgentInterruptedException(
-                                        "Agent '" + ctx.agentName() + "' was interrupted"));
+                    Msg guardResult = evaluateLoopGuards();
+                    if (guardResult != null) {
+                        return Mono.just(guardResult);
                     }
-
-                    // Check if system is shutting down
-                    if (!ctx.shutdownManager().isAcceptingRequests()) {
-                        log.info("Agent '{}' stopping due to system shutdown", ctx.agentName());
-                        return Mono.just(
-                                buildFinalResponse("Agent stopped due to system shutdown."));
-                    }
-
-                    // Check iteration limit
-                    if (currentIteration.get() >= ctx.config().maxIterations()) {
-                        log.warn(
-                                "Agent '{}' reached max iterations ({})",
-                                ctx.agentName(),
-                                ctx.config().maxIterations());
-                        return Mono.just(
-                                buildFinalResponse(
-                                        "I've reached my maximum iteration limit. Here is what I have so far."));
-                    }
-
-                    // Check token budget
-                    if (totalTokensUsed.get() >= ctx.config().tokenBudget()) {
-                        log.warn(
-                                "Agent '{}' exceeded token budget ({}/{})",
-                                ctx.agentName(),
-                                totalTokensUsed.get(),
-                                ctx.config().tokenBudget());
-                        return Mono.just(
-                                buildFinalResponse(
-                                        "I've reached my token budget. Here is what I have so far."));
-                    }
-
-                    // 1. Build ModelConfig with system prompt and tool definitions
-                    ModelConfig modelConfig = modelConfigSupplier.get();
-
-                    // 2. Fire PreReasoning hook
-                    PreReasoningEvent preEvent =
-                            new PreReasoningEvent(
-                                    Collections.unmodifiableList(conversationHistory),
-                                    modelConfig,
-                                    false);
-
-                    return ctx.hookChain()
-                            .<PreReasoningEvent>firePreReasoningWithResult(preEvent)
-                            .flatMap(
-                                    hookResult -> {
-                                        // Handle ABORT decision
-                                        if (!hookResult.shouldProceed()) {
-                                            log.info(
-                                                    "Agent '{}' reasoning aborted by hook: {}",
-                                                    ctx.agentName(),
-                                                    hookResult.reason());
-                                            String abortReason =
-                                                    hookResult.reason() != null
-                                                            ? hookResult.reason()
-                                                            : "Reasoning aborted by hook.";
-                                            return Mono.just(buildFinalResponse(abortReason));
-                                        }
-
-                                        // Handle SKIP — skip model call, continue loop
-                                        if (hookResult.shouldSkip()) {
-                                            log.info(
-                                                    "Agent '{}' reasoning skipped by hook: {}",
-                                                    ctx.agentName(),
-                                                    hookResult.reason());
-                                            currentIteration.incrementAndGet();
-                                            return runLoop();
-                                        }
-
-                                        PreReasoningEvent pre = hookResult.event();
-
-                                        // Handle cancelled event (backward compat)
-                                        if (pre.cancelled()) {
-                                            log.info(
-                                                    "Agent '{}' reasoning cancelled by hook",
-                                                    ctx.agentName());
-                                            return Mono.<Msg>just(
-                                                    buildFinalResponse(
-                                                            "Processing cancelled by hook."));
-                                        }
-
-                                        // Handle INJECT — add injected message to history
-                                        if (hookResult.hasInjectedMessage()) {
-                                            Msg injected =
-                                                    Msg.builder()
-                                                            .role(
-                                                                    hookResult
-                                                                            .injectedMessage()
-                                                                            .role())
-                                                            .contents(
-                                                                    hookResult
-                                                                            .injectedMessage()
-                                                                            .contents())
-                                                            .metadata(
-                                                                    "hook_source",
-                                                                    hookResult.hookSource())
-                                                            .metadata("hook_decision", "INJECT")
-                                                            .verbatimPreserved(true)
-                                                            .build();
-                                            conversationHistory.add(injected);
-                                        }
-
-                                        // Handle MODIFY decision — apply modifiedInput to
-                                        // ModelConfig
-                                        ModelConfig effectiveConfig;
-                                        if (hookResult.hasModifiedInput()) {
-                                            ModelConfig.Builder cfgBuilder =
-                                                    ModelConfig.builder()
-                                                            .model(modelConfig.model())
-                                                            .maxTokens(modelConfig.maxTokens())
-                                                            .temperature(modelConfig.temperature())
-                                                            .systemPrompt(
-                                                                    modelConfig.systemPrompt())
-                                                            .tools(modelConfig.tools());
-                                            if (modelConfig.systemPromptParts() != null) {
-                                                cfgBuilder.systemPromptParts(
-                                                        modelConfig.systemPromptParts());
-                                            }
-                                            if (modelConfig.systemPromptSegments() != null) {
-                                                cfgBuilder.segments(
-                                                        modelConfig.systemPromptSegments());
-                                            }
-                                            // Override model name if provided
-                                            Object modelOverride =
-                                                    hookResult.modifiedInput().get("model");
-                                            if (modelOverride instanceof String m) {
-                                                cfgBuilder.model(m);
-                                            }
-                                            // Override maxTokens if provided
-                                            Object maxTokensOverride =
-                                                    hookResult.modifiedInput().get("maxTokens");
-                                            if (maxTokensOverride instanceof Number n) {
-                                                cfgBuilder.maxTokens(n.intValue());
-                                            }
-                                            // Override temperature if provided
-                                            Object tempOverride =
-                                                    hookResult.modifiedInput().get("temperature");
-                                            if (tempOverride instanceof Number n) {
-                                                cfgBuilder.temperature(n.doubleValue());
-                                            }
-                                            effectiveConfig = cfgBuilder.build();
-                                        } else {
-                                            effectiveConfig = modelConfig;
-                                        }
-
-                                        // Inject additional context if provided
-                                        if (hookResult.hasInjectedContext()) {
-                                            Msg contextMsg =
-                                                    Msg.builder()
-                                                            .role(MsgRole.SYSTEM)
-                                                            .addContent(
-                                                                    new Content.TextContent(
-                                                                            "[Hook Context] "
-                                                                                    + hookResult
-                                                                                            .injectedContext()))
-                                                            .build();
-                                            conversationHistory.add(contextMsg);
-                                        }
-
-                                        // 3. Call LLM with error recovery
-                                        log.debug(
-                                                "Agent '{}' iteration {}: calling model",
-                                                ctx.agentName(),
-                                                currentIteration.get());
-
-                                        // Use streaming path if enabled
-                                        Mono<ModelResponse> responseMono;
-                                        if (streamingEnabled) {
-                                            responseMono =
-                                                    callModelStreamingWithFallback(
-                                                            conversationHistory, effectiveConfig);
-                                        } else {
-                                            responseMono =
-                                                    ctx.errorRecovery()
-                                                            .callModelWithRecovery(
-                                                                    conversationHistory,
-                                                                    effectiveConfig,
-                                                                    0);
-                                        }
-
-                                        return responseMono.flatMap(
-                                                response -> {
-                                                    // Reset fallback on success
-                                                    ctx.errorRecovery().fallbackManager().reset();
-
-                                                    // Track token usage
-                                                    if (response.usage() != null) {
-                                                        ctx.tokenBudgetManager()
-                                                                .updateFromApiUsage(
-                                                                        response.usage());
-                                                        totalTokensUsed.addAndGet(
-                                                                (long)
-                                                                                response.usage()
-                                                                                        .inputTokens()
-                                                                        + response.usage()
-                                                                                .outputTokens());
-
-                                                        log.info(
-                                                                "[Iteration {}] input={}"
-                                                                        + " output={} cache_read={}"
-                                                                        + " cache_write={}",
-                                                                currentIteration.get(),
-                                                                response.usage().inputTokens(),
-                                                                response.usage().outputTokens(),
-                                                                response.usage().cacheReadTokens(),
-                                                                response.usage()
-                                                                        .cacheCreationTokens());
-                                                    } else {
-                                                        log.warn(
-                                                                "Model response missing usage"
-                                                                        + " data — token tracking may"
-                                                                        + " be inaccurate");
-                                                    }
-                                                    ctx.tokenBudgetManager().advanceTurn();
-
-                                                    // 4. Fire PostReasoning hook with structured
-                                                    // result
-                                                    PostReasoningEvent postEvent =
-                                                            new PostReasoningEvent(response, false);
-                                                    return ctx.hookChain()
-                                                            .<PostReasoningEvent>
-                                                                    firePostReasoningWithResult(
-                                                                            postEvent)
-                                                            .flatMap(
-                                                                    postResult -> {
-                                                                        // Handle ABORT — skip tool
-                                                                        // execution
-                                                                        if (!postResult
-                                                                                .shouldProceed()) {
-                                                                            log.info(
-                                                                                    "Agent '{}'"
-                                                                                            + " post-reasoning"
-                                                                                            + " aborted by"
-                                                                                            + " hook: {}",
-                                                                                    ctx.agentName(),
-                                                                                    postResult
-                                                                                            .reason());
-                                                                            String reason =
-                                                                                    postResult
-                                                                                                            .reason()
-                                                                                                    != null
-                                                                                            ? postResult
-                                                                                                    .reason()
-                                                                                            : "Post-reasoning"
-                                                                                                    + " aborted"
-                                                                                                    + " by"
-                                                                                                    + " hook.";
-                                                                            return Mono.just(
-                                                                                    buildFinalResponse(
-                                                                                            reason));
-                                                                        }
-
-                                                                        // Inject post-reasoning
-                                                                        // context if provided
-                                                                        if (postResult
-                                                                                .hasInjectedContext()) {
-                                                                            Msg contextMsg =
-                                                                                    Msg.builder()
-                                                                                            .role(
-                                                                                                    MsgRole
-                                                                                                            .SYSTEM)
-                                                                                            .addContent(
-                                                                                                    new Content
-                                                                                                            .TextContent(
-                                                                                                            "[Hook"
-                                                                                                                    + " Context]"
-                                                                                                                    + " "
-                                                                                                                    + postResult
-                                                                                                                            .injectedContext()))
-                                                                                            .build();
-                                                                            conversationHistory.add(
-                                                                                    contextMsg);
-                                                                        }
-
-                                                                        return processModelResponse(
-                                                                                response);
-                                                                    });
-                                                });
-                                    });
+                    return executeReasoningIteration(modelConfigSupplier.get());
                 });
+    }
+
+    /** Evaluate guard conditions before each iteration and optionally return a final response. */
+    private Msg evaluateLoopGuards() {
+        if (interrupted.get()) {
+            throw new AgentInterruptedException("Agent '" + ctx.agentName() + "' was interrupted");
+        }
+
+        if (!ctx.shutdownManager().isAcceptingRequests()) {
+            log.info("Agent '{}' stopping due to system shutdown", ctx.agentName());
+            return buildFinalResponse("Agent stopped due to system shutdown.");
+        }
+
+        if (currentIteration.get() >= ctx.config().maxIterations()) {
+            log.warn(
+                    "Agent '{}' reached max iterations ({})",
+                    ctx.agentName(),
+                    ctx.config().maxIterations());
+            return buildFinalResponse(
+                    "I've reached my maximum iteration limit. Here is what I have so far.");
+        }
+
+        if (totalTokensUsed.get() >= ctx.config().tokenBudget()) {
+            log.warn(
+                    "Agent '{}' exceeded token budget ({}/{})",
+                    ctx.agentName(),
+                    totalTokensUsed.get(),
+                    ctx.config().tokenBudget());
+            return buildFinalResponse("I've reached my token budget. Here is what I have so far.");
+        }
+
+        return null;
+    }
+
+    /** Execute one reasoning cycle: pre-hook -> model call -> post-hook -> response processing. */
+    private Mono<Msg> executeReasoningIteration(ModelConfig modelConfig) {
+        PreReasoningEvent preEvent =
+                new PreReasoningEvent(
+                        Collections.unmodifiableList(conversationHistory), modelConfig, false);
+
+        return ctx.hookChain()
+                .<PreReasoningEvent>firePreReasoningWithResult(preEvent)
+                .flatMap(
+                        hookResult -> {
+                            if (!hookResult.shouldProceed()) {
+                                log.info(
+                                        "Agent '{}' reasoning aborted by hook: {}",
+                                        ctx.agentName(),
+                                        hookResult.reason());
+                                String abortReason =
+                                        hookResult.reason() != null
+                                                ? hookResult.reason()
+                                                : "Reasoning aborted by hook.";
+                                return Mono.just(buildFinalResponse(abortReason));
+                            }
+
+                            if (hookResult.shouldSkip()) {
+                                log.info(
+                                        "Agent '{}' reasoning skipped by hook: {}",
+                                        ctx.agentName(),
+                                        hookResult.reason());
+                                currentIteration.incrementAndGet();
+                                return runLoop();
+                            }
+
+                            PreReasoningEvent pre = hookResult.event();
+                            if (pre.cancelled()) {
+                                log.info("Agent '{}' reasoning cancelled by hook", ctx.agentName());
+                                return Mono.just(
+                                        buildFinalResponse("Processing cancelled by hook."));
+                            }
+
+                            if (hookResult.hasInjectedMessage()) {
+                                Msg injected =
+                                        Msg.builder()
+                                                .role(hookResult.injectedMessage().role())
+                                                .contents(hookResult.injectedMessage().contents())
+                                                .metadata("hook_source", hookResult.hookSource())
+                                                .metadata("hook_decision", "INJECT")
+                                                .verbatimPreserved(true)
+                                                .build();
+                                conversationHistory.add(injected);
+                            }
+
+                            ModelConfig effectiveConfig =
+                                    hookResult.hasModifiedInput()
+                                            ? applyReasoningConfigOverrides(
+                                                    modelConfig, hookResult.modifiedInput())
+                                            : modelConfig;
+
+                            if (hookResult.hasInjectedContext()) {
+                                Msg contextMsg =
+                                        Msg.builder()
+                                                .role(MsgRole.SYSTEM)
+                                                .addContent(
+                                                        new Content.TextContent(
+                                                                "[Hook Context] "
+                                                                        + hookResult
+                                                                                .injectedContext()))
+                                                .build();
+                                conversationHistory.add(contextMsg);
+                            }
+
+                            log.debug(
+                                    "Agent '{}' iteration {}: calling model",
+                                    ctx.agentName(),
+                                    currentIteration.get());
+
+                            Mono<ModelResponse> responseMono =
+                                    streamingEnabled
+                                            ? callModelStreamingWithFallback(
+                                                    conversationHistory, effectiveConfig)
+                                            : ctx.errorRecovery()
+                                                    .callModelWithRecovery(
+                                                            conversationHistory,
+                                                            effectiveConfig,
+                                                            0);
+
+                            return responseMono.flatMap(this::handleModelResponseWithPostHook);
+                        });
+    }
+
+    /** Apply hook-provided override fields onto the base model config. */
+    private ModelConfig applyReasoningConfigOverrides(
+            ModelConfig modelConfig, Map<String, Object> overrides) {
+        ModelConfig.Builder cfgBuilder =
+                ModelConfig.builder()
+                        .model(modelConfig.model())
+                        .maxTokens(modelConfig.maxTokens())
+                        .temperature(modelConfig.temperature())
+                        .systemPrompt(modelConfig.systemPrompt())
+                        .tools(modelConfig.tools());
+        if (modelConfig.systemPromptParts() != null) {
+            cfgBuilder.systemPromptParts(modelConfig.systemPromptParts());
+        }
+        if (modelConfig.systemPromptSegments() != null) {
+            cfgBuilder.segments(modelConfig.systemPromptSegments());
+        }
+
+        Object modelOverride = overrides.get("model");
+        if (modelOverride instanceof String m) {
+            cfgBuilder.model(m);
+        }
+
+        Object maxTokensOverride = overrides.get("maxTokens");
+        if (maxTokensOverride instanceof Number n) {
+            cfgBuilder.maxTokens(n.intValue());
+        }
+
+        Object tempOverride = overrides.get("temperature");
+        if (tempOverride instanceof Number n) {
+            cfgBuilder.temperature(n.doubleValue());
+        }
+        return cfgBuilder.build();
+    }
+
+    /** Update budgets, run post-reasoning hook, then process tool/final response flow. */
+    private Mono<Msg> handleModelResponseWithPostHook(ModelResponse response) {
+        ctx.errorRecovery().fallbackManager().reset();
+
+        if (response.usage() != null) {
+            ctx.tokenBudgetManager().updateFromApiUsage(response.usage());
+            totalTokensUsed.addAndGet(
+                    (long) response.usage().inputTokens() + response.usage().outputTokens());
+
+            log.info(
+                    "[Iteration {}] input={} output={} cache_read={} cache_write={}",
+                    currentIteration.get(),
+                    response.usage().inputTokens(),
+                    response.usage().outputTokens(),
+                    response.usage().cacheReadTokens(),
+                    response.usage().cacheCreationTokens());
+        } else {
+            log.warn("Model response missing usage data — token tracking may be inaccurate");
+        }
+        ctx.tokenBudgetManager().advanceTurn();
+
+        PostReasoningEvent postEvent = new PostReasoningEvent(response, false);
+        return ctx.hookChain()
+                .<PostReasoningEvent>firePostReasoningWithResult(postEvent)
+                .flatMap(
+                        postResult -> {
+                            if (!postResult.shouldProceed()) {
+                                log.info(
+                                        "Agent '{}' post-reasoning aborted by hook: {}",
+                                        ctx.agentName(),
+                                        postResult.reason());
+                                String reason =
+                                        postResult.reason() != null
+                                                ? postResult.reason()
+                                                : "Post-reasoning aborted by hook.";
+                                return Mono.just(buildFinalResponse(reason));
+                            }
+
+                            if (postResult.hasInjectedContext()) {
+                                Msg contextMsg =
+                                        Msg.builder()
+                                                .role(MsgRole.SYSTEM)
+                                                .addContent(
+                                                        new Content.TextContent(
+                                                                "[Hook Context] "
+                                                                        + postResult
+                                                                                .injectedContext()))
+                                                .build();
+                                conversationHistory.add(contextMsg);
+                            }
+                            return processModelResponse(response);
+                        });
     }
 
     /** Process the model response: convert to Msg, check for tool calls, execute if needed. */
@@ -546,6 +476,7 @@ class ReActLoop {
 
     /** Execute a single tool call with PreActing and PostActing hooks. */
     private Mono<ToolResult> executeSingleToolWithHooks(Content.ToolUseContent toolCall) {
+        Instant toolStart = Instant.now();
         // Fire PreActing hook with structured result support
         PreActingEvent preEvent = new PreActingEvent(toolCall.toolName(), toolCall.input(), false);
 
@@ -632,7 +563,6 @@ class ReActLoop {
                             }
 
                             // 5. Execute the tool with (possibly modified) input
-                            Instant toolStart = Instant.now();
                             return ctx.toolExecutor()
                                     .execute(toolCall.toolName(), effectiveInput)
                                     .map(
@@ -655,21 +585,9 @@ class ReActLoop {
                                                                         + e.getMessage(),
                                                                 true,
                                                                 Map.of()));
-                                            })
-                                    .doOnNext(
-                                            toolResult -> {
-                                                Duration toolDuration =
-                                                        Duration.between(toolStart, Instant.now());
-                                                ctx.hookChain()
-                                                        .fireOnToolResult(
-                                                                new ToolResultEvent(
-                                                                        toolCall.toolName(),
-                                                                        toolResult,
-                                                                        toolDuration,
-                                                                        !toolResult.isError()))
-                                                        .subscribe();
                                             });
                         })
+                .flatMap(result -> emitToolResultEvent(toolCall.toolName(), result, toolStart))
                 .flatMap(
                         result -> {
                             // 6. Fire PostActing hook with structured result
@@ -695,6 +613,25 @@ class ReActLoop {
                                                 return result;
                                             });
                         });
+    }
+
+    /** Emit OnToolResult hook as a best-effort side-effect without breaking tool flow. */
+    private Mono<ToolResult> emitToolResultEvent(
+            String toolName, ToolResult toolResult, Instant toolStart) {
+        Duration toolDuration = Duration.between(toolStart, Instant.now());
+        return ctx.hookChain()
+                .fireOnToolResult(
+                        new ToolResultEvent(
+                                toolName, toolResult, toolDuration, !toolResult.isError()))
+                .onErrorResume(
+                        e -> {
+                            log.warn(
+                                    "OnToolResult hook failed for tool '{}': {}",
+                                    toolName,
+                                    e.getMessage());
+                            return Mono.empty();
+                        })
+                .thenReturn(toolResult);
     }
 
     // ---- Dangling Tool Call Recovery ----
@@ -793,10 +730,8 @@ class ReActLoop {
         var provider = ctx.config().modelProvider();
 
         Flux<StreamChunk> rawStream;
-        if (provider instanceof io.kairo.core.model.AnthropicProvider anthropic) {
-            rawStream = anthropic.streamRaw(messages, modelConfig);
-        } else if (provider instanceof io.kairo.core.model.OpenAIProvider openai) {
-            rawStream = openai.streamRaw(messages, modelConfig);
+        if (provider instanceof RawStreamingModelProvider rawProvider) {
+            rawStream = rawProvider.streamRaw(messages, modelConfig);
         } else {
             log.debug("Provider '{}' does not support streamRaw, falling back", provider.name());
             return ctx.errorRecovery().callModelWithRecovery(messages, modelConfig, 0);

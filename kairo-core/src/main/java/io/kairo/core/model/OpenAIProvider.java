@@ -27,6 +27,7 @@ import io.kairo.api.model.ModelCapability;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
+import io.kairo.api.model.RawStreamingModelProvider;
 import io.kairo.api.model.StreamChunk;
 import io.kairo.api.model.ToolVerbosity;
 import io.kairo.api.tool.ToolDefinition;
@@ -58,7 +59,7 @@ import reactor.core.publisher.Sinks;
  * @see io.kairo.spring.boot.AgentRuntimeAutoConfiguration AgentRuntimeAutoConfiguration — Spring
  *     Boot auto-configuration that creates an OpenAIProvider using the 2-arg constructor
  */
-public class OpenAIProvider implements ModelProvider {
+public class OpenAIProvider implements RawStreamingModelProvider {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAIProvider.class);
     private static final String DEFAULT_BASE_URL = "https://api.openai.com";
@@ -274,6 +275,7 @@ public class OpenAIProvider implements ModelProvider {
      * @param config model configuration
      * @return a Flux of raw streaming chunks
      */
+    @Override
     public Flux<StreamChunk> streamRaw(List<Msg> messages, ModelConfig config) {
         return Flux.defer(
                         () -> {
