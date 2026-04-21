@@ -161,11 +161,9 @@ class OpenAIProviderTest {
         StepVerifier.create(provider.call(List.of(Msg.of(MsgRole.USER, "hi")), simpleConfig()))
                 .expectErrorMatches(
                         e -> {
-                            // After retries exhausted, the error is wrapped in
-                            // RetryExhaustedException
-                            Throwable cause = e.getCause() != null ? e.getCause() : e;
-                            return cause instanceof ModelProviderException.ApiException
-                                    && cause.getMessage().contains("500");
+                            // After retries exhausted, ExceptionMapper maps to API-layer types
+                            return e instanceof io.kairo.api.exception.ModelApiException
+                                    && e.getMessage().contains("500");
                         })
                 .verify();
     }

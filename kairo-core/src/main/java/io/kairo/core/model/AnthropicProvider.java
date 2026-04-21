@@ -134,6 +134,7 @@ public class AnthropicProvider implements RawStreamingModelProvider {
                                         "anthropic",
                                         this::isRetryableError,
                                         CALL_TIMEOUT))
+                .onErrorMap(ExceptionMapper::toApiException)
                 .doOnNext(
                         response -> {
                             String sysPrompt = resolveSystemPrompt(messages, config);
@@ -188,7 +189,8 @@ public class AnthropicProvider implements RawStreamingModelProvider {
                                         config,
                                         "anthropic-stream",
                                         this::isRetryableError,
-                                        STREAM_IDLE_TIMEOUT));
+                                        STREAM_IDLE_TIMEOUT))
+                .onErrorMap(ExceptionMapper::toApiException);
     }
 
     /**
@@ -241,7 +243,8 @@ public class AnthropicProvider implements RawStreamingModelProvider {
                                         config,
                                         "anthropic-stream-raw",
                                         this::isRetryableError,
-                                        STREAM_IDLE_TIMEOUT));
+                                        STREAM_IDLE_TIMEOUT))
+                .onErrorMap(ExceptionMapper::toApiException);
     }
 
     /**

@@ -228,7 +228,8 @@ public class OpenAIProvider implements RawStreamingModelProvider {
                                         config,
                                         "openai",
                                         this::isRetryableError,
-                                        CALL_TIMEOUT));
+                                        CALL_TIMEOUT))
+                .onErrorMap(ExceptionMapper::toApiException);
     }
 
     @Override
@@ -273,7 +274,8 @@ public class OpenAIProvider implements RawStreamingModelProvider {
                                         config,
                                         "openai-stream",
                                         this::isRetryableError,
-                                        STREAM_IDLE_TIMEOUT));
+                                        STREAM_IDLE_TIMEOUT))
+                .onErrorMap(ExceptionMapper::toApiException);
     }
 
     /**
@@ -330,7 +332,8 @@ public class OpenAIProvider implements RawStreamingModelProvider {
                                         config,
                                         "openai-stream-raw",
                                         this::isRetryableError,
-                                        STREAM_IDLE_TIMEOUT));
+                                        STREAM_IDLE_TIMEOUT))
+                .onErrorMap(ExceptionMapper::toApiException);
     }
 
     // ---- Request building ----

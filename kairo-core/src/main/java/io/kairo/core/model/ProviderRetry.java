@@ -17,6 +17,8 @@ package io.kairo.core.model;
 
 import io.kairo.api.agent.CancellationSignal;
 import io.kairo.api.exception.AgentInterruptedException;
+import io.kairo.api.exception.ModelApiException;
+import io.kairo.api.exception.ModelRateLimitException;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.RetryConfig;
 import java.time.Duration;
@@ -173,9 +175,20 @@ public final class ProviderRetry {
     public static boolean isTransientProviderError(Throwable t) {
         if (t == null) return false;
         if (t instanceof TimeoutException) return true;
+        // Internal (core) exception types
         if (t instanceof ModelProviderException.RateLimitException) return true;
+        // API-layer (public) exception types — recognized during migration period
+        if (t instanceof ModelRateLimitException) return true;
         if (t instanceof ModelProviderException.ApiException ae) {
             String msg = ae.getMessage();
+            if (msg == null) return false;
+            return msg.contains("HTTP 500")
+                    || msg.contains("HTTP 502")
+                    || msg.contains("HTTP 503")
+                    || msg.contains("server error");
+        }
+        if (t instanceof ModelApiException mae) {
+            String msg = mae.getMessage();
             if (msg == null) return false;
             return msg.contains("HTTP 500")
                     || msg.contains("HTTP 502")

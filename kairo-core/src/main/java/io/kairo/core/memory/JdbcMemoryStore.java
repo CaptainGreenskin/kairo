@@ -18,10 +18,12 @@ package io.kairo.core.memory;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.kairo.api.exception.MemoryStoreException;
 import io.kairo.api.memory.MemoryEntry;
 import io.kairo.api.memory.MemoryQuery;
 import io.kairo.api.memory.MemoryScope;
 import io.kairo.api.memory.MemoryStore;
+import io.kairo.core.model.ExceptionMapper;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -150,49 +152,53 @@ public class JdbcMemoryStore implements MemoryStore {
     @Override
     public Mono<MemoryEntry> save(MemoryEntry entry) {
         return Mono.fromCallable(
-                () -> {
-                    try (Connection conn = dataSource.getConnection();
-                            PreparedStatement ps = conn.prepareStatement(getUpsertSql(conn))) {
-                        ps.setString(1, entry.id());
-                        ps.setString(2, entry.agentId());
-                        ps.setString(3, entry.content());
-                        ps.setString(4, entry.rawContent());
-                        ps.setString(5, entry.scope().name());
-                        ps.setDouble(6, entry.importance());
-                        if (entry.embedding() != null) {
-                            ps.setBytes(7, serializeEmbedding(entry.embedding()));
-                        } else {
-                            ps.setNull(7, Types.BLOB);
-                        }
-                        ps.setString(8, serializeTags(entry.tags()));
-                        ps.setTimestamp(9, Timestamp.from(entry.timestamp()));
-                        ps.setString(10, serializeMetadata(entry.metadata()));
-                        ps.executeUpdate();
-                        return entry;
-                    } catch (SQLException e) {
-                        throw new MemoryStoreException(
-                                "Failed to save memory entry: " + entry.id(), e);
-                    }
-                });
+                        () -> {
+                            try (Connection conn = dataSource.getConnection();
+                                    PreparedStatement ps =
+                                            conn.prepareStatement(getUpsertSql(conn))) {
+                                ps.setString(1, entry.id());
+                                ps.setString(2, entry.agentId());
+                                ps.setString(3, entry.content());
+                                ps.setString(4, entry.rawContent());
+                                ps.setString(5, entry.scope().name());
+                                ps.setDouble(6, entry.importance());
+                                if (entry.embedding() != null) {
+                                    ps.setBytes(7, serializeEmbedding(entry.embedding()));
+                                } else {
+                                    ps.setNull(7, Types.BLOB);
+                                }
+                                ps.setString(8, serializeTags(entry.tags()));
+                                ps.setTimestamp(9, Timestamp.from(entry.timestamp()));
+                                ps.setString(10, serializeMetadata(entry.metadata()));
+                                ps.executeUpdate();
+                                return entry;
+                            } catch (SQLException e) {
+                                throw new MemoryStoreException(
+                                        "Failed to save memory entry: " + entry.id(), e);
+                            }
+                        })
+                .onErrorMap(ExceptionMapper::toStorageException);
     }
 
     @Override
     public Mono<MemoryEntry> get(String id) {
         return Mono.fromCallable(
-                () -> {
-                    try (Connection conn = dataSource.getConnection();
-                            PreparedStatement ps = conn.prepareStatement(SELECT_BY_ID)) {
-                        ps.setString(1, id);
-                        try (ResultSet rs = ps.executeQuery()) {
-                            if (rs.next()) {
-                                return mapRow(rs);
+                        () -> {
+                            try (Connection conn = dataSource.getConnection();
+                                    PreparedStatement ps = conn.prepareStatement(SELECT_BY_ID)) {
+                                ps.setString(1, id);
+                                try (ResultSet rs = ps.executeQuery()) {
+                                    if (rs.next()) {
+                                        return mapRow(rs);
+                                    }
+                                    return null;
+                                }
+                            } catch (SQLException e) {
+                                throw new MemoryStoreException(
+                                        "Failed to get memory entry: " + id, e);
                             }
-                            return null;
-                        }
-                    } catch (SQLException e) {
-                        throw new MemoryStoreException("Failed to get memory entry: " + id, e);
-                    }
-                });
+                        })
+                .onErrorMap(ExceptionMapper::toStorageException);
     }
 
     @Override
@@ -203,45 +209,49 @@ public class JdbcMemoryStore implements MemoryStore {
 
     @Override
     public Mono<Void> delete(String id) {
-        return Mono.fromRunnable(
-                () -> {
-                    try (Connection conn = dataSource.getConnection();
-                            PreparedStatement ps = conn.prepareStatement(DELETE_BY_ID)) {
-                        ps.setString(1, id);
-                        ps.executeUpdate();
-                    } catch (SQLException e) {
-                        throw new MemoryStoreException("Failed to delete memory entry: " + id, e);
-                    }
-                });
+        return Mono.<Void>fromRunnable(
+                        () -> {
+                            try (Connection conn = dataSource.getConnection();
+                                    PreparedStatement ps = conn.prepareStatement(DELETE_BY_ID)) {
+                                ps.setString(1, id);
+                                ps.executeUpdate();
+                            } catch (SQLException e) {
+                                throw new MemoryStoreException(
+                                        "Failed to delete memory entry: " + id, e);
+                            }
+                        })
+                .onErrorMap(ExceptionMapper::toStorageException);
     }
 
     @Override
     public Flux<MemoryEntry> list(MemoryScope scope) {
         return Flux.using(
-                () -> dataSource.getConnection(),
-                connection -> {
-                    try (PreparedStatement ps =
-                            connection.prepareStatement(
-                                    "SELECT * FROM kairo_memory WHERE scope = ? ORDER BY timestamp DESC")) {
-                        ps.setString(1, scope.name());
-                        try (ResultSet rs = ps.executeQuery()) {
-                            List<MemoryEntry> results = new ArrayList<>();
-                            while (rs.next()) {
-                                results.add(mapRow(rs));
+                        () -> dataSource.getConnection(),
+                        connection -> {
+                            try (PreparedStatement ps =
+                                    connection.prepareStatement(
+                                            "SELECT * FROM kairo_memory WHERE scope = ? ORDER BY timestamp DESC")) {
+                                ps.setString(1, scope.name());
+                                try (ResultSet rs = ps.executeQuery()) {
+                                    List<MemoryEntry> results = new ArrayList<>();
+                                    while (rs.next()) {
+                                        results.add(mapRow(rs));
+                                    }
+                                    return Flux.fromIterable(results);
+                                }
+                            } catch (SQLException e) {
+                                return Flux.<MemoryEntry>error(
+                                        new MemoryStoreException(
+                                                "Failed to list memory entries", e));
                             }
-                            return Flux.fromIterable(results);
-                        }
-                    } catch (SQLException e) {
-                        return Flux.<MemoryEntry>error(
-                                new MemoryStoreException("Failed to list memory entries", e));
-                    }
-                },
-                connection -> {
-                    try {
-                        connection.close();
-                    } catch (SQLException ignored) {
-                    }
-                });
+                        },
+                        connection -> {
+                            try {
+                                connection.close();
+                            } catch (SQLException ignored) {
+                            }
+                        })
+                .onErrorMap(ExceptionMapper::toStorageException);
     }
 
     @Override
@@ -253,76 +263,80 @@ public class JdbcMemoryStore implements MemoryStore {
         }
 
         return Flux.using(
-                () -> dataSource.getConnection(),
-                connection -> {
-                    StringBuilder sql = new StringBuilder("SELECT * FROM kairo_memory WHERE 1=1");
-                    List<Object> params = new ArrayList<>();
+                        () -> dataSource.getConnection(),
+                        connection -> {
+                            StringBuilder sql =
+                                    new StringBuilder("SELECT * FROM kairo_memory WHERE 1=1");
+                            List<Object> params = new ArrayList<>();
 
-                    if (query.agentId() != null) {
-                        sql.append(" AND agent_id = ?");
-                        params.add(query.agentId());
-                    }
-                    if (query.keyword() != null && !query.keyword().isBlank()) {
-                        sql.append(
-                                " AND (content LIKE ? ESCAPE '\\' OR raw_content LIKE ? ESCAPE '\\')");
-                        String like = "%" + escapeLike(query.keyword()) + "%";
-                        params.add(like);
-                        params.add(like);
-                    }
-                    if (query.tags() != null && !query.tags().isEmpty()) {
-                        for (String tag : query.tags()) {
-                            sql.append(" AND tags LIKE ? ESCAPE '\\'");
-                            params.add("%," + escapeLike(tag) + ",%");
-                        }
-                    }
-                    if (query.minImportance() > 0.0) {
-                        sql.append(" AND importance >= ?");
-                        params.add(query.minImportance());
-                    }
-                    if (query.from() != null) {
-                        sql.append(" AND timestamp >= ?");
-                        params.add(Timestamp.from(query.from()));
-                    }
-                    if (query.to() != null) {
-                        sql.append(" AND timestamp <= ?");
-                        params.add(Timestamp.from(query.to()));
-                    }
-
-                    sql.append(" ORDER BY timestamp DESC");
-                    sql.append(" LIMIT ?");
-                    params.add(query.limit());
-
-                    try (PreparedStatement ps = connection.prepareStatement(sql.toString())) {
-                        for (int i = 0; i < params.size(); i++) {
-                            Object param = params.get(i);
-                            if (param instanceof String s) {
-                                ps.setString(i + 1, s);
-                            } else if (param instanceof Double d) {
-                                ps.setDouble(i + 1, d);
-                            } else if (param instanceof Timestamp ts) {
-                                ps.setTimestamp(i + 1, ts);
-                            } else if (param instanceof Integer n) {
-                                ps.setInt(i + 1, n);
+                            if (query.agentId() != null) {
+                                sql.append(" AND agent_id = ?");
+                                params.add(query.agentId());
                             }
-                        }
-                        try (ResultSet rs = ps.executeQuery()) {
-                            List<MemoryEntry> results = new ArrayList<>();
-                            while (rs.next()) {
-                                results.add(mapRow(rs));
+                            if (query.keyword() != null && !query.keyword().isBlank()) {
+                                sql.append(
+                                        " AND (content LIKE ? ESCAPE '\\' OR raw_content LIKE ? ESCAPE '\\')");
+                                String like = "%" + escapeLike(query.keyword()) + "%";
+                                params.add(like);
+                                params.add(like);
                             }
-                            return Flux.fromIterable(results);
-                        }
-                    } catch (SQLException e) {
-                        return Flux.<MemoryEntry>error(
-                                new MemoryStoreException("Failed to search memory entries", e));
-                    }
-                },
-                connection -> {
-                    try {
-                        connection.close();
-                    } catch (SQLException ignored) {
-                    }
-                });
+                            if (query.tags() != null && !query.tags().isEmpty()) {
+                                for (String tag : query.tags()) {
+                                    sql.append(" AND tags LIKE ? ESCAPE '\\'");
+                                    params.add("%," + escapeLike(tag) + ",%");
+                                }
+                            }
+                            if (query.minImportance() > 0.0) {
+                                sql.append(" AND importance >= ?");
+                                params.add(query.minImportance());
+                            }
+                            if (query.from() != null) {
+                                sql.append(" AND timestamp >= ?");
+                                params.add(Timestamp.from(query.from()));
+                            }
+                            if (query.to() != null) {
+                                sql.append(" AND timestamp <= ?");
+                                params.add(Timestamp.from(query.to()));
+                            }
+
+                            sql.append(" ORDER BY timestamp DESC");
+                            sql.append(" LIMIT ?");
+                            params.add(query.limit());
+
+                            try (PreparedStatement ps =
+                                    connection.prepareStatement(sql.toString())) {
+                                for (int i = 0; i < params.size(); i++) {
+                                    Object param = params.get(i);
+                                    if (param instanceof String s) {
+                                        ps.setString(i + 1, s);
+                                    } else if (param instanceof Double d) {
+                                        ps.setDouble(i + 1, d);
+                                    } else if (param instanceof Timestamp ts) {
+                                        ps.setTimestamp(i + 1, ts);
+                                    } else if (param instanceof Integer n) {
+                                        ps.setInt(i + 1, n);
+                                    }
+                                }
+                                try (ResultSet rs = ps.executeQuery()) {
+                                    List<MemoryEntry> results = new ArrayList<>();
+                                    while (rs.next()) {
+                                        results.add(mapRow(rs));
+                                    }
+                                    return Flux.fromIterable(results);
+                                }
+                            } catch (SQLException e) {
+                                return Flux.<MemoryEntry>error(
+                                        new MemoryStoreException(
+                                                "Failed to search memory entries", e));
+                            }
+                        },
+                        connection -> {
+                            try {
+                                connection.close();
+                            } catch (SQLException ignored) {
+                            }
+                        })
+                .onErrorMap(ExceptionMapper::toStorageException);
     }
 
     private MemoryEntry mapRow(ResultSet rs) throws SQLException {
@@ -425,13 +439,6 @@ public class JdbcMemoryStore implements MemoryStore {
         } catch (IOException e) {
             log.warn("Failed to deserialize metadata JSON: {}", json, e);
             return Map.of();
-        }
-    }
-
-    /** Runtime exception wrapper for JDBC errors in the memory store. */
-    public static class MemoryStoreException extends RuntimeException {
-        public MemoryStoreException(String message, Throwable cause) {
-            super(message, cause);
         }
     }
 }
