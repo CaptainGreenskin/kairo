@@ -72,7 +72,9 @@ class OTelTracerTest {
         assertEquals(1, spans.size());
         SpanData data = spans.get(0);
         assertEquals("agent:my-agent", data.getName());
-        assertEquals("my-agent", data.getAttributes().get(AttributeKey.stringKey("agent.name")));
+        // Kairo short key "agent.name" maps to the GenAI semconv key "gen_ai.agent.name".
+        assertEquals(
+                "my-agent", data.getAttributes().get(AttributeKey.stringKey("gen_ai.agent.name")));
     }
 
     // --- startIterationSpan ---
@@ -115,7 +117,11 @@ class OTelTracerTest {
         agent.end();
 
         SpanData reasoningData = exporter.getFinishedSpanItems().get(0);
-        assertEquals(5L, reasoningData.getAttributes().get(AttributeKey.longKey("message_count")));
+        assertEquals(
+                5L,
+                reasoningData
+                        .getAttributes()
+                        .get(AttributeKey.longKey("gen_ai.request.message_count")));
     }
 
     // --- startToolSpan ---

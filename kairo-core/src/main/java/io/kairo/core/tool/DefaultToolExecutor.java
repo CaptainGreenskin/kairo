@@ -153,20 +153,31 @@ public class DefaultToolExecutor implements ToolExecutor {
         this.activeToolConstraints = null;
     }
 
+    /** Reactor Context key used to propagate {@link ToolContext} through the reactive pipeline. */
+    public static final Class<ToolContext> CONTEXT_KEY = ToolContext.class;
+
     /**
      * Set the {@link ToolContext} to be passed to tool handlers during execution.
      *
-     * <p>When set, the context-aware {@link ToolHandler#execute(Map, ToolContext)} overload is
-     * used, allowing tools to access agent ID, session ID, and injected dependencies.
+     * <p><strong>Deprecated in favour of Reactor Context propagation.</strong> When multiple agents
+     * share a single {@code DefaultToolExecutor} (common in Spring Boot setups and sub-agent
+     * spawning) this mutable field becomes a data race: the last writer wins, so a tool invoked by
+     * agent A may see agent B's context. Callers should instead wrap their subscription with {@code
+     * Mono.contextWrite(ctx -> ctx.put(DefaultToolExecutor.CONTEXT_KEY, toolContext))} — the
+     * executor reads from Reactor Context first and only falls back to this field for backwards
+     * compatibility.
      *
      * @param context the tool context, or null to clear
      */
+    @Deprecated
     public void setToolContext(ToolContext context) {
         this.toolContext = context;
     }
 
     /**
-     * Get the current {@link ToolContext}.
+     * Get the current {@link ToolContext} held on this executor's (legacy) mutable field.
+     *
+     * <p>Note: this does <strong>not</strong> reflect values propagated via Reactor Context.
      *
      * @return the current tool context, or null if not set
      */
@@ -336,20 +347,36 @@ public class DefaultToolExecutor implements ToolExecutor {
                                                                     : "");
                                             return Mono.just(errorResult(toolName, msg));
                                         }
-                                        // 4. Execute the tool with shutdown guard
-                                        ToolContext ctx = toolContext;
+                                        // 4. Execute the tool with shutdown guard.
+                                        //    ToolContext resolution order:
+                                        //      (1) Reactor Context (safe for concurrent agents
+                                        //          sharing one executor — the per-subscription
+                                        //          context is naturally isolated);
+                                        //      (2) the legacy mutable field (deprecated);
+                                        //      (3) a fresh empty context as a last resort.
                                         Mono<ToolResult> execution =
-                                                Mono.fromCallable(
-                                                                () ->
-                                                                        handler.execute(
-                                                                                input,
-                                                                                ctx != null
-                                                                                        ? ctx
-                                                                                        : new ToolContext(
-                                                                                                null,
-                                                                                                null,
-                                                                                                Map
-                                                                                                        .of())))
+                                                Mono.deferContextual(
+                                                                contextView -> {
+                                                                    ToolContext ctx =
+                                                                            contextView.hasKey(
+                                                                                            CONTEXT_KEY)
+                                                                                    ? contextView
+                                                                                            .get(
+                                                                                                    CONTEXT_KEY)
+                                                                                    : toolContext;
+                                                                    if (ctx == null) {
+                                                                        ctx =
+                                                                                new ToolContext(
+                                                                                        null, null,
+                                                                                        Map.of());
+                                                                    }
+                                                                    ToolContext effective = ctx;
+                                                                    return Mono.fromCallable(
+                                                                            () ->
+                                                                                    handler.execute(
+                                                                                            input,
+                                                                                            effective));
+                                                                })
                                                         .subscribeOn(Schedulers.boundedElastic())
                                                         .timeout(timeout)
                                                         .onErrorResume(

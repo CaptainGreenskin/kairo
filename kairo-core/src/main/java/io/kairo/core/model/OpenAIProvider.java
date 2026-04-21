@@ -40,13 +40,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Flow;
-import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
-import reactor.util.retry.Retry;
 
 /**
  * {@link ModelProvider} implementation for the OpenAI Chat Completions API.
@@ -67,9 +65,6 @@ public class OpenAIProvider implements ModelProvider {
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(120);
     private static final Duration STREAM_IDLE_TIMEOUT = Duration.ofMinutes(5);
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(30);
-    private static final int MAX_RETRY_ATTEMPTS = 3;
-    private static final Duration RETRY_MIN_BACKOFF = Duration.ofSeconds(1);
-    private static final Duration RETRY_MAX_BACKOFF = Duration.ofSeconds(4);
 
     private final String apiKey;
     private final HttpClient httpClient;
@@ -225,16 +220,7 @@ public class OpenAIProvider implements ModelProvider {
                                                 "Failed to parse OpenAI response", e));
                             }
                         })
-                .retryWhen(
-                        Retry.backoff(MAX_RETRY_ATTEMPTS, RETRY_MIN_BACKOFF)
-                                .maxBackoff(RETRY_MAX_BACKOFF)
-                                .filter(this::isRetryableError)
-                                .doBeforeRetry(
-                                        signal ->
-                                                log.warn(
-                                                        "Retrying API call, attempt {}: {}",
-                                                        signal.totalRetries() + 1,
-                                                        signal.failure().getMessage())))
+                .retryWhen(ProviderRetry.defaultSpec("openai", this::isRetryableError))
                 .timeout(CALL_TIMEOUT);
     }
 
@@ -274,16 +260,7 @@ public class OpenAIProvider implements ModelProvider {
                             }
                         })
                 .timeout(STREAM_IDLE_TIMEOUT)
-                .retryWhen(
-                        Retry.backoff(MAX_RETRY_ATTEMPTS, RETRY_MIN_BACKOFF)
-                                .maxBackoff(RETRY_MAX_BACKOFF)
-                                .filter(this::isRetryableError)
-                                .doBeforeRetry(
-                                        signal ->
-                                                log.warn(
-                                                        "Stream retry attempt {} due to: {}",
-                                                        signal.totalRetries() + 1,
-                                                        signal.failure().getMessage())));
+                .retryWhen(ProviderRetry.defaultSpec("openai-stream", this::isRetryableError));
     }
 
     /**
@@ -333,37 +310,19 @@ public class OpenAIProvider implements ModelProvider {
                             }
                         })
                 .timeout(STREAM_IDLE_TIMEOUT)
-                .retryWhen(
-                        Retry.backoff(MAX_RETRY_ATTEMPTS, RETRY_MIN_BACKOFF)
-                                .maxBackoff(RETRY_MAX_BACKOFF)
-                                .filter(this::isRetryableError)
-                                .doBeforeRetry(
-                                        signal ->
-                                                log.warn(
-                                                        "Stream retry attempt {} due to: {}",
-                                                        signal.totalRetries() + 1,
-                                                        signal.failure().getMessage())));
+                .retryWhen(ProviderRetry.defaultSpec("openai-stream-raw", this::isRetryableError));
     }
 
     // ---- Request building ----
 
     /**
-     * Determine if an error is retryable (transient).
+     * Determine if an error is transient and worth retrying.
      *
-     * <p>Retries on: timeouts, rate limits (429), and server errors (500/502/503).
+     * <p>Delegates to {@link ProviderRetry#isTransientProviderError(Throwable)} so the retry
+     * predicate stays aligned with other providers.
      */
     private boolean isRetryableError(Throwable t) {
-        if (t instanceof TimeoutException) return true;
-        if (t instanceof ModelProviderException.RateLimitException) return true;
-        if (t instanceof ModelProviderException.ApiException ae) {
-            String msg = ae.getMessage();
-            if (msg != null) {
-                return msg.contains("HTTP 500")
-                        || msg.contains("HTTP 502")
-                        || msg.contains("HTTP 503");
-            }
-        }
-        return false;
+        return ProviderRetry.isTransientProviderError(t);
     }
 
     private HttpRequest buildHttpRequest(String jsonBody) {

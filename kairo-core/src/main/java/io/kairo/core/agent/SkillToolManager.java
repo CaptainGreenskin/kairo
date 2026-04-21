@@ -17,7 +17,11 @@ package io.kairo.core.agent;
 
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.tool.ToolExecutor;
+import io.kairo.api.tool.ToolResult;
+import io.kairo.core.tool.ToolHandler;
+import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
@@ -91,9 +95,13 @@ class SkillToolManager {
                                     if (config.toolRegistry() != null) {
                                         config.toolRegistry().register(def);
                                     }
-                                    // Register executor instance into ToolExecutor's registry
+                                    // Register executor instance into ToolExecutor's registry.
+                                    // McpToolExecutor lives in kairo-mcp and does not implement
+                                    // ToolHandler (kairo-core type), so wrap it in a reflective
+                                    // adapter to satisfy DefaultToolExecutor's handler contract.
                                     Object executor = getExecutor.invoke(toolGroup, def.name());
-                                    toolExecutor.registerToolInstance(def.name(), executor);
+                                    ToolHandler adapter = adaptMcpExecutor(executor);
+                                    toolExecutor.registerToolInstance(def.name(), adapter);
                                 }
                                 log.info(
                                         "MCP server registered {} tool(s) into agent", defs.size());
@@ -132,5 +140,43 @@ class SkillToolManager {
     /** Clear skill tool constraints on the executor (called on agent completion). */
     void clearSkillRestrictions() {
         toolExecutor.clearAllowedTools();
+    }
+
+    /**
+     * Wrap an {@code McpToolExecutor} instance (loaded reflectively to avoid a compile-time
+     * dependency on kairo-mcp) into a {@link ToolHandler} so that {@code DefaultToolExecutor} can
+     * dispatch tool calls through its standard handler contract.
+     *
+     * <p>Resolves the target's {@code executeSync(Map)} method once per registration so
+     * per-invocation cost stays at a single reflective call.
+     */
+    private static ToolHandler adaptMcpExecutor(Object mcpExecutor) {
+        final Method executeSync;
+        try {
+            executeSync = mcpExecutor.getClass().getMethod("executeSync", Map.class);
+        } catch (NoSuchMethodException e) {
+            throw new IllegalStateException(
+                    "MCP executor "
+                            + mcpExecutor.getClass().getName()
+                            + " is missing executeSync(Map); cannot adapt to ToolHandler",
+                    e);
+        }
+        return input -> {
+            try {
+                Object result = executeSync.invoke(mcpExecutor, input);
+                if (result instanceof ToolResult tr) {
+                    return tr;
+                }
+                throw new IllegalStateException(
+                        "MCP executor.executeSync returned unexpected type: "
+                                + (result == null ? "null" : result.getClass().getName()));
+            } catch (ReflectiveOperationException e) {
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                if (cause instanceof Exception ex) {
+                    throw ex;
+                }
+                throw new RuntimeException(cause);
+            }
+        };
     }
 }

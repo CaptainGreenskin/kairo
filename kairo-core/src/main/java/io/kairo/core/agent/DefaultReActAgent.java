@@ -94,6 +94,14 @@ public class DefaultReActAgent implements Agent {
     private final DefaultMiddlewarePipeline middlewarePipeline;
     private volatile Instant sessionStartTime;
 
+    /**
+     * Per-agent {@link ToolContext} used to seed the Reactor Context on every {@link #call(Msg)}.
+     *
+     * <p>Propagating via Reactor Context (rather than mutating executor state) keeps concurrent
+     * agents that share a single {@code ToolExecutor} isolated from each other.
+     */
+    private volatile ToolContext toolContext;
+
     /** The extracted ReAct loop — owns the conversation history. */
     private final ReActLoop reactLoop;
 
@@ -217,14 +225,17 @@ public class DefaultReActAgent implements Agent {
             GracefulShutdownManager shutdownManager,
             Map<String, Object> toolDependencies) {
         this(config, toolExecutor, hookChain, middlewarePipeline, shutdownManager);
-        // Wire ToolContext into the executor if it supports it
+        // Build this agent's ToolContext and propagate it via the Reactor Context in call().
+        this.toolContext =
+                new ToolContext(
+                        this.id,
+                        config.sessionId(),
+                        toolDependencies != null ? toolDependencies : Map.of());
+        // Legacy compatibility: some code paths / tests still read the executor's mutable
+        // field. This is safe for single-agent-per-executor deployments; the authoritative
+        // source for concurrent setups is the Reactor Context written in call().
         if (toolExecutor instanceof DefaultToolExecutor dte) {
-            ToolContext ctx =
-                    new ToolContext(
-                            this.id,
-                            config.sessionId(),
-                            toolDependencies != null ? toolDependencies : Map.of());
-            dte.setToolContext(ctx);
+            dte.setToolContext(this.toolContext);
         }
     }
 
@@ -397,7 +408,16 @@ public class DefaultReActAgent implements Agent {
                                     e.middlewareName(),
                                     e.getMessage());
                             return Mono.error(e);
-                        });
+                        })
+                // Propagate this agent's ToolContext through the Reactor Context so every
+                // downstream tool invocation (even in concurrent agents sharing a single
+                // ToolExecutor) sees the correct context. The legacy mutable field on the
+                // executor remains as a fallback for tests / single-agent setups.
+                .contextWrite(
+                        ctx ->
+                                toolContext != null
+                                        ? ctx.put(DefaultToolExecutor.CONTEXT_KEY, toolContext)
+                                        : ctx);
     }
 
     @Override

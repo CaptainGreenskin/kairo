@@ -148,7 +148,7 @@ class ProviderHardeningTest {
     // ---- Effort Parameter Tests ----
 
     @Test
-    void anthropicEffortIncludedWhenSet() throws Exception {
+    void anthropicEffortMapsToOutputConfig() throws Exception {
         String baseUrl = baseUrl();
         HttpClient httpClient =
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
@@ -159,7 +159,7 @@ class ProviderHardeningTest {
                         .model("claude-sonnet-4-20250514")
                         .maxTokens(4096)
                         .temperature(1.0)
-                        .effort(0.8)
+                        .effort(0.9)
                         .build();
 
         List<Msg> messages = List.of(Msg.of(MsgRole.USER, "Hello"));
@@ -167,11 +167,11 @@ class ProviderHardeningTest {
         String body = provider.buildRequestBody(messages, config, false);
         JsonNode root = mapper.readTree(body);
 
-        // Effort 0.8 should enable thinking with budget
-        assertTrue(root.has("thinking"), "thinking node should be present when effort is set");
-        JsonNode thinking = root.get("thinking");
-        assertEquals("enabled", thinking.get("type").asText());
-        assertTrue(thinking.get("budget_tokens").asInt() > 0);
+        // Effort 0.9 should map to output_config.effort = "high"
+        assertTrue(root.has("output_config"), "output_config should be present when effort is set");
+        assertEquals("high", root.get("output_config").get("effort").asText());
+        // Effort should NOT auto-enable thinking
+        // (thinking may still be present from auto-detection, but not from effort mapping)
     }
 
     @Test
@@ -193,18 +193,53 @@ class ProviderHardeningTest {
         String body = provider.buildRequestBody(messages, config, false);
         JsonNode root = mapper.readTree(body);
 
-        // Without effort (and without thinking config), thinking may or may not be present
-        // depending on model capability. But effort-specific logic should NOT add thinking.
-        // The key check: no effort was set, so any thinking present is from auto-detection,
-        // not from effort mapping. We verify effort didn't force it by checking budget value.
-        if (root.has("thinking")) {
-            // If auto-detected, the budget should be from complexity estimation, not from effort
-            // formula (effort * maxTokens * 4). With no complexity from 1 short message, budget
-            // should be modest.
-            int budget = root.get("thinking").get("budget_tokens").asInt();
-            // effort=0.8 * 4096 * 4 = 13107, auto-detect for simple message is much less
-            assertTrue(budget < 13000, "Budget should not be from effort mapping");
-        }
+        // Without effort, output_config should NOT be present
+        assertFalse(
+                root.has("output_config"),
+                "output_config should not be present when effort is null");
+    }
+
+    @Test
+    void anthropicEffortMapsLowMediumHigh() throws Exception {
+        String baseUrl = baseUrl();
+        HttpClient httpClient =
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+        AnthropicProvider provider = new AnthropicProvider("test-key", baseUrl, httpClient);
+
+        List<Msg> messages = List.of(Msg.of(MsgRole.USER, "Hello"));
+
+        // Low effort
+        ModelConfig lowConfig =
+                ModelConfig.builder()
+                        .model("claude-sonnet-4-20250514")
+                        .maxTokens(4096)
+                        .temperature(1.0)
+                        .effort(0.1)
+                        .build();
+        JsonNode lowRoot = mapper.readTree(provider.buildRequestBody(messages, lowConfig, false));
+        assertEquals("low", lowRoot.get("output_config").get("effort").asText());
+
+        // Medium effort
+        ModelConfig medConfig =
+                ModelConfig.builder()
+                        .model("claude-sonnet-4-20250514")
+                        .maxTokens(4096)
+                        .temperature(1.0)
+                        .effort(0.5)
+                        .build();
+        JsonNode medRoot = mapper.readTree(provider.buildRequestBody(messages, medConfig, false));
+        assertEquals("medium", medRoot.get("output_config").get("effort").asText());
+
+        // High effort
+        ModelConfig highConfig =
+                ModelConfig.builder()
+                        .model("claude-sonnet-4-20250514")
+                        .maxTokens(4096)
+                        .temperature(1.0)
+                        .effort(0.9)
+                        .build();
+        JsonNode highRoot = mapper.readTree(provider.buildRequestBody(messages, highConfig, false));
+        assertEquals("high", highRoot.get("output_config").get("effort").asText());
     }
 
     @Test

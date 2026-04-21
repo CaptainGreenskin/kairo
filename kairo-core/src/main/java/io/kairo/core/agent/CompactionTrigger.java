@@ -124,7 +124,13 @@ class CompactionTrigger {
      * rawContent. No-op if memoryStore is null.
      */
     private Mono<Void> storeCompactionMemory(List<Msg> compacted, String rawContent) {
-        if (memoryStore == null || rawContent.isBlank()) {
+        if (memoryStore == null) {
+            log.warn(
+                    "CompactionTrigger: MemoryStore is null, rawContent will not be persisted. "
+                            + "Configure a MemoryStore to enable Compaction-aware Retrieval.");
+            return Mono.empty();
+        }
+        if (rawContent.isBlank()) {
             return Mono.empty();
         }
 

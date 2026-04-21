@@ -30,20 +30,9 @@ import java.util.Map;
  */
 class OTelSpan implements Span {
 
-    // Kairo key → OTel attribute key mapping
-    private static final Map<String, String> ATTRIBUTE_KEY_MAP =
-            Map.ofEntries(
-                    Map.entry("token.input", "gen_ai.usage.input_tokens"),
-                    Map.entry("token.output", "gen_ai.usage.output_tokens"),
-                    Map.entry("token.cache_read", "gen_ai.usage.cache_read_tokens"),
-                    Map.entry("token.cache_write", "gen_ai.usage.cache_creation_tokens"),
-                    Map.entry("tool.name", "gen_ai.tool.name"),
-                    Map.entry("tool.success", "gen_ai.tool.success"),
-                    Map.entry("tool.duration_ms", "gen_ai.tool.duration_ms"),
-                    Map.entry("exception.type", "exception.type"),
-                    Map.entry("exception.message", "exception.message"),
-                    Map.entry("compaction.strategy", "gen_ai.compaction.strategy"),
-                    Map.entry("compaction.tokens_saved", "gen_ai.compaction.tokens_saved"));
+    // Kairo short-key → OTel attribute key mapping is the single source of truth in
+    // {@link GenAiSemanticAttributes}. This class delegates every lookup so that adding a
+    // new Kairo key only requires editing the registry.
 
     private final io.opentelemetry.api.trace.Span otelSpan;
     private final String spanName;
@@ -80,7 +69,11 @@ class OTelSpan implements Span {
         if (key == null || value == null) {
             return;
         }
-        String otelKey = ATTRIBUTE_KEY_MAP.getOrDefault(key, key);
+        // Resolve the canonical OTel AttributeKey from the single registry. Falls back to a
+        // string-keyed attribute when the key is unknown so users can still stash arbitrary
+        // metadata without registering it.
+        AttributeKey<?> canonical = GenAiSemanticAttributes.kairoKeyToOTel(key);
+        String otelKey = canonical != null ? canonical.getKey() : key;
         if (value instanceof Long longVal) {
             otelSpan.setAttribute(AttributeKey.longKey(otelKey), longVal);
         } else if (value instanceof Integer intVal) {

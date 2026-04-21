@@ -213,7 +213,10 @@ public class SkillManageTool implements ToolHandler {
      * custom directory, not framework built-in.
      */
     Path resolveWritablePath() {
-        return searchPaths.reversed().stream()
+        // Java 17 baseline: avoid List#reversed() (JDK 21). Walk indices in reverse instead.
+        java.util.List<String> reversed = new java.util.ArrayList<>(searchPaths);
+        java.util.Collections.reverse(reversed);
+        return reversed.stream()
                 .filter(p -> !p.startsWith("classpath:"))
                 .map(
                         p -> {

@@ -22,6 +22,7 @@ import io.kairo.api.memory.MemoryStore;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
@@ -82,6 +83,34 @@ public class ConversationMemory {
         MemoryQuery query =
                 MemoryQuery.builder().agentId(agentId).tags(Set.of(key)).limit(1).build();
         return store.search(query).next().map(MemoryEntry::content);
+    }
+
+    /**
+     * Recall a memory entry with both summary and original content.
+     *
+     * <p>Useful for Compaction-aware Retrieval — returns the full {@link MemoryEntry} including
+     * {@code rawContent} (the original pre-compaction text).
+     *
+     * @param key the key to look up (searches by tag)
+     * @return a Mono emitting the full MemoryEntry, or empty if not found
+     */
+    public Mono<MemoryEntry> recallFull(String key) {
+        MemoryQuery query =
+                MemoryQuery.builder().agentId(agentId).tags(Set.of(key)).limit(1).build();
+        return store.search(query).next();
+    }
+
+    /**
+     * Recall all memories with their raw content, ordered by recency.
+     *
+     * <p>Enables viewing compaction history and accessing both summary and original content.
+     *
+     * @param limit maximum number of entries to return
+     * @return a Flux of MemoryEntry objects ordered by recency
+     */
+    public Flux<MemoryEntry> recallAllFull(int limit) {
+        MemoryQuery query = MemoryQuery.builder().agentId(agentId).limit(limit).build();
+        return store.search(query);
     }
 
     /**

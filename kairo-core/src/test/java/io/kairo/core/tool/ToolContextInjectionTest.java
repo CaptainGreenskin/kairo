@@ -328,4 +328,48 @@ class ToolContextInjectionTest {
         assertNull(capturedCtx.get().sessionId());
         assertTrue(capturedCtx.get().dependencies().isEmpty());
     }
+
+    // --- Test: Reactor Context propagation overrides the executor's mutable field ---
+
+    /**
+     * When a ToolContext is written into the Reactor Context (per-subscription), the executor
+     * should see it <em>instead of</em> the mutable field value. This is the mechanism that keeps
+     * multiple agents sharing a single executor isolated from each other: each subscription carries
+     * its own context, so there is no window in which the mutable field can be clobbered by a
+     * concurrent agent.
+     */
+    @Test
+    void reactorContextOverridesMutableField() {
+        AtomicReference<ToolContext> capturedCtx = new AtomicReference<>();
+        ToolHandler contextTool =
+                new ToolHandler() {
+                    @Override
+                    public ToolResult execute(Map<String, Object> input) {
+                        throw new AssertionError("Should not be called");
+                    }
+
+                    @Override
+                    public ToolResult execute(Map<String, Object> input, ToolContext context) {
+                        capturedCtx.set(context);
+                        return new ToolResult("ctx-tool", "ok", false, Map.of());
+                    }
+                };
+        registerToolHandler("ctx-tool", contextTool);
+
+        // Seed the mutable field with a "wrong" value that a concurrent agent might have written.
+        executor.setToolContext(new ToolContext("wrong-agent", "wrong-session", Map.of()));
+
+        // The Reactor Context wins: per-subscription isolation preserved.
+        ToolContext isolated = new ToolContext("right-agent", "right-session", Map.of("k", "v"));
+        StepVerifier.create(
+                        executor.execute("ctx-tool", Map.of())
+                                .contextWrite(
+                                        ctx -> ctx.put(DefaultToolExecutor.CONTEXT_KEY, isolated)))
+                .assertNext(result -> assertFalse(result.isError()))
+                .verifyComplete();
+
+        assertEquals("right-agent", capturedCtx.get().agentId());
+        assertEquals("right-session", capturedCtx.get().sessionId());
+        assertEquals("v", capturedCtx.get().dependencies().get("k"));
+    }
 }

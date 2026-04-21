@@ -32,7 +32,6 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
@@ -181,17 +180,44 @@ public class CompactionPipeline {
                         return Mono.empty();
                     }
 
-                    return Flux.fromIterable(stages)
-                            .filter(stage -> stage.shouldTrigger(state))
-                            .concatMap(
-                                    stage -> {
-                                        log.info(
-                                                "Executing compaction stage: {} (priority={})",
-                                                stage.name(),
-                                                stage.priority());
-                                        return stage.compact(compressible, config);
-                                    })
-                            .reduce(this::mergeResults)
+                    // Progressive fold: each stage operates on the output of the previous
+                    // stage so lighter compactions compose with heavier ones instead of each
+                    // stage seeing the raw input and the final merge silently discarding
+                    // upstream work.
+                    Mono<CompactionResult> acc =
+                            Mono.just(new CompactionResult(compressible, 0, null));
+                    for (CompactionStrategy stage : stages) {
+                        if (!stage.shouldTrigger(state)) {
+                            continue;
+                        }
+                        final CompactionStrategy current = stage;
+                        final Mono<CompactionResult> prev = acc;
+                        acc =
+                                prev.flatMap(
+                                        pr -> {
+                                            log.info(
+                                                    "Executing compaction stage: {} (priority={})",
+                                                    current.name(),
+                                                    current.priority());
+                                            return current.compact(pr.compactedMessages(), config)
+                                                    .map(
+                                                            sr ->
+                                                                    new CompactionResult(
+                                                                            sr.compactedMessages(),
+                                                                            pr.tokensSaved()
+                                                                                    + sr
+                                                                                            .tokensSaved(),
+                                                                            sr.marker() != null
+                                                                                    ? sr.marker()
+                                                                                    : pr.marker()));
+                                        });
+                    }
+
+                    return acc.flatMap(
+                                    r ->
+                                            r.marker() == null
+                                                    ? Mono.<CompactionResult>empty()
+                                                    : Mono.just(r))
                             .flatMap(
                                     result -> {
                                         // Fire PostCompact hook if available
@@ -252,12 +278,6 @@ public class CompactionPipeline {
                                         log.error("Compaction failed: {}", e.getMessage());
                                     });
                 });
-    }
-
-    private CompactionResult mergeResults(CompactionResult a, CompactionResult b) {
-        // Use the latest compacted messages, accumulate tokens saved
-        return new CompactionResult(
-                b.compactedMessages(), a.tokensSaved() + b.tokensSaved(), b.marker());
     }
 
     /**

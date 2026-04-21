@@ -22,16 +22,20 @@ import java.util.Map;
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 
 /**
  * Auto-configuration for the Kairo Actuator endpoint. Only active when Spring Boot Actuator is on
- * the classpath.
+ * the classpath <strong>and</strong> a Kairo {@link Agent} bean is present. Gating on the bean
+ * avoids a {@code NoSuchBeanDefinitionException} when the starter is on the classpath but the user
+ * has opted out of the default Agent auto-configuration.
  */
 @AutoConfiguration(after = AgentRuntimeAutoConfiguration.class)
 @ConditionalOnClass(Endpoint.class)
+@ConditionalOnBean(Agent.class)
 public class AgentActuatorAutoConfiguration {
 
     @Bean

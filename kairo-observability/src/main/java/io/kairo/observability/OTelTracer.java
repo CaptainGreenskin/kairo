@@ -82,25 +82,29 @@ public class OTelTracer implements Tracer {
     /**
      * {@inheritDoc}
      *
-     * <p>Creates a child OTel span named {@code "iteration-<n>"} under the given parent.
+     * <p>Creates a child OTel span named {@code "iteration-<n>"} under the given parent and records
+     * the iteration index as {@code agent.iteration} for downstream GenAI semconv mapping.
      */
     @Override
     public Span startIterationSpan(Span parent, int iteration) {
         String spanName = "iteration-" + iteration;
-        return startChildSpan(parent, spanName);
+        OTelSpan span = (OTelSpan) startChildSpan(parent, spanName);
+        span.setAttribute("agent.iteration", (long) iteration);
+        return span;
     }
 
     /**
      * {@inheritDoc}
      *
      * <p>Creates a child OTel span named {@code "reasoning:<modelName>"} under the given parent,
-     * with the {@code message_count} attribute set.
+     * with the {@code message.count} attribute set (mapped to {@code gen_ai.request.message_count}
+     * by the Kairo → GenAI key registry).
      */
     @Override
     public Span startReasoningSpan(Span parent, String modelName, int messageCount) {
         String spanName = "reasoning:" + modelName;
         OTelSpan span = (OTelSpan) startChildSpan(parent, spanName);
-        span.setAttribute("message_count", messageCount);
+        span.setAttribute("message.count", messageCount);
         return span;
     }
 

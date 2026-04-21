@@ -60,7 +60,14 @@
         <java.version>17</java.version>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
+        <!-- Pair `release` with source/target so javac resolves JDK 17 module boundaries
+             (prevents accidentally linking against newer JDK APIs on a newer build JDK). -->
+        <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Reproducible-build hook: any published artifact will use this timestamp (epoch
+             second by default = 1970-01-01). Release builds should override via
+             `-Dproject.build.outputTimestamp=<ISO-8601>` or a CI-injected commit date. -->
+        <project.build.outputTimestamp>1</project.build.outputTimestamp>
 
         <!-- Surefire tag filtering: performance and integration tests excluded by default.
              To run integration tests:  mvn test -Dgroups=integration -DexcludedGroups=
@@ -168,6 +175,16 @@
                 <artifactId>swagger-parser</artifactId>
                 <version>${swagger-parser.version}</version>
             </dependency>
+            <!-- OpenTelemetry BOM: pins io.opentelemetry:* at the parent level so every
+                 submodule (and external consumers that import this parent) gets a single
+                 consistent OTel version instead of per-artifact <version/> stanzas. -->
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-bom</artifactId>
+                <version>${opentelemetry.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <!-- Kairo MCP module -->
             <dependency>
                 <groupId>io.github.captaingreenskin</groupId>
@@ -196,11 +213,36 @@
                 <configuration>
                     <groups>${groups}</groups>
                     <excludedGroups>${excludedGroups}</excludedGroups>
+                    <!-- Surefire owns unit tests (*Test.java). Integration tests (*IT.java)
+                         are driven by maven-failsafe-plugin during the integration-test /
+                         verify phases so `mvn test` stays fast and deterministic. -->
                     <includes>
                         <include>**/*Test.java</include>
+                    </includes>
+                    <excludes>
+                        <exclude>**/*IT.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.5.2</version>
+                <configuration>
+                    <groups>${groups}</groups>
+                    <excludedGroups>${excludedGroups}</excludedGroups>
+                    <includes>
                         <include>**/*IT.java</include>
                     </includes>
                 </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>com.diffplug.spotless</groupId>
@@ -362,7 +404,8 @@
             </build>
         </profile>
         <!-- Profile to run integration tests:
-             mvn test -Pintegration-tests -->
+             mvn verify -Pintegration-tests
+             (Failsafe executes *IT.java during the integration-test / verify phases.) -->
         <profile>
             <id>integration-tests</id>
             <build>
@@ -370,6 +413,14 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <groups>integration</groups>
+                            <excludedGroups combine.self="override"></excludedGroups>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
                         <configuration>
                             <groups>integration</groups>
                             <excludedGroups combine.self="override"></excludedGroups>

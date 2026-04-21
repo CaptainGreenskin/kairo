@@ -113,4 +113,21 @@ public interface MemoryStore {
     default Flux<MemoryEntry> search(MemoryQuery query) {
         return Flux.empty();
     }
+
+    /**
+     * Get the most recent memory entries for an agent, ordered by timestamp descending. Convenience
+     * method for the common "show me recent memories" pattern.
+     *
+     * @param agentId the agent identifier
+     * @param limit maximum number of entries to return
+     * @return a Flux of entries ordered by timestamp descending (most recent first)
+     */
+    default Flux<MemoryEntry> recent(String agentId, int limit) {
+        return search(MemoryQuery.builder().agentId(agentId).limit(limit).build());
+    }
+
+    /** Get the 20 most recent memory entries for an agent. */
+    default Flux<MemoryEntry> recent(String agentId) {
+        return recent(agentId, 20);
+    }
 }

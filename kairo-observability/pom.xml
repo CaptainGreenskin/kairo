@@ -19,22 +19,21 @@
             <artifactId>kairo-api</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- OpenTelemetry versions are pinned by the opentelemetry-bom imported in the
+             parent pom's <dependencyManagement>; do not restate <version/> here. -->
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-api</artifactId>
-            <version>${opentelemetry.version}</version>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-sdk</artifactId>
-            <version>${opentelemetry.version}</version>
             <scope>provided</scope>
         </dependency>
         <!-- Test dependencies -->
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-sdk-testing</artifactId>
-            <version>${opentelemetry.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
