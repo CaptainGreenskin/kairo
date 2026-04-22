@@ -27,6 +27,7 @@ import io.kairo.api.model.ModelResponse;
 import io.kairo.api.tool.JsonSchema;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
+import io.kairo.core.model.openai.OpenAIProvider;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;

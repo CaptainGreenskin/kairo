@@ -22,7 +22,7 @@ import io.kairo.api.tool.ToolSideEffect;
 import io.kairo.core.agent.AgentBuilder;
 import io.kairo.core.agent.DefaultReActAgent;
 import io.kairo.core.message.MsgBuilder;
-import io.kairo.core.model.OpenAIProvider;
+import io.kairo.core.model.openai.OpenAIProvider;
 import io.kairo.core.skill.DefaultSkillRegistry;
 import io.kairo.core.skill.SkillLoader;
 import io.kairo.core.tool.DefaultPermissionGuard;

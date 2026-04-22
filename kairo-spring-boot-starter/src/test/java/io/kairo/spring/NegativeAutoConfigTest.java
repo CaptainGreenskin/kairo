@@ -25,7 +25,7 @@ import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
 import io.kairo.core.model.AnthropicProvider;
-import io.kairo.core.model.OpenAIProvider;
+import io.kairo.core.model.openai.OpenAIProvider;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;

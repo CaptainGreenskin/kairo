@@ -28,7 +28,7 @@ import io.kairo.core.memory.ConversationMemory;
 import io.kairo.core.memory.JdbcMemoryStore;
 import io.kairo.core.message.MsgBuilder;
 import io.kairo.core.model.AnthropicProvider;
-import io.kairo.core.model.OpenAIProvider;
+import io.kairo.core.model.openai.OpenAIProvider;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
 import io.kairo.core.tool.DefaultToolRegistry;

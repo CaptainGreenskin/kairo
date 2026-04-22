@@ -34,7 +34,7 @@ import io.kairo.core.memory.JdbcMemoryStore;
 import io.kairo.core.memory.NoopEmbeddingProvider;
 import io.kairo.core.model.AnthropicProvider;
 import io.kairo.core.model.ModelCircuitBreaker;
-import io.kairo.core.model.OpenAIProvider;
+import io.kairo.core.model.openai.OpenAIProvider;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import io.kairo.core.skill.DefaultSkillRegistry;
 import io.kairo.core.skill.SkillLoader;
