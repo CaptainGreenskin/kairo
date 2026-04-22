@@ -21,7 +21,10 @@ import io.kairo.api.exception.KairoException;
 import io.kairo.api.exception.MemoryStoreException;
 import io.kairo.api.exception.ModelApiException;
 import io.kairo.api.exception.ModelRateLimitException;
+import io.kairo.api.exception.ModelTimeoutException;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.Test;
+import reactor.core.Exceptions;
 
 class ExceptionMapperTest {
 
@@ -79,6 +82,27 @@ class ExceptionMapperTest {
         assertInstanceOf(KairoException.class, mapped);
         assertEquals("Unexpected error", mapped.getMessage());
         assertSame(cause, mapped.getCause());
+    }
+
+    @Test
+    void timeoutExceptionMapsToModelTimeoutException() {
+        var cause = new TimeoutException("request timed out");
+        Throwable mapped = ExceptionMapper.toApiException(cause);
+
+        assertInstanceOf(ModelTimeoutException.class, mapped);
+        assertEquals("request timed out", mapped.getMessage());
+        assertSame(cause, mapped.getCause());
+    }
+
+    @Test
+    void retryExhaustedTimeoutExceptionMapsToModelTimeoutException() {
+        var timeout = new TimeoutException("deadline exceeded");
+        var retryExhausted = Exceptions.retryExhausted("Retries exhausted", timeout);
+        Throwable mapped = ExceptionMapper.toApiException(retryExhausted);
+
+        assertInstanceOf(ModelTimeoutException.class, mapped);
+        assertEquals("deadline exceeded", mapped.getMessage());
+        assertSame(timeout, mapped.getCause());
     }
 
     @Test

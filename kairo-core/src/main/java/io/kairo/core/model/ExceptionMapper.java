@@ -19,6 +19,8 @@ import io.kairo.api.exception.KairoException;
 import io.kairo.api.exception.MemoryStoreException;
 import io.kairo.api.exception.ModelApiException;
 import io.kairo.api.exception.ModelRateLimitException;
+import io.kairo.api.exception.ModelTimeoutException;
+import java.util.concurrent.TimeoutException;
 import reactor.core.Exceptions;
 
 /**
@@ -52,6 +54,9 @@ public final class ExceptionMapper {
         }
         if (e instanceof ModelProviderException.ApiException) {
             return new ModelApiException(e.getMessage(), e);
+        }
+        if (e instanceof TimeoutException) {
+            return new ModelTimeoutException(e.getMessage(), e);
         }
         return new KairoException("Unexpected error", e);
     }

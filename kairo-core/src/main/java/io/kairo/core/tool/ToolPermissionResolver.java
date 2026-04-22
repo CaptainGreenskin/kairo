@@ -139,8 +139,9 @@ public final class ToolPermissionResolver {
      * @return true if the tool is allowed by constraints, false if blocked
      */
     public boolean checkActiveToolConstraints(String toolName) {
-        if (activeToolConstraints == null) return true;
-        if (activeToolConstraints.contains(toolName)) return true;
+        Set<String> constraints = this.activeToolConstraints; // defensive local copy
+        if (constraints == null) return true;
+        if (constraints.contains(toolName)) return true;
         return "skill_load".equals(toolName) || "skill_list".equals(toolName);
     }
 

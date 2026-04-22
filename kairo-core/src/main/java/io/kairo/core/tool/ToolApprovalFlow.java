@@ -30,7 +30,7 @@ public final class ToolApprovalFlow {
 
     private final ToolPermissionResolver permissionResolver;
     private final ToolExecutor executor;
-    private UserApprovalHandler approvalHandler;
+    private volatile UserApprovalHandler approvalHandler;
 
     /**
      * Create a new approval flow.

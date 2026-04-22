@@ -26,7 +26,12 @@ import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
@@ -260,5 +265,104 @@ class CancellationE2ETest {
                                 e instanceof AgentInterruptedException
                                         && e.getMessage().contains("cancelled"))
                 .verify(Duration.ofSeconds(5));
+    }
+
+    // ===== 9. Concurrent cancel + execute should not deadlock =====
+
+    @Test
+    void concurrentCancelAndExecute_shouldNotDeadlock() throws Exception {
+        int iterations = 10;
+        int threads = 4;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+
+        try {
+            for (int iter = 0; iter < iterations; iter++) {
+                // Fresh setup per iteration to avoid state leakage
+                DefaultToolRegistry iterRegistry = new DefaultToolRegistry();
+                DefaultPermissionGuard iterGuard = new DefaultPermissionGuard();
+                DefaultToolExecutor iterExecutor = new DefaultToolExecutor(iterRegistry, iterGuard);
+
+                String toolName = "concurrent_tool_" + iter;
+                ToolDefinition def =
+                        new ToolDefinition(
+                                toolName,
+                                "concurrent test",
+                                ToolCategory.GENERAL,
+                                new JsonSchema("object", null, null, null),
+                                ToolHandler.class);
+                iterRegistry.register(def);
+                iterRegistry.registerInstance(
+                        toolName,
+                        (ToolHandler)
+                                input -> {
+                                    try {
+                                        Thread.sleep(500);
+                                    } catch (InterruptedException e) {
+                                        Thread.currentThread().interrupt();
+                                    }
+                                    return new ToolResult(toolName, "done", false, Map.of());
+                                });
+
+                AtomicBoolean cancelled = new AtomicBoolean(false);
+                CancellationSignal signal = cancelled::get;
+                CountDownLatch startLatch = new CountDownLatch(1);
+                AtomicInteger completed = new AtomicInteger(0);
+                AtomicInteger errors = new AtomicInteger(0);
+
+                final String finalToolName = toolName;
+
+                // Submit executor thread
+                pool.submit(
+                        () -> {
+                            try {
+                                startLatch.await();
+                                iterExecutor
+                                        .execute(finalToolName, Map.of())
+                                        .contextWrite(
+                                                ctx ->
+                                                        ctx.put(
+                                                                CancellationSignal.CONTEXT_KEY,
+                                                                signal))
+                                        .block(Duration.ofSeconds(5));
+                                completed.incrementAndGet();
+                            } catch (Exception e) {
+                                // Either AgentInterruptedException or timeout — both acceptable
+                                errors.incrementAndGet();
+                            }
+                        });
+
+                // Submit cancellation thread
+                pool.submit(
+                        () -> {
+                            try {
+                                startLatch.await();
+                                Thread.sleep(100); // brief delay before cancel
+                                cancelled.set(true);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                            }
+                        });
+
+                // Release both threads simultaneously
+                startLatch.countDown();
+
+                // Wait for completion with a generous timeout to detect deadlock
+                Thread.sleep(2000);
+
+                // Verify: either completed or got a cancellation error — no deadlock
+                assertTrue(
+                        completed.get() + errors.get() >= 1,
+                        "Iteration "
+                                + iter
+                                + ": expected completion or error but got neither "
+                                + "(possible deadlock). completed="
+                                + completed.get()
+                                + ", errors="
+                                + errors.get());
+            }
+        } finally {
+            pool.shutdownNow();
+            assertTrue(pool.awaitTermination(5, TimeUnit.SECONDS), "Pool did not terminate");
+        }
     }
 }
