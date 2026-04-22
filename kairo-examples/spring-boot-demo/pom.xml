@@ -40,7 +40,8 @@
     </dependencyManagement>
 
     <dependencies>
-        <!-- Kairo Spring Boot Starter (brings in kairo-core, kairo-tools, kairo-multi-agent, kairo-mcp) -->
+        <!-- Kairo Spring Boot Starter (brings in core, mcp, multi-agent starters).
+             For minimal dependency, use kairo-spring-boot-starter-core instead. -->
         <dependency>
             <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-spring-boot-starter</artifactId>

@@ -76,6 +76,21 @@
                 <artifactId>kairo-spring-boot-starter</artifactId>
                 <version>${revision}</version>
             </dependency>
+            <dependency>
+                <groupId>io.github.captaingreenskin</groupId>
+                <artifactId>kairo-spring-boot-starter-core</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captaingreenskin</groupId>
+                <artifactId>kairo-spring-boot-starter-mcp</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captaingreenskin</groupId>
+                <artifactId>kairo-spring-boot-starter-multi-agent</artifactId>
+                <version>${revision}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 </project>
