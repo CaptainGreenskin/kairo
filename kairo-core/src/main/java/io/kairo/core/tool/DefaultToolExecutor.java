@@ -15,8 +15,6 @@
  */
 package io.kairo.core.tool;
 
-import io.kairo.api.agent.CancellationSignal;
-import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.exception.PlanModeViolationException;
 import io.kairo.api.tool.*;
 import io.kairo.api.tracing.Span;
@@ -24,22 +22,28 @@ import io.kairo.api.tracing.Tracer;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 /**
  * Default implementation of {@link ToolExecutor} that dispatches tool calls to {@link ToolHandler}
  * instances registered in a {@link DefaultToolRegistry}.
+ *
+ * <p>Orchestrates a pipeline of extracted components:
+ *
+ * <ol>
+ *   <li>{@link ToolCircuitBreakerTracker} — fail-fast when CB is open
+ *   <li>{@link ToolPermissionResolver} — plan mode, active-tool constraints, permission resolution
+ *   <li>{@link ToolInvocationRunner} — actual handler invocation with timeout + cancellation
+ *   <li>{@link ToolResultSanitizer} — output injection scan
+ *   <li>{@link ToolApprovalFlow} — user approval workflow for partitioned/single execution
+ * </ol>
  *
  * <p>Handles permission checks via {@link PermissionGuard}, timeout management, and parallel
  * execution via Project Reactor.
@@ -51,16 +55,14 @@ public class DefaultToolExecutor implements ToolExecutor {
     private static final int DEFAULT_CIRCUIT_BREAKER_THRESHOLD = 3;
 
     private final DefaultToolRegistry registry;
-    private final PermissionGuard permissionGuard;
     private final Tracer tracer;
-    private final GracefulShutdownManager shutdownManager;
-    private final int circuitBreakerThreshold;
-    private final ConcurrentHashMap<String, AtomicInteger> consecutiveFailures =
-            new ConcurrentHashMap<>();
-    private UserApprovalHandler approvalHandler;
-    private volatile boolean planMode = false;
-    private final Map<String, ToolPermission> toolPermissions = new ConcurrentHashMap<>();
-    private volatile Set<String> activeToolConstraints = null; // null = no restriction
+    private final ToolPermissionResolver permissionResolver;
+    private final ToolCircuitBreakerTracker circuitBreakerTracker;
+    private final ToolInvocationRunner invocationRunner;
+    private final ToolApprovalFlow approvalFlow;
+
+    /** Reactor Context key used to propagate {@link ToolContext} through the reactive pipeline. */
+    public static final Class<ToolContext> CONTEXT_KEY = ToolContext.class;
 
     /**
      * Create a new executor with the given registry and permission guard.
@@ -117,45 +119,32 @@ public class DefaultToolExecutor implements ToolExecutor {
             GracefulShutdownManager shutdownManager,
             int circuitBreakerThreshold) {
         this.registry = registry;
-        this.permissionGuard = permissionGuard;
         this.tracer = tracer != null ? tracer : new io.kairo.api.tracing.NoopTracer();
-        this.shutdownManager =
+        GracefulShutdownManager sm =
                 shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
-        this.circuitBreakerThreshold =
-                circuitBreakerThreshold > 0
-                        ? circuitBreakerThreshold
-                        : DEFAULT_CIRCUIT_BREAKER_THRESHOLD;
+
+        this.permissionResolver = new ToolPermissionResolver(permissionGuard, registry);
+        this.circuitBreakerTracker = new ToolCircuitBreakerTracker(circuitBreakerThreshold);
+        this.invocationRunner = new ToolInvocationRunner(this.tracer, sm);
+        this.approvalFlow = new ToolApprovalFlow(permissionResolver, this);
     }
 
-    /**
-     * Set the approval handler for human-in-the-loop confirmation.
-     *
-     * @param handler the approval handler, or null to disable approval flow
-     */
+    // ==================== ToolExecutor interface delegation ====================
+
     @Override
     public void setApprovalHandler(UserApprovalHandler handler) {
-        this.approvalHandler = handler;
+        approvalFlow.setApprovalHandler(handler);
     }
 
-    /**
-     * Set the allowed tools whitelist for the currently active skill. When set, only tools in this
-     * set can be executed.
-     *
-     * @param allowed set of tool names that are allowed, or null to clear
-     */
     @Override
     public void setAllowedTools(Set<String> allowed) {
-        this.activeToolConstraints = allowed;
+        permissionResolver.setAllowedTools(allowed);
     }
 
-    /** Clear the active tool constraints, allowing all tools to execute. */
     @Override
     public void clearAllowedTools() {
-        this.activeToolConstraints = null;
+        permissionResolver.clearAllowedTools();
     }
-
-    /** Reactor Context key used to propagate {@link ToolContext} through the reactive pipeline. */
-    public static final Class<ToolContext> CONTEXT_KEY = ToolContext.class;
 
     /**
      * Set plan mode on or off.
@@ -166,7 +155,7 @@ public class DefaultToolExecutor implements ToolExecutor {
      * @param planMode true to enter plan mode, false to exit
      */
     public void setPlanMode(boolean planMode) {
-        this.planMode = planMode;
+        permissionResolver.setPlanMode(planMode);
     }
 
     /**
@@ -175,7 +164,7 @@ public class DefaultToolExecutor implements ToolExecutor {
      * @return true if in plan mode
      */
     public boolean isPlanMode() {
-        return planMode;
+        return permissionResolver.isPlanMode();
     }
 
     /**
@@ -185,7 +174,7 @@ public class DefaultToolExecutor implements ToolExecutor {
      * @param permission the permission level
      */
     public void setToolPermission(String toolName, ToolPermission permission) {
-        toolPermissions.put(toolName, permission);
+        permissionResolver.setToolPermission(toolName, permission);
     }
 
     /**
@@ -195,12 +184,11 @@ public class DefaultToolExecutor implements ToolExecutor {
      * @param permission the permission level
      */
     public void setDefaultPermission(ToolSideEffect sideEffect, ToolPermission permission) {
-        toolPermissions.put("__category__" + sideEffect.name(), permission);
+        permissionResolver.setDefaultPermission(sideEffect, permission);
     }
 
     @Override
     public Mono<ToolResult> execute(String toolName, Map<String, Object> input) {
-        // Look up tool definition to get per-tool timeout
         ToolDefinition definition = registry.get(toolName).orElse(null);
         Duration timeout =
                 (definition != null && definition.timeout() != null)
@@ -215,8 +203,13 @@ public class DefaultToolExecutor implements ToolExecutor {
         return executeInternal(toolName, input, timeout)
                 .doOnSuccess(
                         result -> {
-                            toolSpan.setStatus(
-                                    !result.isError(), result.isError() ? result.content() : "OK");
+                            if (result != null) {
+                                toolSpan.setStatus(
+                                        !result.isError(),
+                                        result.isError() ? result.content() : "OK");
+                            } else {
+                                toolSpan.setStatus(false, "empty result");
+                            }
                             toolSpan.end();
                         })
                 .doOnError(
@@ -226,34 +219,7 @@ public class DefaultToolExecutor implements ToolExecutor {
                         });
     }
 
-    /**
-     * Check plan mode restrictions before executing a tool.
-     *
-     * @param toolName the tool name
-     * @throws PlanModeViolationException if the tool is blocked in plan mode
-     */
-    private void checkPlanModeRestriction(String toolName) {
-        if (planMode) {
-            var sideEffect = resolveSideEffect(toolName);
-            if (sideEffect == ToolSideEffect.WRITE || sideEffect == ToolSideEffect.SYSTEM_CHANGE) {
-                throw new PlanModeViolationException(
-                        "Tool '"
-                                + toolName
-                                + "' ("
-                                + sideEffect
-                                + ") is blocked in Plan Mode. "
-                                + "Only read-only tools are available. Exit plan mode first.",
-                        toolName);
-            }
-        }
-    }
-
-    /**
-     * Build a composite circuit-breaker key scoped to both tool name and session.
-     *
-     * <p>Format: {@code toolName::sessionId} when a session is available, plain {@code toolName}
-     * otherwise. This prevents one tenant's failures from tripping the breaker for another.
-     */
+    /** Build a composite circuit-breaker key scoped to both tool name and session. */
     private String circuitBreakerKey(
             String toolName, reactor.util.context.ContextView contextView) {
         if (contextView.hasKey(CONTEXT_KEY)) {
@@ -269,60 +235,61 @@ public class DefaultToolExecutor implements ToolExecutor {
             String toolName, Map<String, Object> input, Duration timeout) {
         return Mono.deferContextual(
                 contextView -> {
-                    // 0. Circuit breaker check (session-scoped key)
+                    // 1. Circuit breaker check
                     String cbKey = circuitBreakerKey(toolName, contextView);
-                    AtomicInteger failures = consecutiveFailures.get(cbKey);
-                    if (failures != null && failures.get() >= circuitBreakerThreshold) {
+                    if (!circuitBreakerTracker.allowCall(cbKey)) {
+                        int failures = circuitBreakerTracker.getFailureCount(cbKey);
                         return Mono.just(
-                                errorResult(
+                                ToolResultSanitizer.errorResult(
                                         toolName,
                                         "Tool '"
                                                 + toolName
                                                 + "' is circuit-broken after "
-                                                + failures.get()
+                                                + failures
                                                 + " consecutive failures. Reset by"
                                                 + " successful execution or agent"
                                                 + " restart."));
                     }
 
-                    // 0a. Active skill tool constraints check
-                    if (activeToolConstraints != null
-                            && !activeToolConstraints.contains(toolName)
-                            && !"skill_load".equals(toolName)
-                            && !"skill_list".equals(toolName)) {
+                    // 2. Active skill tool constraints check
+                    if (!permissionResolver.checkActiveToolConstraints(toolName)) {
                         return Mono.just(
-                                errorResult(
+                                ToolResultSanitizer.errorResult(
                                         toolName,
                                         "Tool '"
                                                 + toolName
-                                                + "' is not allowed by the active skill. Allowed tools: "
-                                                + activeToolConstraints));
+                                                + "' is not allowed by the active skill."
+                                                + " Allowed tools: "
+                                                + permissionResolver.getActiveToolConstraints()));
                     }
 
-                    // 0b. Plan mode check — must be before any execution
+                    // 3. Plan mode check
                     try {
-                        checkPlanModeRestriction(toolName);
+                        permissionResolver.checkPlanModeRestriction(toolName);
                     } catch (PlanModeViolationException e) {
-                        return Mono.just(errorResult(toolName, e.getMessage()));
+                        return Mono.just(ToolResultSanitizer.errorResult(toolName, e.getMessage()));
                     }
 
-                    // 1. Look up tool definition
+                    // 4. Tool lookup
                     ToolDefinition definition = registry.get(toolName).orElse(null);
                     if (definition == null) {
-                        return Mono.just(errorResult(toolName, "Unknown tool: " + toolName));
+                        return Mono.just(
+                                ToolResultSanitizer.errorResult(
+                                        toolName, "Unknown tool: " + toolName));
                     }
 
-                    // 2. Get tool handler instance
+                    // 5. Get tool handler instance
                     Object instance = registry.getToolInstance(toolName);
                     if (!(instance instanceof ToolHandler handler)) {
                         return Mono.just(
-                                errorResult(
+                                ToolResultSanitizer.errorResult(
                                         toolName,
                                         "Tool '" + toolName + "' has no executable handler"));
                     }
 
-                    // 3. Check permissions
-                    return permissionGuard
+                    // 6. Permission guard check
+                    return permissionResolver
+                            .getPermissionGuard()
                             .checkPermissionDetail(toolName, input)
                             .flatMap(
                                     decision -> {
@@ -335,119 +302,19 @@ public class DefaultToolExecutor implements ToolExecutor {
                                                                             + decision.policyId()
                                                                             + "]"
                                                                     : "");
-                                            return Mono.just(errorResult(toolName, msg));
+                                            return Mono.just(
+                                                    ToolResultSanitizer.errorResult(toolName, msg));
                                         }
-                                        // 4. Execute the tool with shutdown guard.
-                                        //    ToolContext resolution order:
-                                        //      (1) Reactor Context (safe for concurrent agents
-                                        //          sharing one executor — the per-subscription
-                                        //          context is naturally isolated);
-                                        //      (2) a fresh empty context as a last resort.
-                                        Mono<ToolResult> execution =
-                                                Mono.deferContextual(
-                                                                innerCtxView -> {
-                                                                    ToolContext ctx =
-                                                                            innerCtxView.hasKey(
-                                                                                            CONTEXT_KEY)
-                                                                                    ? innerCtxView
-                                                                                            .get(
-                                                                                                    CONTEXT_KEY)
-                                                                                    : null;
-                                                                    if (ctx == null) {
-                                                                        ctx =
-                                                                                new ToolContext(
-                                                                                        null, null,
-                                                                                        Map.of());
-                                                                    }
-                                                                    ToolContext effective = ctx;
-                                                                    return Mono.fromCallable(
-                                                                            () ->
-                                                                                    handler.execute(
-                                                                                            input,
-                                                                                            effective));
-                                                                })
-                                                        .subscribeOn(Schedulers.boundedElastic())
-                                                        .transform(
-                                                                this::withCooperativeCancellation)
-                                                        .timeout(timeout)
-                                                        .onErrorResume(
-                                                                e -> {
-                                                                    if (isCancellationException(
-                                                                            e)) {
-                                                                        return Mono.error(e);
-                                                                    }
-                                                                    if (e
-                                                                            instanceof
-                                                                            java.util.concurrent
-                                                                                    .TimeoutException) {
-                                                                        return Mono.just(
-                                                                                errorResult(
-                                                                                        toolName,
-                                                                                        "Tool execution timed out after "
-                                                                                                + timeout
-                                                                                                        .getSeconds()
-                                                                                                + "s"));
-                                                                    }
-                                                                    log.error(
-                                                                            "Tool '{}' execution"
-                                                                                    + " failed",
-                                                                            toolName,
-                                                                            e);
-                                                                    return Mono.just(
-                                                                            errorResult(
-                                                                                    toolName,
-                                                                                    "Error: "
-                                                                                            + e
-                                                                                                    .getMessage()));
-                                                                });
-
-                                        // Race against shutdown signal
-                                        // (shutdown guard pattern)
-                                        Mono<ToolResult> shutdownGuard =
-                                                shutdownManager
-                                                        .getShutdownSignal()
-                                                        .then(
-                                                                Mono.just(
-                                                                        errorResult(
-                                                                                toolName,
-                                                                                "Tool aborted"
-                                                                                        + " due to"
-                                                                                        + " system"
-                                                                                        + " shutdown")));
-                                        return Mono.firstWithSignal(execution, shutdownGuard)
+                                        // 7. Execute tool via runner
+                                        return invocationRunner
+                                                .execute(toolName, handler, input, timeout)
                                                 .doOnNext(
                                                         result ->
-                                                                trackCircuitBreaker(cbKey, result))
-                                                .map(this::applySanitizer);
+                                                                circuitBreakerTracker.track(
+                                                                        cbKey, result))
+                                                .map(ToolResultSanitizer::sanitize);
                                     });
                 });
-    }
-
-    private <T> Mono<T> withCooperativeCancellation(Mono<T> source) {
-        return Mono.deferContextual(
-                contextView -> {
-                    if (!contextView.hasKey(CancellationSignal.CONTEXT_KEY)) {
-                        return source;
-                    }
-                    Object raw = contextView.get(CancellationSignal.CONTEXT_KEY);
-                    if (!(raw instanceof CancellationSignal signal)) {
-                        return source;
-                    }
-                    return source.takeUntilOther(cancellationTrigger(signal))
-                            .switchIfEmpty(
-                                    signal.isCancelled()
-                                            ? Mono.error(
-                                                    new AgentInterruptedException(
-                                                            "Tool execution cancelled"))
-                                            : Mono.empty());
-                });
-    }
-
-    private Mono<Long> cancellationTrigger(CancellationSignal signal) {
-        if (signal.isCancelled()) {
-            return Mono.just(0L);
-        }
-        return Flux.interval(Duration.ofMillis(50)).filter(tick -> signal.isCancelled()).next();
     }
 
     @Override
@@ -459,8 +326,7 @@ public class DefaultToolExecutor implements ToolExecutor {
      * Execute tool invocations with read/write partitioning.
      *
      * <p>READ_ONLY tools are executed in parallel (safe, no side effects), while WRITE and
-     * SYSTEM_CHANGE tools are executed serially in their original order. Results are returned in
-     * the original invocation order.
+     * SYSTEM_CHANGE tools are executed serially in their original order.
      *
      * @param invocations the tool invocations to execute
      * @return a Flux emitting results in original invocation order
@@ -468,11 +334,11 @@ public class DefaultToolExecutor implements ToolExecutor {
     public Flux<ToolResult> executePartitioned(List<ToolInvocation> invocations) {
         return Mono.defer(
                         () -> {
-                            // 1. Partition invocations by side effect
                             var readInvocations = new ArrayList<ToolInvocation>();
                             var writeInvocations = new ArrayList<ToolInvocation>();
                             for (var inv : invocations) {
-                                var sideEffect = resolveSideEffect(inv.toolName());
+                                var sideEffect =
+                                        permissionResolver.resolveSideEffect(inv.toolName());
                                 if (sideEffect == ToolSideEffect.READ_ONLY) {
                                     readInvocations.add(inv);
                                 } else {
@@ -480,7 +346,6 @@ public class DefaultToolExecutor implements ToolExecutor {
                                 }
                             }
 
-                            // 2. Execute reads in parallel (safe, no side effects)
                             var results = new LinkedHashMap<ToolInvocation, ToolResult>();
                             Mono<Void> readPhase = Mono.empty();
                             if (!readInvocations.isEmpty()) {
@@ -488,7 +353,8 @@ public class DefaultToolExecutor implements ToolExecutor {
                                         Flux.fromIterable(readInvocations)
                                                 .flatMap(
                                                         inv ->
-                                                                executeWithApproval(inv)
+                                                                approvalFlow
+                                                                        .approveIfNeeded(inv)
                                                                         .doOnNext(
                                                                                 result -> {
                                                                                     synchronized (
@@ -501,12 +367,12 @@ public class DefaultToolExecutor implements ToolExecutor {
                                                 .then();
                             }
 
-                            // 3. Execute writes serially (has side effects, order matters)
                             Mono<Void> writePhase =
                                     Flux.fromIterable(writeInvocations)
                                             .concatMap(
                                                     inv ->
-                                                            executeWithApproval(inv)
+                                                            approvalFlow
+                                                                    .approveIfNeeded(inv)
                                                                     .doOnNext(
                                                                             result -> {
                                                                                 synchronized (
@@ -518,7 +384,6 @@ public class DefaultToolExecutor implements ToolExecutor {
                                                                             }))
                                             .then();
 
-                            // 4. Return results in original invocation order
                             return readPhase.then(writePhase).thenReturn(results);
                         })
                 .flatMapMany(
@@ -528,122 +393,19 @@ public class DefaultToolExecutor implements ToolExecutor {
                                                 inv ->
                                                         results.getOrDefault(
                                                                 inv,
-                                                                errorResult(
+                                                                ToolResultSanitizer.errorResult(
                                                                         inv.toolName(),
                                                                         "Tool result missing"))));
     }
 
-    /**
-     * Resolve the side-effect classification for a tool by name.
-     *
-     * <p>Unknown tools default to {@link ToolSideEffect#SYSTEM_CHANGE} (safest assumption).
-     *
-     * @param toolName the tool name
-     * @return the side-effect classification
-     */
     @Override
     public ToolSideEffect resolveSideEffect(String toolName) {
-        var def = registry.get(toolName);
-        if (def.isEmpty()) {
-            log.warn(
-                    "Tool '{}' has no registered definition, defaulting to SYSTEM_CHANGE",
-                    toolName);
-            return ToolSideEffect.SYSTEM_CHANGE;
-        }
-        return def.get().sideEffect();
+        return permissionResolver.resolveSideEffect(toolName);
     }
 
-    /**
-     * Resolve the permission level for a tool.
-     *
-     * <p>Resolution order: tool-specific override → category-level (by SideEffect) → default.
-     * Defaults: READ_ONLY and WRITE → ALLOWED, SYSTEM_CHANGE → ASK.
-     *
-     * @param toolName the tool name
-     * @param sideEffect the side-effect classification
-     * @return the resolved permission
-     */
-    private ToolPermission resolvePermission(String toolName, ToolSideEffect sideEffect) {
-        // 1. Tool-specific override
-        var toolPerm = toolPermissions.get(toolName);
-        if (toolPerm != null) return toolPerm;
-
-        // 2. Category-level (by SideEffect)
-        var categoryPerm = toolPermissions.get("__category__" + sideEffect.name());
-        if (categoryPerm != null) return categoryPerm;
-
-        // 3. Default: READ_ONLY → ALLOWED, WRITE → ALLOWED, SYSTEM_CHANGE → ASK
-        return sideEffect == ToolSideEffect.SYSTEM_CHANGE
-                ? ToolPermission.ASK
-                : ToolPermission.ALLOWED;
-    }
-
-    /**
-     * Execute a tool invocation with approval check.
-     *
-     * <p>Checks the resolved permission for the tool and either executes directly, denies, or
-     * requests user approval via the configured {@link UserApprovalHandler}.
-     *
-     * @param invocation the tool invocation
-     * @return a Mono emitting the tool result
-     */
-    private Mono<ToolResult> executeWithApproval(ToolInvocation invocation) {
-        var sideEffect = resolveSideEffect(invocation.toolName());
-        var permission = resolvePermission(invocation.toolName(), sideEffect);
-
-        return switch (permission) {
-            case ALLOWED -> execute(invocation.toolName(), invocation.input());
-            case DENIED ->
-                    Mono.just(
-                            errorResult(
-                                    invocation.toolName(),
-                                    "Tool '"
-                                            + invocation.toolName()
-                                            + "' is denied by permission policy"));
-            case ASK -> {
-                if (approvalHandler == null) {
-                    // No handler configured → deny by default for safety
-                    yield Mono.just(
-                            errorResult(
-                                    invocation.toolName(),
-                                    "Tool '"
-                                            + invocation.toolName()
-                                            + "' requires approval but no handler configured"));
-                }
-                var request =
-                        new ToolCallRequest(invocation.toolName(), invocation.input(), sideEffect);
-                yield approvalHandler
-                        .requestApproval(request)
-                        .flatMap(
-                                result -> {
-                                    if (result.approved()) {
-                                        return execute(invocation.toolName(), invocation.input());
-                                    }
-                                    return Mono.just(
-                                            errorResult(
-                                                    invocation.toolName(),
-                                                    "Tool '"
-                                                            + invocation.toolName()
-                                                            + "' denied by user: "
-                                                            + result.reason()));
-                                });
-            }
-        };
-    }
-
-    /**
-     * Execute a single tool invocation with approval flow.
-     *
-     * <p>This is the public entry point for streaming executors that need to dispatch individual
-     * tool calls through the same permission and approval pipeline as {@link
-     * #executePartitioned(List)}.
-     *
-     * @param invocation the tool invocation to execute
-     * @return a Mono emitting the tool result
-     */
     @Override
     public Mono<ToolResult> executeSingle(ToolInvocation invocation) {
-        return executeWithApproval(invocation);
+        return approvalFlow.approveIfNeeded(invocation);
     }
 
     @Override
@@ -656,82 +418,13 @@ public class DefaultToolExecutor implements ToolExecutor {
         return true;
     }
 
-    /**
-     * Track consecutive failures for circuit breaker logic.
-     *
-     * @param cbKey the composite circuit-breaker key ({@code toolName::sessionId} or plain name)
-     * @param result the tool result to evaluate
-     */
-    private void trackCircuitBreaker(String cbKey, ToolResult result) {
-        if (result.isError()) {
-            consecutiveFailures.computeIfAbsent(cbKey, k -> new AtomicInteger()).incrementAndGet();
-        } else {
-            consecutiveFailures.remove(cbKey);
-        }
-    }
-
-    /** Reset circuit breaker state for all tools. */
     @Override
     public void resetCircuitBreaker() {
-        consecutiveFailures.clear();
+        circuitBreakerTracker.reset();
     }
 
-    /** Reset circuit breaker state for a specific tool (across all sessions). */
     @Override
     public void resetCircuitBreaker(String toolName) {
-        consecutiveFailures
-                .keySet()
-                .removeIf(key -> key.equals(toolName) || key.startsWith(toolName + "::"));
-    }
-
-    /**
-     * Apply the {@link ToolOutputSanitizer} to a tool result and attach any warnings as metadata.
-     *
-     * <p>If the scan produces warnings, a new {@link ToolResult} is returned with an {@code
-     * "injection_warning"} metadata entry containing the warning list. The original result is
-     * returned unchanged when no warnings are found.
-     *
-     * @param result the original tool result
-     * @return the result, possibly enriched with warning metadata
-     */
-    private ToolResult applySanitizer(ToolResult result) {
-        if (result.isError()) {
-            return result;
-        }
-        var scanResult = ToolOutputSanitizer.scan(result.content());
-        if (!scanResult.hasWarnings()) {
-            return result;
-        }
-        log.warn(
-                "Tool '{}' output triggered {} injection warning(s): {}",
-                result.toolUseId(),
-                scanResult.warnings().size(),
-                scanResult.warnings());
-        var enrichedMetadata = new HashMap<>(result.metadata());
-        enrichedMetadata.put("injection_warning", scanResult.warnings());
-        return new ToolResult(
-                result.toolUseId(), result.content(), result.isError(), enrichedMetadata);
-    }
-
-    /** Create an error {@link ToolResult}. */
-    private ToolResult errorResult(String toolName, String message) {
-        return new ToolResult(toolName, message, true, Map.of());
-    }
-
-    /**
-     * Check if the given exception represents a cancellation that should propagate instead of being
-     * converted to an error result.
-     */
-    private static boolean isCancellationException(Throwable e) {
-        if (e instanceof AgentInterruptedException) {
-            return true;
-        }
-        if (e instanceof java.util.concurrent.CancellationException) {
-            return true;
-        }
-        Throwable cause = e.getCause();
-        return cause != null
-                && (cause instanceof AgentInterruptedException
-                        || cause instanceof java.util.concurrent.CancellationException);
+        circuitBreakerTracker.reset(toolName);
     }
 }
