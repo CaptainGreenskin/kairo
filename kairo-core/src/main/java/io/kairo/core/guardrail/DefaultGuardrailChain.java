@@ -18,6 +18,7 @@ package io.kairo.core.guardrail;
 import io.kairo.api.guardrail.*;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -123,7 +124,7 @@ public class DefaultGuardrailChain implements GuardrailChain {
                                                     state.ctx().agentName(),
                                                     state.ctx().targetName(),
                                                     decision.modifiedPayload(),
-                                                    state.ctx().metadata());
+                                                    Map.copyOf(state.ctx().metadata()));
                                     yield new ChainState(modified, null);
                                 }
                                 case WARN -> {

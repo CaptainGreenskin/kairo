@@ -301,7 +301,7 @@ class ReasoningPhase {
                                                 false,
                                                 Map.of()))
                         .toList();
-        conversationHistory.add(hookDecisions.buildToolResultMsg(preResults));
+        conversationHistory.add(hookDecisions.buildToolResultMsg(preResults, conversationHistory));
         currentIteration.incrementAndGet();
         return loopContinuation.get();
     }
@@ -434,6 +434,7 @@ class ReasoningPhase {
             List<Msg> messages, ModelConfig config) {
         GuardrailChain chain = ctx.guardrailChain();
         if (chain == null) {
+            log.warn("GuardrailChain is null — PRE_MODEL guardrail evaluation skipped");
             return Mono.just(GuardrailDecision.allow("no-guardrail"));
         }
         return Mono.defer(
@@ -450,6 +451,7 @@ class ReasoningPhase {
     private Mono<ModelResponse> evaluatePostModelGuardrail(ModelResponse response) {
         GuardrailChain chain = ctx.guardrailChain();
         if (chain == null) {
+            log.warn("GuardrailChain is null — POST_MODEL guardrail evaluation skipped");
             return Mono.just(response);
         }
         String targetName = response.model() != null ? response.model() : "model";

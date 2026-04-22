@@ -25,7 +25,7 @@
             <dependency>
                 <groupId>io.github.captaingreenskin</groupId>
                 <artifactId>kairo-bom</artifactId>
-                <version>${project.version}</version>
+                <version>${revision}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

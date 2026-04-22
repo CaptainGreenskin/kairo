@@ -542,6 +542,9 @@ public class DefaultToolExecutor implements ToolExecutor {
     private Mono<GuardrailDecision> evaluatePreToolGuardrail(
             String toolName, Map<String, Object> input) {
         if (guardrailChain == null) {
+            log.warn(
+                    "GuardrailChain is null — PRE_TOOL guardrail evaluation skipped for tool: {}",
+                    toolName);
             return Mono.just(GuardrailDecision.allow("no-guardrail"));
         }
         Map<String, Object> metadata = registry.getToolMetadata(toolName);
@@ -554,12 +557,15 @@ public class DefaultToolExecutor implements ToolExecutor {
                                     agentName,
                                     toolName,
                                     new GuardrailPayload.ToolInput(toolName, input),
-                                    metadata));
+                                    Map.copyOf(metadata)));
                 });
     }
 
     private Mono<GuardrailDecision> evaluatePostToolGuardrail(String toolName, ToolResult result) {
         if (guardrailChain == null) {
+            log.warn(
+                    "GuardrailChain is null — POST_TOOL guardrail evaluation skipped for tool: {}",
+                    toolName);
             return Mono.just(GuardrailDecision.allow("no-guardrail"));
         }
         return Mono.deferContextual(

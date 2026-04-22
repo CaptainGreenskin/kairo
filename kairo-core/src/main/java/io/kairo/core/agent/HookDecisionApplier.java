@@ -109,12 +109,21 @@ class HookDecisionApplier {
      * Build a tool result {@link Msg} from a list of tool results. Each tool result is added as a
      * {@link Content.ToolResultContent} block.
      */
-    Msg buildToolResultMsg(List<ToolResult> results) {
+    Msg buildToolResultMsg(List<ToolResult> results, List<Msg> history) {
+        ToolResultBudget.AppliedResult budgeted =
+                ToolResultBudget.apply(results, history, ctx.tokenBudgetManager());
         MsgBuilder builder = MsgBuilder.create().role(MsgRole.TOOL).sourceAgentId(ctx.agentId());
 
-        for (ToolResult result : results) {
+        for (ToolResult result : budgeted.results()) {
             builder.addToolResult(result.toolUseId(), result.content(), result.isError());
         }
+
+        builder.metadata("tool_result_budget_applied", true)
+                .metadata("tool_result_budget_truncated_count", budgeted.truncatedCount())
+                .metadata("tool_result_budget_original_tokens", budgeted.originalTokens())
+                .metadata("tool_result_budget_kept_tokens", budgeted.keptTokens())
+                .metadata("tool_result_budget_remaining_tokens", budgeted.remainingBudgetTokens())
+                .metadata("tool_result_budget_per_result_tokens", budgeted.perResultBudgetTokens());
 
         return builder.build();
     }

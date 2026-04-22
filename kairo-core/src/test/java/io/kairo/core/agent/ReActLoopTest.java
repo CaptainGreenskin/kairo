@@ -191,6 +191,48 @@ class ReActLoopTest {
         assertEquals(2, callCount.get());
     }
 
+    @Test
+    void testToolResultBudgetMetadataAndTruncationInHistory() {
+        AtomicInteger callCount = new AtomicInteger(0);
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(
+                                        toolCallResponse(
+                                                "tc-budget", "search", Map.of("q", "big")));
+                            }
+                            return Mono.just(textResponse("done"));
+                        });
+
+        String oversized = "B".repeat(20_000);
+        when(toolExecutor.execute(eq("search"), any()))
+                .thenReturn(Mono.just(new ToolResult("tc-budget", oversized, false, Map.of())));
+
+        ReActLoop loop = createDefaultLoop();
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "search big")));
+
+        StepVerifier.create(loop.runLoop()).expectNextCount(1).verifyComplete();
+
+        Msg toolMsg =
+                loop.getHistory().stream()
+                        .filter(msg -> msg.role() == MsgRole.TOOL)
+                        .findFirst()
+                        .orElseThrow();
+
+        assertEquals(true, toolMsg.metadata().get("tool_result_budget_applied"));
+        assertEquals(1, toolMsg.metadata().get("tool_result_budget_truncated_count"));
+
+        Content.ToolResultContent toolResultContent =
+                toolMsg.contents().stream()
+                        .filter(Content.ToolResultContent.class::isInstance)
+                        .map(Content.ToolResultContent.class::cast)
+                        .findFirst()
+                        .orElseThrow();
+        assertTrue(toolResultContent.content().contains("truncated by ToolResultBudget"));
+    }
+
     // ===== 2. Loop terminates on final text =====
 
     @Test

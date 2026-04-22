@@ -129,7 +129,7 @@ class ToolPhase {
             List<ToolResult> toolResults,
             Supplier<Mono<Msg>> loopContinuation) {
         applySkillToolRestrictions(toolCalls, toolResults);
-        conversationHistory.add(hookDecisions.buildToolResultMsg(toolResults));
+        conversationHistory.add(hookDecisions.buildToolResultMsg(toolResults, conversationHistory));
         currentIteration.incrementAndGet();
 
         return proceedWithCompactionIfNeeded(loopContinuation);
@@ -251,7 +251,7 @@ class ToolPhase {
                 toolUseId,
                 "Tool execution blocked by hook: " + (reason != null ? reason : "no reason given"),
                 true,
-                Map.of());
+                Map.of("error_code", "tool_blocked_by_hook"));
     }
 
     private ToolResult skippedByHookToolResult(String toolUseId) {
@@ -259,11 +259,15 @@ class ToolPhase {
                 toolUseId,
                 "Tool execution skipped by hook",
                 false,
-                Map.of("skipped_by_hook", true));
+                Map.of("skipped_by_hook", true, "result_code", "tool_skipped_by_hook"));
     }
 
     private ToolResult cancelledByHookToolResult(String toolUseId) {
-        return new ToolResult(toolUseId, "Tool execution cancelled by hook", true, Map.of());
+        return new ToolResult(
+                toolUseId,
+                "Tool execution cancelled by hook",
+                true,
+                Map.of("error_code", "tool_cancelled_by_hook"));
     }
 
     private Mono<ToolResult> executeToolCall(
@@ -291,7 +295,13 @@ class ToolPhase {
                                             toolUseId,
                                             "Error executing tool: " + e.getMessage(),
                                             true,
-                                            Map.of()));
+                                            Map.of(
+                                                    "error_code",
+                                                    "tool_execution_failed",
+                                                    "error_type",
+                                                    e.getClass().getSimpleName(),
+                                                    "tool_name",
+                                                    toolName)));
                         });
     }
 

@@ -208,7 +208,7 @@ class ReActLoop {
                 danglingIds);
 
         List<ToolResult> errorResults = buildDanglingErrorResults(danglingIds);
-        Msg toolMsg = hookDecisions.buildToolResultMsg(errorResults);
+        Msg toolMsg = hookDecisions.buildToolResultMsg(errorResults, conversationHistory);
         conversationHistory.add(toolMsg);
     }
 

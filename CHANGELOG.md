@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-04-23 — Tool Result Budget & Structured Observability
+
+### Added
+- **ToolResultBudget**: L0 pre-truncation for oversized tool outputs before entering conversation history
+  - Content truncation with inline footer note at HookDecisionApplier / ToolPhase / ReasoningPhase / ReActLoop
+  - Character count / 4 as rough token estimate (no tokenizer dependency)
+- **Structured observability metadata on ToolResult**:
+  - `tool_result_original_tokens`, `tool_result_kept_tokens`, `tool_result_truncated`, `tool_result_budget_reason`
+- **TOOL message observability fields**:
+  - `tool_result_budget_truncated_count`, `tool_result_budget_original_tokens`, `tool_result_budget_kept_tokens`, `tool_result_budget_remaining_tokens`, `tool_result_budget_per_result_tokens`
+- **Tool exception/policy path classification**: `tool_execution_failed`, `tool_blocked_by_hook`, `tool_cancelled_by_hook`, `tool_skipped_by_hook`
+- **ADR-010**: Tool Result Budget Contract
+- Canary runbook and review documentation (`docs/runbook/`)
+- v0.8 execution model kickoff documentation
+
 ## [0.7.0] - 2026-04-22 — Guardrail SPI, MCP Security & Structured Exceptions
 
 ### Added
