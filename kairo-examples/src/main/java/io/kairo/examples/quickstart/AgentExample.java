@@ -23,7 +23,7 @@ import io.kairo.core.agent.AgentBuilder;
 import io.kairo.core.agent.DefaultReActAgent;
 import io.kairo.core.context.DefaultContextManager;
 import io.kairo.core.message.MsgBuilder;
-import io.kairo.core.model.AnthropicProvider;
+import io.kairo.core.model.anthropic.AnthropicProvider;
 import io.kairo.core.model.openai.OpenAIProvider;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;

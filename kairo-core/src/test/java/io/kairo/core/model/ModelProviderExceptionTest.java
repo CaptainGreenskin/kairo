@@ -50,18 +50,4 @@ class ModelProviderExceptionTest {
         assertEquals("API error", ex.getMessage());
         assertEquals(cause, ex.getCause());
     }
-
-    @Test
-    void anthropicProviderExceptionsExtendShared() {
-        // Backward compatibility: AnthropicProvider inner classes extend shared ones
-        var rle = new AnthropicProvider.RateLimitException("test", 10L);
-        assertInstanceOf(ModelProviderException.RateLimitException.class, rle);
-        assertEquals(10L, rle.getRetryAfterSeconds());
-
-        var ae = new AnthropicProvider.ApiException("test");
-        assertInstanceOf(ModelProviderException.ApiException.class, ae);
-
-        var aeWithCause = new AnthropicProvider.ApiException("test", new RuntimeException());
-        assertInstanceOf(ModelProviderException.ApiException.class, aeWithCause);
-    }
 }

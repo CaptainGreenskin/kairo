@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.kairo.core.model;
+package io.kairo.core.model.anthropic;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -31,7 +31,7 @@ import org.junit.jupiter.api.Test;
 
 class CacheBreakDetectorTest {
 
-    private AnthropicProvider.CacheBreakDetector detector;
+    private CacheBreakDetector detector;
     private final String systemPrompt = "You are a helpful assistant.";
     private final List<ToolDefinition> tools =
             List.of(
@@ -44,7 +44,7 @@ class CacheBreakDetectorTest {
 
     @BeforeEach
     void setUp() {
-        detector = new AnthropicProvider.CacheBreakDetector();
+        detector = new CacheBreakDetector();
     }
 
     @Test
@@ -158,19 +158,19 @@ class CacheBreakDetectorTest {
     @Test
     void hitRatio_calculation() {
         // 80 read, 20 creation → ratio = 80/100 = 0.8
-        var result = new AnthropicProvider.CacheCheckResult(80, 20, 100);
+        var result = new CacheCheckResult(80, 20, 100);
         assertEquals(0.8, result.hitRatio(), 0.001);
 
         // 0 read, 0 creation → ratio = 0.0
-        var zeroResult = new AnthropicProvider.CacheCheckResult(0, 0, 100);
+        var zeroResult = new CacheCheckResult(0, 0, 100);
         assertEquals(0.0, zeroResult.hitRatio(), 0.001);
 
         // 100 read, 0 creation → ratio = 1.0
-        var fullHit = new AnthropicProvider.CacheCheckResult(100, 0, 100);
+        var fullHit = new CacheCheckResult(100, 0, 100);
         assertEquals(1.0, fullHit.hitRatio(), 0.001);
 
         // 0 read, 100 creation → ratio = 0.0
-        var noHit = new AnthropicProvider.CacheCheckResult(0, 100, 100);
+        var noHit = new CacheCheckResult(0, 100, 100);
         assertEquals(0.0, noHit.hitRatio(), 0.001);
     }
 

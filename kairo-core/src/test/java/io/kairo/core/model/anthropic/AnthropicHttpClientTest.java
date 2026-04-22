@@ -13,10 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.kairo.core.model;
+package io.kairo.core.model.anthropic;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.core.model.ModelProviderException;
 import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;

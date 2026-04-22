@@ -13,8 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.kairo.core.model;
+package io.kairo.core.model.anthropic;
 
+import io.kairo.core.model.ModelProviderException;
+import io.kairo.core.model.ModelProviderUtils;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;

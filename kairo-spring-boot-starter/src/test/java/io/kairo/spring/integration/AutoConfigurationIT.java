@@ -27,7 +27,7 @@ import io.kairo.api.tool.ToolRegistry;
 import io.kairo.core.agent.DefaultAgentFactory;
 import io.kairo.core.memory.FileMemoryStore;
 import io.kairo.core.memory.InMemoryStore;
-import io.kairo.core.model.AnthropicProvider;
+import io.kairo.core.model.anthropic.AnthropicProvider;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
@@ -231,7 +231,7 @@ class AutoConfigurationIT {
     @Configuration(proxyBeanMethods = false)
     static class CustomModelProviderConfig {
         static final ModelProvider CUSTOM_PROVIDER =
-                new io.kairo.core.model.AnthropicProvider("custom-key");
+                new io.kairo.core.model.anthropic.AnthropicProvider("custom-key");
 
         @Bean
         ModelProvider modelProvider() {
