@@ -22,6 +22,14 @@ import java.util.Map;
  *
  * <p>Each tool class annotated with {@link io.kairo.api.tool.Tool @Tool} should implement this
  * interface. The {@link DefaultToolExecutor} invokes {@link #execute(Map)} to run the tool logic.
+ *
+ * @apiNote Stable SPI — backward compatible across minor versions. Breaking changes only in major
+ *     versions with 2-minor-version deprecation notice.
+ * @implSpec Implementations may throw checked exceptions from {@link #execute(Map)}; the framework
+ *     wraps them into {@link io.kairo.api.exception.ToolException}. Implementations need not be
+ *     thread-safe unless the same instance is shared across agents — the default executor creates
+ *     per-invocation instances.
+ * @since 0.1.0
  */
 public interface ToolHandler {
 

@@ -39,8 +39,16 @@ import reactor.core.publisher.Mono;
  * CancellationSignal} from Reactor Context (key: {@link CancellationSignal#CONTEXT_KEY}) and stop
  * network/work execution quickly when cancelled.
  *
+ * @apiNote Stable SPI — backward compatible across minor versions. Breaking changes only in major
+ *     versions with 2-minor-version deprecation notice.
+ * @implSpec Implementations must be thread-safe for concurrent use from multiple agents. Blocking
+ *     I/O (e.g., HTTP calls) should be offloaded with {@code
+ *     subscribeOn(Schedulers.boundedElastic())} or use a non-blocking HTTP client. Observe {@link
+ *     CancellationSignal} from Reactor Context and terminate in-flight requests promptly when
+ *     cancelled.
  * @see ModelConfig
  * @see ModelResponse
+ * @since 0.1.0
  */
 public interface ModelProvider {
 

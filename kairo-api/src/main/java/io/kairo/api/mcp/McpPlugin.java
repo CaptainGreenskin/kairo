@@ -22,6 +22,14 @@ import reactor.core.publisher.Mono;
  *
  * <p>Implementations are discovered via {@link java.util.ServiceLoader}. This lets {@code
  * kairo-core} consume MCP capabilities without compile-time dependencies on specific MCP modules.
+ *
+ * @apiNote Stable SPI — backward compatible across minor versions. Breaking changes only in major
+ *     versions with 2-minor-version deprecation notice.
+ * @implSpec Implementations must support concurrent {@link #register(Object)} calls for different
+ *     server configs. The {@link #close()} method should release all resources (connections,
+ *     threads) acquired during registration. Implementations are discovered via {@code
+ *     ServiceLoader}, so they must have a public no-arg constructor.
+ * @since 0.4.0
  */
 public interface McpPlugin extends AutoCloseable {
 

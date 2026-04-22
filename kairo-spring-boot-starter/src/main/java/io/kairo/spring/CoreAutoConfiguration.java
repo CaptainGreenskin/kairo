@@ -1,0 +1,243 @@
+/*
+ * Copyright 2025-2026 the Kairo authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package io.kairo.spring;
+
+import io.kairo.api.agent.Agent;
+import io.kairo.api.agent.AgentFactory;
+import io.kairo.api.middleware.Middleware;
+import io.kairo.api.model.ModelProvider;
+import io.kairo.api.tool.PermissionGuard;
+import io.kairo.api.tool.ToolExecutor;
+import io.kairo.api.tool.ToolRegistry;
+import io.kairo.core.agent.AgentBuilder;
+import io.kairo.core.agent.DefaultAgentFactory;
+import io.kairo.core.model.ModelCircuitBreaker;
+import io.kairo.core.model.anthropic.AnthropicProvider;
+import io.kairo.core.model.openai.OpenAIProvider;
+import io.kairo.core.shutdown.GracefulShutdownManager;
+import io.kairo.core.tool.DefaultPermissionGuard;
+import io.kairo.core.tool.DefaultToolExecutor;
+import io.kairo.core.tool.DefaultToolRegistry;
+import io.kairo.spring.config.AgentProperties;
+import io.kairo.spring.config.ModelProperties;
+import io.kairo.spring.config.ToolProperties;
+import java.time.Duration;
+import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * Core auto-configuration: model providers, tool infrastructure, agent factory, circuit breaker,
+ * graceful shutdown, and the default agent bean.
+ *
+ * <p>Imported by {@link AgentRuntimeAutoConfiguration}.
+ */
+@Configuration(proxyBeanMethods = false)
+class CoreAutoConfiguration {
+
+    private static final Logger log = LoggerFactory.getLogger(CoreAutoConfiguration.class);
+
+    // ---- Model Provider ----
+
+    @Bean
+    @ConditionalOnMissingBean(ModelProvider.class)
+    @ConditionalOnProperty(
+            name = "kairo.model.provider",
+            havingValue = "anthropic",
+            matchIfMissing = true)
+    ModelProvider anthropicModelProvider(AgentRuntimeProperties properties) {
+        ModelProperties model = properties.getModel();
+        String apiKey = resolveApiKey(model.getApiKey(), "ANTHROPIC_API_KEY");
+        if (apiKey == null) {
+            throw new IllegalStateException(
+                    "Anthropic API key not configured. Set 'kairo.model.api-key' or ANTHROPIC_API_KEY env var");
+        }
+        String baseUrl = model.getBaseUrl();
+        AnthropicProvider provider =
+                (baseUrl != null && !baseUrl.isBlank())
+                        ? new AnthropicProvider(apiKey, baseUrl)
+                        : new AnthropicProvider(apiKey);
+        log.info("Configured Anthropic model provider (model={})", model.getModelName());
+        return provider;
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(ModelProvider.class)
+    @ConditionalOnProperty(name = "kairo.model.provider", havingValue = "openai")
+    ModelProvider openaiModelProvider(AgentRuntimeProperties properties) {
+        ModelProperties model = properties.getModel();
+        String apiKey = resolveApiKey(model.getApiKey(), "OPENAI_API_KEY");
+        if (apiKey == null) {
+            throw new IllegalStateException(
+                    "OpenAI API key not configured. Set 'kairo.model.api-key' or OPENAI_API_KEY env var");
+        }
+        String baseUrl = model.getBaseUrl();
+        OpenAIProvider provider =
+                (baseUrl != null && !baseUrl.isBlank())
+                        ? new OpenAIProvider(apiKey, baseUrl)
+                        : new OpenAIProvider(apiKey);
+        log.info("Configured OpenAI model provider (model={})", model.getModelName());
+        return provider;
+    }
+
+    // ---- Tool Infrastructure ----
+
+    @Bean
+    @ConditionalOnMissingBean
+    ToolRegistry toolRegistry(AgentRuntimeProperties properties) {
+        DefaultToolRegistry registry = new DefaultToolRegistry();
+        ToolProperties toolProps = properties.getTool();
+
+        if (toolProps.isEnableFileTools()) {
+            registry.scan("io.kairo.tools.file");
+            log.info("Registered file tools");
+        }
+        if (toolProps.isEnableExecTools()) {
+            registry.scan("io.kairo.tools.exec");
+            log.info("Registered exec tools");
+        }
+        if (toolProps.isEnableInfoTools()) {
+            registry.scan("io.kairo.tools.info");
+            log.info("Registered info tools");
+        }
+        if (toolProps.isEnableAgentTools()) {
+            registry.scan("io.kairo.tools.agent");
+            log.info("Registered agent collaboration tools");
+        }
+
+        return registry;
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    PermissionGuard permissionGuard(AgentRuntimeProperties properties) {
+        DefaultPermissionGuard guard = new DefaultPermissionGuard();
+        for (String pattern : properties.getTool().getDangerousPatterns()) {
+            guard.addDangerousPattern(pattern);
+        }
+        return guard;
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    ToolExecutor toolExecutor(
+            DefaultToolRegistry toolRegistry,
+            PermissionGuard permissionGuard,
+            GracefulShutdownManager gracefulShutdownManager) {
+        return new DefaultToolExecutor(
+                toolRegistry, permissionGuard, null, gracefulShutdownManager);
+    }
+
+    // ---- Agent Factory ----
+
+    @Bean
+    @ConditionalOnMissingBean
+    AgentFactory agentFactory(
+            ToolExecutor toolExecutor, GracefulShutdownManager gracefulShutdownManager) {
+        return new DefaultAgentFactory(toolExecutor, gracefulShutdownManager);
+    }
+
+    // ---- Default Agent ----
+
+    @Bean
+    @ConditionalOnMissingBean(Agent.class)
+    Agent defaultAgent(
+            ModelProvider modelProvider,
+            ToolRegistry toolRegistry,
+            ToolExecutor toolExecutor,
+            GracefulShutdownManager gracefulShutdownManager,
+            AgentRuntimeProperties properties,
+            @org.springframework.beans.factory.annotation.Autowired(required = false)
+                    List<Middleware> middlewares) {
+
+        AgentProperties agentProps = properties.getAgent();
+
+        AgentBuilder builder =
+                AgentBuilder.create()
+                        .name(agentProps.getName())
+                        .model(modelProvider)
+                        .tools(toolRegistry)
+                        .toolExecutor(toolExecutor)
+                        .modelName(properties.getModel().getModelName())
+                        .systemPrompt(agentProps.getSystemPrompt())
+                        .maxIterations(agentProps.getMaxIterations())
+                        .timeout(Duration.ofSeconds(agentProps.getTimeoutSeconds()))
+                        .tokenBudget(agentProps.getTokenBudget())
+                        .shutdownManager(gracefulShutdownManager);
+
+        if (middlewares != null) {
+            for (Middleware mw : middlewares) {
+                builder.middleware(mw);
+            }
+        }
+
+        Agent agent = builder.build();
+
+        log.info(
+                "Created default agent '{}' (maxIterations={}, tokenBudget={})",
+                agentProps.getName(),
+                agentProps.getMaxIterations(),
+                agentProps.getTokenBudget());
+        return agent;
+    }
+
+    // ---- Circuit Breaker ----
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(
+            name = "kairo.model.circuit-breaker.enabled",
+            havingValue = "true",
+            matchIfMissing = true)
+    ModelCircuitBreaker modelCircuitBreaker(AgentRuntimeProperties properties) {
+        var cbProps = properties.getModel().getCircuitBreaker();
+        ModelCircuitBreaker breaker =
+                new ModelCircuitBreaker(
+                        properties.getModel().getModelName(),
+                        cbProps.getFailureThreshold(),
+                        cbProps.getResetTimeout());
+        log.info(
+                "Configured model circuit breaker (threshold={}, resetTimeout={})",
+                cbProps.getFailureThreshold(),
+                cbProps.getResetTimeout());
+        return breaker;
+    }
+
+    // ---- Graceful Shutdown ----
+
+    @Bean
+    @ConditionalOnMissingBean
+    GracefulShutdownManager gracefulShutdownManager(AgentRuntimeProperties properties) {
+        GracefulShutdownManager manager = new GracefulShutdownManager();
+        int timeoutSeconds = properties.getAgent().getTimeoutSeconds();
+        manager.setShutdownTimeout(Duration.ofSeconds(Math.min(timeoutSeconds, 30)));
+        log.info("Configured graceful shutdown manager");
+        return manager;
+    }
+
+    // ---- Helpers ----
+
+    private static String resolveApiKey(String configured, String envVarName) {
+        if (configured != null && !configured.isBlank()) {
+            return configured;
+        }
+        return System.getenv(envVarName);
+    }
+}

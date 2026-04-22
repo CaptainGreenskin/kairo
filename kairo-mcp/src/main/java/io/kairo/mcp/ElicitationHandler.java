@@ -37,10 +37,18 @@ import reactor.core.publisher.Mono;
  * };
  * }</pre>
  *
+ * @apiNote Experimental — this SPI may change in minor versions as the MCP elicitation protocol
+ *     evolves. Marked for potential promotion to Stable once the MCP specification stabilizes
+ *     elicitation semantics.
+ * @implSpec Implementations receive an {@link ElicitationRequest} and must return a non-null {@link
+ *     ElicitationResponse}. Implementations may block waiting for user input; the returned {@link
+ *     reactor.core.publisher.Mono} should complete when the user responds or a timeout occurs.
+ *     Return {@link ElicitationResponse#decline()} for unrecognized requests.
  * @see ElicitationRequest
  * @see ElicitationResponse
  * @see DevOnlyAutoApproveHandler
  * @see AutoDeclineElicitationHandler
+ * @since 0.5.0
  */
 @FunctionalInterface
 public interface ElicitationHandler {

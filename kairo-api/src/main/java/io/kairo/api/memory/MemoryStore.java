@@ -32,8 +32,16 @@ import reactor.core.publisher.Mono;
  * <p><strong>Thread safety:</strong> Implementations must be safe for concurrent use from multiple
  * agents or agent iterations.
  *
+ * @apiNote Stable SPI — backward compatible across minor versions. Breaking changes only in major
+ *     versions with 2-minor-version deprecation notice.
+ * @implSpec Implementations must be thread-safe for concurrent use from multiple agents or agent
+ *     iterations. All operations return reactive types and must not block the calling thread. Use
+ *     {@code subscribeOn(Schedulers.boundedElastic())} for blocking I/O backends (JDBC, file
+ *     system). New {@code default} methods may be added in minor versions to preserve backward
+ *     compatibility.
  * @see MemoryEntry
  * @see MemoryScope
+ * @since 0.1.0
  */
 public interface MemoryStore {
 

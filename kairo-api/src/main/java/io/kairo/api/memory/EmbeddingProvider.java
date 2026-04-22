@@ -24,6 +24,14 @@ import reactor.core.publisher.Mono;
  *
  * <p>Implementations may delegate to external embedding services (e.g., OpenAI, Cohere, local
  * models). Used by memory stores that support vector similarity search.
+ *
+ * @apiNote Experimental — this SPI may change in minor versions as the embedding integration
+ *     matures. Marked for potential promotion to Stable once the design stabilizes.
+ * @implSpec Implementations must be thread-safe. The {@link #embed(String)} method must not block
+ *     the calling thread — use a non-blocking HTTP client or offload with {@code
+ *     subscribeOn(Schedulers.boundedElastic())}. The {@link #dimensions()} method must return a
+ *     consistent value for the lifetime of the provider instance.
+ * @since 0.5.0
  */
 public interface EmbeddingProvider {
 

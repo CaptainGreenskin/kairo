@@ -38,9 +38,17 @@ import reactor.core.publisher.Mono;
  * CancellationSignal} from Reactor Context (key: {@link CancellationSignal#CONTEXT_KEY}) and
  * terminate long-running tool work promptly when cancelled.
  *
+ * @apiNote Stable SPI — backward compatible across minor versions. Breaking changes only in major
+ *     versions with 2-minor-version deprecation notice.
+ * @implSpec Implementations must be thread-safe: parallel tool execution via {@link
+ *     #executeParallel(List)} may invoke multiple handlers concurrently. Observe {@link
+ *     CancellationSignal} from Reactor Context and terminate long-running tool work promptly when
+ *     cancelled. New {@code default} methods may be added in minor versions to preserve backward
+ *     compatibility.
  * @see ToolResult
  * @see ToolInvocation
  * @see ToolSideEffect
+ * @since 0.1.0
  */
 public interface ToolExecutor {
 
