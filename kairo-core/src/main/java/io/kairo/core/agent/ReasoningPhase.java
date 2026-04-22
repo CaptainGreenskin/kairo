@@ -15,6 +15,7 @@
  */
 package io.kairo.core.agent;
 
+import io.kairo.api.guardrail.*;
 import io.kairo.api.hook.*;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
@@ -140,16 +141,55 @@ class ReasoningPhase {
 
         log.debug(
                 "Agent '{}' iteration {}: calling model", ctx.agentName(), currentIteration.get());
+
+        // PRE_MODEL guardrail evaluation
         Mono<ModelResponse> responseMono =
-                streamingEnabledSupplier.get()
-                        ? callModelStreamingWithFallback(conversationHistory, effectiveConfig)
-                        : guards.withCancellationSignal(
-                                ctx.errorRecovery()
-                                        .callModelWithRecovery(
-                                                conversationHistory, effectiveConfig, 0));
+                evaluatePreModelGuardrail(conversationHistory, effectiveConfig)
+                        .flatMap(
+                                preDecision -> {
+                                    if (preDecision.action() == GuardrailDecision.Action.DENY) {
+                                        return Mono.<ModelResponse>error(
+                                                new GuardrailDenyException(
+                                                        "Guardrail denied model call: "
+                                                                + preDecision.reason()));
+                                    }
+                                    // Apply MODIFY if present
+                                    List<Msg> effectiveMessages = conversationHistory;
+                                    ModelConfig guardedConfig = effectiveConfig;
+                                    if (preDecision.action() == GuardrailDecision.Action.MODIFY
+                                            && preDecision.modifiedPayload()
+                                                    instanceof
+                                                    GuardrailPayload.ModelInput modified) {
+                                        effectiveMessages = modified.messages();
+                                        guardedConfig = modified.config();
+                                    }
+                                    List<Msg> finalMessages = effectiveMessages;
+                                    ModelConfig finalConfig = guardedConfig;
+                                    if (streamingEnabledSupplier.get()) {
+                                        return callModelStreamingWithFallback(
+                                                finalMessages, finalConfig);
+                                    }
+                                    return guards.withCancellationSignal(
+                                            ctx.errorRecovery()
+                                                    .callModelWithRecovery(
+                                                            finalMessages, finalConfig, 0));
+                                });
 
         return guards.withCooperativeCancellation(responseMono)
-                .flatMap(response -> handleModelResponseWithPostHook(response, loopContinuation));
+                .flatMap(response -> evaluatePostModelGuardrail(response))
+                .doOnError(
+                        GuardrailDenyException.class,
+                        e -> log.warn("Guardrail denied: {}", e.getMessage()))
+                .onErrorResume(GuardrailDenyException.class, e -> Mono.<ModelResponse>empty())
+                .flatMap(response -> handleModelResponseWithPostHook(response, loopContinuation))
+                .switchIfEmpty(
+                        Mono.defer(
+                                () -> {
+                                    // PRE_MODEL DENY case — return error message
+                                    return Mono.just(
+                                            guards.buildFinalResponse(
+                                                    "Model call blocked by guardrail policy."));
+                                }));
     }
 
     /** Update budgets, run post-reasoning hook, then process tool/final response flow. */
@@ -386,5 +426,63 @@ class ReasoningPhase {
                 new ModelResponse.Usage(0, 0, 0, 0),
                 ModelResponse.StopReason.TOOL_USE,
                 modelName);
+    }
+
+    // ---- Guardrail helpers ----
+
+    private Mono<GuardrailDecision> evaluatePreModelGuardrail(
+            List<Msg> messages, ModelConfig config) {
+        GuardrailChain chain = ctx.guardrailChain();
+        if (chain == null) {
+            return Mono.just(GuardrailDecision.allow("no-guardrail"));
+        }
+        return Mono.defer(
+                () ->
+                        chain.evaluate(
+                                new GuardrailContext(
+                                        GuardrailPhase.PRE_MODEL,
+                                        ctx.agentName(),
+                                        config.model(),
+                                        new GuardrailPayload.ModelInput(messages, config),
+                                        Map.of())));
+    }
+
+    private Mono<ModelResponse> evaluatePostModelGuardrail(ModelResponse response) {
+        GuardrailChain chain = ctx.guardrailChain();
+        if (chain == null) {
+            return Mono.just(response);
+        }
+        String targetName = response.model() != null ? response.model() : "model";
+        return Mono.defer(
+                        () ->
+                                chain.evaluate(
+                                        new GuardrailContext(
+                                                GuardrailPhase.POST_MODEL,
+                                                ctx.agentName(),
+                                                targetName,
+                                                new GuardrailPayload.ModelOutput(response),
+                                                Map.of())))
+                .flatMap(
+                        decision -> {
+                            if (decision.action() == GuardrailDecision.Action.DENY) {
+                                return Mono.error(
+                                        new GuardrailDenyException(
+                                                "Guardrail denied model response: "
+                                                        + decision.reason()));
+                            }
+                            if (decision.action() == GuardrailDecision.Action.MODIFY
+                                    && decision.modifiedPayload()
+                                            instanceof GuardrailPayload.ModelOutput modified) {
+                                return Mono.just(modified.response());
+                            }
+                            return Mono.just(response);
+                        });
+    }
+
+    /** Internal exception for guardrail DENY flow control. */
+    private static class GuardrailDenyException extends RuntimeException {
+        GuardrailDenyException(String message) {
+            super(message);
+        }
     }
 }

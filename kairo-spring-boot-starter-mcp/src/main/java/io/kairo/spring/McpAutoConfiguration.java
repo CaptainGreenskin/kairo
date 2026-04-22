@@ -19,8 +19,10 @@ import io.kairo.mcp.AutoDeclineElicitationHandler;
 import io.kairo.mcp.ElicitationHandler;
 import io.kairo.mcp.McpClientRegistry;
 import io.kairo.mcp.McpServerConfig;
+import io.kairo.mcp.McpStaticGuardrailPolicy;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -30,6 +32,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 
 /**
  * Auto-configuration for Kairo MCP (Model Context Protocol) support.
@@ -63,13 +67,27 @@ public class McpAutoConfiguration {
 
             McpServerConfig config = toServerConfig(serverName, serverProps);
             log.info(
-                    "Registering MCP server '{}' (transport={})",
+                    "Registering MCP server '{}' (transport={}, security={})",
                     serverName,
-                    serverProps.getTransport());
+                    serverProps.getTransport(),
+                    serverProps.getSecurityPolicy());
             registry.register(config).block();
         }
 
         return registry;
+    }
+
+    @Bean
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    @ConditionalOnMissingBean(McpStaticGuardrailPolicy.class)
+    public McpStaticGuardrailPolicy mcpStaticGuardrailPolicy(KairoMcpProperties properties) {
+        Map<String, McpServerConfig> serverConfigs = new LinkedHashMap<>();
+        for (Map.Entry<String, KairoMcpProperties.McpServerProperties> entry :
+                properties.getServers().entrySet()) {
+            serverConfigs.put(entry.getKey(), toServerConfig(entry.getKey(), entry.getValue()));
+        }
+        log.info("Registered McpStaticGuardrailPolicy for {} MCP server(s)", serverConfigs.size());
+        return new McpStaticGuardrailPolicy(serverConfigs);
     }
 
     private McpServerConfig toServerConfig(
@@ -114,6 +132,15 @@ public class McpAutoConfiguration {
                 }
             }
         }
+
+        // Security configuration
+        builder.securityPolicy(props.getSecurityPolicy());
+        if (props.getAllowedTools() != null) {
+            builder.allowedTools(props.getAllowedTools());
+        }
+        builder.deniedTools(props.getDeniedTools());
+        builder.maxConcurrentCalls(props.getMaxConcurrentCalls());
+        builder.schemaValidation(props.isSchemaValidation());
 
         return builder.build();
     }

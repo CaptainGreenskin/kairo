@@ -20,13 +20,15 @@ package io.kairo.api.exception;
  */
 public class ModelApiException extends ModelException {
 
+    private static final String DEFAULT_ERROR_CODE = "MODEL_API_ERROR";
+
     /**
      * Create a new ModelApiException with the given message.
      *
      * @param message the detail message
      */
     public ModelApiException(String message) {
-        super(message);
+        super(message, null, DEFAULT_ERROR_CODE, false, null);
     }
 
     /**
@@ -36,6 +38,6 @@ public class ModelApiException extends ModelException {
      * @param cause the underlying cause
      */
     public ModelApiException(String message, Throwable cause) {
-        super(message, cause);
+        super(message, cause, DEFAULT_ERROR_CODE, false, null);
     }
 }

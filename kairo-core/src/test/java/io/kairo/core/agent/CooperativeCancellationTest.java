@@ -104,6 +104,7 @@ class CooperativeCancellationTest {
                         errorRecovery,
                         tokenBudgetManager,
                         shutdownManager,
+                        null,
                         null);
 
         ModelConfig modelConfig =

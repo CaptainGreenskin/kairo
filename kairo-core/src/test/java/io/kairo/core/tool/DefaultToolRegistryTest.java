@@ -21,6 +21,7 @@ import io.kairo.api.tool.JsonSchema;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -143,5 +144,15 @@ class DefaultToolRegistryTest {
 
         registry.unregister("bash");
         assertNull(registry.getToolInstance("bash"));
+    }
+
+    @Test
+    void unregisterAlsoRemovesMetadata() {
+        registry.register(tool("bash", ToolCategory.EXECUTION));
+        registry.setToolMetadata("bash", Map.of("mcp.server", "server-a"));
+        assertFalse(registry.getToolMetadata("bash").isEmpty());
+
+        registry.unregister("bash");
+        assertTrue(registry.getToolMetadata("bash").isEmpty());
     }
 }

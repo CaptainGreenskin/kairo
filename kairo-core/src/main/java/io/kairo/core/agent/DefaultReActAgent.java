@@ -21,6 +21,7 @@ import io.kairo.api.agent.AgentSnapshot;
 import io.kairo.api.agent.AgentState;
 import io.kairo.api.context.ContextManager;
 import io.kairo.api.exception.AgentInterruptedException;
+import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.hook.*;
 import io.kairo.api.hook.HookChain;
 import io.kairo.api.message.Msg;
@@ -125,6 +126,32 @@ public class DefaultReActAgent implements Agent {
             HookChain hookChain,
             DefaultMiddlewarePipeline middlewarePipeline,
             GracefulShutdownManager shutdownManager) {
+        this(
+                config,
+                toolExecutor,
+                hookChain,
+                middlewarePipeline,
+                shutdownManager,
+                (GuardrailChain) null);
+    }
+
+    /**
+     * Create a new ReAct agent with the given configuration and guardrail chain.
+     *
+     * @param config the agent configuration
+     * @param toolExecutor the tool executor for running tools
+     * @param hookChain the hook chain for lifecycle events
+     * @param middlewarePipeline the middleware pipeline
+     * @param shutdownManager the graceful shutdown manager
+     * @param guardrailChain the guardrail chain (null skips guardrail evaluation)
+     */
+    public DefaultReActAgent(
+            AgentConfig config,
+            ToolExecutor toolExecutor,
+            HookChain hookChain,
+            DefaultMiddlewarePipeline middlewarePipeline,
+            GracefulShutdownManager shutdownManager,
+            GuardrailChain guardrailChain) {
         this.id = UUID.randomUUID().toString();
         this.name = config.name();
         this.state = AgentState.IDLE;
@@ -187,7 +214,8 @@ public class DefaultReActAgent implements Agent {
                         errorRecovery,
                         this.tokenBudgetManager,
                         this.shutdownManager,
-                        this.contextManager);
+                        this.contextManager,
+                        guardrailChain);
         this.reactLoop =
                 new ReActLoop(
                         loopContext,
@@ -224,7 +252,13 @@ public class DefaultReActAgent implements Agent {
             DefaultMiddlewarePipeline middlewarePipeline,
             GracefulShutdownManager shutdownManager,
             Map<String, Object> toolDependencies) {
-        this(config, toolExecutor, hookChain, middlewarePipeline, shutdownManager);
+        this(
+                config,
+                toolExecutor,
+                hookChain,
+                middlewarePipeline,
+                shutdownManager,
+                (GuardrailChain) null);
         // Build this agent's ToolContext and propagate it via the Reactor Context in call().
         this.toolContext =
                 new ToolContext(
@@ -233,15 +267,16 @@ public class DefaultReActAgent implements Agent {
                         toolDependencies != null ? toolDependencies : Map.of());
     }
 
-    /** Create a new ReAct agent with a pre-built system prompt (used for sub-agents). */
+    /** Create a new ReAct agent with parent context and guardrail chain (used for sub-agents). */
     DefaultReActAgent(
             AgentConfig config,
             ToolExecutor toolExecutor,
             HookChain hookChain,
             DefaultMiddlewarePipeline middlewarePipeline,
             GracefulShutdownManager shutdownManager,
-            List<Msg> parentContext) {
-        this(config, toolExecutor, hookChain, middlewarePipeline, shutdownManager);
+            List<Msg> parentContext,
+            GuardrailChain guardrailChain) {
+        this(config, toolExecutor, hookChain, middlewarePipeline, shutdownManager, guardrailChain);
         // Inherit parent context as initial conversation history
         if (parentContext != null) {
             reactLoop.injectMessages(parentContext);

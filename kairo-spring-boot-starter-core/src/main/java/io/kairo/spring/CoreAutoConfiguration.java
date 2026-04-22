@@ -17,16 +17,23 @@ package io.kairo.spring;
 
 import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentFactory;
+import io.kairo.api.guardrail.GuardrailChain;
+import io.kairo.api.guardrail.GuardrailPolicy;
+import io.kairo.api.guardrail.SecurityEventSink;
 import io.kairo.api.middleware.Middleware;
 import io.kairo.api.model.ModelProvider;
+import io.kairo.api.routing.RoutingPolicy;
 import io.kairo.api.tool.PermissionGuard;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.core.agent.AgentBuilder;
 import io.kairo.core.agent.DefaultAgentFactory;
+import io.kairo.core.guardrail.DefaultGuardrailChain;
+import io.kairo.core.guardrail.LoggingSecurityEventSink;
 import io.kairo.core.model.ModelCircuitBreaker;
 import io.kairo.core.model.anthropic.AnthropicProvider;
 import io.kairo.core.model.openai.OpenAIProvider;
+import io.kairo.core.routing.DefaultRoutingPolicy;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
@@ -135,14 +142,61 @@ class CoreAutoConfiguration {
         return guard;
     }
 
+    /**
+     * Default {@link SecurityEventSink} bean that logs security events via SLF4J.
+     *
+     * <p>Uses {@link LoggingSecurityEventSink}: DENY and MCP_BLOCK events are logged at WARN level,
+     * all others at INFO level. Replace this bean with a custom {@link SecurityEventSink}
+     * implementation to route security events to an external audit system (e.g., SIEM, database).
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    SecurityEventSink securityEventSink() {
+        return new LoggingSecurityEventSink();
+    }
+
+    /**
+     * Default {@link GuardrailChain} bean that evaluates all registered {@link GuardrailPolicy}
+     * instances in order, emitting {@link io.kairo.api.guardrail.SecurityEvent}s to the configured
+     * {@link SecurityEventSink}.
+     *
+     * <p>Collects all {@link GuardrailPolicy} beans from the application context (if any) and wires
+     * them into a {@link DefaultGuardrailChain}. Replace this bean to provide a custom chain
+     * implementation with different ordering or short-circuit semantics.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    GuardrailChain guardrailChain(
+            @org.springframework.beans.factory.annotation.Autowired(required = false)
+                    List<GuardrailPolicy> policies,
+            @org.springframework.beans.factory.annotation.Autowired(required = false)
+                    SecurityEventSink securityEventSink) {
+        return new DefaultGuardrailChain(
+                policies != null ? policies : List.of(), securityEventSink);
+    }
+
+    /**
+     * Default {@link RoutingPolicy} bean that uses {@link DefaultRoutingPolicy}.
+     *
+     * <p>The default policy applies simple model routing without cost awareness or provider
+     * preferences. Replace this bean with a custom {@link RoutingPolicy} implementation to add
+     * cost-based routing, latency-aware selection, or provider failover strategies.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    RoutingPolicy routingPolicy() {
+        return new DefaultRoutingPolicy();
+    }
+
     @Bean
     @ConditionalOnMissingBean
     ToolExecutor toolExecutor(
             DefaultToolRegistry toolRegistry,
             PermissionGuard permissionGuard,
-            GracefulShutdownManager gracefulShutdownManager) {
+            GracefulShutdownManager gracefulShutdownManager,
+            GuardrailChain guardrailChain) {
         return new DefaultToolExecutor(
-                toolRegistry, permissionGuard, null, gracefulShutdownManager);
+                toolRegistry, permissionGuard, null, gracefulShutdownManager, 3, guardrailChain);
     }
 
     // ---- Agent Factory ----
@@ -150,8 +204,10 @@ class CoreAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     AgentFactory agentFactory(
-            ToolExecutor toolExecutor, GracefulShutdownManager gracefulShutdownManager) {
-        return new DefaultAgentFactory(toolExecutor, gracefulShutdownManager);
+            ToolExecutor toolExecutor,
+            GracefulShutdownManager gracefulShutdownManager,
+            GuardrailChain guardrailChain) {
+        return new DefaultAgentFactory(toolExecutor, gracefulShutdownManager, guardrailChain);
     }
 
     // ---- Default Agent ----
@@ -163,6 +219,7 @@ class CoreAutoConfiguration {
             ToolRegistry toolRegistry,
             ToolExecutor toolExecutor,
             GracefulShutdownManager gracefulShutdownManager,
+            GuardrailChain guardrailChain,
             AgentRuntimeProperties properties,
             @org.springframework.beans.factory.annotation.Autowired(required = false)
                     List<Middleware> middlewares) {
@@ -180,7 +237,8 @@ class CoreAutoConfiguration {
                         .maxIterations(agentProps.getMaxIterations())
                         .timeout(Duration.ofSeconds(agentProps.getTimeoutSeconds()))
                         .tokenBudget(agentProps.getTokenBudget())
-                        .shutdownManager(gracefulShutdownManager);
+                        .shutdownManager(gracefulShutdownManager)
+                        .guardrailChain(guardrailChain);
 
         if (middlewares != null) {
             for (Middleware mw : middlewares) {

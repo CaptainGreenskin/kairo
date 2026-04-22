@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Kairo Benchmark Result",
+  "type": "object",
+  "required": [
+    "scenarioId",
+    "category",
+    "releaseTag",
+    "gitCommit",
+    "provider",
+    "model",
+    "status",
+    "latencyMs"
+  ],
+  "properties": {
+    "scenarioId": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "tool-correctness",
+        "long-task-stability",
+        "safety-governance",
+        "cost-efficiency"
+      ]
+    },
+    "releaseTag": {
+      "type": "string"
+    },
+    "gitCommit": {
+      "type": "string"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail",
+        "blocked"
+      ]
+    },
+    "failureReason": {
+      "type": "string"
+    },
+    "latencyMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "inputTokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "outputTokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "estimatedCostUsd": {
+      "type": "number",
+      "minimum": 0
+    },
+    "toolCalls": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "guardrailDecision": {
+      "type": "string",
+      "enum": [
+        "allow",
+        "deny",
+        "modify",
+        "warn",
+        "na"
+      ]
+    },
+    "mcpSecurityDecision": {
+      "type": "string",
+      "enum": [
+        "allow",
+        "block",
+        "na"
+      ]
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}
+

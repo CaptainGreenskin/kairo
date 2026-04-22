@@ -115,6 +115,10 @@ class SkillToolManager {
                                     // adapter to satisfy DefaultToolExecutor's handler contract.
                                     ToolHandler adapter = adaptMcpExecutor(executor);
                                     toolExecutor.registerToolInstance(def.name(), adapter);
+                                    // Set MCP origin metadata for guardrail policy evaluation
+                                    toolExecutor.setToolMetadata(
+                                            def.name(),
+                                            Map.of("mcp.server", registration.serverName()));
                                 }
                                 log.info(
                                         "MCP server '{}' registered {} tool(s) into agent",

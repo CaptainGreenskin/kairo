@@ -16,6 +16,7 @@
 package io.kairo.core.tool;
 
 import io.kairo.api.exception.PlanModeViolationException;
+import io.kairo.api.guardrail.*;
 import io.kairo.api.tool.*;
 import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
@@ -60,6 +61,7 @@ public class DefaultToolExecutor implements ToolExecutor {
     private final ToolCircuitBreakerTracker circuitBreakerTracker;
     private final ToolInvocationRunner invocationRunner;
     private final ToolApprovalFlow approvalFlow;
+    private final GuardrailChain guardrailChain; // nullable — backward compatible
 
     /** Reactor Context key used to propagate {@link ToolContext} through the reactive pipeline. */
     public static final Class<ToolContext> CONTEXT_KEY = ToolContext.class;
@@ -71,7 +73,7 @@ public class DefaultToolExecutor implements ToolExecutor {
      * @param permissionGuard the permission guard
      */
     public DefaultToolExecutor(DefaultToolRegistry registry, PermissionGuard permissionGuard) {
-        this(registry, permissionGuard, null, null);
+        this(registry, permissionGuard, null, null, DEFAULT_CIRCUIT_BREAKER_THRESHOLD, null);
     }
 
     /**
@@ -83,7 +85,7 @@ public class DefaultToolExecutor implements ToolExecutor {
      */
     public DefaultToolExecutor(
             DefaultToolRegistry registry, PermissionGuard permissionGuard, Tracer tracer) {
-        this(registry, permissionGuard, tracer, null);
+        this(registry, permissionGuard, tracer, null, DEFAULT_CIRCUIT_BREAKER_THRESHOLD, null);
     }
 
     /**
@@ -100,7 +102,13 @@ public class DefaultToolExecutor implements ToolExecutor {
             PermissionGuard permissionGuard,
             Tracer tracer,
             GracefulShutdownManager shutdownManager) {
-        this(registry, permissionGuard, tracer, shutdownManager, DEFAULT_CIRCUIT_BREAKER_THRESHOLD);
+        this(
+                registry,
+                permissionGuard,
+                tracer,
+                shutdownManager,
+                DEFAULT_CIRCUIT_BREAKER_THRESHOLD,
+                null);
     }
 
     /**
@@ -118,6 +126,26 @@ public class DefaultToolExecutor implements ToolExecutor {
             Tracer tracer,
             GracefulShutdownManager shutdownManager,
             int circuitBreakerThreshold) {
+        this(registry, permissionGuard, tracer, shutdownManager, circuitBreakerThreshold, null);
+    }
+
+    /**
+     * Create a new executor with all options including guardrail chain.
+     *
+     * @param registry the tool registry
+     * @param permissionGuard the permission guard
+     * @param tracer the tracer (null defaults to NoopTracer)
+     * @param shutdownManager the shutdown manager (null creates a new instance)
+     * @param circuitBreakerThreshold consecutive failures before a tool is circuit-broken
+     * @param guardrailChain the guardrail chain (null skips guardrail evaluation)
+     */
+    public DefaultToolExecutor(
+            DefaultToolRegistry registry,
+            PermissionGuard permissionGuard,
+            Tracer tracer,
+            GracefulShutdownManager shutdownManager,
+            int circuitBreakerThreshold,
+            GuardrailChain guardrailChain) {
         this.registry = registry;
         this.tracer = tracer != null ? tracer : new io.kairo.api.tracing.NoopTracer();
         GracefulShutdownManager sm =
@@ -127,6 +155,7 @@ public class DefaultToolExecutor implements ToolExecutor {
         this.circuitBreakerTracker = new ToolCircuitBreakerTracker(circuitBreakerThreshold);
         this.invocationRunner = new ToolInvocationRunner(this.tracer, sm);
         this.approvalFlow = new ToolApprovalFlow(permissionResolver, this);
+        this.guardrailChain = guardrailChain;
     }
 
     // ==================== ToolExecutor interface delegation ====================
@@ -305,14 +334,89 @@ public class DefaultToolExecutor implements ToolExecutor {
                                             return Mono.just(
                                                     ToolResultSanitizer.errorResult(toolName, msg));
                                         }
-                                        // 7. Execute tool via runner
-                                        return invocationRunner
-                                                .execute(toolName, handler, input, timeout)
-                                                .doOnNext(
-                                                        result ->
-                                                                circuitBreakerTracker.track(
-                                                                        cbKey, result))
-                                                .map(ToolResultSanitizer::sanitize);
+                                        // 7. PRE_TOOL guardrail
+                                        return evaluatePreToolGuardrail(toolName, input)
+                                                .flatMap(
+                                                        preDecision -> {
+                                                            if (preDecision.action()
+                                                                    == GuardrailDecision.Action
+                                                                            .DENY) {
+                                                                return Mono.just(
+                                                                        ToolResultSanitizer
+                                                                                .errorResult(
+                                                                                        toolName,
+                                                                                        "Guardrail denied: "
+                                                                                                + preDecision
+                                                                                                        .reason()));
+                                                            }
+                                                            // Use modified args if MODIFY
+                                                            Map<String, Object> effectiveInput =
+                                                                    input;
+                                                            if (preDecision.action()
+                                                                            == GuardrailDecision
+                                                                                    .Action.MODIFY
+                                                                    && preDecision.modifiedPayload()
+                                                                            instanceof
+                                                                            GuardrailPayload
+                                                                                            .ToolInput
+                                                                                    modified) {
+                                                                effectiveInput = modified.args();
+                                                            }
+                                                            // 8. Execute tool via runner
+                                                            Map<String, Object> finalInput =
+                                                                    effectiveInput;
+                                                            return invocationRunner
+                                                                    .execute(
+                                                                            toolName,
+                                                                            handler,
+                                                                            finalInput,
+                                                                            timeout)
+                                                                    .doOnNext(
+                                                                            result ->
+                                                                                    circuitBreakerTracker
+                                                                                            .track(
+                                                                                                    cbKey,
+                                                                                                    result))
+                                                                    .map(
+                                                                            ToolResultSanitizer
+                                                                                    ::sanitize)
+                                                                    // 9. POST_TOOL guardrail
+                                                                    .flatMap(
+                                                                            result ->
+                                                                                    evaluatePostToolGuardrail(
+                                                                                                    toolName,
+                                                                                                    result)
+                                                                                            .map(
+                                                                                                    postDecision -> {
+                                                                                                        if (postDecision
+                                                                                                                        .action()
+                                                                                                                == GuardrailDecision
+                                                                                                                        .Action
+                                                                                                                        .DENY) {
+                                                                                                            return ToolResultSanitizer
+                                                                                                                    .errorResult(
+                                                                                                                            toolName,
+                                                                                                                            "Guardrail denied: "
+                                                                                                                                    + postDecision
+                                                                                                                                            .reason());
+                                                                                                        }
+                                                                                                        if (postDecision
+                                                                                                                                .action()
+                                                                                                                        == GuardrailDecision
+                                                                                                                                .Action
+                                                                                                                                .MODIFY
+                                                                                                                && postDecision
+                                                                                                                                .modifiedPayload()
+                                                                                                                        instanceof
+                                                                                                                        GuardrailPayload
+                                                                                                                                        .ToolOutput
+                                                                                                                                modified) {
+                                                                                                            return modified
+                                                                                                                    .result();
+                                                                                                        }
+                                                                                                        return result;
+                                                                                                    }));
+                                                        });
                                     });
                 });
     }
@@ -414,6 +518,11 @@ public class DefaultToolExecutor implements ToolExecutor {
     }
 
     @Override
+    public void setToolMetadata(String toolName, java.util.Map<String, Object> metadata) {
+        registry.setToolMetadata(toolName, metadata);
+    }
+
+    @Override
     public boolean supportsStreaming() {
         return true;
     }
@@ -426,5 +535,54 @@ public class DefaultToolExecutor implements ToolExecutor {
     @Override
     public void resetCircuitBreaker(String toolName) {
         circuitBreakerTracker.reset(toolName);
+    }
+
+    // ---- Guardrail helpers ----
+
+    private Mono<GuardrailDecision> evaluatePreToolGuardrail(
+            String toolName, Map<String, Object> input) {
+        if (guardrailChain == null) {
+            return Mono.just(GuardrailDecision.allow("no-guardrail"));
+        }
+        Map<String, Object> metadata = registry.getToolMetadata(toolName);
+        return Mono.deferContextual(
+                contextView -> {
+                    String agentName = resolveAgentName(contextView);
+                    return guardrailChain.evaluate(
+                            new GuardrailContext(
+                                    GuardrailPhase.PRE_TOOL,
+                                    agentName,
+                                    toolName,
+                                    new GuardrailPayload.ToolInput(toolName, input),
+                                    metadata));
+                });
+    }
+
+    private Mono<GuardrailDecision> evaluatePostToolGuardrail(String toolName, ToolResult result) {
+        if (guardrailChain == null) {
+            return Mono.just(GuardrailDecision.allow("no-guardrail"));
+        }
+        return Mono.deferContextual(
+                contextView -> {
+                    String agentName = resolveAgentName(contextView);
+                    return guardrailChain.evaluate(
+                            new GuardrailContext(
+                                    GuardrailPhase.POST_TOOL,
+                                    agentName,
+                                    toolName,
+                                    new GuardrailPayload.ToolOutput(toolName, result),
+                                    Map.of()));
+                });
+    }
+
+    /** Extract agent name from Reactor context, falling back to agentId or {@code "agent"}. */
+    private String resolveAgentName(reactor.util.context.ContextView contextView) {
+        if (contextView.hasKey(CONTEXT_KEY)) {
+            ToolContext ctx = contextView.get(CONTEXT_KEY);
+            if (ctx.agentId() != null && !ctx.agentId().isBlank()) {
+                return ctx.agentId();
+            }
+        }
+        return "agent";
     }
 }

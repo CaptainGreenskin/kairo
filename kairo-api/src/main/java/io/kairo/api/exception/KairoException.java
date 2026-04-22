@@ -27,6 +27,10 @@ package io.kairo.api.exception;
  * budget violations. Callers that need to distinguish error categories should catch the specific
  * subclass rather than this base type.
  *
+ * <p>Structured error fields ({@code errorCode}, {@code category}, {@code retryable}, {@code
+ * retryAfterMs}) provide machine-readable metadata for programmatic error routing, observability,
+ * and retry decisions.
+ *
  * <pre>{@code
  * try {
  *     agent.call(input).block();
@@ -37,6 +41,11 @@ package io.kairo.api.exception;
  */
 public class KairoException extends RuntimeException {
 
+    private final String errorCode;
+    private final ErrorCategory category;
+    private final boolean retryable;
+    private final Long retryAfterMs;
+
     /**
      * Create a new KairoException with the given message.
      *
@@ -44,6 +53,10 @@ public class KairoException extends RuntimeException {
      */
     public KairoException(String message) {
         super(message);
+        this.errorCode = null;
+        this.category = null;
+        this.retryable = false;
+        this.retryAfterMs = null;
     }
 
     /**
@@ -54,6 +67,10 @@ public class KairoException extends RuntimeException {
      */
     public KairoException(String message, Throwable cause) {
         super(message, cause);
+        this.errorCode = null;
+        this.category = null;
+        this.retryable = false;
+        this.retryAfterMs = null;
     }
 
     /**
@@ -63,5 +80,71 @@ public class KairoException extends RuntimeException {
      */
     public KairoException(Throwable cause) {
         super(cause);
+        this.errorCode = null;
+        this.category = null;
+        this.retryable = false;
+        this.retryAfterMs = null;
+    }
+
+    /**
+     * Create a new KairoException with all structured error fields.
+     *
+     * <p>Intended for use by subclasses that provide domain-specific defaults.
+     *
+     * @param message the detail message
+     * @param cause the underlying cause (may be null)
+     * @param errorCode machine-readable error code (e.g. "MODEL_RATE_LIMITED")
+     * @param category the error category for routing and metrics
+     * @param retryable whether the operation that caused this error is retryable
+     * @param retryAfterMs suggested retry delay in milliseconds, or null if not applicable
+     */
+    protected KairoException(
+            String message,
+            Throwable cause,
+            String errorCode,
+            ErrorCategory category,
+            boolean retryable,
+            Long retryAfterMs) {
+        super(message, cause);
+        this.errorCode = errorCode;
+        this.category = category;
+        this.retryable = retryable;
+        this.retryAfterMs = retryAfterMs;
+    }
+
+    /**
+     * Get the machine-readable error code.
+     *
+     * @return the error code, or null if not set
+     */
+    public String getErrorCode() {
+        return errorCode;
+    }
+
+    /**
+     * Get the error category.
+     *
+     * @return the category, or null if not set
+     */
+    public ErrorCategory getCategory() {
+        return category;
+    }
+
+    /**
+     * Check whether the error is retryable.
+     *
+     * @return true if the operation may be retried
+     */
+    public boolean isRetryable() {
+        return retryable;
+    }
+
+    /**
+     * Get the suggested retry delay in milliseconds.
+     *
+     * @return the retry delay in milliseconds, or null if not applicable
+     */
+    public Long getRetryAfterMs() {
+        return retryAfterMs;
     }
 }

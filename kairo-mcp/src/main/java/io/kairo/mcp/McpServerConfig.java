@@ -21,6 +21,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Configuration for connecting to an MCP server.
@@ -39,6 +40,12 @@ import java.util.Map;
  * @param requestTimeout per-request timeout (default 30s)
  * @param maxToolsPerServer maximum number of tools to register from this server (default 128);
  *     tools beyond this limit are truncated with a warning log
+ * @param securityPolicy the security policy for tool access control (default {@link
+ *     McpSecurityPolicy#DENY_SAFE})
+ * @param allowedTools explicit allowlist of tool names (null = use policy default)
+ * @param deniedTools explicit blocklist of tool names (empty = no blocklist)
+ * @param maxConcurrentCalls maximum concurrent tool calls to this server (default 10)
+ * @param schemaValidation whether to validate tool input against JSON Schema (default true)
  */
 public record McpServerConfig(
         String name,
@@ -53,10 +60,18 @@ public record McpServerConfig(
         List<String> disableTools,
         Map<String, Map<String, Object>> presetArgs,
         Duration requestTimeout,
-        int maxToolsPerServer) {
+        int maxToolsPerServer,
+        McpSecurityPolicy securityPolicy,
+        Set<String> allowedTools,
+        Set<String> deniedTools,
+        int maxConcurrentCalls,
+        boolean schemaValidation) {
 
     /** Default maximum number of tools that can be registered from a single MCP server. */
     public static final int DEFAULT_MAX_TOOLS_PER_SERVER = 128;
+
+    /** Default maximum concurrent tool calls per server. */
+    public static final int DEFAULT_MAX_CONCURRENT_CALLS = 10;
 
     /** Supported MCP transport types. */
     public enum TransportType {
@@ -80,7 +95,12 @@ public record McpServerConfig(
                 null,
                 Collections.emptyMap(),
                 Duration.ofSeconds(30),
-                DEFAULT_MAX_TOOLS_PER_SERVER);
+                DEFAULT_MAX_TOOLS_PER_SERVER,
+                McpSecurityPolicy.DENY_SAFE,
+                null,
+                Set.of(),
+                DEFAULT_MAX_CONCURRENT_CALLS,
+                true);
     }
 
     /** Creates a Streamable HTTP config with the given URL. */
@@ -98,7 +118,12 @@ public record McpServerConfig(
                 null,
                 Collections.emptyMap(),
                 Duration.ofSeconds(30),
-                DEFAULT_MAX_TOOLS_PER_SERVER);
+                DEFAULT_MAX_TOOLS_PER_SERVER,
+                McpSecurityPolicy.DENY_SAFE,
+                null,
+                Set.of(),
+                DEFAULT_MAX_CONCURRENT_CALLS,
+                true);
     }
 
     /** Creates an SSE config with the given URL. */
@@ -116,7 +141,12 @@ public record McpServerConfig(
                 null,
                 Collections.emptyMap(),
                 Duration.ofSeconds(30),
-                DEFAULT_MAX_TOOLS_PER_SERVER);
+                DEFAULT_MAX_TOOLS_PER_SERVER,
+                McpSecurityPolicy.DENY_SAFE,
+                null,
+                Set.of(),
+                DEFAULT_MAX_CONCURRENT_CALLS,
+                true);
     }
 
     /** Returns a new builder. */
@@ -139,6 +169,11 @@ public record McpServerConfig(
         private Map<String, Map<String, Object>> presetArgs = new HashMap<>();
         private Duration requestTimeout = Duration.ofSeconds(30);
         private int maxToolsPerServer = DEFAULT_MAX_TOOLS_PER_SERVER;
+        private McpSecurityPolicy securityPolicy = McpSecurityPolicy.DENY_SAFE;
+        private Set<String> allowedTools;
+        private Set<String> deniedTools = Set.of();
+        private int maxConcurrentCalls = DEFAULT_MAX_CONCURRENT_CALLS;
+        private boolean schemaValidation = true;
 
         public Builder name(String name) {
             this.name = name;
@@ -212,9 +247,66 @@ public record McpServerConfig(
             return this;
         }
 
+        /**
+         * Sets the security policy for tool access control.
+         *
+         * @param securityPolicy the security policy (default {@link McpSecurityPolicy#DENY_SAFE})
+         * @return this builder
+         */
+        public Builder securityPolicy(McpSecurityPolicy securityPolicy) {
+            this.securityPolicy = securityPolicy;
+            return this;
+        }
+
+        /**
+         * Sets the explicit allowlist of tool names. Only meaningful with {@link
+         * McpSecurityPolicy#DENY_SAFE}.
+         *
+         * @param allowedTools the allowed tool names (null = use policy default)
+         * @return this builder
+         */
+        public Builder allowedTools(Set<String> allowedTools) {
+            this.allowedTools = allowedTools;
+            return this;
+        }
+
+        /**
+         * Sets the explicit blocklist of tool names.
+         *
+         * @param deniedTools the denied tool names (empty = no blocklist)
+         * @return this builder
+         */
+        public Builder deniedTools(Set<String> deniedTools) {
+            this.deniedTools = deniedTools != null ? deniedTools : Set.of();
+            return this;
+        }
+
+        /**
+         * Sets the maximum concurrent tool calls to this server.
+         *
+         * @param maxConcurrentCalls the concurrency limit (default 10)
+         * @return this builder
+         */
+        public Builder maxConcurrentCalls(int maxConcurrentCalls) {
+            this.maxConcurrentCalls = maxConcurrentCalls;
+            return this;
+        }
+
+        /**
+         * Sets whether to validate tool input against JSON Schema before execution.
+         *
+         * @param schemaValidation true to enable validation (default true)
+         * @return this builder
+         */
+        public Builder schemaValidation(boolean schemaValidation) {
+            this.schemaValidation = schemaValidation;
+            return this;
+        }
+
         public McpServerConfig build() {
             if (name == null || name.isBlank()) {
-                throw new IllegalArgumentException("Server name must not be null or blank");
+                throw new IllegalArgumentException(
+                        "McpServerConfig.name must not be null or empty");
             }
             if (transportType == null) {
                 throw new IllegalArgumentException("Transport type must be specified");
@@ -232,7 +324,12 @@ public record McpServerConfig(
                     disableTools,
                     presetArgs,
                     requestTimeout,
-                    maxToolsPerServer);
+                    maxToolsPerServer,
+                    securityPolicy,
+                    allowedTools != null ? Set.copyOf(allowedTools) : null,
+                    deniedTools != null ? Set.copyOf(deniedTools) : Set.of(),
+                    maxConcurrentCalls,
+                    schemaValidation);
         }
     }
 }

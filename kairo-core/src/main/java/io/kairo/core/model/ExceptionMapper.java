@@ -49,8 +49,10 @@ public final class ExceptionMapper {
         if (Exceptions.isRetryExhausted(e) && e.getCause() != null) {
             return toApiException(e.getCause());
         }
-        if (e instanceof ModelProviderException.RateLimitException) {
-            return new ModelRateLimitException(e.getMessage(), e);
+        if (e instanceof ModelProviderException.RateLimitException rle) {
+            Long retryAfterMs =
+                    rle.getRetryAfterSeconds() != null ? rle.getRetryAfterSeconds() * 1000L : null;
+            return new ModelRateLimitException(e.getMessage(), e, retryAfterMs);
         }
         if (e instanceof ModelProviderException.ApiException) {
             return new ModelApiException(e.getMessage(), e);

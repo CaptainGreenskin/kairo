@@ -69,6 +69,12 @@ public class McpClientRegistry implements Closeable {
      * @return a Mono emitting the tool group for this server
      */
     public Mono<McpToolGroup> register(McpServerConfig config) {
+        if (config.name() == null || config.name().isBlank()) {
+            return Mono.error(
+                    new IllegalArgumentException(
+                            "MCP server config must have a non-blank name; "
+                                    + "this name is required for the 'mcp.server' guardrail metadata key"));
+        }
         if (clients.containsKey(config.name())) {
             return Mono.error(
                     new IllegalStateException("MCP server already registered: " + config.name()));

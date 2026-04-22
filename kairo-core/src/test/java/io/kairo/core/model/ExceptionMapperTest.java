@@ -17,6 +17,7 @@ package io.kairo.core.model;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.exception.ErrorCategory;
 import io.kairo.api.exception.KairoException;
 import io.kairo.api.exception.MemoryStoreException;
 import io.kairo.api.exception.ModelApiException;
@@ -143,5 +144,62 @@ class ExceptionMapperTest {
         assertInstanceOf(MemoryStoreException.class, mapped);
         assertEquals("io error", mapped.getMessage());
         assertSame(cause, mapped.getCause());
+    }
+
+    // --- Structured field propagation ---
+
+    @Test
+    void rateLimitMappingPopulatesRetryableAndErrorCode() {
+        var cause = new ModelProviderException.RateLimitException("rate limited", 30L);
+        Throwable mapped = ExceptionMapper.toApiException(cause);
+
+        assertInstanceOf(ModelRateLimitException.class, mapped);
+        var rle = (ModelRateLimitException) mapped;
+        assertTrue(rle.isRetryable());
+        assertEquals("MODEL_RATE_LIMITED", rle.getErrorCode());
+        assertEquals(ErrorCategory.MODEL, rle.getCategory());
+    }
+
+    @Test
+    void rateLimitMappingConvertsRetryAfterSecondsToMs() {
+        var cause = new ModelProviderException.RateLimitException("rate limited", 30L);
+        Throwable mapped = ExceptionMapper.toApiException(cause);
+
+        var rle = (ModelRateLimitException) mapped;
+        assertEquals(30000L, rle.getRetryAfterMs());
+    }
+
+    @Test
+    void rateLimitMappingWithNullRetryAfterSeconds() {
+        var cause = new ModelProviderException.RateLimitException("rate limited", null);
+        Throwable mapped = ExceptionMapper.toApiException(cause);
+
+        var rle = (ModelRateLimitException) mapped;
+        assertTrue(rle.isRetryable());
+        assertNull(rle.getRetryAfterMs());
+    }
+
+    @Test
+    void timeoutMappingPopulatesErrorCode() {
+        var cause = new TimeoutException("deadline exceeded");
+        Throwable mapped = ExceptionMapper.toApiException(cause);
+
+        assertInstanceOf(ModelTimeoutException.class, mapped);
+        var mte = (ModelTimeoutException) mapped;
+        assertEquals("MODEL_TIMEOUT", mte.getErrorCode());
+        assertTrue(mte.isRetryable());
+        assertEquals(ErrorCategory.MODEL, mte.getCategory());
+    }
+
+    @Test
+    void apiExceptionMappingPreservesStructuredFields() {
+        var cause = new ModelProviderException.ApiException("API error: HTTP 500");
+        Throwable mapped = ExceptionMapper.toApiException(cause);
+
+        assertInstanceOf(ModelApiException.class, mapped);
+        var mae = (ModelApiException) mapped;
+        assertEquals("MODEL_API_ERROR", mae.getErrorCode());
+        assertEquals(ErrorCategory.MODEL, mae.getCategory());
+        assertFalse(mae.isRetryable());
     }
 }

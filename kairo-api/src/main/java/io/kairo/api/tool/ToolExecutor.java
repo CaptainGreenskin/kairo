@@ -105,6 +105,14 @@ public interface ToolExecutor {
     default void registerToolInstance(String toolName, Object instance) {}
 
     /**
+     * Set metadata for a tool. Metadata is passed to guardrail policies via the guardrail context.
+     *
+     * @param toolName the tool name
+     * @param metadata the metadata key-value pairs
+     */
+    default void setToolMetadata(String toolName, java.util.Map<String, Object> metadata) {}
+
+    /**
      * Whether this executor supports streaming tool execution.
      *
      * @return true if streaming dispatch is supported

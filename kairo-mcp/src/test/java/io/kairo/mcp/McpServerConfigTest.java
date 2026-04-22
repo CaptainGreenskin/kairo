@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class McpServerConfigTest {
@@ -157,5 +158,127 @@ class McpServerConfigTest {
         assertNull(http.bearerToken());
         assertTrue(sse.queryParams().isEmpty());
         assertNull(sse.bearerToken());
+    }
+
+    // ---- Security fields ----
+
+    @Test
+    void staticFactoryConfigsHaveSecurityDefaults() {
+        McpServerConfig config = McpServerConfig.stdio("fs", "cmd");
+        assertEquals(McpSecurityPolicy.DENY_SAFE, config.securityPolicy());
+        assertNull(config.allowedTools());
+        assertTrue(config.deniedTools().isEmpty());
+        assertEquals(10, config.maxConcurrentCalls());
+        assertTrue(config.schemaValidation());
+    }
+
+    @Test
+    void builderSecurityDefaults() {
+        McpServerConfig config =
+                McpServerConfig.builder()
+                        .name("test")
+                        .transportType(McpServerConfig.TransportType.STDIO)
+                        .command(List.of("cmd"))
+                        .build();
+        assertEquals(McpSecurityPolicy.DENY_SAFE, config.securityPolicy());
+        assertNull(config.allowedTools());
+        assertTrue(config.deniedTools().isEmpty());
+        assertEquals(10, config.maxConcurrentCalls());
+        assertTrue(config.schemaValidation());
+    }
+
+    @Test
+    void builderWithSecurityPolicy() {
+        McpServerConfig config =
+                McpServerConfig.builder()
+                        .name("test")
+                        .transportType(McpServerConfig.TransportType.STDIO)
+                        .command(List.of("cmd"))
+                        .securityPolicy(McpSecurityPolicy.ALLOW_ALL)
+                        .build();
+        assertEquals(McpSecurityPolicy.ALLOW_ALL, config.securityPolicy());
+    }
+
+    @Test
+    void builderWithAllowedAndDeniedTools() {
+        McpServerConfig config =
+                McpServerConfig.builder()
+                        .name("test")
+                        .transportType(McpServerConfig.TransportType.STDIO)
+                        .command(List.of("cmd"))
+                        .allowedTools(Set.of("read", "write"))
+                        .deniedTools(Set.of("delete"))
+                        .build();
+        assertEquals(Set.of("read", "write"), config.allowedTools());
+        assertEquals(Set.of("delete"), config.deniedTools());
+    }
+
+    @Test
+    void builderWithMaxConcurrentCalls() {
+        McpServerConfig config =
+                McpServerConfig.builder()
+                        .name("test")
+                        .transportType(McpServerConfig.TransportType.STDIO)
+                        .command(List.of("cmd"))
+                        .maxConcurrentCalls(5)
+                        .build();
+        assertEquals(5, config.maxConcurrentCalls());
+    }
+
+    @Test
+    void builderWithSchemaValidationDisabled() {
+        McpServerConfig config =
+                McpServerConfig.builder()
+                        .name("test")
+                        .transportType(McpServerConfig.TransportType.STDIO)
+                        .command(List.of("cmd"))
+                        .schemaValidation(false)
+                        .build();
+        assertFalse(config.schemaValidation());
+    }
+
+    @Test
+    void builderDeniedToolsNullDefaultsToEmpty() {
+        McpServerConfig config =
+                McpServerConfig.builder()
+                        .name("test")
+                        .transportType(McpServerConfig.TransportType.STDIO)
+                        .command(List.of("cmd"))
+                        .deniedTools(null)
+                        .build();
+        assertNotNull(config.deniedTools());
+        assertTrue(config.deniedTools().isEmpty());
+    }
+
+    @Test
+    void builderWithDenyAllPolicy() {
+        McpServerConfig config =
+                McpServerConfig.builder()
+                        .name("test")
+                        .transportType(McpServerConfig.TransportType.STDIO)
+                        .command(List.of("cmd"))
+                        .securityPolicy(McpSecurityPolicy.DENY_ALL)
+                        .build();
+        assertEquals(McpSecurityPolicy.DENY_ALL, config.securityPolicy());
+    }
+
+    @Test
+    void streamableHttpHasSecurityDefaults() {
+        McpServerConfig config = McpServerConfig.streamableHttp("api", "http://localhost");
+        assertEquals(McpSecurityPolicy.DENY_SAFE, config.securityPolicy());
+        assertNull(config.allowedTools());
+        assertTrue(config.deniedTools().isEmpty());
+        assertEquals(10, config.maxConcurrentCalls());
+        assertTrue(config.schemaValidation());
+    }
+
+    @Test
+    void sseHasSecurityDefaults() {
+        McpServerConfig config = McpServerConfig.sse("events", "http://localhost");
+        assertEquals(McpSecurityPolicy.DENY_SAFE, config.securityPolicy());
+        assertNull(config.allowedTools());
+        assertTrue(config.deniedTools().isEmpty());
+        assertEquals(10, config.maxConcurrentCalls());
+        assertTrue(config.schemaValidation());
     }
 }

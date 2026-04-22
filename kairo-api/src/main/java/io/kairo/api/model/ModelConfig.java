@@ -51,7 +51,8 @@ public record ModelConfig(
         Class<?> responseSchema,
         Double effort,
         RetryConfig retryConfig,
-        Duration timeout) {
+        Duration timeout,
+        Double costBudget) {
 
     /**
      * Default model name used when no model is explicitly configured.
@@ -119,6 +120,7 @@ public record ModelConfig(
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -150,6 +152,7 @@ public record ModelConfig(
                 thinking,
                 systemPrompt,
                 systemPromptParts,
+                null,
                 null,
                 null,
                 null,
@@ -196,6 +199,7 @@ public record ModelConfig(
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -228,6 +232,7 @@ public record ModelConfig(
         private Double effort;
         private RetryConfig retryConfig;
         private Duration timeout;
+        private Double costBudget;
 
         private Builder() {}
 
@@ -439,6 +444,20 @@ public record ModelConfig(
         }
 
         /**
+         * Set the cost budget for routing decisions.
+         *
+         * <p>When set, a {@link io.kairo.api.routing.RoutingPolicy} may use this value to select a
+         * provider that fits within the budget. Null means no budget constraint.
+         *
+         * @param costBudget the cost budget limit, or {@code null} for no constraint
+         * @return this builder
+         */
+        public Builder costBudget(Double costBudget) {
+            this.costBudget = costBudget;
+            return this;
+        }
+
+        /**
          * Build an immutable {@link ModelConfig} from the current builder state.
          *
          * @return the constructed config
@@ -461,7 +480,8 @@ public record ModelConfig(
                     responseSchema,
                     effort,
                     retryConfig,
-                    timeout);
+                    timeout,
+                    costBudget);
         }
     }
 }

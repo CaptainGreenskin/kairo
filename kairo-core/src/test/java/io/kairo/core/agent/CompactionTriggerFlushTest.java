@@ -98,6 +98,7 @@ class CompactionTriggerFlushTest {
                         errorRecovery,
                         new TokenBudgetManager(200_000, 8_096),
                         new GracefulShutdownManager(),
+                        null,
                         null);
         ModelConfig modelConfig =
                 ModelConfig.builder()

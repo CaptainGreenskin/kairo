@@ -17,8 +17,10 @@ package io.kairo.spring;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -68,6 +70,22 @@ public class KairoMcpProperties {
         /** STDIO transport configuration (used when transport=STDIO). */
         private StdioTransportProperties stdio;
 
+        /** Security policy for tool access control (default DENY_SAFE). */
+        private io.kairo.mcp.McpSecurityPolicy securityPolicy =
+                io.kairo.mcp.McpSecurityPolicy.DENY_SAFE;
+
+        /** Explicit allowlist of tool names. Null means use policy default. */
+        private Set<String> allowedTools;
+
+        /** Explicit blocklist of tool names. Empty means no blocklist. */
+        private Set<String> deniedTools = new LinkedHashSet<>();
+
+        /** Maximum concurrent tool calls to this server (default 10). */
+        private int maxConcurrentCalls = 10;
+
+        /** Whether to validate tool input against JSON Schema (default true). */
+        private boolean schemaValidation = true;
+
         public TransportType getTransport() {
             return transport;
         }
@@ -90,6 +108,46 @@ public class KairoMcpProperties {
 
         public void setStdio(StdioTransportProperties stdio) {
             this.stdio = stdio;
+        }
+
+        public io.kairo.mcp.McpSecurityPolicy getSecurityPolicy() {
+            return securityPolicy;
+        }
+
+        public void setSecurityPolicy(io.kairo.mcp.McpSecurityPolicy securityPolicy) {
+            this.securityPolicy = securityPolicy;
+        }
+
+        public Set<String> getAllowedTools() {
+            return allowedTools;
+        }
+
+        public void setAllowedTools(Set<String> allowedTools) {
+            this.allowedTools = allowedTools;
+        }
+
+        public Set<String> getDeniedTools() {
+            return deniedTools;
+        }
+
+        public void setDeniedTools(Set<String> deniedTools) {
+            this.deniedTools = deniedTools;
+        }
+
+        public int getMaxConcurrentCalls() {
+            return maxConcurrentCalls;
+        }
+
+        public void setMaxConcurrentCalls(int maxConcurrentCalls) {
+            this.maxConcurrentCalls = maxConcurrentCalls;
+        }
+
+        public boolean isSchemaValidation() {
+            return schemaValidation;
+        }
+
+        public void setSchemaValidation(boolean schemaValidation) {
+            this.schemaValidation = schemaValidation;
         }
     }
 

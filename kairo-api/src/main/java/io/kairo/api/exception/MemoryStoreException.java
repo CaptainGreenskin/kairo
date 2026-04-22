@@ -18,13 +18,15 @@ package io.kairo.api.exception;
 /** Thrown when a memory storage operation fails (SQL errors, connection failures, I/O errors). */
 public class MemoryStoreException extends KairoException {
 
+    private static final String DEFAULT_ERROR_CODE = "STORAGE_ERROR";
+
     /**
      * Create a new MemoryStoreException with the given message.
      *
      * @param message the detail message
      */
     public MemoryStoreException(String message) {
-        super(message);
+        super(message, null, DEFAULT_ERROR_CODE, ErrorCategory.STORAGE, false, null);
     }
 
     /**
@@ -34,6 +36,6 @@ public class MemoryStoreException extends KairoException {
      * @param cause the underlying cause
      */
     public MemoryStoreException(String message, Throwable cause) {
-        super(message, cause);
+        super(message, cause, DEFAULT_ERROR_CODE, ErrorCategory.STORAGE, false, null);
     }
 }

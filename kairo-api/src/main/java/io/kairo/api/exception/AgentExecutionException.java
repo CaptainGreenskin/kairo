@@ -18,13 +18,15 @@ package io.kairo.api.exception;
 /** Thrown when agent execution fails due to a non-recoverable internal error. */
 public class AgentExecutionException extends AgentException {
 
+    private static final String DEFAULT_ERROR_CODE = "AGENT_EXECUTION_ERROR";
+
     /**
      * Create a new AgentExecutionException with the given message.
      *
      * @param message the detail message
      */
     public AgentExecutionException(String message) {
-        super(message);
+        super(message, null, DEFAULT_ERROR_CODE);
     }
 
     /**
@@ -34,6 +36,6 @@ public class AgentExecutionException extends AgentException {
      * @param cause the underlying cause
      */
     public AgentExecutionException(String message, Throwable cause) {
-        super(message, cause);
+        super(message, cause, DEFAULT_ERROR_CODE);
     }
 }

@@ -24,6 +24,8 @@ package io.kairo.api.exception;
  */
 public class PlanModeViolationException extends ToolException {
 
+    private static final String DEFAULT_ERROR_CODE = "PLAN_MODE_VIOLATION";
+
     private final String toolName;
 
     /**
@@ -42,7 +44,7 @@ public class PlanModeViolationException extends ToolException {
      * @param toolName the name of the blocked tool
      */
     public PlanModeViolationException(String message, String toolName) {
-        super(message);
+        super(message, null, DEFAULT_ERROR_CODE);
         this.toolName = toolName;
     }
 
@@ -53,7 +55,7 @@ public class PlanModeViolationException extends ToolException {
      * @param cause the underlying cause
      */
     public PlanModeViolationException(String message, Throwable cause) {
-        super(message, cause);
+        super(message, cause, DEFAULT_ERROR_CODE);
         this.toolName = null;
     }
 

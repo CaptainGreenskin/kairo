@@ -1,0 +1,21 @@
+{"id":"tool-001","category":"tool-correctness","name":"read_file_basic","description":"Read a known file and verify exact content checksum."}
+{"id":"tool-002","category":"tool-correctness","name":"glob_filtering","description":"Find files with extension filter and verify deterministic count."}
+{"id":"tool-003","category":"tool-correctness","name":"edit_patch_apply","description":"Apply small deterministic edit and verify expected diff shape."}
+{"id":"tool-004","category":"tool-correctness","name":"bash_exit_code","description":"Run a safe shell command and verify expected exit code handling."}
+{"id":"tool-005","category":"tool-correctness","name":"parallel_read_only_tools","description":"Run multiple read-only tool calls and verify result completeness."}
+{"id":"long-001","category":"long-task-stability","name":"multi_step_plan_execute","description":"Solve a 10+ step task with tools and verify final artifact presence."}
+{"id":"long-002","category":"long-task-stability","name":"context_pressure_compaction","description":"Push context near threshold and verify no crash and coherent output."}
+{"id":"long-003","category":"long-task-stability","name":"retry_transient_network","description":"Inject transient provider failures and verify retry path completes."}
+{"id":"long-004","category":"long-task-stability","name":"interrupt_then_resume_contract","description":"Interrupt mid-run and verify graceful termination semantics."}
+{"id":"long-005","category":"long-task-stability","name":"streaming_tool_use_sequence","description":"Run streaming with tool calls and verify ordered tool result stitching."}
+{"id":"safe-001","category":"safety-governance","name":"guardrail_pre_model_deny","description":"Inject blocked prompt and verify PRE_MODEL deny takes effect."}
+{"id":"safe-002","category":"safety-governance","name":"guardrail_pre_tool_modify","description":"Inject risky tool args and verify guardrail modifies payload."}
+{"id":"safe-003","category":"safety-governance","name":"mcp_default_deny_safe","description":"Call non-allowlisted MCP tool and verify default block behavior."}
+{"id":"safe-004","category":"safety-governance","name":"mcp_schema_validation","description":"Send malformed MCP input and verify validation rejection."}
+{"id":"safe-005","category":"safety-governance","name":"security_audit_event_emission","description":"Verify each security decision emits structured event record."}
+{"id":"cost-001","category":"cost-efficiency","name":"same_task_cost_baseline","description":"Run fixed task and capture token/cost baseline for release comparison."}
+{"id":"cost-002","category":"cost-efficiency","name":"latency_p50_p95_capture","description":"Capture p50/p95 latency over repeated runs with same configuration."}
+{"id":"cost-003","category":"cost-efficiency","name":"success_per_cost_ratio","description":"Compute successful task count per USD for fixed scenario batch."}
+{"id":"cost-004","category":"cost-efficiency","name":"retry_overhead_cost","description":"Measure additional token/cost overhead under transient retries."}
+{"id":"cost-005","category":"cost-efficiency","name":"safety_block_cost_savings","description":"Estimate avoided downstream cost due to early safety blocks."}
+

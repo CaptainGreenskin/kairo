@@ -19,6 +19,7 @@ import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.agent.AgentSnapshot;
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.memory.MemoryStore;
 import io.kairo.api.middleware.Middleware;
 import io.kairo.api.model.ModelProvider;
@@ -89,6 +90,7 @@ public class AgentBuilder {
     private Duration loopFreqWindow = Duration.ofMinutes(10);
     private Map<String, Object> toolDependencies = Map.of();
     private CompactionThresholds compactionThresholds;
+    private GuardrailChain guardrailChain;
 
     private AgentBuilder() {}
 
@@ -380,6 +382,19 @@ public class AgentBuilder {
     }
 
     /**
+     * Set the guardrail chain for policy evaluation at model and tool boundaries.
+     *
+     * <p>If not set (null), guardrail evaluation is skipped — backward compatible.
+     *
+     * @param guardrailChain the guardrail chain, or null to disable
+     * @return this builder
+     */
+    public AgentBuilder guardrailChain(GuardrailChain guardrailChain) {
+        this.guardrailChain = guardrailChain;
+        return this;
+    }
+
+    /**
      * Build the agent, validating required parameters.
      *
      * @return a new {@link Agent} instance
@@ -412,7 +427,8 @@ public class AgentBuilder {
                 shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
 
         DefaultReActAgent agent =
-                new DefaultReActAgent(config, toolExecutor, hookChain, middlewarePipeline, sm);
+                new DefaultReActAgent(
+                        config, toolExecutor, hookChain, middlewarePipeline, sm, guardrailChain);
 
         // Restore from snapshot if provided
         if (restoreFrom != null) {

@@ -16,6 +16,9 @@ All public SPIs are listed below with their location and stability level.
 | `EmbeddingProvider` | kairo-api | `io.kairo.api.memory` | Experimental |
 | `UserApprovalHandler` | kairo-api | `io.kairo.api.tool` | Stable |
 | `ElicitationHandler` | kairo-mcp | `io.kairo.mcp` | Experimental |
+| `GuardrailPolicy` | kairo-api | `io.kairo.api.guardrail` | Experimental |
+| `SecurityEventSink` | kairo-api | `io.kairo.api.guardrail` | Experimental |
+| `RoutingPolicy` | kairo-api | `io.kairo.api.routing` | Experimental |
 
 ## Compatibility Levels
 
@@ -97,3 +100,6 @@ When an SPI is deprecated and replaced, a migration guide following this templat
 | `UserApprovalHandler` | v0.4.0 |
 | `EmbeddingProvider` | v0.5.0 |
 | `ElicitationHandler` | v0.5.0 |
+| `GuardrailPolicy` | v0.7.0 |
+| `SecurityEventSink` | v0.7.0 |
+| `RoutingPolicy` | v0.7.0 |

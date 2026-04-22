@@ -18,13 +18,15 @@ package io.kairo.api.exception;
 /** Thrown when an agent's processing is interrupted (e.g., timeout, user cancel). */
 public class AgentInterruptedException extends AgentException {
 
+    private static final String DEFAULT_ERROR_CODE = "AGENT_INTERRUPTED";
+
     /**
      * Create a new AgentInterruptedException with the given message.
      *
      * @param message the detail message
      */
     public AgentInterruptedException(String message) {
-        super(message);
+        super(message, null, DEFAULT_ERROR_CODE);
     }
 
     /**
@@ -34,6 +36,6 @@ public class AgentInterruptedException extends AgentException {
      * @param cause the underlying cause
      */
     public AgentInterruptedException(String message, Throwable cause) {
-        super(message, cause);
+        super(message, cause, DEFAULT_ERROR_CODE);
     }
 }

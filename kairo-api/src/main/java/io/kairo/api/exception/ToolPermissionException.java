@@ -18,13 +18,15 @@ package io.kairo.api.exception;
 /** Thrown when a tool execution is denied by the permission guard. */
 public class ToolPermissionException extends ToolException {
 
+    private static final String DEFAULT_ERROR_CODE = "TOOL_PERMISSION_DENIED";
+
     /**
      * Create a new ToolPermissionException with the given message.
      *
      * @param message the detail message
      */
     public ToolPermissionException(String message) {
-        super(message);
+        super(message, null, DEFAULT_ERROR_CODE);
     }
 
     /**
@@ -34,6 +36,6 @@ public class ToolPermissionException extends ToolException {
      * @param cause the underlying cause
      */
     public ToolPermissionException(String message, Throwable cause) {
-        super(message, cause);
+        super(message, cause, DEFAULT_ERROR_CODE);
     }
 }

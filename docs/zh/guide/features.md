@@ -51,3 +51,18 @@ OpenAIProvider provider = new OpenAIProvider(apiKey, baseUrl, "/chat/completions
 | `MultiAgentExample` | 否 | TaskBoard DAG 依赖追踪 + MessageBus 发布/订阅 |
 | `SessionExample` | 否 | FileMemoryStore + SessionSerializer 序列化往返 |
 | Spring Boot Demo | 是 | REST API、流式输出、结构化输出、Hook、MCP |
+
+## 能力验证（轻量轨道）
+
+为了在 `v1.0` 之前把 Agent 能力从“描述”变成“可复现证据”，Kairo 新增了轻量 benchmark 基线目录 `benchmarks/`：
+
+- `benchmarks/scenarios/v0-lite-scenarios.jsonl`：20 个代表性场景
+- `benchmarks/metrics-schema.json`：统一结果结构（状态、延迟、Token、安全决策）
+- `benchmarks/README.md`：运行与聚合说明
+
+该轨道用于持续积累跨版本证据，重点覆盖：
+
+- 工具调用正确性
+- 长任务稳定性
+- 安全治理有效性
+- 成本/延迟趋势可见性

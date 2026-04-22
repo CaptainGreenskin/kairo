@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-04-22 — Guardrail SPI, MCP Security & Structured Exceptions
+
+### Added
+- Exception Phase B: Structured error fields on `KairoException` (`errorCode`, `category`, `retryable`, `retryAfterMs`)
+- `ErrorCategory` enum (`MODEL`, `TOOL`, `AGENT`, `STORAGE`, `SECURITY`, `UNKNOWN`)
+- Guardrail SPI: `GuardrailPolicy` interface with 4-phase interception (`@Experimental`)
+- `DefaultGuardrailChain`: ordered policy evaluation with DENY short-circuit
+- Sealed `GuardrailPayload` with typed variants (`ModelInput`, `ModelOutput`, `ToolInput`, `ToolOutput`)
+- MCP Security: `McpStaticGuardrailPolicy` with default deny-safe policy
+- `McpSecurityPolicy` enum (`ALLOW_ALL`, `DENY_SAFE`, `DENY_ALL`)
+- Security Observability: `SecurityEvent` record + `SecurityEventSink` SPI (`@Experimental`)
+- `LoggingSecurityEventSink` (default implementation)
+- Cost Routing: `RoutingPolicy` SPI + `RoutingContext`/`RoutingDecision` value objects (`@Experimental`)
+- `costBudget` field on `ModelConfig`
+- `DefaultRoutingPolicy` (no-op)
+- ADR-007: Guardrail SPI Design
+- ADR-008: Exception Phase B Structured Fields
+- ADR-009: MCP Security Default Policy
+
+### Changed
+- MCP servers now default to `DENY_SAFE` security policy (previously implicitly `ALLOW_ALL`)
+- `DefaultToolExecutor` accepts optional `GuardrailChain` for `PRE_TOOL`/`POST_TOOL` interception
+- `ReasoningPhase` accepts optional `GuardrailChain` for `PRE_MODEL`/`POST_MODEL` interception
+- `DefaultGuardrailChain` now accepts optional `SecurityEventSink` for audit event emission
+
+### Migration Notes
+- MCP users must configure `allowedTools` or set `securityPolicy: ALLOW_ALL` to restore previous behavior
+- See [Upgrade Guide](docs/en/guide/upgrade-v0.6-to-v0.7.md) for detailed migration steps
+
 ## [0.5.1] - 2026-04-21 — ToolHandler SPI Uplift
 
 ### Breaking Changes

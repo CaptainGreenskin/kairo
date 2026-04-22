@@ -19,7 +19,10 @@ import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolRegistry;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
@@ -37,6 +40,8 @@ public class DefaultToolRegistry implements ToolRegistry {
 
     private final ConcurrentHashMap<String, ToolDefinition> tools = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Object> toolInstances = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Map<String, Object>> toolMetadata =
+            new ConcurrentHashMap<>();
     private final AnnotationToolScanner scanner = new AnnotationToolScanner();
 
     @Override
@@ -49,6 +54,7 @@ public class DefaultToolRegistry implements ToolRegistry {
     public void unregister(String name) {
         tools.remove(name);
         toolInstances.remove(name);
+        toolMetadata.remove(name);
         log.info("Unregistered tool: {}", name);
     }
 
@@ -125,5 +131,27 @@ public class DefaultToolRegistry implements ToolRegistry {
             log.error(
                     "Failed to instantiate tool class {}: {}", toolClass.getName(), e.getMessage());
         }
+    }
+
+    /**
+     * Set metadata for a tool. Metadata is passed to guardrail policies via {@link
+     * io.kairo.api.guardrail.GuardrailContext#metadata()}.
+     *
+     * @param name the tool name
+     * @param metadata the metadata map (defensively copied)
+     */
+    public void setToolMetadata(String name, Map<String, Object> metadata) {
+        toolMetadata.put(name, new HashMap<>(metadata));
+    }
+
+    /**
+     * Get metadata for a tool.
+     *
+     * @param name the tool name
+     * @return an unmodifiable metadata map, or an empty map if none is set
+     */
+    public Map<String, Object> getToolMetadata(String name) {
+        Map<String, Object> meta = toolMetadata.get(name);
+        return meta != null ? Collections.unmodifiableMap(meta) : Collections.emptyMap();
     }
 }
