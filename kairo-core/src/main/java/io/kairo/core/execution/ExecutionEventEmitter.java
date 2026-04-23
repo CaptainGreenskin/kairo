@@ -15,13 +15,17 @@
  */
 package io.kairo.core.execution;
 
+import io.kairo.api.event.KairoEvent;
+import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.execution.DurableExecutionStore;
 import io.kairo.api.execution.ExecutionEvent;
 import io.kairo.api.execution.ExecutionEventType;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
@@ -52,18 +56,33 @@ public class ExecutionEventEmitter {
     private final String executionId;
     private final AtomicReference<String> previousHash;
     private final AtomicInteger eventCounter;
+    @Nullable private final KairoEventBus eventBus;
 
     /**
-     * Create a new emitter for the given execution.
+     * Create a new emitter for the given execution (no event bus bridging).
      *
      * @param store the durable execution store to append events to
      * @param executionId the execution ID that events belong to
      */
     public ExecutionEventEmitter(DurableExecutionStore store, String executionId) {
+        this(store, executionId, null);
+    }
+
+    /**
+     * Create a new emitter for the given execution, bridging every emission to the {@link
+     * KairoEventBus} for observability.
+     *
+     * @param store the durable execution store to append events to
+     * @param executionId the execution ID that events belong to
+     * @param eventBus optional bus facade; {@code null} disables bridging
+     */
+    public ExecutionEventEmitter(
+            DurableExecutionStore store, String executionId, @Nullable KairoEventBus eventBus) {
         this.store = store;
         this.executionId = executionId;
         this.previousHash = new AtomicReference<>(GENESIS);
         this.eventCounter = new AtomicInteger(0);
+        this.eventBus = eventBus;
     }
 
     /**
@@ -93,7 +112,26 @@ public class ExecutionEventEmitter {
         previousHash.set(hash);
         eventCounter.incrementAndGet();
 
+        publishToBus(event);
         return store.appendEvent(executionId, event);
+    }
+
+    private void publishToBus(ExecutionEvent event) {
+        if (eventBus == null) {
+            return;
+        }
+        try {
+            eventBus.publish(
+                    new KairoEvent(
+                            event.eventId(),
+                            event.timestamp(),
+                            KairoEvent.DOMAIN_EXECUTION,
+                            event.eventType().name(),
+                            event,
+                            Map.of("executionId", executionId)));
+        } catch (RuntimeException ex) {
+            log.debug("KairoEventBus publish failed for execution event: {}", ex.toString());
+        }
     }
 
     /**

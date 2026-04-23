@@ -381,6 +381,40 @@ public class AgentBuilder {
     }
 
     /**
+     * Configure loop detection via the capability record introduced in v0.10.
+     *
+     * @param config the loop detection configuration, or {@code null} to restore defaults
+     * @return this builder
+     */
+    public AgentBuilder loopDetection(io.kairo.api.agent.LoopDetectionConfig config) {
+        io.kairo.api.agent.LoopDetectionConfig effective =
+                config != null ? config : io.kairo.api.agent.LoopDetectionConfig.DEFAULTS;
+        this.loopHashWarn = effective.hashWarnThreshold();
+        this.loopHashStop = effective.hashHardLimit();
+        this.loopFreqWarn = effective.freqWarnThreshold();
+        this.loopFreqStop = effective.freqHardLimit();
+        this.loopFreqWindow = effective.freqWindow();
+        return this;
+    }
+
+    /**
+     * Configure durable execution in one capability call. Wires both the store and
+     * recovery-on-startup behaviour.
+     *
+     * @param capability the durable capability, or {@code null} for disabled
+     * @return this builder
+     */
+    public AgentBuilder durableCapability(io.kairo.api.agent.DurableCapabilityConfig capability) {
+        io.kairo.api.agent.DurableCapabilityConfig effective =
+                capability != null
+                        ? capability
+                        : io.kairo.api.agent.DurableCapabilityConfig.DISABLED;
+        this.durableExecutionStore = effective.store();
+        this.recoveryOnStartup = effective.recoveryOnStartup();
+        return this;
+    }
+
+    /**
      * Set compaction thresholds for the agent's context compaction pipeline.
      *
      * <p>These thresholds control when each compaction stage triggers, the circuit breaker limit,

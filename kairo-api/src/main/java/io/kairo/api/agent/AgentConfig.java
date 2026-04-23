@@ -71,54 +71,31 @@ public record AgentConfig(
         @Nullable EvolutionConfig evolutionConfig,
         @Nullable List<SystemPromptContributor> systemPromptContributors) {
 
-    /** Backward-compatible constructor without middlewares (defaults to empty list). */
-    public AgentConfig(
-            String name,
-            String systemPrompt,
-            ModelProvider modelProvider,
-            ToolRegistry toolRegistry,
-            int maxIterations,
-            Duration timeout,
-            int tokenBudget,
-            String modelName,
-            List<Object> hooks,
-            ContextManager contextManager,
-            MemoryStore memoryStore,
-            String sessionId,
-            Tracer tracer,
-            List<Object> mcpServerConfigs,
-            int loopHashWarnThreshold,
-            int loopHashHardLimit,
-            int loopFreqWarnThreshold,
-            int loopFreqHardLimit,
-            Duration loopFreqWindow) {
-        this(
-                name,
-                systemPrompt,
-                modelProvider,
-                toolRegistry,
-                maxIterations,
-                timeout,
-                tokenBudget,
-                modelName,
-                hooks,
-                List.of(),
-                contextManager,
-                memoryStore,
-                sessionId,
-                tracer,
+    /**
+     * Derived view of MCP-related configuration as a {@link McpCapabilityConfig}. Useful for
+     * starters that prefer the capability-config API introduced in v0.10 instead of the legacy
+     * per-field accessors.
+     */
+    public McpCapabilityConfig mcpCapability() {
+        return new McpCapabilityConfig(
                 mcpServerConfigs,
-                128,
-                true,
-                null,
+                mcpMaxToolsPerServer,
+                mcpStrictSchemaAlignment,
+                mcpToolSearchQuery);
+    }
+
+    /**
+     * Derived view of loop-detection thresholds as a {@link LoopDetectionConfig}. Prefer this
+     * accessor in v0.10+ consumers so the individual loop-detection fields can eventually be
+     * removed.
+     */
+    public LoopDetectionConfig loopDetection() {
+        return new LoopDetectionConfig(
                 loopHashWarnThreshold,
                 loopHashHardLimit,
                 loopFreqWarnThreshold,
                 loopFreqHardLimit,
-                loopFreqWindow,
-                null,
-                null,
-                null);
+                loopFreqWindow);
     }
 
     /**
@@ -384,6 +361,43 @@ public record AgentConfig(
             this.loopFreqWarnThreshold = freqWarn;
             this.loopFreqHardLimit = freqStop;
             this.loopFreqWindow = freqWindow;
+            return this;
+        }
+
+        /**
+         * Configure loop detection thresholds via the new {@link LoopDetectionConfig} capability
+         * record. Null clears any prior configuration and restores defaults.
+         *
+         * @param config the loop detection configuration
+         * @return this builder
+         * @since v0.10
+         */
+        public Builder loopDetectionConfig(LoopDetectionConfig config) {
+            LoopDetectionConfig effective = config != null ? config : LoopDetectionConfig.DEFAULTS;
+            this.loopHashWarnThreshold = effective.hashWarnThreshold();
+            this.loopHashHardLimit = effective.hashHardLimit();
+            this.loopFreqWarnThreshold = effective.freqWarnThreshold();
+            this.loopFreqHardLimit = effective.freqHardLimit();
+            this.loopFreqWindow = effective.freqWindow();
+            return this;
+        }
+
+        /**
+         * Configure MCP integration via the {@link McpCapabilityConfig} capability record. Null
+         * clears any prior configuration.
+         *
+         * @param capability the MCP capability config
+         * @return this builder
+         * @since v0.10
+         */
+        public Builder mcpCapability(McpCapabilityConfig capability) {
+            McpCapabilityConfig effective =
+                    capability != null ? capability : McpCapabilityConfig.EMPTY;
+            this.mcpServerConfigs.clear();
+            this.mcpServerConfigs.addAll(effective.serverConfigs());
+            this.mcpMaxToolsPerServer = effective.maxToolsPerServer();
+            this.mcpStrictSchemaAlignment = effective.strictSchemaAlignment();
+            this.mcpToolSearchQuery = effective.toolSearchQuery();
             return this;
         }
 

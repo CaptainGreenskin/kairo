@@ -15,6 +15,8 @@
  */
 package io.kairo.evolution;
 
+import io.kairo.api.event.KairoEvent;
+import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.evolution.EvolutionContext;
 import io.kairo.api.evolution.EvolutionCounters;
 import io.kairo.api.evolution.EvolutionOutcome;
@@ -27,7 +29,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.Map;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
@@ -52,9 +57,10 @@ public class EvolutionPipelineOrchestrator {
     private final EvolvedSkillStore skillStore;
     private final EvolutionStateMachine stateMachine;
     private final InMemoryEvolutionRuntimeStateStore stateStore;
+    @Nullable private final KairoEventBus eventBus;
 
     /**
-     * Create a new orchestrator.
+     * Create a new orchestrator without event-bus bridging.
      *
      * @param policy the evolution policy for reviewing contexts
      * @param skillStore the store for persisting evolved skills
@@ -66,10 +72,46 @@ public class EvolutionPipelineOrchestrator {
             EvolvedSkillStore skillStore,
             EvolutionStateMachine stateMachine,
             InMemoryEvolutionRuntimeStateStore stateStore) {
+        this(policy, skillStore, stateMachine, stateStore, null);
+    }
+
+    /**
+     * Create a new orchestrator that bridges governance lifecycle events to the {@link
+     * KairoEventBus}.
+     *
+     * @param policy the evolution policy for reviewing contexts
+     * @param skillStore the store for persisting evolved skills
+     * @param stateMachine the state machine governing transitions
+     * @param stateStore the runtime state store for per-agent state tracking
+     * @param eventBus optional event-bus facade; {@code null} disables bridging
+     */
+    public EvolutionPipelineOrchestrator(
+            EvolutionPolicy policy,
+            EvolvedSkillStore skillStore,
+            EvolutionStateMachine stateMachine,
+            InMemoryEvolutionRuntimeStateStore stateStore,
+            @Nullable KairoEventBus eventBus) {
         this.policy = policy;
         this.skillStore = skillStore;
         this.stateMachine = stateMachine;
         this.stateStore = stateStore;
+        this.eventBus = eventBus;
+    }
+
+    private void publish(EvolutionEventType type, String agentName, @Nullable String skillName) {
+        if (eventBus == null) {
+            return;
+        }
+        Map<String, Object> attributes = new HashMap<>();
+        attributes.put("agentName", agentName);
+        if (skillName != null) {
+            attributes.put("skillName", skillName);
+        }
+        try {
+            eventBus.publish(KairoEvent.of(KairoEvent.DOMAIN_EVOLUTION, type.name(), attributes));
+        } catch (RuntimeException ex) {
+            log.debug("KairoEventBus publish failed for evolution event: {}", ex.toString());
+        }
     }
 
     /**
@@ -91,6 +133,7 @@ public class EvolutionPipelineOrchestrator {
                                         "Evolution event: {} for agent '{}'",
                                         EvolutionEventType.EVOLUTION_SUSPENDED,
                                         agentName);
+                                publish(EvolutionEventType.EVOLUTION_SUSPENDED, agentName, null);
                                 return Mono.empty();
                             }
 
@@ -125,6 +168,10 @@ public class EvolutionPipelineOrchestrator {
                     EvolutionEventType.SKILL_CREATED,
                     outcome.skillToCreate().get().name(),
                     agentName);
+            publish(
+                    EvolutionEventType.SKILL_CREATED,
+                    agentName,
+                    outcome.skillToCreate().get().name());
             return quarantineAndScan(agentName, outcome.skillToCreate().get());
         }
 
@@ -134,6 +181,10 @@ public class EvolutionPipelineOrchestrator {
                     EvolutionEventType.SKILL_UPDATED,
                     outcome.skillToPatch().get().name(),
                     agentName);
+            publish(
+                    EvolutionEventType.SKILL_UPDATED,
+                    agentName,
+                    outcome.skillToPatch().get().name());
             return quarantineAndScan(agentName, outcome.skillToPatch().get());
         }
 
@@ -170,6 +221,7 @@ public class EvolutionPipelineOrchestrator {
                                     EvolutionEventType.SKILL_QUARANTINED,
                                     saved.name(),
                                     agentName);
+                            publish(EvolutionEventType.SKILL_QUARANTINED, agentName, saved.name());
 
                             if (scanContent(saved)) {
                                 log.info(
@@ -177,6 +229,10 @@ public class EvolutionPipelineOrchestrator {
                                         EvolutionEventType.SKILL_SCAN_PASSED,
                                         saved.name(),
                                         agentName);
+                                publish(
+                                        EvolutionEventType.SKILL_SCAN_PASSED,
+                                        agentName,
+                                        saved.name());
                                 return activate(agentName, saved);
                             } else {
                                 return reject(agentName, saved);
@@ -206,12 +262,14 @@ public class EvolutionPipelineOrchestrator {
         return skillStore
                 .save(activated)
                 .doOnNext(
-                        s ->
-                                log.info(
-                                        "Evolution event: {} — skill '{}' for agent '{}'",
-                                        EvolutionEventType.SKILL_ACTIVATED,
-                                        s.name(),
-                                        agentName))
+                        s -> {
+                            log.info(
+                                    "Evolution event: {} — skill '{}' for agent '{}'",
+                                    EvolutionEventType.SKILL_ACTIVATED,
+                                    s.name(),
+                                    agentName);
+                            publish(EvolutionEventType.SKILL_ACTIVATED, agentName, s.name());
+                        })
                 .then();
     }
 
@@ -223,12 +281,17 @@ public class EvolutionPipelineOrchestrator {
         return skillStore
                 .delete(skill.name())
                 .doOnSuccess(
-                        v ->
-                                log.warn(
-                                        "Evolution event: {} — skill '{}' for agent '{}'",
-                                        EvolutionEventType.SKILL_SCAN_REJECTED,
-                                        skill.name(),
-                                        agentName));
+                        v -> {
+                            log.warn(
+                                    "Evolution event: {} — skill '{}' for agent '{}'",
+                                    EvolutionEventType.SKILL_SCAN_REJECTED,
+                                    skill.name(),
+                                    agentName);
+                            publish(
+                                    EvolutionEventType.SKILL_SCAN_REJECTED,
+                                    agentName,
+                                    skill.name());
+                        });
     }
 
     /** Basic content validation: non-empty, reasonable length, no obvious injection patterns. */
@@ -282,6 +345,7 @@ public class EvolutionPipelineOrchestrator {
                     EvolutionEventType.EVOLUTION_SUSPENDED,
                     agentName,
                     newFailures);
+            publish(EvolutionEventType.EVOLUTION_SUSPENDED, agentName, null);
         } else {
             stateStore.setState(agentName, EvolutionState.IDLE);
         }
