@@ -8,6 +8,7 @@
 | v0.7.0 | Guardrail SPI + MCP Security + Structured Exceptions | Implemented |
 | v0.7.1 | Tool Result Budget + Structured Observability | Implemented |
 | v0.8 | DurableExecution MVP + ResourceConstraint SPI + Cost-Aware Routing | Implemented |
+| v0.9 | Gap-Only Platform Capabilities (Self-Evolution wiring proof + guards) | In Progress |
 
 ## v0.1–v0.4: Core Runtime (Implemented)
 
@@ -32,3 +33,9 @@ ToolResultBudget L0 pre-truncation, structured observability metadata on ToolRes
 ## v0.8: DurableExecution MVP + ResourceConstraint + Cost-Aware Routing (Implemented)
 
 DurableExecutionStore SPI (InMemory + JDBC) for cross-process agent recovery with at-least-once semantics, ResourceConstraint SPI for unified execution enforcement (replacing scattered iteration/token/timeout checks), and CostAwareRoutingPolicy extending the v0.7 RoutingPolicy SPI with ModelTierRegistry and linear fallback chains.
+
+## v0.9: Gap-Only Platform Capabilities (In Progress)
+
+This cycle focuses on closure, not rework: verify default self-evolution runtime wiring, add architecture regression guards, and keep version-status documents aligned.
+
+See the verification note: `docs/roadmap/v0.9-gap-only-verification.md`.

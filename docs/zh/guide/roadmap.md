@@ -8,6 +8,7 @@
 | v0.7.0 | Guardrail SPI + MCP 安全 + 结构化异常 | ✅ 已完成 |
 | v0.7.1 | Tool Result Budget + 结构化可观测性 | ✅ 已完成 |
 | v0.8 | 持久化执行 MVP + 执行约束 SPI + 成本感知路由 | ✅ 已实现 |
+| v0.9 | 平台能力补缺口（Self-Evolution 接线验证 + 防回退约束） | 进行中 |
 
 ## v0.1–v0.4：核心运行时（已完成）
 
@@ -32,3 +33,9 @@ ToolResultBudget L0 预截断、ToolResult 结构化可观测性元数据、TOOL
 ## v0.8：持久化执行 MVP + 执行约束 + 成本感知路由（已实现）
 
 DurableExecutionStore SPI（InMemory + JDBC）支持 Agent 跨进程恢复（at-least-once 语义），ResourceConstraint SPI 统一执行约束 enforcement（替代分散的 iteration/token/timeout 检查），CostAwareRoutingPolicy 扩展 v0.7 RoutingPolicy SPI，提供 ModelTierRegistry 和线性降级链。
+
+## v0.9：平台能力补缺口（进行中）
+
+本轮聚焦补缺口而非重做：验证默认 Self-Evolution 运行时接线、补充架构防回退测试，并同步版本状态文档口径。
+
+验证记录见：`docs/roadmap/v0.9-gap-only-verification.md`。
