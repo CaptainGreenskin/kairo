@@ -73,6 +73,16 @@
             </dependency>
             <dependency>
                 <groupId>io.github.captaingreenskin</groupId>
+                <artifactId>kairo-evolution</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captaingreenskin</groupId>
+                <artifactId>kairo-spring-boot-starter-evolution</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captaingreenskin</groupId>
                 <artifactId>kairo-spring-boot-starter</artifactId>
                 <version>${revision}</version>
             </dependency>

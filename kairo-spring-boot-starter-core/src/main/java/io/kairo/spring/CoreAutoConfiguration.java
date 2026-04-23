@@ -16,7 +16,9 @@
 package io.kairo.spring;
 
 import io.kairo.api.agent.Agent;
+import io.kairo.api.agent.AgentBuilderCustomizer;
 import io.kairo.api.agent.AgentFactory;
+import io.kairo.api.agent.SystemPromptContributor;
 import io.kairo.api.execution.DurableExecutionStore;
 import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.guardrail.GuardrailPolicy;
@@ -231,7 +233,11 @@ class CoreAutoConfiguration {
             @org.springframework.beans.factory.annotation.Autowired(required = false)
                     RecoveryHandler recoveryHandler,
             @org.springframework.beans.factory.annotation.Autowired(required = false)
-                    DurableExecutionProperties durableProperties) {
+                    DurableExecutionProperties durableProperties,
+            @org.springframework.beans.factory.annotation.Autowired(required = false)
+                    List<AgentBuilderCustomizer> customizers,
+            @org.springframework.beans.factory.annotation.Autowired(required = false)
+                    List<SystemPromptContributor> systemPromptContributors) {
 
         AgentProperties agentProps = properties.getAgent();
 
@@ -263,6 +269,16 @@ class CoreAutoConfiguration {
             builder.durableExecutionStore(durableExecutionStore)
                     .recoveryHandler(recoveryHandler)
                     .recoveryOnStartup(durableProperties.isRecoveryOnStartup());
+        }
+
+        // Apply registered customizers (e.g., evolution hook wiring)
+        if (customizers != null) {
+            customizers.forEach(c -> c.customize(builder));
+        }
+
+        // Apply registered system prompt contributors
+        if (systemPromptContributors != null) {
+            systemPromptContributors.forEach(builder::systemPromptContributor);
         }
 
         Agent agent = builder.build();

@@ -16,9 +16,12 @@
 package io.kairo.core.agent;
 
 import io.kairo.api.agent.Agent;
+import io.kairo.api.agent.AgentBuilderCustomizer;
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.agent.AgentSnapshot;
+import io.kairo.api.agent.SystemPromptContributor;
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.evolution.EvolutionConfig;
 import io.kairo.api.execution.DurableExecutionStore;
 import io.kairo.api.execution.ResourceConstraint;
 import io.kairo.api.guardrail.GuardrailChain;
@@ -98,6 +101,9 @@ public class AgentBuilder {
     @javax.annotation.Nullable private RecoveryHandler recoveryHandler;
     private boolean recoveryOnStartup = false;
     @javax.annotation.Nullable private java.util.List<ResourceConstraint> resourceConstraints;
+    @javax.annotation.Nullable private EvolutionConfig evolutionConfig;
+    private final List<AgentBuilderCustomizer> customizers = new ArrayList<>();
+    private final List<SystemPromptContributor> systemPromptContributors = new ArrayList<>();
 
     private AgentBuilder() {}
 
@@ -449,6 +455,66 @@ public class AgentBuilder {
     }
 
     /**
+     * Configures the evolution settings for the agent.
+     *
+     * <p>Example (non-Spring usage):
+     *
+     * <pre>{@code
+     * AgentBuilder builder = AgentBuilder.create()
+     *     .name("my-agent")
+     *     .evolutionConfig(EvolutionConfig.builder()
+     *         .enabled(true)
+     *         .evolutionPolicy(myPolicy)
+     *         .evolvedSkillStore(myStore)
+     *         .build());
+     * }</pre>
+     *
+     * @param config the evolution configuration
+     * @return this builder
+     */
+    public AgentBuilder evolutionConfig(EvolutionConfig config) {
+        this.evolutionConfig = config;
+        return this;
+    }
+
+    /**
+     * Registers a customizer that is applied during {@link #build()}. This is the primary extension
+     * point for auto-configuration frameworks to wire additional capabilities (e.g., evolution
+     * hooks) into the agent.
+     *
+     * <p>Example:
+     *
+     * <pre>{@code
+     * builder.customizer(b -> ((AgentBuilder) b).hook(evolutionHook));
+     * }</pre>
+     *
+     * @param customizer the customizer to register
+     * @return this builder
+     */
+    public AgentBuilder customizer(AgentBuilderCustomizer customizer) {
+        this.customizers.add(customizer);
+        return this;
+    }
+
+    /**
+     * Registers a system prompt contributor that provides dynamic content sections injected into
+     * the agent's system prompt.
+     *
+     * <p>Example:
+     *
+     * <pre>{@code
+     * builder.systemPromptContributor(skillContentInjector);
+     * }</pre>
+     *
+     * @param contributor the system prompt contributor
+     * @return this builder
+     */
+    public AgentBuilder systemPromptContributor(SystemPromptContributor contributor) {
+        this.systemPromptContributors.add(contributor);
+        return this;
+    }
+
+    /**
      * Build the agent, validating required parameters.
      *
      * @return a new {@link Agent} instance
@@ -456,6 +522,9 @@ public class AgentBuilder {
      * @throws IllegalArgumentException if parameters are invalid
      */
     public Agent build() {
+        // Apply all registered customizers before building config
+        customizers.forEach(c -> c.customize(this));
+
         // Wire compactionThresholds into a DefaultContextManager if user didn't provide one
         if (contextManager == null && compactionThresholds != null) {
             TokenBudgetManager budgetMgr = TokenBudgetManager.forModel(modelName);
@@ -582,6 +651,14 @@ public class AgentBuilder {
 
         if (resourceConstraints != null) {
             configBuilder.resourceConstraints(resourceConstraints);
+        }
+
+        if (evolutionConfig != null) {
+            configBuilder.evolutionConfig(evolutionConfig);
+        }
+
+        if (!systemPromptContributors.isEmpty()) {
+            configBuilder.systemPromptContributors(List.copyOf(systemPromptContributors));
         }
 
         for (Object hook : hooks) {

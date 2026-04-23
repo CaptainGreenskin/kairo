@@ -45,6 +45,8 @@ public record ExecutionEvent(
     public ExecutionEvent {
         Objects.requireNonNull(eventId, "eventId must not be null");
         Objects.requireNonNull(eventType, "eventType must not be null");
+        Objects.requireNonNull(timestamp, "timestamp must not be null");
+        Objects.requireNonNull(payloadJson, "payloadJson must not be null");
         Objects.requireNonNull(eventHash, "eventHash must not be null");
     }
 }

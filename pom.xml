@@ -51,9 +51,11 @@
         <module>kairo-mcp</module>
         <module>kairo-multi-agent</module>
         <module>kairo-observability</module>
+        <module>kairo-evolution</module>
         <module>kairo-spring-boot-starter-core</module>
         <module>kairo-spring-boot-starter-mcp</module>
         <module>kairo-spring-boot-starter-multi-agent</module>
+        <module>kairo-spring-boot-starter-evolution</module>
         <module>kairo-spring-boot-starter</module>
         <module>kairo-examples</module>
     </modules>

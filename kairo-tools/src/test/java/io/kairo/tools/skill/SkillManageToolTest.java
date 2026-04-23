@@ -308,4 +308,85 @@ class SkillManageToolTest {
         assertTrue(result.isError());
         assertTrue(result.content().contains("Unknown operation"));
     }
+
+    @Test
+    void patchReplacesOldStringWithNewString() throws IOException {
+        // First, create a skill file on disk so patch can read it
+        when(registry.get("test-skill")).thenReturn(Optional.empty());
+        ToolResult createResult =
+                tool.execute(
+                        Map.of(
+                                "operation",
+                                "create",
+                                "name",
+                                "test-skill",
+                                "content",
+                                VALID_SKILL_CONTENT));
+        assertFalse(createResult.isError(), createResult.content());
+
+        // Now set up registry to return an existing skill for the patch call
+        SkillDefinition existing =
+                new SkillDefinition(
+                        "test-skill",
+                        "1.0.0",
+                        "Test Skill",
+                        "Do testing things.",
+                        List.of("/test"),
+                        SkillCategory.CODE);
+        when(registry.get("test-skill")).thenReturn(Optional.of(existing));
+
+        String patchContent =
+                "OLD_STRING:\nDo testing things.\n---\nNEW_STRING:\nDo patched things.";
+
+        ToolResult patchResult =
+                tool.execute(
+                        Map.of(
+                                "operation",
+                                "patch",
+                                "name",
+                                "test-skill",
+                                "content",
+                                patchContent));
+
+        assertFalse(patchResult.isError(), patchResult.content());
+        assertTrue(patchResult.content().contains("patched"));
+
+        // Verify file content was updated
+        Path skillFile = tempDir.resolve("test-skill.md");
+        String written = Files.readString(skillFile, StandardCharsets.UTF_8);
+        assertTrue(written.contains("Do patched things."));
+        assertFalse(written.contains("Do testing things."));
+
+        // Verify re-registered
+        verify(registry, atLeast(1)).register(any(SkillDefinition.class));
+    }
+
+    @Test
+    void patchFailsWhenOldStringNotFound() {
+        SkillDefinition existing =
+                new SkillDefinition(
+                        "test-skill",
+                        "1.0.0",
+                        "Test Skill",
+                        "Do testing things.",
+                        List.of("/test"),
+                        SkillCategory.CODE);
+        when(registry.get("test-skill")).thenReturn(Optional.of(existing));
+
+        String patchContent =
+                "OLD_STRING:\nThis text does not exist in the skill\n---\nNEW_STRING:\nReplacement";
+
+        ToolResult patchResult =
+                tool.execute(
+                        Map.of(
+                                "operation",
+                                "patch",
+                                "name",
+                                "test-skill",
+                                "content",
+                                patchContent));
+
+        assertTrue(patchResult.isError());
+        assertTrue(patchResult.content().contains("OLD_STRING not found"));
+    }
 }

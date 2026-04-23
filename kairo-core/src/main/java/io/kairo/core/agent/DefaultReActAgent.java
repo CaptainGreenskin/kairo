@@ -19,6 +19,7 @@ import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.agent.AgentSnapshot;
 import io.kairo.api.agent.AgentState;
+import io.kairo.api.agent.SystemPromptContributor;
 import io.kairo.api.context.ContextManager;
 import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.execution.DurableExecution;
@@ -544,7 +545,8 @@ public class DefaultReActAgent implements Agent {
                                 currentIteration.get(),
                                 totalTokensUsed.get(),
                                 elapsed,
-                                errorMessage))
+                                errorMessage,
+                                () -> reactLoop.getHistory()))
                 .onErrorResume(
                         e -> {
                             log.warn(
@@ -736,6 +738,18 @@ public class DefaultReActAgent implements Agent {
         }
         // Mark boundary: everything above is static/cacheable
         builder.dynamicBoundary();
+
+        // Inject dynamic sections from SystemPromptContributors (e.g., evolved skills)
+        List<SystemPromptContributor> contributors = config.systemPromptContributors();
+        if (contributors != null) {
+            for (SystemPromptContributor contributor : contributors) {
+                String sectionContent = contributor.content().block();
+                if (sectionContent != null && !sectionContent.isEmpty()) {
+                    builder.section(contributor.sectionName(), sectionContent);
+                }
+            }
+        }
+
         return builder.buildResult();
     }
 

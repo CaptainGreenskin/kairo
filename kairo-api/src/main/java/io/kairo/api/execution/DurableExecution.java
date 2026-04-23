@@ -52,6 +52,8 @@ public record DurableExecution(
         Objects.requireNonNull(executionId, "executionId must not be null");
         Objects.requireNonNull(agentId, "agentId must not be null");
         Objects.requireNonNull(status, "status must not be null");
+        Objects.requireNonNull(createdAt, "createdAt must not be null");
+        Objects.requireNonNull(updatedAt, "updatedAt must not be null");
         events = events != null ? List.copyOf(events) : List.of();
     }
 }

@@ -41,18 +41,21 @@ import java.util.Map;
  */
 @Tool(
         name = "skill_manage",
-        description = "Create, edit, or delete skills. Requires SYSTEM_CHANGE permission.",
+        description = "Create, edit, patch, or delete skills. Requires SYSTEM_CHANGE permission.",
         category = ToolCategory.SKILL,
         sideEffect = ToolSideEffect.SYSTEM_CHANGE)
 public class SkillManageTool implements ToolHandler {
 
-    @ToolParam(description = "Operation: create, edit, delete", required = true)
+    @ToolParam(description = "Operation: create, edit, patch, delete", required = true)
     private String operation;
 
     @ToolParam(description = "Skill name", required = true)
     private String name;
 
-    @ToolParam(description = "Skill content in markdown format (required for create/edit)")
+    @ToolParam(
+            description =
+                    "Skill content in markdown format (required for create/edit)."
+                            + " For patch: OLD_STRING:\n<text>\n---\nNEW_STRING:\n<replacement>")
     private String content;
 
     private final SkillRegistry registry;
@@ -101,9 +104,13 @@ public class SkillManageTool implements ToolHandler {
         return switch (op.toLowerCase()) {
             case "create" -> doCreate(skillName, skillContent);
             case "edit" -> doEdit(skillName, skillContent);
+            case "patch" -> doPatch(skillName, skillContent);
             case "delete" -> doDelete(skillName);
             default ->
-                    error("Unknown operation: " + op + ". Valid operations: create, edit, delete");
+                    error(
+                            "Unknown operation: "
+                                    + op
+                                    + ". Valid operations: create, edit, patch, delete");
         };
     }
 
@@ -206,6 +213,114 @@ public class SkillManageTool implements ToolHandler {
         registry.unregister(skillName);
 
         return success("Skill '" + skillName + "' deleted.");
+    }
+
+    /**
+     * Perform a partial patch on an existing skill using OLD_STRING/NEW_STRING markers.
+     *
+     * <p>Expected content format:
+     *
+     * <pre>
+     * OLD_STRING:
+     * &lt;text to find&gt;
+     * ---
+     * NEW_STRING:
+     * &lt;replacement text&gt;
+     * </pre>
+     */
+    private ToolResult doPatch(String skillName, String content) {
+        if (content == null || content.isBlank()) {
+            return error("Parameter 'content' is required for patch operation");
+        }
+
+        var existing = registry.get(skillName).orElse(null);
+        if (existing == null) {
+            return error("Skill '" + skillName + "' does not exist. Use 'create' to add it.");
+        }
+
+        // Parse OLD_STRING / NEW_STRING markers
+        String separator = "\n---\n";
+        int sepIdx = content.indexOf(separator);
+        if (sepIdx < 0) {
+            return error(
+                    "Invalid patch format. Expected: OLD_STRING:\n<text>\n---\nNEW_STRING:\n<text>");
+        }
+
+        String oldPart = content.substring(0, sepIdx);
+        String newPart = content.substring(sepIdx + separator.length());
+
+        // Strip markers
+        String oldString = stripMarker(oldPart, "OLD_STRING:");
+        String newString = stripMarker(newPart, "NEW_STRING:");
+
+        if (oldString == null || oldString.isEmpty()) {
+            return error("OLD_STRING section is empty");
+        }
+
+        // Read existing skill content
+        Path writablePath = resolveWritablePath();
+        Path skillFile = writablePath.resolve(skillName + ".md");
+        String fileContent;
+        try {
+            if (Files.exists(skillFile)) {
+                fileContent = Files.readString(skillFile, StandardCharsets.UTF_8);
+            } else {
+                // Fall back to serializing the registry definition
+                fileContent = parser.serialize(existing);
+            }
+        } catch (IOException e) {
+            return error("Failed to read skill file: " + e.getMessage());
+        }
+
+        // Find and replace
+        if (!fileContent.contains(oldString)) {
+            return error("OLD_STRING not found in skill '" + skillName + "'");
+        }
+
+        String patched = fileContent.replace(oldString, newString != null ? newString : "");
+
+        // Validate patched content by parsing
+        SkillDefinition updated;
+        try {
+            updated = parser.parse(patched);
+        } catch (IllegalArgumentException e) {
+            return error("Patched content is invalid: " + e.getMessage());
+        }
+
+        // Record history with old content
+        String agentName = resolveAgentName();
+        String oldSerialised = existing.hasInstructions() ? parser.serialize(existing) : "";
+        changeHistory.recordChange(skillName, "patch", agentName, oldSerialised);
+
+        // Write patched content
+        try {
+            String serialized = parser.serialize(updated);
+            Files.writeString(skillFile, serialized, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return error("Failed to write patched skill file: " + e.getMessage());
+        }
+
+        // Re-register in registry
+        registry.register(updated);
+
+        return success("Skill '" + skillName + "' patched at " + skillFile);
+    }
+
+    /**
+     * Strip a marker prefix (e.g., "OLD_STRING:") from text, trimming the leading newline after the
+     * marker.
+     */
+    private static String stripMarker(String text, String marker) {
+        String trimmed = text.strip();
+        if (trimmed.startsWith(marker)) {
+            String after = trimmed.substring(marker.length());
+            // Remove exactly one leading newline if present
+            if (after.startsWith("\n")) {
+                after = after.substring(1);
+            }
+            return after;
+        }
+        return trimmed;
     }
 
     /**

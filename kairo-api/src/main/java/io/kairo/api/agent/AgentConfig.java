@@ -16,6 +16,7 @@
 package io.kairo.api.agent;
 
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.evolution.EvolutionConfig;
 import io.kairo.api.execution.ResourceConstraint;
 import io.kairo.api.memory.MemoryStore;
 import io.kairo.api.middleware.Middleware;
@@ -66,7 +67,9 @@ public record AgentConfig(
         int loopFreqWarnThreshold,
         int loopFreqHardLimit,
         Duration loopFreqWindow,
-        @Nullable List<ResourceConstraint> resourceConstraints) {
+        @Nullable List<ResourceConstraint> resourceConstraints,
+        @Nullable EvolutionConfig evolutionConfig,
+        @Nullable List<SystemPromptContributor> systemPromptContributors) {
 
     /** Backward-compatible constructor without middlewares (defaults to empty list). */
     public AgentConfig(
@@ -113,6 +116,8 @@ public record AgentConfig(
                 loopFreqWarnThreshold,
                 loopFreqHardLimit,
                 loopFreqWindow,
+                null,
+                null,
                 null);
     }
 
@@ -154,6 +159,8 @@ public record AgentConfig(
         private int loopFreqHardLimit = 100;
         private Duration loopFreqWindow = Duration.ofMinutes(10);
         @Nullable private List<ResourceConstraint> resourceConstraints;
+        @Nullable private EvolutionConfig evolutionConfig;
+        @Nullable private List<SystemPromptContributor> systemPromptContributors;
 
         private Builder() {}
 
@@ -395,6 +402,28 @@ public record AgentConfig(
         }
 
         /**
+         * Set the {@link EvolutionConfig} for the self-evolution subsystem.
+         *
+         * @param evolutionConfig the evolution configuration
+         * @return this builder
+         */
+        public Builder evolutionConfig(EvolutionConfig evolutionConfig) {
+            this.evolutionConfig = evolutionConfig;
+            return this;
+        }
+
+        /**
+         * Set the {@link SystemPromptContributor}s for dynamic prompt injection.
+         *
+         * @param contributors the system prompt contributors
+         * @return this builder
+         */
+        public Builder systemPromptContributors(List<SystemPromptContributor> contributors) {
+            this.systemPromptContributors = contributors != null ? List.copyOf(contributors) : null;
+            return this;
+        }
+
+        /**
          * Build an immutable {@link AgentConfig} from the current builder state.
          *
          * @return the constructed config
@@ -427,7 +456,9 @@ public record AgentConfig(
                     loopFreqWarnThreshold,
                     loopFreqHardLimit,
                     loopFreqWindow,
-                    resourceConstraints);
+                    resourceConstraints,
+                    evolutionConfig,
+                    systemPromptContributors);
         }
     }
 }
