@@ -24,7 +24,7 @@ import java.util.List;
  * <p>Hook handlers can inspect the current messages and pressure, and optionally cancel the
  * compaction by calling {@link #cancel()}.
  */
-public class PreCompactEvent {
+public class PreCompactEvent implements HookEvent {
 
     private final List<Msg> messages;
     private final double pressure;

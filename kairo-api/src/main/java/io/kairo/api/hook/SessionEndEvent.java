@@ -40,7 +40,8 @@ public record SessionEndEvent(
         long tokensUsed,
         Duration duration,
         String error,
-        @Nullable Supplier<List<Msg>> conversationHistorySupplier) {
+        @Nullable Supplier<List<Msg>> conversationHistorySupplier)
+        implements HookEvent {
 
     /** Backward-compatible constructor without conversationHistorySupplier. */
     public SessionEndEvent(

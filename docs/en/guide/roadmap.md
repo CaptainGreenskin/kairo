@@ -9,6 +9,7 @@
 | v0.7.1 | Tool Result Budget + Structured Observability | Implemented |
 | v0.8 | DurableExecution MVP + ResourceConstraint SPI + Cost-Aware Routing | Implemented |
 | v0.9 | Gap-Only Platform Capabilities (Self-Evolution wiring proof + guards) | In Progress |
+| v0.10 | Core Refactor Waves (event bus + capability-shaped configs + hook consolidation scaffolding) | Implemented |
 
 ## v0.1–v0.4: Core Runtime (Implemented)
 
@@ -39,3 +40,9 @@ DurableExecutionStore SPI (InMemory + JDBC) for cross-process agent recovery wit
 This cycle focuses on closure, not rework: verify default self-evolution runtime wiring, add architecture regression guards, and keep version-status documents aligned.
 
 See the verification note: `docs/roadmap/v0.9-gap-only-verification.md`.
+
+## v0.10: Core Refactor Waves (Implemented)
+
+This wave is intentionally **platform-ergonomics first**: introduce a unified in-process event facade (`KairoEventBus`), capability-shaped configuration records for cross-cutting concerns, a unified hook annotation (`@HookHandler`) while keeping legacy hook annotations working, and minimal SPI scaffolding (`SkillStore`, `ProviderPipeline`) to reduce the cost of the next features (Expert Team, OTel exporters, Channel SPI).
+
+Verification evidence: `docs/roadmap/v0.10-core-refactor-verification.md`.

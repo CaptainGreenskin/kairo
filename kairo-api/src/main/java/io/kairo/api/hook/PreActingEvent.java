@@ -24,4 +24,5 @@ import java.util.Map;
  * @param input the tool input parameters
  * @param cancelled whether this event has been cancelled by a hook
  */
-public record PreActingEvent(String toolName, Map<String, Object> input, boolean cancelled) {}
+public record PreActingEvent(String toolName, Map<String, Object> input, boolean cancelled)
+        implements HookEvent {}

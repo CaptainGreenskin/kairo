@@ -26,7 +26,7 @@ import java.util.List;
  * <p>Hook handlers can inspect the compaction results and append recovery messages that will be
  * merged into the final compacted message list.
  */
-public class PostCompactEvent {
+public class PostCompactEvent implements HookEvent {
 
     private final List<Msg> compactedMessages;
     private final int tokensSaved;

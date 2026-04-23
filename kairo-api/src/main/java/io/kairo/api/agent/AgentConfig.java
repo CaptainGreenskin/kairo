@@ -304,7 +304,9 @@ public record AgentConfig(
          *
          * @param config the MCP server configuration object
          * @return this builder
+         * @deprecated since v0.10 — configure MCP via {@link #mcpCapability(McpCapabilityConfig)}.
          */
+        @Deprecated(since = "0.10", forRemoval = true)
         public Builder addMcpServerConfig(Object config) {
             this.mcpServerConfigs.add(config);
             return this;
@@ -315,7 +317,10 @@ public record AgentConfig(
          *
          * <p>Provides a hard upper bound so one remote server cannot flood the runtime with an
          * unbounded tool list.
+         *
+         * @deprecated since v0.10 — configure MCP via {@link #mcpCapability(McpCapabilityConfig)}.
          */
+        @Deprecated(since = "0.10", forRemoval = true)
         public Builder mcpMaxToolsPerServer(int maxTools) {
             if (maxTools < 1) {
                 throw new IllegalArgumentException("mcpMaxToolsPerServer must be >= 1");
@@ -328,7 +333,10 @@ public record AgentConfig(
          * Enable/disable strict schema alignment when importing MCP tool schemas.
          *
          * <p>When enabled, schema mismatches are normalized conservatively by the runtime.
+         *
+         * @deprecated since v0.10 — configure MCP via {@link #mcpCapability(McpCapabilityConfig)}.
          */
+        @Deprecated(since = "0.10", forRemoval = true)
         public Builder mcpStrictSchemaAlignment(boolean strict) {
             this.mcpStrictSchemaAlignment = strict;
             return this;
@@ -338,7 +346,12 @@ public record AgentConfig(
          * Restrict MCP tool registration using a case-insensitive name/description search query.
          *
          * <p>When set, only MCP tools that match this query are registered into the runtime.
+         *
+         * @deprecated since v0.10 — configure MCP via {@link #mcpCapability(McpCapabilityConfig)}.
+         *     Expected to be removed once the MCP fields fully migrate to the {@code kairo-mcp}
+         *     starter in a subsequent wave.
          */
+        @Deprecated(since = "0.10", forRemoval = true)
         public Builder mcpToolSearchQuery(String query) {
             this.mcpToolSearchQuery = query;
             return this;

@@ -21,7 +21,14 @@ import io.kairo.api.task.TaskBoard;
 import java.util.List;
 import reactor.core.publisher.Mono;
 
-/** Dispatches tasks from a task board to agents. */
+/**
+ * Dispatches tasks from a task board to agents.
+ *
+ * @deprecated since v0.10 — replaced by the Expert Team {@code TeamCoordinator} SPI. The
+ *     implementation in {@code kairo-multi-agent} will be promoted to an internal strategy and the
+ *     public SPI removed in v0.11.
+ */
+@Deprecated(since = "0.10", forRemoval = true)
 public interface TeamScheduler {
 
     /**

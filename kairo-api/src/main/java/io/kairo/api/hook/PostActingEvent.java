@@ -23,4 +23,4 @@ import io.kairo.api.tool.ToolResult;
  * @param toolName the name of the tool that was executed
  * @param result the tool execution result
  */
-public record PostActingEvent(String toolName, ToolResult result) {}
+public record PostActingEvent(String toolName, ToolResult result) implements HookEvent {}

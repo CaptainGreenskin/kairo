@@ -23,5 +23,7 @@ import java.util.List;
  * @param name the plan name
  * @param overview a high-level description of the plan
  * @param tasks the ordered list of tasks in this plan
+ * @deprecated since v0.10 — see {@link Task}.
  */
+@Deprecated(since = "0.10", forRemoval = true)
 public record Plan(String name, String overview, List<Task> tasks) {}

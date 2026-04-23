@@ -28,7 +28,12 @@ import java.util.UUID;
  *
  * <p>Tasks support dependency tracking via {@code blockedBy} and {@code blocks} sets, enabling
  * DAG-based task scheduling.
+ *
+ * @deprecated since v0.10 — the Task / TaskBoard / TeamScheduler API is being superseded by the
+ *     Expert Team {@code TeamCoordinator} SPI. New code should not depend on this type; existing
+ *     callers will be migrated before the v0.11 deletion wave.
  */
+@Deprecated(since = "0.10", forRemoval = true)
 public class Task {
 
     private final String id;

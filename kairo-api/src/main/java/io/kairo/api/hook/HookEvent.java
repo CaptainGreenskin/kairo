@@ -15,15 +15,17 @@
  */
 package io.kairo.api.hook;
 
-import io.kairo.api.message.Msg;
+import io.kairo.api.Experimental;
 
 /**
- * Event fired when an Agent session starts processing.
+ * Marker for any event that flows through the Kairo hook chain. Implementations remain their own
+ * records (to avoid a massive sealed hierarchy migration) but declaring this marker lets cross-
+ * cutting tooling — observability, auditing, replay — accept any hook event uniformly.
  *
- * @param agentName the name of the agent
- * @param input the user input message
- * @param modelName the model being used
- * @param maxIterations the maximum iteration limit
+ * <p>Not sealed on purpose: evolution, expert-team, and channel subsystems will contribute their
+ * own {@code HookEvent} subtypes in later waves.
+ *
+ * @since v0.10 (Experimental)
  */
-public record SessionStartEvent(String agentName, Msg input, String modelName, int maxIterations)
-        implements HookEvent {}
+@Experimental("Unified hook dispatch — contract may change in v0.11")
+public interface HookEvent {}

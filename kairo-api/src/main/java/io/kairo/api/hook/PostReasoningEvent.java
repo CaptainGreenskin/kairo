@@ -23,4 +23,4 @@ import io.kairo.api.model.ModelResponse;
  * @param response the model response
  * @param cancelled whether this event has been cancelled by a hook
  */
-public record PostReasoningEvent(ModelResponse response, boolean cancelled) {}
+public record PostReasoningEvent(ModelResponse response, boolean cancelled) implements HookEvent {}

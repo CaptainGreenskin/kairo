@@ -15,7 +15,12 @@
  */
 package io.kairo.api.task;
 
-/** Lifecycle status of a task. */
+/**
+ * Lifecycle status of a task.
+ *
+ * @deprecated since v0.10 — see {@link Task}.
+ */
+@Deprecated(since = "0.10", forRemoval = true)
 public enum TaskStatus {
 
     /** Task is created but not yet started. */

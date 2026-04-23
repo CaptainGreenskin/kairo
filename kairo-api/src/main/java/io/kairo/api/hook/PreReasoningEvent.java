@@ -26,4 +26,5 @@ import java.util.List;
  * @param config the model configuration
  * @param cancelled whether this event has been cancelled by a hook
  */
-public record PreReasoningEvent(List<Msg> messages, ModelConfig config, boolean cancelled) {}
+public record PreReasoningEvent(List<Msg> messages, ModelConfig config, boolean cancelled)
+        implements HookEvent {}

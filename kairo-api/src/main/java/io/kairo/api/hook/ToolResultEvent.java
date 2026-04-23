@@ -27,4 +27,5 @@ import java.time.Duration;
  * @param success whether the tool executed successfully
  */
 public record ToolResultEvent(
-        String toolName, ToolResult result, Duration duration, boolean success) {}
+        String toolName, ToolResult result, Duration duration, boolean success)
+        implements HookEvent {}

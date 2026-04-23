@@ -11,15 +11,20 @@
     </parent>
 
     <artifactId>kairo-spring-boot-starter</artifactId>
-    <name>Kairo Spring Boot Starter</name>
-    <description>Spring Boot starter aggregator for Kairo — pulls in core, MCP, and multi-agent starters</description>
+    <name>Kairo Spring Boot Starter (deprecated aggregator)</name>
+    <description>
+        Deprecated since v0.10 — use the dedicated starter modules
+        (kairo-spring-boot-starter-core / -mcp / -multi-agent / -evolution / -expert-team) directly.
+        This aggregator is retained only for backward-compatible classpath parity and is scheduled
+        for removal in v1.0.
+    </description>
 
     <!--
-        This module is a backward-compatible aggregator. It transitively brings in all
-        Kairo starter modules so existing users who depend on kairo-spring-boot-starter
-        get the same classpath they had before.
+        Deprecated since v0.10.
+        For minimal dependency footprint, use kairo-spring-boot-starter-core and add only the
+        optional feature starters you need (mcp, multi-agent, evolution, expert-team).
 
-        For minimal dependency, use kairo-spring-boot-starter-core instead.
+        This aggregator will be removed once v1.0 publishes to Maven Central.
     -->
 
     <dependencies>

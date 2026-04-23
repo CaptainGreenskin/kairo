@@ -9,6 +9,7 @@
 | v0.7.1 | Tool Result Budget + 结构化可观测性 | ✅ 已完成 |
 | v0.8 | 持久化执行 MVP + 执行约束 SPI + 成本感知路由 | ✅ 已实现 |
 | v0.9 | 平台能力补缺口（Self-Evolution 接线验证 + 防回退约束） | 进行中 |
+| v0.10 | 核心重构波次（事件总线 + capability 配置形状 + Hook 统一入口 + SPI 脚手架） | ✅ 已实现 |
 
 ## v0.1–v0.4：核心运行时（已完成）
 
@@ -39,3 +40,9 @@ DurableExecutionStore SPI（InMemory + JDBC）支持 Agent 跨进程恢复（at-
 本轮聚焦补缺口而非重做：验证默认 Self-Evolution 运行时接线、补充架构防回退测试，并同步版本状态文档口径。
 
 验证记录见：`docs/roadmap/v0.9-gap-only-verification.md`。
+
+## v0.10：核心重构波次（已实现）
+
+本轮优先做**平台工程化**：引入进程内统一事件门面（`KairoEventBus`）、把横切配置收敛为 capability record（例如 `McpCapabilityConfig`）、提供 `@HookHandler` 与旧注解并存迁移路径，并补齐 `SkillStore` / `ProviderPipeline` 等 SPI 脚手架，降低后续 Expert Team / OTel / Channel 等能力的接入成本。
+
+验证证据见：`docs/roadmap/v0.10-core-refactor-verification.md`。

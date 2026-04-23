@@ -17,7 +17,13 @@ package io.kairo.api.task;
 
 import java.util.List;
 
-/** Manages the task board: create, update, query, and track dependencies. */
+/**
+ * Manages the task board: create, update, query, and track dependencies.
+ *
+ * @deprecated since v0.10 — superseded by the Expert Team {@code TeamCoordinator} SPI. Scheduled
+ *     for deletion in v0.11 along with {@link Task}, {@link TaskStatus}, and {@link Plan}.
+ */
+@Deprecated(since = "0.10", forRemoval = true)
 public interface TaskBoard {
 
     /**
