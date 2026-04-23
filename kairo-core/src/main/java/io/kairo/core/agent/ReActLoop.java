@@ -15,17 +15,23 @@
  */
 package io.kairo.core.agent;
 
+import io.kairo.api.agent.AgentConfig;
+import io.kairo.api.execution.ExecutionEventType;
+import io.kairo.api.execution.ResourceConstraint;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.core.execution.DefaultResourceConstraint;
+import io.kairo.core.execution.ExecutionEventEmitter;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
@@ -52,6 +58,8 @@ class ReActLoop {
     private volatile boolean streamingEnabled = false;
     private final AtomicBoolean danglingRecoveryDone = new AtomicBoolean(false);
 
+    @Nullable private final ExecutionEventEmitter eventEmitter;
+
     // Decomposed phase collaborators
     private final IterationGuards guards;
     private final HookDecisionApplier hookDecisions;
@@ -76,10 +84,31 @@ class ReActLoop {
             AtomicInteger currentIteration,
             AtomicLong totalTokensUsed,
             Supplier<ModelConfig> modelConfigSupplier) {
+        this(ctx, interrupted, currentIteration, totalTokensUsed, modelConfigSupplier, null);
+    }
+
+    /**
+     * Create a new ReActLoop with an optional {@link ExecutionEventEmitter}.
+     *
+     * @param ctx the immutable context holding all dependencies
+     * @param interrupted shared interrupted flag (set by {@link DefaultReActAgent#interrupt()})
+     * @param currentIteration shared iteration counter
+     * @param totalTokensUsed shared token counter
+     * @param modelConfigSupplier supplier for building ModelConfig each iteration
+     * @param eventEmitter optional emitter for durable execution events (may be null)
+     */
+    ReActLoop(
+            ReActLoopContext ctx,
+            AtomicBoolean interrupted,
+            AtomicInteger currentIteration,
+            AtomicLong totalTokensUsed,
+            Supplier<ModelConfig> modelConfigSupplier,
+            @Nullable ExecutionEventEmitter eventEmitter) {
         this.ctx = ctx;
         this.conversationHistory = new CopyOnWriteArrayList<>();
         this.currentIteration = currentIteration;
         this.modelConfigSupplier = modelConfigSupplier;
+        this.eventEmitter = eventEmitter;
 
         // Initialize loop detector from config thresholds
         var loopDetector =
@@ -91,7 +120,8 @@ class ReActLoop {
                         ctx.config().loopFreqWindow());
 
         // Build phase collaborators
-        this.guards = new IterationGuards(ctx, interrupted, currentIteration);
+        List<ResourceConstraint> effectiveConstraints = resolveResourceConstraints(ctx.config());
+        this.guards = new IterationGuards(ctx, interrupted, currentIteration, effectiveConstraints);
         this.hookDecisions = new HookDecisionApplier(ctx);
         this.toolPhase =
                 new ToolPhase(
@@ -100,7 +130,8 @@ class ReActLoop {
                         hookDecisions,
                         conversationHistory,
                         loopDetector,
-                        currentIteration);
+                        currentIteration,
+                        eventEmitter);
         this.reasoningPhase =
                 new ReasoningPhase(
                         ctx,
@@ -110,7 +141,8 @@ class ReActLoop {
                         totalTokensUsed,
                         currentIteration,
                         () -> streamingEnabled,
-                        toolPhase);
+                        toolPhase,
+                        eventEmitter);
     }
 
     // ---- History management (controlled mutation) ----
@@ -160,11 +192,51 @@ class ReActLoop {
     }
 
     private Mono<Msg> runSingleIteration() {
-        Msg guardResult = guards.evaluate();
-        if (guardResult != null) {
-            return Mono.just(guardResult);
+        return guards.evaluate()
+                .switchIfEmpty(
+                        Mono.defer(
+                                () -> {
+                                    Mono<Msg> execution =
+                                            reasoningPhase.execute(
+                                                    modelConfigSupplier.get(), this::runLoop);
+
+                                    // Emit ITERATION_COMPLETE after the iteration finishes
+                                    // (best-effort)
+                                    if (eventEmitter != null) {
+                                        execution =
+                                                execution.flatMap(
+                                                        msg ->
+                                                                emitBestEffort(
+                                                                                ExecutionEventType
+                                                                                        .ITERATION_COMPLETE,
+                                                                                "{\"iteration\":"
+                                                                                        + currentIteration
+                                                                                                .get()
+                                                                                        + "}")
+                                                                        .thenReturn(msg));
+                                    }
+                                    return execution;
+                                }));
+    }
+
+    /**
+     * Best-effort event emission — errors are logged and swallowed so that event emission failures
+     * never break the ReAct loop.
+     */
+    private Mono<Void> emitBestEffort(ExecutionEventType type, String payloadJson) {
+        if (eventEmitter == null) {
+            return Mono.empty();
         }
-        return reasoningPhase.execute(modelConfigSupplier.get(), this::runLoop);
+        return eventEmitter
+                .emit(type, payloadJson)
+                .onErrorResume(
+                        e -> {
+                            log.warn(
+                                    "Failed to emit {} event for execution: {}",
+                                    type,
+                                    e.getMessage());
+                            return Mono.empty();
+                        });
     }
 
     // ---- Dangling Tool Call Recovery ----
@@ -259,5 +331,25 @@ class ReActLoop {
                                         true,
                                         Map.of()))
                 .toList();
+    }
+
+    /**
+     * Resolve the effective list of {@link ResourceConstraint}s from the agent config.
+     *
+     * <p>If the config contains an explicit {@code resourceConstraints} list, it is used as-is
+     * (including an empty list, which opts out of all constraints). Otherwise, a {@link
+     * DefaultResourceConstraint} is auto-created from the config's maxIterations, tokenBudget, and
+     * timeout.
+     */
+    private static List<ResourceConstraint> resolveResourceConstraints(AgentConfig config) {
+        if (config != null && config.resourceConstraints() != null) {
+            return config.resourceConstraints();
+        }
+        if (config != null) {
+            return List.of(
+                    new DefaultResourceConstraint(
+                            config.maxIterations(), config.tokenBudget(), config.timeout()));
+        }
+        return List.of();
     }
 }

@@ -827,7 +827,8 @@ class AgentIntegrationTest {
         // Assert
         assertNotNull(result);
         assertTrue(
-                result.text().contains("maximum iteration limit"),
+                result.text().contains("max iterations")
+                        || result.text().contains("maximum iteration limit"),
                 "Should mention hitting iteration limit: " + result.text());
         // Provider should have been called at most 3 times (one per iteration)
         assertTrue(

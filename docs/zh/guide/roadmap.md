@@ -7,7 +7,7 @@
 | v0.6 | 安全的 Agent — Guardrail SPI + 团队模式 | 计划中 |
 | v0.7.0 | Guardrail SPI + MCP 安全 + 结构化异常 | ✅ 已完成 |
 | v0.7.1 | Tool Result Budget + 结构化可观测性 | ✅ 已完成 |
-| v0.8+ | Channel SPI + 仪表盘 + 执行回放 | 计划中 |
+| v0.8 | 持久化执行 MVP + 执行约束 SPI + 成本感知路由 | ✅ 已实现 |
 
 ## v0.1–v0.4：核心运行时（已完成）
 
@@ -29,6 +29,6 @@ Guardrail SPI 四阶段拦截、MCP 安全默认 deny-safe 策略、KairoExcepti
 
 ToolResultBudget L0 预截断、ToolResult 结构化可观测性元数据、TOOL 消息可观测性字段、工具异常/策略路径分类和 ADR-010。
 
-## v0.8+：完整平台（计划中）
+## v0.8：持久化执行 MVP + 执行约束 + 成本感知路由（已实现）
 
-Channel SPI 用于多渠道通信、Web 仪表盘用于 Agent 监控，以及执行回放用于调试和审计。
+DurableExecutionStore SPI（InMemory + JDBC）支持 Agent 跨进程恢复（at-least-once 语义），ResourceConstraint SPI 统一执行约束 enforcement（替代分散的 iteration/token/timeout 检查），CostAwareRoutingPolicy 扩展 v0.7 RoutingPolicy SPI，提供 ModelTierRegistry 和线性降级链。

@@ -16,6 +16,7 @@
 package io.kairo.api.agent;
 
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.execution.ResourceConstraint;
 import io.kairo.api.memory.MemoryStore;
 import io.kairo.api.middleware.Middleware;
 import io.kairo.api.model.ModelProvider;
@@ -25,6 +26,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import javax.annotation.Nullable;
 
 /**
  * Configuration for creating an agent.
@@ -63,7 +65,8 @@ public record AgentConfig(
         int loopHashHardLimit,
         int loopFreqWarnThreshold,
         int loopFreqHardLimit,
-        Duration loopFreqWindow) {
+        Duration loopFreqWindow,
+        @Nullable List<ResourceConstraint> resourceConstraints) {
 
     /** Backward-compatible constructor without middlewares (defaults to empty list). */
     public AgentConfig(
@@ -109,7 +112,8 @@ public record AgentConfig(
                 loopHashHardLimit,
                 loopFreqWarnThreshold,
                 loopFreqHardLimit,
-                loopFreqWindow);
+                loopFreqWindow,
+                null);
     }
 
     /**
@@ -149,6 +153,7 @@ public record AgentConfig(
         private int loopFreqWarnThreshold = 50;
         private int loopFreqHardLimit = 100;
         private Duration loopFreqWindow = Duration.ofMinutes(10);
+        @Nullable private List<ResourceConstraint> resourceConstraints;
 
         private Builder() {}
 
@@ -376,6 +381,20 @@ public record AgentConfig(
         }
 
         /**
+         * Set custom {@link ResourceConstraint}s for the agent.
+         *
+         * <p>When set, these constraints replace the default iteration/token/timeout checks. Pass
+         * an empty list to explicitly opt out of all resource constraints.
+         *
+         * @param constraints the resource constraints
+         * @return this builder
+         */
+        public Builder resourceConstraints(List<ResourceConstraint> constraints) {
+            this.resourceConstraints = constraints != null ? List.copyOf(constraints) : null;
+            return this;
+        }
+
+        /**
          * Build an immutable {@link AgentConfig} from the current builder state.
          *
          * @return the constructed config
@@ -407,7 +426,8 @@ public record AgentConfig(
                     loopHashHardLimit,
                     loopFreqWarnThreshold,
                     loopFreqHardLimit,
-                    loopFreqWindow);
+                    loopFreqWindow,
+                    resourceConstraints);
         }
     }
 }

@@ -87,9 +87,9 @@ public class DefaultGuardrailChain implements GuardrailChain {
     }
 
     /**
-     * Iterative chain evaluation using {@link Flux#reduce}. Each policy is evaluated in order; DENY
-     * short-circuits via a sentinel wrapper, MODIFY propagates the modified payload to subsequent
-     * policies, and WARN/ALLOW continue unchanged.
+     * Iterative chain evaluation using reactive {@link Flux#concatMap} + {@link Mono#reduce}. Each
+     * policy is evaluated in order; DENY short-circuits via a sentinel wrapper, MODIFY propagates
+     * the modified payload to subsequent policies, and WARN/ALLOW continue unchanged.
      */
     private Mono<GuardrailDecision> evaluateIterative(GuardrailContext context) {
         final GuardrailPayload originalPayload = context.payload();
@@ -99,45 +99,60 @@ public class DefaultGuardrailChain implements GuardrailChain {
 
         return Flux.fromIterable(policies)
                 .reduce(
-                        new ChainState(context, null),
-                        (state, policy) -> {
-                            // If a previous policy already short-circuited, skip remaining
-                            if (state.shortCircuit() != null) {
-                                return state;
-                            }
-                            // Evaluate policy, guarding against Mono.empty()
-                            GuardrailDecision decision =
-                                    policy.evaluate(state.ctx())
-                                            .switchIfEmpty(
-                                                    Mono.just(
-                                                            GuardrailDecision.allow("no-decision")))
-                                            .block();
-
-                            emitEvent(decision, state.ctx());
-
-                            return switch (decision.action()) {
-                                case DENY -> new ChainState(state.ctx(), decision);
-                                case MODIFY -> {
-                                    GuardrailContext modified =
-                                            new GuardrailContext(
-                                                    state.ctx().phase(),
-                                                    state.ctx().agentName(),
-                                                    state.ctx().targetName(),
-                                                    decision.modifiedPayload(),
-                                                    Map.copyOf(state.ctx().metadata()));
-                                    yield new ChainState(modified, null);
-                                }
-                                case WARN -> {
-                                    log.warn(
-                                            "Guardrail warning from {}: {}",
-                                            decision.policyName(),
-                                            decision.reason());
-                                    yield state;
-                                }
-                                default -> // ALLOW — continue
-                                        state;
-                            };
-                        })
+                        Mono.just(new ChainState(context, null)),
+                        (stateMono, policy) ->
+                                stateMono.flatMap(
+                                        state -> {
+                                            // If a previous policy already short-circuited, skip
+                                            // remaining
+                                            if (state.shortCircuit() != null) {
+                                                return Mono.just(state);
+                                            }
+                                            // Evaluate policy reactively
+                                            return policy.evaluate(state.ctx())
+                                                    .switchIfEmpty(
+                                                            Mono.just(
+                                                                    GuardrailDecision.allow(
+                                                                            "no-decision")))
+                                                    .map(
+                                                            decision -> {
+                                                                emitEvent(decision, state.ctx());
+                                                                return switch (decision.action()) {
+                                                                    case DENY ->
+                                                                            new ChainState(
+                                                                                    state.ctx(),
+                                                                                    decision);
+                                                                    case MODIFY -> {
+                                                                        GuardrailContext modified =
+                                                                                new GuardrailContext(
+                                                                                        state.ctx()
+                                                                                                .phase(),
+                                                                                        state.ctx()
+                                                                                                .agentName(),
+                                                                                        state.ctx()
+                                                                                                .targetName(),
+                                                                                        decision
+                                                                                                .modifiedPayload(),
+                                                                                        Map.copyOf(
+                                                                                                state.ctx()
+                                                                                                        .metadata()));
+                                                                        yield new ChainState(
+                                                                                modified, null);
+                                                                    }
+                                                                    case WARN -> {
+                                                                        log.warn(
+                                                                                "Guardrail warning from {}: {}",
+                                                                                decision
+                                                                                        .policyName(),
+                                                                                decision.reason());
+                                                                        yield state;
+                                                                    }
+                                                                    default -> // ALLOW — continue
+                                                                            state;
+                                                                };
+                                                            });
+                                        }))
+                .flatMap(mono -> mono)
                 .map(
                         state -> {
                             // If short-circuited by DENY, return that decision

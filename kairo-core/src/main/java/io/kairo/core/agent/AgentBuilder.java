@@ -19,6 +19,8 @@ import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.agent.AgentSnapshot;
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.execution.DurableExecutionStore;
+import io.kairo.api.execution.ResourceConstraint;
 import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.memory.MemoryStore;
 import io.kairo.api.middleware.Middleware;
@@ -30,6 +32,7 @@ import io.kairo.api.tracing.Tracer;
 import io.kairo.core.context.CompactionThresholds;
 import io.kairo.core.context.DefaultContextManager;
 import io.kairo.core.context.TokenBudgetManager;
+import io.kairo.core.execution.RecoveryHandler;
 import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.middleware.DefaultMiddlewarePipeline;
 import io.kairo.core.session.SessionManager;
@@ -91,6 +94,10 @@ public class AgentBuilder {
     private Map<String, Object> toolDependencies = Map.of();
     private CompactionThresholds compactionThresholds;
     private GuardrailChain guardrailChain;
+    @javax.annotation.Nullable private DurableExecutionStore durableExecutionStore;
+    @javax.annotation.Nullable private RecoveryHandler recoveryHandler;
+    private boolean recoveryOnStartup = false;
+    @javax.annotation.Nullable private java.util.List<ResourceConstraint> resourceConstraints;
 
     private AgentBuilder() {}
 
@@ -395,6 +402,53 @@ public class AgentBuilder {
     }
 
     /**
+     * Set the durable execution store for crash recovery persistence.
+     *
+     * @param store the durable execution store, or null to disable
+     * @return this builder
+     */
+    public AgentBuilder durableExecutionStore(DurableExecutionStore store) {
+        this.durableExecutionStore = store;
+        return this;
+    }
+
+    /**
+     * Set the recovery handler for crash recovery.
+     *
+     * @param handler the recovery handler, or null to disable
+     * @return this builder
+     */
+    public AgentBuilder recoveryHandler(RecoveryHandler handler) {
+        this.recoveryHandler = handler;
+        return this;
+    }
+
+    /**
+     * Enable or disable recovery of pending executions on startup.
+     *
+     * @param enabled true to attempt recovery on startup (default: false)
+     * @return this builder
+     */
+    public AgentBuilder recoveryOnStartup(boolean enabled) {
+        this.recoveryOnStartup = enabled;
+        return this;
+    }
+
+    /**
+     * Set custom {@link ResourceConstraint}s for the agent.
+     *
+     * <p>When set, these constraints replace the default iteration/token/timeout checks. Pass an
+     * empty list to explicitly opt out of all resource constraints.
+     *
+     * @param constraints the resource constraints
+     * @return this builder
+     */
+    public AgentBuilder resourceConstraints(java.util.List<ResourceConstraint> constraints) {
+        this.resourceConstraints = constraints != null ? List.copyOf(constraints) : null;
+        return this;
+    }
+
+    /**
      * Build the agent, validating required parameters.
      *
      * @return a new {@link Agent} instance
@@ -428,7 +482,15 @@ public class AgentBuilder {
 
         DefaultReActAgent agent =
                 new DefaultReActAgent(
-                        config, toolExecutor, hookChain, middlewarePipeline, sm, guardrailChain);
+                        config,
+                        toolExecutor,
+                        hookChain,
+                        middlewarePipeline,
+                        sm,
+                        guardrailChain,
+                        durableExecutionStore,
+                        recoveryHandler,
+                        recoveryOnStartup);
 
         // Restore from snapshot if provided
         if (restoreFrom != null) {
@@ -517,6 +579,10 @@ public class AgentBuilder {
 
         configBuilder.loopDetection(
                 loopHashWarn, loopHashStop, loopFreqWarn, loopFreqStop, loopFreqWindow);
+
+        if (resourceConstraints != null) {
+            configBuilder.resourceConstraints(resourceConstraints);
+        }
 
         for (Object hook : hooks) {
             configBuilder.addHook(hook);

@@ -183,7 +183,9 @@ class DefaultReActAgentTest {
                 .assertNext(
                         msg -> {
                             assertEquals(MsgRole.ASSISTANT, msg.role());
-                            assertTrue(msg.text().contains("maximum iteration limit"));
+                            assertTrue(
+                                    msg.text().contains("max iterations")
+                                            || msg.text().contains("maximum iteration limit"));
                         })
                 .verifyComplete();
     }

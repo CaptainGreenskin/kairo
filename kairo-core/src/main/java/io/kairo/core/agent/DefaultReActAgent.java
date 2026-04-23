@@ -21,6 +21,9 @@ import io.kairo.api.agent.AgentSnapshot;
 import io.kairo.api.agent.AgentState;
 import io.kairo.api.context.ContextManager;
 import io.kairo.api.exception.AgentInterruptedException;
+import io.kairo.api.execution.DurableExecution;
+import io.kairo.api.execution.DurableExecutionStore;
+import io.kairo.api.execution.ExecutionStatus;
 import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.hook.*;
 import io.kairo.api.hook.HookChain;
@@ -35,6 +38,7 @@ import io.kairo.api.tracing.NoopTracer;
 import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
 import io.kairo.core.context.TokenBudgetManager;
+import io.kairo.core.execution.RecoveryHandler;
 import io.kairo.core.middleware.DefaultMiddlewarePipeline;
 import io.kairo.core.model.ModelFallbackManager;
 import io.kairo.core.prompt.SystemPromptBuilder;
@@ -95,6 +99,15 @@ public class DefaultReActAgent implements Agent {
     private final DefaultMiddlewarePipeline middlewarePipeline;
     private volatile Instant sessionStartTime;
 
+    /** Optional durable execution store for crash recovery (null when durability is disabled). */
+    @javax.annotation.Nullable private final DurableExecutionStore durableExecutionStore;
+
+    /** Optional recovery handler (null when durability is disabled). */
+    @javax.annotation.Nullable private final RecoveryHandler recoveryHandler;
+
+    /** Whether to attempt recovery on startup. */
+    private final boolean recoveryOnStartup;
+
     /**
      * Per-agent {@link ToolContext} used to seed the Reactor Context on every {@link #call(Msg)}.
      *
@@ -152,6 +165,42 @@ public class DefaultReActAgent implements Agent {
             DefaultMiddlewarePipeline middlewarePipeline,
             GracefulShutdownManager shutdownManager,
             GuardrailChain guardrailChain) {
+        this(
+                config,
+                toolExecutor,
+                hookChain,
+                middlewarePipeline,
+                shutdownManager,
+                guardrailChain,
+                null,
+                null,
+                false);
+    }
+
+    /**
+     * Create a new ReAct agent with the given configuration, guardrail chain, and durable execution
+     * support.
+     *
+     * @param config the agent configuration
+     * @param toolExecutor the tool executor for running tools
+     * @param hookChain the hook chain for lifecycle events
+     * @param middlewarePipeline the middleware pipeline
+     * @param shutdownManager the graceful shutdown manager
+     * @param guardrailChain the guardrail chain (null skips guardrail evaluation)
+     * @param durableExecutionStore the durable execution store (null disables durability)
+     * @param recoveryHandler the recovery handler (null disables recovery)
+     * @param recoveryOnStartup whether to attempt recovery on startup
+     */
+    public DefaultReActAgent(
+            AgentConfig config,
+            ToolExecutor toolExecutor,
+            HookChain hookChain,
+            DefaultMiddlewarePipeline middlewarePipeline,
+            GracefulShutdownManager shutdownManager,
+            GuardrailChain guardrailChain,
+            @javax.annotation.Nullable DurableExecutionStore durableExecutionStore,
+            @javax.annotation.Nullable RecoveryHandler recoveryHandler,
+            boolean recoveryOnStartup) {
         this.id = UUID.randomUUID().toString();
         this.name = config.name();
         this.state = AgentState.IDLE;
@@ -216,6 +265,11 @@ public class DefaultReActAgent implements Agent {
                         this.shutdownManager,
                         this.contextManager,
                         guardrailChain);
+        // Durable execution support
+        this.durableExecutionStore = durableExecutionStore;
+        this.recoveryHandler = recoveryHandler;
+        this.recoveryOnStartup = recoveryOnStartup;
+
         this.reactLoop =
                 new ReActLoop(
                         loopContext,
@@ -342,10 +396,14 @@ public class DefaultReActAgent implements Agent {
 
                                     sessionStartTime = Instant.now();
 
-                                    return sessionResumption
-                                            .loadSessionIfConfigured()
+                                    // Attempt crash recovery if durable execution is configured
+                                    Mono<Void> recoveryStep = attemptRecovery(config.sessionId());
+
+                                    return recoveryStep
+                                            .then(sessionResumption.loadSessionIfConfigured())
                                             .then(skillToolManager.initMcpIfConfigured())
                                             .then(fireSessionStartBestEffort(input))
+                                            .then(persistExecutionIfConfigured(config.sessionId()))
                                             .then(reactLoop.runLoop())
                                             .timeout(config.timeout())
                                             .onErrorMap(
@@ -357,35 +415,78 @@ public class DefaultReActAgent implements Agent {
                                                                             + "' timed out after "
                                                                             + config.timeout()))
                                             .flatMap(
-                                                    result -> {
-                                                        agentSpan.setStatus(true, "completed");
-                                                        state = AgentState.COMPLETED;
-                                                        log.info(
-                                                                "Agent '{}' completed after {}"
-                                                                        + " iterations, {} tokens"
-                                                                        + " used",
-                                                                name,
-                                                                currentIteration.get(),
-                                                                totalTokensUsed.get());
-                                                        return fireSessionEndBestEffort(
-                                                                        AgentState.COMPLETED, null)
-                                                                .thenReturn(result);
-                                                    })
+                                                    result ->
+                                                            updateExecutionStatus(
+                                                                            config.sessionId(),
+                                                                            ExecutionStatus
+                                                                                    .COMPLETED)
+                                                                    .then(
+                                                                            Mono.defer(
+                                                                                    () -> {
+                                                                                        agentSpan
+                                                                                                .setStatus(
+                                                                                                        true,
+                                                                                                        "completed");
+                                                                                        state =
+                                                                                                AgentState
+                                                                                                        .COMPLETED;
+                                                                                        log.info(
+                                                                                                "Agent '{}' completed after {}"
+                                                                                                        + " iterations, {} tokens"
+                                                                                                        + " used",
+                                                                                                name,
+                                                                                                currentIteration
+                                                                                                        .get(),
+                                                                                                totalTokensUsed
+                                                                                                        .get());
+                                                                                        return fireSessionEndBestEffort(
+                                                                                                        AgentState
+                                                                                                                .COMPLETED,
+                                                                                                        null)
+                                                                                                .thenReturn(
+                                                                                                        result);
+                                                                                    })))
                                             .onErrorResume(
-                                                    e -> {
-                                                        agentSpan.setStatus(false, e.getMessage());
-                                                        state = AgentState.FAILED;
-                                                        log.error(
-                                                                "Agent '{}' failed after {}"
-                                                                        + " iterations: {}",
-                                                                name,
-                                                                currentIteration.get(),
-                                                                e.getMessage());
-                                                        return fireSessionEndBestEffort(
-                                                                        AgentState.FAILED,
-                                                                        e.getMessage())
-                                                                .then(Mono.error(e));
-                                                    })
+                                                    e ->
+                                                            updateExecutionStatus(
+                                                                            config.sessionId(),
+                                                                            ExecutionStatus.FAILED)
+                                                                    .onErrorResume(
+                                                                            ue -> Mono.empty())
+                                                                    .then(
+                                                                            Mono.defer(
+                                                                                    () -> {
+                                                                                        agentSpan
+                                                                                                .setStatus(
+                                                                                                        false,
+                                                                                                        e
+                                                                                                                .getMessage());
+                                                                                        state =
+                                                                                                AgentState
+                                                                                                        .FAILED;
+                                                                                        log.error(
+                                                                                                "Agent"
+                                                                                                        + " '{}'"
+                                                                                                        + " failed"
+                                                                                                        + " after"
+                                                                                                        + " {}"
+                                                                                                        + " iterations:"
+                                                                                                        + " {}",
+                                                                                                name,
+                                                                                                currentIteration
+                                                                                                        .get(),
+                                                                                                e
+                                                                                                        .getMessage());
+                                                                                        return fireSessionEndBestEffort(
+                                                                                                        AgentState
+                                                                                                                .FAILED,
+                                                                                                        e
+                                                                                                                .getMessage())
+                                                                                                .then(
+                                                                                                        Mono
+                                                                                                                .error(
+                                                                                                                        e));
+                                                                                    })))
                                             .doFinally(
                                                     signal -> {
                                                         agentSpan.end();
@@ -526,6 +627,90 @@ public class DefaultReActAgent implements Agent {
     }
 
     // ---- Private: System prompt and model config ----
+
+    /**
+     * Attempt crash recovery if durable execution is configured and recovery-on-startup is enabled.
+     */
+    private Mono<Void> attemptRecovery(String sessionId) {
+        if (recoveryHandler == null || !recoveryOnStartup) {
+            return Mono.empty();
+        }
+        return recoveryHandler
+                .recover(sessionId)
+                .doOnNext(
+                        result -> {
+                            log.info(
+                                    "Agent '{}' recovered execution {}: resuming from iteration {}",
+                                    name,
+                                    result.executionId(),
+                                    result.resumeFromIteration());
+                            if (!result.rebuiltHistory().isEmpty()) {
+                                reactLoop.injectMessages(result.rebuiltHistory());
+                            }
+                            currentIteration.set(result.resumeFromIteration());
+                        })
+                .onErrorResume(
+                        e -> {
+                            log.warn(
+                                    "Agent '{}' recovery failed, starting fresh: {}",
+                                    name,
+                                    e.getMessage());
+                            return Mono.empty();
+                        })
+                .then();
+    }
+
+    /** Persist a new durable execution before the ReAct loop starts (if store is configured). */
+    private Mono<Void> persistExecutionIfConfigured(String sessionId) {
+        if (durableExecutionStore == null) {
+            return Mono.empty();
+        }
+        DurableExecution execution =
+                new DurableExecution(
+                        sessionId,
+                        id,
+                        java.util.List.of(),
+                        null,
+                        ExecutionStatus.RUNNING,
+                        0,
+                        Instant.now(),
+                        Instant.now());
+        return durableExecutionStore
+                .persist(execution)
+                .onErrorResume(
+                        e -> {
+                            // Execution may already exist (recovery case) — log and continue
+                            log.debug(
+                                    "Could not persist execution {}: {}",
+                                    sessionId,
+                                    e.getMessage());
+                            return Mono.empty();
+                        });
+    }
+
+    /** Update durable execution status (if store is configured). Best-effort. */
+    private Mono<Void> updateExecutionStatus(String sessionId, ExecutionStatus status) {
+        if (durableExecutionStore == null) {
+            return Mono.empty();
+        }
+        // Optimistic lock — recover current version and attempt update
+        return durableExecutionStore
+                .recover(sessionId)
+                .flatMap(
+                        exec ->
+                                durableExecutionStore.updateStatus(
+                                        sessionId, status, exec.version()))
+                .onErrorResume(
+                        e -> {
+                            log.warn(
+                                    "Failed to update execution {} to {}: {}",
+                                    sessionId,
+                                    status,
+                                    e.getMessage());
+                            return Mono.empty();
+                        })
+                .then();
+    }
 
     /** Build the system prompt including tool overview (legacy, returns String). */
     private String buildSystemPrompt() {

@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-04-23 — Execution Model
+
+### Added
+- **DurableExecution MVP**: Checkpoint-based crash recovery with at-least-once semantics
+  - `DurableExecutionStore` SPI with InMemory and JDBC implementations
+  - `ExecutionEventEmitter` with SHA-256 hash chain for event integrity verification
+  - `RecoveryHandler` for automatic session recovery from latest checkpoint
+  - Flyway-managed schema migration for JDBC store
+  - Optimistic locking on execution records for concurrent safety
+- **Idempotency contract for tool replay**:
+  - `@Idempotent` / `@NonIdempotent` annotations in `io.kairo.api.tool`
+  - Default-safe policy: unannotated tools treated as non-idempotent (cached result on replay)
+  - `IdempotencyResolver` with deterministic key generation (SHA-256)
+  - `ToolContext` extended with optional `idempotencyKey` field
+- **ResourceConstraint SPI**: Unified iteration/token/timeout enforcement (renamed from ExecutionConstraint)
+  - `ResourceConstraint` interface with `validate()` + `onViolation()` contract
+  - `ResourceAction` enum: ALLOW, WARN_CONTINUE, GRACEFUL_EXIT, EMERGENCY_STOP
+  - `DefaultResourceConstraint` consolidating checks from IterationGuards
+  - Composition semantics: EMERGENCY_STOP short-circuits, severity ordering
+  - End-to-end wiring: AgentConfig → AgentBuilder → ReActLoop → IterationGuards
+- **Cost-Aware Routing Engine**: Budget-constrained model selection with linear fallback
+  - `CostAwareRoutingPolicy` implementing `RoutingPolicy` SPI
+  - `ModelTier` record with per-token pricing and latency metadata
+  - `ModelTierRegistry` for configurable tier mapping
+  - Spring properties: `kairo.routing.model-tiers`, `kairo.routing.fallback-chain`
+- **ADR-011**: DurableExecutionStore SPI Design
+- **ADR-012**: ResourceConstraint SPI Design
+- **ADR-013**: Cost-Aware Routing Design
+
+### Changed
+- `IterationGuards` now delegates to `ResourceConstraint` chain (backward compatible)
+- `ReActLoop` accepts optional `ExecutionEventEmitter` for event emission
+- `ReasoningPhase` emits MODEL_CALL_REQUEST/RESPONSE and TOOL_CALL_REQUEST events
+- `DefaultReActAgent` integrates DurableExecutionStore for persistence and recovery
+
+### Spring Boot Configuration
+- `kairo.execution.durable.enabled` — enable DurableExecution (default: false)
+- `kairo.execution.durable.store-type` — "memory" or "jdbc" (default: memory)
+- `kairo.execution.durable.recovery-on-startup` — auto-recover pending executions (default: true)
+- `kairo.routing.model-tiers` — model tier definitions with pricing
+- `kairo.routing.fallback-chain` — ordered fallback tier names
+
 ## [0.7.1] - 2026-04-23 — Tool Result Budget & Structured Observability
 
 ### Added

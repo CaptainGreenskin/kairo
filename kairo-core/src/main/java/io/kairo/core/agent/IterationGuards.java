@@ -17,12 +17,16 @@ package io.kairo.core.agent;
 
 import io.kairo.api.agent.CancellationSignal;
 import io.kairo.api.exception.AgentInterruptedException;
+import io.kairo.api.execution.*;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.core.message.MsgBuilder;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -43,36 +47,57 @@ class IterationGuards {
     private final ReActLoopContext ctx;
     private final AtomicBoolean interrupted;
     private final AtomicInteger currentIteration;
+    @Nullable private final List<ResourceConstraint> constraints;
 
     IterationGuards(
             ReActLoopContext ctx, AtomicBoolean interrupted, AtomicInteger currentIteration) {
+        this(ctx, interrupted, currentIteration, null);
+    }
+
+    IterationGuards(
+            ReActLoopContext ctx,
+            AtomicBoolean interrupted,
+            AtomicInteger currentIteration,
+            @Nullable List<ResourceConstraint> constraints) {
         this.ctx = ctx;
         this.interrupted = interrupted;
         this.currentIteration = currentIteration;
+        this.constraints = constraints != null ? List.copyOf(constraints) : null;
     }
 
     /**
      * Evaluate guard conditions before each iteration.
      *
-     * @return a final response Msg if a guard triggered, or {@code null} to proceed
+     * @return a Mono that emits a final response Msg if a guard triggered, or completes empty to
+     *     proceed
      */
-    Msg evaluate() {
+    Mono<Msg> evaluate() {
+        // Lifecycle signals — NOT constraints. Always checked first.
         if (interrupted.get()) {
-            throw new AgentInterruptedException("Agent '" + ctx.agentName() + "' was interrupted");
+            return Mono.error(
+                    new AgentInterruptedException(
+                            "Agent '" + ctx.agentName() + "' was interrupted"));
         }
 
         if (!ctx.shutdownManager().isAcceptingRequests()) {
             log.info("Agent '{}' stopping due to system shutdown", ctx.agentName());
-            return buildFinalResponse("Agent stopped due to system shutdown.");
+            return Mono.just(buildFinalResponse("Agent stopped due to system shutdown."));
         }
 
+        // Delegate to ResourceConstraint chain if available
+        if (constraints != null && !constraints.isEmpty()) {
+            return evaluateConstraints();
+        }
+
+        // Fallback: existing inline behavior (backward compat)
         if (currentIteration.get() >= ctx.config().maxIterations()) {
             log.warn(
                     "Agent '{}' reached max iterations ({})",
                     ctx.agentName(),
                     ctx.config().maxIterations());
-            return buildFinalResponse(
-                    "I've reached my maximum iteration limit. Here is what I have so far.");
+            return Mono.just(
+                    buildFinalResponse(
+                            "I've reached my maximum iteration limit. Here is what I have so far."));
         }
 
         long accountedTokens = ctx.tokenBudgetManager().totalAccountedTokens();
@@ -82,10 +107,88 @@ class IterationGuards {
                     ctx.agentName(),
                     accountedTokens,
                     ctx.config().tokenBudget());
-            return buildFinalResponse("I've reached my token budget. Here is what I have so far.");
+            return Mono.just(
+                    buildFinalResponse(
+                            "I've reached my token budget. Here is what I have so far."));
         }
 
-        return null;
+        return Mono.empty();
+    }
+
+    /**
+     * Evaluate the constraint chain reactively. The most severe action wins. EMERGENCY_STOP
+     * short-circuits.
+     *
+     * @return a Mono that emits a final response Msg if a constraint triggered exit, or completes
+     *     empty to proceed
+     */
+    private Mono<Msg> evaluateConstraints() {
+        ResourceContext execCtx =
+                new ResourceContext(
+                        currentIteration.get(),
+                        ctx.tokenBudgetManager().totalAccountedTokens(),
+                        Duration.ZERO, // elapsed tracking deferred to full ReActLoop integration
+                        ctx.agentName(),
+                        null);
+
+        record ConstraintAccumulator(ResourceAction worstAction, String worstReason) {
+            static ConstraintAccumulator initial() {
+                return new ConstraintAccumulator(ResourceAction.ALLOW, null);
+            }
+        }
+
+        return Flux.fromIterable(constraints)
+                .concatMap(
+                        constraint ->
+                                constraint
+                                        .validate(execCtx)
+                                        .map(validation -> Map.entry(constraint, validation)))
+                .reduce(
+                        ConstraintAccumulator.initial(),
+                        (acc, entry) -> {
+                            // EMERGENCY_STOP already found — skip remaining
+                            if (acc.worstAction() == ResourceAction.EMERGENCY_STOP) {
+                                return acc;
+                            }
+
+                            ResourceValidation validation = entry.getValue();
+                            if (!validation.violated()) {
+                                return acc;
+                            }
+
+                            ResourceConstraint constraint = entry.getKey();
+                            ResourceAction action = constraint.onViolation(validation);
+                            log.warn(
+                                    "Agent '{}' constraint violated: {} (action={})",
+                                    ctx.agentName(),
+                                    validation.reason(),
+                                    action);
+
+                            if (action.ordinal() > acc.worstAction().ordinal()) {
+                                return new ConstraintAccumulator(action, validation.reason());
+                            }
+                            return acc;
+                        })
+                .flatMap(
+                        acc -> {
+                            return switch (acc.worstAction()) {
+                                case ALLOW, WARN_CONTINUE -> Mono.<Msg>empty();
+                                case GRACEFUL_EXIT ->
+                                        Mono.just(
+                                                buildFinalResponse(
+                                                        acc.worstReason() != null
+                                                                ? acc.worstReason()
+                                                                        + ". Here is what I have so far."
+                                                                : "Constraint violated. Here is what I have so far."));
+                                case EMERGENCY_STOP ->
+                                        Mono.just(
+                                                buildFinalResponse(
+                                                        acc.worstReason() != null
+                                                                ? acc.worstReason()
+                                                                        + ". Stopping immediately."
+                                                                : "Critical constraint violated. Stopping immediately."));
+                            };
+                        });
     }
 
     /**

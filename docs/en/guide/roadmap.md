@@ -7,7 +7,7 @@
 | v0.6 | Agents That Are Safe — Guardrail SPI + Interrupt/Resume + Team Patterns | Planned v0.6 |
 | v0.7.0 | Guardrail SPI + MCP Security + Structured Exceptions | Implemented |
 | v0.7.1 | Tool Result Budget + Structured Observability | Implemented |
-| v0.8+ | Metrics + Execution Event Stream + Dashboard + Execution Replay | Planned v0.8 |
+| v0.8 | DurableExecution MVP + ResourceConstraint SPI + Cost-Aware Routing | Implemented |
 
 ## v0.1–v0.4: Core Runtime (Implemented)
 
@@ -29,6 +29,6 @@ Guardrail SPI for 4-phase interception, MCP security with default deny-safe poli
 
 ToolResultBudget L0 pre-truncation, structured observability metadata on ToolResult, TOOL message observability fields, tool exception/policy path classification, and ADR-010.
 
-## v0.8+: Full Platform (Planned v0.8)
+## v0.8: DurableExecution MVP + ResourceConstraint + Cost-Aware Routing (Implemented)
 
-Metrics collection (OpenTelemetry metrics export), execution event stream, web dashboard for agent monitoring, and execution replay for debugging and auditing.
+DurableExecutionStore SPI (InMemory + JDBC) for cross-process agent recovery with at-least-once semantics, ResourceConstraint SPI for unified execution enforcement (replacing scattered iteration/token/timeout checks), and CostAwareRoutingPolicy extending the v0.7 RoutingPolicy SPI with ModelTierRegistry and linear fallback chains.

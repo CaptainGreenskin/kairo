@@ -17,6 +17,7 @@ package io.kairo.spring;
 
 import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentFactory;
+import io.kairo.api.execution.DurableExecutionStore;
 import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.guardrail.GuardrailPolicy;
 import io.kairo.api.guardrail.SecurityEventSink;
@@ -28,6 +29,7 @@ import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.core.agent.AgentBuilder;
 import io.kairo.core.agent.DefaultAgentFactory;
+import io.kairo.core.execution.RecoveryHandler;
 import io.kairo.core.guardrail.DefaultGuardrailChain;
 import io.kairo.core.guardrail.LoggingSecurityEventSink;
 import io.kairo.core.model.ModelCircuitBreaker;
@@ -41,6 +43,7 @@ import io.kairo.core.tool.DefaultToolRegistry;
 import io.kairo.spring.config.AgentProperties;
 import io.kairo.spring.config.ModelProperties;
 import io.kairo.spring.config.ToolProperties;
+import io.kairo.spring.execution.DurableExecutionProperties;
 import java.time.Duration;
 import java.util.List;
 import org.slf4j.Logger;
@@ -222,7 +225,13 @@ class CoreAutoConfiguration {
             GuardrailChain guardrailChain,
             AgentRuntimeProperties properties,
             @org.springframework.beans.factory.annotation.Autowired(required = false)
-                    List<Middleware> middlewares) {
+                    List<Middleware> middlewares,
+            @org.springframework.beans.factory.annotation.Autowired(required = false)
+                    DurableExecutionStore durableExecutionStore,
+            @org.springframework.beans.factory.annotation.Autowired(required = false)
+                    RecoveryHandler recoveryHandler,
+            @org.springframework.beans.factory.annotation.Autowired(required = false)
+                    DurableExecutionProperties durableProperties) {
 
         AgentProperties agentProps = properties.getAgent();
 
@@ -244,6 +253,16 @@ class CoreAutoConfiguration {
             for (Middleware mw : middlewares) {
                 builder.middleware(mw);
             }
+        }
+
+        // Wire durable execution if enabled
+        if (durableProperties != null
+                && durableProperties.isEnabled()
+                && durableExecutionStore != null
+                && recoveryHandler != null) {
+            builder.durableExecutionStore(durableExecutionStore)
+                    .recoveryHandler(recoveryHandler)
+                    .recoveryOnStartup(durableProperties.isRecoveryOnStartup());
         }
 
         Agent agent = builder.build();

@@ -47,5 +47,11 @@ import org.springframework.context.annotation.Import;
     CheckpointProperties.class
 })
 @ConditionalOnClass(Agent.class)
-@Import({CoreAutoConfiguration.class, MemoryAutoConfiguration.class, SkillAutoConfiguration.class})
+@Import({
+    CoreAutoConfiguration.class,
+    MemoryAutoConfiguration.class,
+    SkillAutoConfiguration.class,
+    io.kairo.spring.routing.CostRoutingAutoConfiguration.class,
+    io.kairo.spring.execution.DurableExecutionAutoConfiguration.class
+})
 public class AgentRuntimeAutoConfiguration {}

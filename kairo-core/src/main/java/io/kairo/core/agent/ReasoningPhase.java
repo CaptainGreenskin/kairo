@@ -15,6 +15,7 @@
  */
 package io.kairo.core.agent;
 
+import io.kairo.api.execution.ExecutionEventType;
 import io.kairo.api.guardrail.*;
 import io.kairo.api.hook.*;
 import io.kairo.api.message.Content;
@@ -25,6 +26,7 @@ import io.kairo.api.model.ModelResponse;
 import io.kairo.api.model.RawStreamingModelProvider;
 import io.kairo.api.model.StreamChunk;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.core.execution.ExecutionEventEmitter;
 import io.kairo.core.message.MsgBuilder;
 import io.kairo.core.model.DetectedToolCall;
 import io.kairo.core.model.StreamingToolDetector;
@@ -33,6 +35,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -58,6 +61,7 @@ class ReasoningPhase {
     private final AtomicInteger currentIteration;
     private final Supplier<Boolean> streamingEnabledSupplier;
     private final ToolPhase toolPhase;
+    @Nullable private final ExecutionEventEmitter eventEmitter;
 
     ReasoningPhase(
             ReActLoopContext ctx,
@@ -68,6 +72,28 @@ class ReasoningPhase {
             AtomicInteger currentIteration,
             Supplier<Boolean> streamingEnabledSupplier,
             ToolPhase toolPhase) {
+        this(
+                ctx,
+                guards,
+                hookDecisions,
+                conversationHistory,
+                totalTokensUsed,
+                currentIteration,
+                streamingEnabledSupplier,
+                toolPhase,
+                null);
+    }
+
+    ReasoningPhase(
+            ReActLoopContext ctx,
+            IterationGuards guards,
+            HookDecisionApplier hookDecisions,
+            List<Msg> conversationHistory,
+            AtomicLong totalTokensUsed,
+            AtomicInteger currentIteration,
+            Supplier<Boolean> streamingEnabledSupplier,
+            ToolPhase toolPhase,
+            @Nullable ExecutionEventEmitter eventEmitter) {
         this.ctx = ctx;
         this.guards = guards;
         this.hookDecisions = hookDecisions;
@@ -76,6 +102,7 @@ class ReasoningPhase {
         this.currentIteration = currentIteration;
         this.streamingEnabledSupplier = streamingEnabledSupplier;
         this.toolPhase = toolPhase;
+        this.eventEmitter = eventEmitter;
     }
 
     /**
@@ -142,6 +169,12 @@ class ReasoningPhase {
         log.debug(
                 "Agent '{}' iteration {}: calling model", ctx.agentName(), currentIteration.get());
 
+        // Emit MODEL_CALL_REQUEST before the model call (best-effort)
+        Mono<Void> preEmit =
+                emitBestEffort(
+                        ExecutionEventType.MODEL_CALL_REQUEST,
+                        "{\"messageCount\":" + conversationHistory.size() + "}");
+
         // PRE_MODEL guardrail evaluation
         Mono<ModelResponse> responseMono =
                 evaluatePreModelGuardrail(conversationHistory, effectiveConfig)
@@ -175,13 +208,26 @@ class ReasoningPhase {
                                                             finalMessages, finalConfig, 0));
                                 });
 
-        return guards.withCooperativeCancellation(responseMono)
+        return guards.withCooperativeCancellation(preEmit.then(responseMono))
                 .flatMap(response -> evaluatePostModelGuardrail(response))
                 .doOnError(
                         GuardrailDenyException.class,
                         e -> log.warn("Guardrail denied: {}", e.getMessage()))
                 .onErrorResume(GuardrailDenyException.class, e -> Mono.<ModelResponse>empty())
-                .flatMap(response -> handleModelResponseWithPostHook(response, loopContinuation))
+                .flatMap(
+                        response -> {
+                            // Emit MODEL_CALL_RESPONSE after model response (best-effort)
+                            Mono<Void> postEmit =
+                                    emitBestEffort(
+                                            ExecutionEventType.MODEL_CALL_RESPONSE,
+                                            "{\"model\":\""
+                                                    + (response.model() != null
+                                                            ? response.model()
+                                                            : "unknown")
+                                                    + "\"}");
+                            return postEmit.then(
+                                    handleModelResponseWithPostHook(response, loopContinuation));
+                        })
                 .switchIfEmpty(
                         Mono.defer(
                                 () -> {
@@ -267,6 +313,7 @@ class ReasoningPhase {
         return assistantMsg;
     }
 
+    /** Route model response based on tool calls, with event emission. */
     private Mono<Msg> routeModelResponseByToolCalls(
             Msg assistantMsg,
             List<Content.ToolUseContent> toolCalls,
@@ -275,10 +322,27 @@ class ReasoningPhase {
             log.debug("Agent '{}' produced final answer (no tool calls)", ctx.agentName());
             return Mono.just(assistantMsg);
         }
-        if (isStreamingPreExecuted(toolCalls)) {
-            return handleStreamingPreExecutedTools(toolCalls, loopContinuation);
+
+        // Emit TOOL_CALL_REQUEST for each tool call (best-effort)
+        Mono<Void> toolEmissions = Mono.empty();
+        if (eventEmitter != null) {
+            for (Content.ToolUseContent tc : toolCalls) {
+                toolEmissions =
+                        toolEmissions.then(
+                                emitBestEffort(
+                                        ExecutionEventType.TOOL_CALL_REQUEST,
+                                        "{\"toolCallId\":\""
+                                                + tc.toolId()
+                                                + "\",\"toolName\":\""
+                                                + tc.toolName()
+                                                + "\"}"));
+            }
         }
-        return toolPhase.executeAndContinue(toolCalls, loopContinuation);
+
+        if (isStreamingPreExecuted(toolCalls)) {
+            return toolEmissions.then(handleStreamingPreExecutedTools(toolCalls, loopContinuation));
+        }
+        return toolEmissions.then(toolPhase.executeAndContinue(toolCalls, loopContinuation));
     }
 
     private boolean isStreamingPreExecuted(List<Content.ToolUseContent> toolCalls) {
@@ -486,5 +550,22 @@ class ReasoningPhase {
         GuardrailDenyException(String message) {
             super(message);
         }
+    }
+
+    /**
+     * Best-effort event emission — errors are logged and swallowed so that event emission failures
+     * never break the ReAct loop.
+     */
+    private Mono<Void> emitBestEffort(ExecutionEventType type, String payloadJson) {
+        if (eventEmitter == null) {
+            return Mono.empty();
+        }
+        return eventEmitter
+                .emit(type, payloadJson)
+                .onErrorResume(
+                        e -> {
+                            log.warn("Failed to emit {} event: {}", type, e.getMessage());
+                            return Mono.empty();
+                        });
     }
 }

@@ -16,20 +16,40 @@
 package io.kairo.api.tool;
 
 import java.util.Map;
+import javax.annotation.Nullable;
 
 /**
  * Runtime context provided to tool executions.
  *
- * <p>Contains agent and session identifiers plus user-injected runtime dependencies.
+ * <p>Contains agent and session identifiers plus user-injected runtime dependencies. During crash
+ * recovery, the {@code idempotencyKey} is populated to enable tools to detect duplicate
+ * invocations.
  *
  * @param agentId the ID of the agent invoking the tool
  * @param sessionId the current session ID
  * @param dependencies user-injected runtime dependencies (e.g., database connections, API clients)
+ * @param idempotencyKey optional key for at-least-once idempotency during crash recovery (null in
+ *     normal execution)
  */
-public record ToolContext(String agentId, String sessionId, Map<String, Object> dependencies) {
+public record ToolContext(
+        String agentId,
+        String sessionId,
+        Map<String, Object> dependencies,
+        @Nullable String idempotencyKey) {
 
     /** Compact constructor — defensively copies dependencies. */
     public ToolContext {
         dependencies = dependencies == null ? Map.of() : Map.copyOf(dependencies);
+    }
+
+    /**
+     * Backward-compatible constructor without idempotency key.
+     *
+     * @param agentId the ID of the agent invoking the tool
+     * @param sessionId the current session ID
+     * @param dependencies user-injected runtime dependencies
+     */
+    public ToolContext(String agentId, String sessionId, Map<String, Object> dependencies) {
+        this(agentId, sessionId, dependencies, null);
     }
 }
