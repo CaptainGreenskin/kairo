@@ -91,6 +91,7 @@ class AgentPerformanceIT {
                 AgentConfig.builder()
                         .name("perf-agent")
                         .modelProvider(provider)
+                        .modelName("mock-model")
                         .toolRegistry(registry)
                         .maxIterations(maxIterations)
                         .timeout(Duration.ofSeconds(30))

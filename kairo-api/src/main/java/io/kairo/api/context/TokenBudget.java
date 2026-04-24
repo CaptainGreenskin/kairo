@@ -15,6 +15,8 @@
  */
 package io.kairo.api.context;
 
+import io.kairo.api.Stable;
+
 /**
  * Token budget tracking for context management.
  *
@@ -24,5 +26,6 @@ package io.kairo.api.context;
  * @param pressure usage pressure ratio (0.0 to 1.0)
  * @param reservedForResponse tokens reserved for the model's response
  */
+@Stable(value = "Token budget record; shape frozen since v0.1", since = "1.0.0")
 public record TokenBudget(
         int total, int used, int remaining, float pressure, int reservedForResponse) {}

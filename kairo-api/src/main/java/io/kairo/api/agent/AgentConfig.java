@@ -15,6 +15,7 @@
  */
 package io.kairo.api.agent;
 
+import io.kairo.api.Stable;
 import io.kairo.api.context.ContextManager;
 import io.kairo.api.evolution.EvolutionConfig;
 import io.kairo.api.execution.ResourceConstraint;
@@ -43,6 +44,9 @@ import javax.annotation.Nullable;
  *     .build();
  * }</pre>
  */
+@Stable(
+        value = "Agent configuration record; MCP fields removed in v0.10.2; shape clean for v1.0",
+        since = "1.0.0")
 public record AgentConfig(
         String name,
         String systemPrompt,
@@ -58,10 +62,7 @@ public record AgentConfig(
         MemoryStore memoryStore,
         String sessionId,
         Tracer tracer,
-        List<Object> mcpServerConfigs,
-        int mcpMaxToolsPerServer,
-        boolean mcpStrictSchemaAlignment,
-        String mcpToolSearchQuery,
+        McpCapabilityConfig mcpCapability,
         int loopHashWarnThreshold,
         int loopHashHardLimit,
         int loopFreqWarnThreshold,
@@ -71,17 +72,8 @@ public record AgentConfig(
         @Nullable EvolutionConfig evolutionConfig,
         @Nullable List<SystemPromptContributor> systemPromptContributors) {
 
-    /**
-     * Derived view of MCP-related configuration as a {@link McpCapabilityConfig}. Useful for
-     * starters that prefer the capability-config API introduced in v0.10 instead of the legacy
-     * per-field accessors.
-     */
-    public McpCapabilityConfig mcpCapability() {
-        return new McpCapabilityConfig(
-                mcpServerConfigs,
-                mcpMaxToolsPerServer,
-                mcpStrictSchemaAlignment,
-                mcpToolSearchQuery);
+    public AgentConfig {
+        mcpCapability = mcpCapability != null ? mcpCapability : McpCapabilityConfig.EMPTY;
     }
 
     /**
@@ -126,10 +118,7 @@ public record AgentConfig(
         private MemoryStore memoryStore;
         private String sessionId;
         private Tracer tracer;
-        private final List<Object> mcpServerConfigs = new ArrayList<>();
-        private int mcpMaxToolsPerServer = 128;
-        private boolean mcpStrictSchemaAlignment = true;
-        private String mcpToolSearchQuery;
+        private McpCapabilityConfig mcpCapability = McpCapabilityConfig.EMPTY;
         private int loopHashWarnThreshold = 3;
         private int loopHashHardLimit = 5;
         private int loopFreqWarnThreshold = 50;
@@ -300,64 +289,6 @@ public record AgentConfig(
         }
 
         /**
-         * Add an MCP (Model Context Protocol) server configuration for dynamic tool discovery.
-         *
-         * @param config the MCP server configuration object
-         * @return this builder
-         * @deprecated since v0.10 — configure MCP via {@link #mcpCapability(McpCapabilityConfig)}.
-         */
-        @Deprecated(since = "0.10", forRemoval = true)
-        public Builder addMcpServerConfig(Object config) {
-            this.mcpServerConfigs.add(config);
-            return this;
-        }
-
-        /**
-         * Set max MCP tools to register per server.
-         *
-         * <p>Provides a hard upper bound so one remote server cannot flood the runtime with an
-         * unbounded tool list.
-         *
-         * @deprecated since v0.10 — configure MCP via {@link #mcpCapability(McpCapabilityConfig)}.
-         */
-        @Deprecated(since = "0.10", forRemoval = true)
-        public Builder mcpMaxToolsPerServer(int maxTools) {
-            if (maxTools < 1) {
-                throw new IllegalArgumentException("mcpMaxToolsPerServer must be >= 1");
-            }
-            this.mcpMaxToolsPerServer = maxTools;
-            return this;
-        }
-
-        /**
-         * Enable/disable strict schema alignment when importing MCP tool schemas.
-         *
-         * <p>When enabled, schema mismatches are normalized conservatively by the runtime.
-         *
-         * @deprecated since v0.10 — configure MCP via {@link #mcpCapability(McpCapabilityConfig)}.
-         */
-        @Deprecated(since = "0.10", forRemoval = true)
-        public Builder mcpStrictSchemaAlignment(boolean strict) {
-            this.mcpStrictSchemaAlignment = strict;
-            return this;
-        }
-
-        /**
-         * Restrict MCP tool registration using a case-insensitive name/description search query.
-         *
-         * <p>When set, only MCP tools that match this query are registered into the runtime.
-         *
-         * @deprecated since v0.10 — configure MCP via {@link #mcpCapability(McpCapabilityConfig)}.
-         *     Expected to be removed once the MCP fields fully migrate to the {@code kairo-mcp}
-         *     starter in a subsequent wave.
-         */
-        @Deprecated(since = "0.10", forRemoval = true)
-        public Builder mcpToolSearchQuery(String query) {
-            this.mcpToolSearchQuery = query;
-            return this;
-        }
-
-        /**
          * Configure loop detection thresholds.
          *
          * @param hashWarn consecutive identical hash count to trigger WARN (default 3)
@@ -404,13 +335,7 @@ public record AgentConfig(
          * @since v0.10
          */
         public Builder mcpCapability(McpCapabilityConfig capability) {
-            McpCapabilityConfig effective =
-                    capability != null ? capability : McpCapabilityConfig.EMPTY;
-            this.mcpServerConfigs.clear();
-            this.mcpServerConfigs.addAll(effective.serverConfigs());
-            this.mcpMaxToolsPerServer = effective.maxToolsPerServer();
-            this.mcpStrictSchemaAlignment = effective.strictSchemaAlignment();
-            this.mcpToolSearchQuery = effective.toolSearchQuery();
+            this.mcpCapability = capability != null ? capability : McpCapabilityConfig.EMPTY;
             return this;
         }
 
@@ -474,10 +399,7 @@ public record AgentConfig(
                     memoryStore,
                     sessionId,
                     tracer,
-                    List.copyOf(mcpServerConfigs),
-                    mcpMaxToolsPerServer,
-                    mcpStrictSchemaAlignment,
-                    mcpToolSearchQuery,
+                    mcpCapability,
                     loopHashWarnThreshold,
                     loopHashHardLimit,
                     loopFreqWarnThreshold,

@@ -12,6 +12,7 @@ import io.kairo.api.evolution.EvolutionTrigger;
 import io.kairo.api.hook.SessionEndEvent;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
+import io.kairo.skill.InMemoryEvolvedSkillStore;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;

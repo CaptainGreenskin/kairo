@@ -15,11 +15,13 @@
  */
 package io.kairo.api.team;
 
+import io.kairo.api.Experimental;
 import io.kairo.api.message.Msg;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /** Asynchronous message bus for inter-agent communication. */
+@Experimental("Team message bus SPI; introduced in v0.10, targeting stabilization in v1.1")
 public interface MessageBus {
 
     /**

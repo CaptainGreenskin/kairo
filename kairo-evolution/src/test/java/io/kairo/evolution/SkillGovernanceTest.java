@@ -12,6 +12,7 @@ import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
+import io.kairo.skill.InMemoryEvolvedSkillStore;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;

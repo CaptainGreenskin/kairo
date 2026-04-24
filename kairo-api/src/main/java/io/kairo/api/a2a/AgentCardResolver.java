@@ -15,6 +15,7 @@
  */
 package io.kairo.api.a2a;
 
+import io.kairo.api.Experimental;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -32,6 +33,7 @@ import java.util.Set;
  *
  * @see AgentCard
  */
+@Experimental("A2A card resolver SPI; introduced in v0.10, targeting stabilization in v1.1")
 public interface AgentCardResolver {
 
     /**

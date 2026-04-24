@@ -15,6 +15,7 @@
  */
 package io.kairo.api.hook;
 
+import io.kairo.api.Stable;
 import io.kairo.api.tool.ToolResult;
 import java.time.Duration;
 
@@ -26,6 +27,7 @@ import java.time.Duration;
  * @param duration the tool execution duration
  * @param success whether the tool executed successfully
  */
+@Stable(value = "Tool-result hook event; shape frozen since v0.6", since = "1.0.0")
 public record ToolResultEvent(
         String toolName, ToolResult result, Duration duration, boolean success)
         implements HookEvent {}

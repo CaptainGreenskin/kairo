@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.kairo.api.evolution.EvolvedSkillStore;
 import io.kairo.evolution.EvolutionHook;
 import io.kairo.evolution.EvolutionPipelineOrchestrator;
-import io.kairo.evolution.SkillContentInjector;
+import io.kairo.skill.SkillContentInjector;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;

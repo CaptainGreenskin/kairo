@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kairo.api.message.Content;
 import io.kairo.api.model.ModelResponse;
+import io.kairo.api.model.ProviderPipeline;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +32,8 @@ import reactor.core.publisher.Sinks;
  * A line-based subscriber for SSE event streams from the Anthropic API. Parses SSE events and emits
  * {@link ModelResponse} fragments via a Reactor Sink.
  */
-public class AnthropicSseSubscriber implements Flow.Subscriber<String> {
+public class AnthropicSseSubscriber
+        implements Flow.Subscriber<String>, ProviderPipeline.StreamSubscriber<String> {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicSseSubscriber.class);
 
@@ -55,6 +57,12 @@ public class AnthropicSseSubscriber implements Flow.Subscriber<String> {
     public void onSubscribe(Flow.Subscription subscription) {
         this.subscription = subscription;
         subscription.request(Long.MAX_VALUE);
+    }
+
+    /** SPI entry point — routes an SSE line to {@link #onNext(String)} for parsing. */
+    @Override
+    public void onChunk(String chunk) {
+        onNext(chunk);
     }
 
     @Override

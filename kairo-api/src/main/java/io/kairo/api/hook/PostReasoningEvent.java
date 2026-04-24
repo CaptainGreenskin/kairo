@@ -15,6 +15,7 @@
  */
 package io.kairo.api.hook;
 
+import io.kairo.api.Stable;
 import io.kairo.api.model.ModelResponse;
 
 /**
@@ -23,4 +24,5 @@ import io.kairo.api.model.ModelResponse;
  * @param response the model response
  * @param cancelled whether this event has been cancelled by a hook
  */
+@Stable(value = "Post-reasoning hook event; shape frozen since v0.6", since = "1.0.0")
 public record PostReasoningEvent(ModelResponse response, boolean cancelled) implements HookEvent {}

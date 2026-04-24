@@ -15,7 +15,10 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
+
 /** Classifies the side-effect level of a tool, used for scheduling and approval decisions. */
+@Stable(value = "Tool side-effect classification enum; values frozen since v0.1", since = "1.0.0")
 public enum ToolSideEffect {
 
     /** Safe for parallel execution: Read, Grep, Glob, List. */

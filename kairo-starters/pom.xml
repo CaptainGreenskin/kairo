@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.captaingreenskin</groupId>
+        <artifactId>kairo-parent</artifactId>
+        <version>${revision}</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>kairo-starters</artifactId>
+    <packaging>pom</packaging>
+
+    <name>Kairo :: Starters (reactor aggregator)</name>
+    <description>
+        Reactor-only aggregator for the Spring Boot starter modules. Import nothing from this POM —
+        it exists so `mvn -pl kairo-starters -am test` builds the entire starter cohort in one shot.
+        Each starter still inherits `kairo-parent` directly; this aggregator does not appear on any
+        runtime classpath.
+    </description>
+
+    <modules>
+        <module>../kairo-spring-boot-starter-core</module>
+        <module>../kairo-spring-boot-starter-mcp</module>
+        <module>../kairo-spring-boot-starter-multi-agent</module>
+        <module>../kairo-spring-boot-starter-evolution</module>
+        <module>../kairo-spring-boot-starter-expert-team</module>
+        <module>../kairo-spring-boot-starter-event-stream</module>
+        <module>../kairo-spring-boot-starter-channel</module>
+        <module>../kairo-spring-boot-starter-channel-dingtalk</module>
+        <module>../kairo-spring-boot-starter-observability</module>
+        <module>../kairo-spring-boot-starter</module>
+    </modules>
+</project>

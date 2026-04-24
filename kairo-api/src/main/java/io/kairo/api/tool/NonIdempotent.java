@@ -15,6 +15,7 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
 import java.lang.annotation.*;
 
 /**
@@ -31,6 +32,7 @@ import java.lang.annotation.*;
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
+@Stable(value = "Non-idempotency marker annotation; shape frozen since v0.8", since = "1.0.0")
 public @interface NonIdempotent {
     /** Reason this tool cannot be safely replayed. */
     String value() default "";

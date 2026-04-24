@@ -8,8 +8,9 @@
 | v0.7.0 | Guardrail SPI + MCP Security + Structured Exceptions | Implemented |
 | v0.7.1 | Tool Result Budget + Structured Observability | Implemented |
 | v0.8 | DurableExecution MVP + ResourceConstraint SPI + Cost-Aware Routing | Implemented |
-| v0.9 | Gap-Only Platform Capabilities (Self-Evolution wiring proof + guards) | In Progress |
+| v0.9 | Gap-Only Platform Capabilities + Channel SPI / Event Stream / OTel Exporter | Implemented |
 | v0.10 | Core Refactor Waves (event bus + capability-shaped configs + hook consolidation scaffolding) | Implemented |
+| v0.10.1 | Expert Team Orchestration MVP (TeamCoordinator + EvaluationStrategy SPIs + opt-in starter) | Implemented |
 
 ## v0.1–v0.4: Core Runtime (Implemented)
 
@@ -35,14 +36,38 @@ ToolResultBudget L0 pre-truncation, structured observability metadata on ToolRes
 
 DurableExecutionStore SPI (InMemory + JDBC) for cross-process agent recovery with at-least-once semantics, ResourceConstraint SPI for unified execution enforcement (replacing scattered iteration/token/timeout checks), and CostAwareRoutingPolicy extending the v0.7 RoutingPolicy SPI with ModelTierRegistry and linear fallback chains.
 
-## v0.9: Gap-Only Platform Capabilities (In Progress)
+## v0.9: Gap-Only Platform Capabilities + Channel SPI / Event Stream / OTel Exporter (Implemented)
 
-This cycle focuses on closure, not rework: verify default self-evolution runtime wiring, add architecture regression guards, and keep version-status documents aligned.
+The v0.9.0 GA combines two tracks:
 
-See the verification note: `docs/roadmap/v0.9-gap-only-verification.md`.
+- **Gap closure**: default self-evolution runtime wiring verified at the behavior level, execution-vs-evolution event-domain regression guards, and `kairo-core` → evolution implementation import guards.
+- **Platform capability P0s**: Channel SPI + `LoopbackChannel` reference + starter + TCK (ADR-021); transport-agnostic Event Stream core with SSE and WebSocket transports behind a deny-safe `KairoEventStreamAuthorizer` (ADR-018); `KairoEventOTelExporter` in `kairo-observability` bridging `KairoEvent` to the OTel logs API with domain filter + sampling ratio + key redaction, plus a dedicated opt-in starter (ADR-022).
+- **D5 deprecation closure**: `io.kairo.api.task.*` and `TeamScheduler` physically removed — prior consumers migrated to the v0.10 Expert Team coordinator and hook chain.
+
+Release gate: `mvn clean verify` green from a clean checkout, 2,498 tests across 344 suites.
+
+See the verification note: `docs/roadmap/v0.9-release-verification.md` (supersedes `v0.9-gap-only-verification.md`).
 
 ## v0.10: Core Refactor Waves (Implemented)
 
 This wave is intentionally **platform-ergonomics first**: introduce a unified in-process event facade (`KairoEventBus`), capability-shaped configuration records for cross-cutting concerns, a unified hook annotation (`@HookHandler`) while keeping legacy hook annotations working, and minimal SPI scaffolding (`SkillStore`, `ProviderPipeline`) to reduce the cost of the next features (Expert Team, OTel exporters, Channel SPI).
 
 Verification evidence: `docs/roadmap/v0.10-core-refactor-verification.md`.
+
+## v0.10.1: Expert Team Orchestration MVP (Implemented)
+
+The Expert Team sub-milestone lands the Anthropic-Harness-shaped Planner / Generator / Evaluator loop as first-class infrastructure. It ships a dedicated `kairo-expert-team` module plus an opt-in `kairo-spring-boot-starter-expert-team`, and exposes exactly two SPIs in `kairo-api`:
+
+- `TeamCoordinator` — `Mono<TeamResult> execute(TeamExecutionRequest, Team)`.
+- `EvaluationStrategy` — `Mono<EvaluationVerdict> evaluate(EvaluationContext)`.
+
+Default implementations include `ExpertTeamCoordinator` (Planning → Generating → Evaluating → Terminal), `SimpleEvaluationStrategy` (deterministic rubric), `AgentEvaluationStrategy` (agent-invoker seam that maps crashes to `VerdictOutcome.REVIEW_EXCEEDED`), and `DefaultPlanner` (role-per-agent sequential plan with `PlannerFailureMode.FAIL_FAST`). A TCK (`TeamCoordinatorTCK`, `EvaluationStrategyTCK`, plus `RecordingEventBus` / `NoopMessageBus` / `StubAgent` fixtures) ships in the module's test-jar.
+
+Key semantics:
+
+- **Evaluator crash** under `RiskProfile.LOW` → `TeamStatus.DEGRADED` + warning; under `MEDIUM|HIGH` → `TeamStatus.FAILED`.
+- **Team timeout** preserves partial step outcomes and ends on `TEAM_TIMEOUT`.
+- **Event-domain isolation**: all coordinator events sit on `KairoEvent.DOMAIN_TEAM` — no leakage into execution / evolution / security domains.
+- **Starter activation** requires `kairo.expert-team.enabled=true`; installing the starter alone is deliberately not enough.
+
+Kickoff: `docs/roadmap/v0.10-expert-team-kickoff.md`. Verification evidence: `docs/roadmap/v0.10-expert-team-verification.md`.

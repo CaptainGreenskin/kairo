@@ -15,6 +15,7 @@
  */
 package io.kairo.api.hook;
 
+import io.kairo.api.Stable;
 import io.kairo.api.message.Msg;
 import io.kairo.api.model.ModelConfig;
 import java.util.List;
@@ -26,5 +27,6 @@ import java.util.List;
  * @param config the model configuration
  * @param cancelled whether this event has been cancelled by a hook
  */
+@Stable(value = "Pre-reasoning hook event; shape frozen since v0.6", since = "1.0.0")
 public record PreReasoningEvent(List<Msg> messages, ModelConfig config, boolean cancelled)
         implements HookEvent {}

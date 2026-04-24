@@ -15,7 +15,10 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
+
 /** Categorization for tools, used for filtering and grouping. */
+@Stable(value = "Tool category enum; values frozen since v0.1", since = "1.0.0")
 public enum ToolCategory {
 
     /** File and code manipulation tools (read, write, search, edit). */

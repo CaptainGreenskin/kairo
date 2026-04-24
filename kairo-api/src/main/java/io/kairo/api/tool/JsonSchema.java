@@ -15,6 +15,7 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
 import java.util.List;
 import java.util.Map;
 
@@ -26,6 +27,7 @@ import java.util.Map;
  * @param required list of required property names
  * @param description a human-readable description
  */
+@Stable(value = "JSON schema record for tool inputs; shape frozen since v0.1", since = "1.0.0")
 public record JsonSchema(
         String type,
         Map<String, JsonSchema> properties,

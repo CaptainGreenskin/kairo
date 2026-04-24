@@ -15,6 +15,7 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -23,6 +24,7 @@ import java.lang.annotation.Target;
 /** Marks a field as a tool parameter with metadata for schema generation. */
 @Target(ElementType.FIELD)
 @Retention(RetentionPolicy.RUNTIME)
+@Stable(value = "Tool parameter annotation; shape frozen since v0.1", since = "1.0.0")
 public @interface ToolParam {
 
     /** Description of this parameter. */

@@ -15,7 +15,10 @@
  */
 package io.kairo.api.exception;
 
+import io.kairo.api.Stable;
+
 /** Base exception for model provider errors such as rate limiting, timeouts, and API failures. */
+@Stable(value = "Model subsystem base exception; shape frozen since v0.7", since = "1.0.0")
 public class ModelException extends KairoException {
 
     /**

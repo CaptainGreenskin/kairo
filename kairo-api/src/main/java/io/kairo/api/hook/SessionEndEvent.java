@@ -15,6 +15,7 @@
  */
 package io.kairo.api.hook;
 
+import io.kairo.api.Stable;
 import io.kairo.api.agent.AgentState;
 import io.kairo.api.message.Msg;
 import java.time.Duration;
@@ -33,6 +34,7 @@ import javax.annotation.Nullable;
  * @param error the error message, or null on success
  * @param conversationHistorySupplier lazy supplier for the full conversation history (nullable)
  */
+@Stable(value = "Session-end hook event; shape frozen since v0.6", since = "1.0.0")
 public record SessionEndEvent(
         String agentName,
         AgentState finalState,

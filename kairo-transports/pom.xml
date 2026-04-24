@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.captaingreenskin</groupId>
+        <artifactId>kairo-parent</artifactId>
+        <version>${revision}</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>kairo-transports</artifactId>
+    <packaging>pom</packaging>
+
+    <name>Kairo :: Transports (reactor aggregator)</name>
+    <description>
+        Reactor-only aggregator for the I/O boundary modules: event-stream + its SSE/WS transports,
+        and the Channel SPI + concrete adapters. Use `mvn -pl kairo-transports -am test` to build
+        the transport cohort in one shot. Each module still inherits `kairo-parent` directly.
+    </description>
+
+    <modules>
+        <module>../kairo-event-stream</module>
+        <module>../kairo-event-stream-sse</module>
+        <module>../kairo-event-stream-ws</module>
+        <module>../kairo-channel</module>
+        <module>../kairo-channel-dingtalk</module>
+    </modules>
+</project>

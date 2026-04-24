@@ -43,4 +43,78 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <!--
+      API-compatibility gate (ADR-023).
+
+      Activate with `-Papi-compat` to check the current build against a baseline artifact.
+      The baseline version is taken from property `api.baseline.version` (default: latest
+      released v1.x — set empty to disable entirely).
+
+      The gate is scoped to @Stable-annotated types only. @Experimental / @Internal / unannotated
+      surfaces pass through silently — intentionally, since those carry no stability commitment.
+
+      For v1.0.0-RC1 (the first release carrying @Stable annotations), the gate is a no-op:
+      there is no prior baseline to compare against. Starting in v1.0.0-RC2, `api.baseline.version`
+      will default to `1.0.0-RC1` and subsequent releases will accumulate protection.
+    -->
+    <profiles>
+        <profile>
+            <id>api-compat</id>
+            <properties>
+                <api.baseline.version></api.baseline.version>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.github.siom79.japicmp</groupId>
+                        <artifactId>japicmp-maven-plugin</artifactId>
+                        <version>0.23.1</version>
+                        <executions>
+                            <execution>
+                                <id>check-api-compat</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>cmp</goal>
+                                </goals>
+                                <configuration>
+                                    <oldVersion>
+                                        <dependency>
+                                            <groupId>${project.groupId}</groupId>
+                                            <artifactId>${project.artifactId}</artifactId>
+                                            <version>${api.baseline.version}</version>
+                                            <type>jar</type>
+                                        </dependency>
+                                    </oldVersion>
+                                    <newVersion>
+                                        <file>
+                                            <path>${project.build.directory}/${project.artifactId}-${project.version}.jar</path>
+                                        </file>
+                                    </newVersion>
+                                    <parameter>
+                                        <!-- Only report breaks on @Stable-annotated surfaces. -->
+                                        <includeAnnotations>
+                                            <includeAnnotation>@io.kairo.api.Stable</includeAnnotation>
+                                        </includeAnnotations>
+                                        <excludes>
+                                            <!-- Exclude test / internal implementation packages; kairo-api has none. -->
+                                        </excludes>
+                                        <onlyModified>true</onlyModified>
+                                        <onlyBinaryIncompatibleModifications>true</onlyBinaryIncompatibleModifications>
+                                        <breakBuildOnBinaryIncompatibleModifications>true</breakBuildOnBinaryIncompatibleModifications>
+                                        <breakBuildOnSourceIncompatibleModifications>true</breakBuildOnSourceIncompatibleModifications>
+                                        <skipPomModules>true</skipPomModules>
+                                        <!-- Skip the whole execution if no baseline is configured (RC1 bootstrap case). -->
+                                        <skipXmlReport>false</skipXmlReport>
+                                        <skipHtmlReport>false</skipHtmlReport>
+                                    </parameter>
+                                    <skip>${japicmp.skip}</skip>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

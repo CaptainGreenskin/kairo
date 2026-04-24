@@ -15,7 +15,10 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
+
 /** Permission level for tool execution. */
+@Stable(value = "Tool permission enum; values frozen since v0.1", since = "1.0.0")
 public enum ToolPermission {
 
     /** Tool execution is allowed without any further checks. */

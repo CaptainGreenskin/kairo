@@ -15,14 +15,16 @@
  */
 package io.kairo.api.execution;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 
 /**
  * Status of a durable execution.
  *
- * @since v0.8 (Experimental)
+ * @since v0.8 (promoted to @Stable in v1.0.0)
  */
-@Experimental("DurableExecution SPI — contract may change in v0.9")
+@Stable(
+        value = "Execution status enum; values frozen since v0.8, promoted post-v0.9 GA",
+        since = "1.0.0")
 public enum ExecutionStatus {
 
     /** The execution is actively running. */

@@ -15,7 +15,7 @@
  */
 package io.kairo.api.execution;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -25,9 +25,11 @@ import reactor.core.publisher.Mono;
  * <p>Implementations must be thread-safe. The store uses optimistic locking via the {@link
  * DurableExecution#version()} field — callers must handle version-mismatch errors (e.g. retry).
  *
- * @since v0.8 (Experimental)
+ * @since v0.8 (promoted to @Stable in v1.0.0)
  */
-@Experimental("DurableExecution SPI — contract may change in v0.9")
+@Stable(
+        value = "Durable execution store SPI; shape frozen since v0.8, promoted post-v0.9 GA",
+        since = "1.0.0")
 public interface DurableExecutionStore {
 
     /**

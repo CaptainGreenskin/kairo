@@ -15,6 +15,7 @@
  */
 package io.kairo.api.hook;
 
+import io.kairo.api.Stable;
 import io.kairo.api.message.Msg;
 import java.util.Map;
 
@@ -40,6 +41,9 @@ import java.util.Map;
  * @param hookSource identifier of the hook that produced this result (nullable)
  * @param <T> the event type
  */
+@Stable(
+        value = "Hook behavioral result record; Decision enum + static factories frozen since v0.6",
+        since = "1.0.0")
 public record HookResult<T>(
         T event,
         Decision decision,

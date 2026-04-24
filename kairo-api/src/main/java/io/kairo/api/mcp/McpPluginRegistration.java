@@ -15,6 +15,7 @@
  */
 package io.kairo.api.mcp;
 
+import io.kairo.api.Stable;
 import java.util.List;
 
 /**
@@ -23,4 +24,5 @@ import java.util.List;
  * @param serverName registered server name
  * @param tools discovered tool bindings from this server
  */
+@Stable(value = "MCP plugin registration result; shape frozen since v0.4", since = "1.0.0")
 public record McpPluginRegistration(String serverName, List<McpPluginTool> tools) {}

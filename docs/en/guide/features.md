@@ -7,7 +7,7 @@
 - **21 Built-in Tools** — File ops (Read/Write/Edit/Glob/Grep), execution (Bash/Monitor), interaction (AskUser), skills (SkillList/SkillLoad), and agent ops (Spawn/Message/Task/Team/Plan)
 - **Read/Write Partition** — READ_ONLY tools execute in parallel, WRITE/SYSTEM_CHANGE tools serialize automatically
 - **Human-in-the-Loop** — Three-state permission model (ALLOWED/ASK/DENIED) with `PermissionGuard`
-- **Multi-Agent Orchestration** — TaskBoard, PlanBuilder, TeamScheduler, and in-process MessageBus
+- **Multi-Agent Orchestration** — `TeamCoordinator` SPI with expert-team (plan → generate → evaluate) default, plus in-process MessageBus
 - **A2A Protocol** — Agent-to-Agent communication standard (Google ADK-compatible), in-process discovery + invocation, team auto-registration
 - **Middleware Pipeline** — Declarative request/response interception with `@MiddlewareOrder` for cross-cutting concerns (logging, auth, rate-limiting)
 - **Agent Snapshot/Checkpoint** — Serialize agent state mid-conversation, restore from checkpoint with `AgentBuilder.restoreFrom(snapshot)`

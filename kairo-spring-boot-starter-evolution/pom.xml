@@ -21,6 +21,11 @@
             <artifactId>kairo-evolution</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-skill</artifactId>
+            <version>${project.version}</version>
+        </dependency>
 
         <!-- Kairo Core (for AgentBuilderCustomizer wiring) -->
         <dependency>

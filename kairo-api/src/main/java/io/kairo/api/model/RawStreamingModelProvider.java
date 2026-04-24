@@ -15,6 +15,7 @@
  */
 package io.kairo.api.model;
 
+import io.kairo.api.Stable;
 import io.kairo.api.message.Msg;
 import java.util.List;
 import reactor.core.publisher.Flux;
@@ -26,6 +27,7 @@ import reactor.core.publisher.Flux;
  * responses. Some runtime features (e.g. eager tool execution) need lower-level provider frames.
  * Providers that support this mode should implement this interface.
  */
+@Stable(value = "Raw streaming provider SPI; shape frozen since v0.5", since = "1.0.0")
 public interface RawStreamingModelProvider extends ModelProvider {
 
     /**

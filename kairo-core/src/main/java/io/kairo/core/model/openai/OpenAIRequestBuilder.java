@@ -24,6 +24,7 @@ import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelCapability;
 import io.kairo.api.model.ModelConfig;
+import io.kairo.api.model.ProviderPipeline;
 import io.kairo.api.model.ToolVerbosity;
 import io.kairo.api.tool.ToolDefinition;
 import io.kairo.core.model.JsonSchemaGenerator;
@@ -40,7 +41,7 @@ import java.util.List;
  * <p>Handles serialization of messages, tools, structured output, and effort parameters into the
  * JSON request body format expected by OpenAI and compatible APIs.
  */
-public class OpenAIRequestBuilder {
+public class OpenAIRequestBuilder implements ProviderPipeline.RequestBuilder<String> {
 
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(120);
 
@@ -67,6 +68,13 @@ public class OpenAIRequestBuilder {
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .timeout(DEFAULT_TIMEOUT)
                 .build();
+    }
+
+    /** SPI entry point — delegates to {@link #buildRequestBody(List, ModelConfig, boolean)}. */
+    @Override
+    public String build(List<Msg> messages, ModelConfig config, boolean stream)
+            throws JsonProcessingException {
+        return buildRequestBody(messages, config, stream);
     }
 
     /**

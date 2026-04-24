@@ -43,25 +43,34 @@
 
     <!-- Distribution managed by central-publishing-maven-plugin (Sonatype Central Portal) -->
 
+    <!--
+        Module layout: foundation modules are listed flat at the top; the rest are grouped
+        through three reactor-only aggregator POMs (kairo-capabilities / kairo-transports /
+        kairo-starters) so that `mvn -pl kairo-<group> -am test` rebuilds a cohort in one shot.
+        The aggregators are reactor-only — every leaf module still inherits kairo-parent
+        directly and never appears on any runtime classpath via the aggregator.
+    -->
     <modules>
+        <!-- Foundation -->
         <module>kairo-bom</module>
         <module>kairo-api</module>
         <module>kairo-core</module>
-        <module>kairo-tools</module>
-        <module>kairo-mcp</module>
-        <module>kairo-multi-agent</module>
-        <module>kairo-observability</module>
-        <module>kairo-evolution</module>
-        <module>kairo-spring-boot-starter-core</module>
-        <module>kairo-spring-boot-starter-mcp</module>
-        <module>kairo-spring-boot-starter-multi-agent</module>
-        <module>kairo-spring-boot-starter-evolution</module>
-        <module>kairo-spring-boot-starter</module>
+
+        <!-- Vertical capabilities (8 modules, see kairo-capabilities/pom.xml) -->
+        <module>kairo-capabilities</module>
+
+        <!-- I/O boundary: event stream + channel adapters (5 modules, see kairo-transports/pom.xml) -->
+        <module>kairo-transports</module>
+
+        <!-- Spring Boot starters (10 modules, see kairo-starters/pom.xml) -->
+        <module>kairo-starters</module>
+
+        <!-- Examples / demos -->
         <module>kairo-examples</module>
     </modules>
 
     <properties>
-        <revision>0.8.0</revision>
+        <revision>1.0.0-SNAPSHOT</revision>
         <java.version>17</java.version>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>

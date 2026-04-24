@@ -15,7 +15,10 @@
  */
 package io.kairo.api.agent;
 
+import io.kairo.api.Stable;
+
 /** Factory for creating agent instances from configuration. */
+@Stable(value = "Agent factory SPI; shape frozen since v0.4", since = "1.0.0")
 public interface AgentFactory {
 
     /**

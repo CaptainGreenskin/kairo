@@ -15,6 +15,8 @@
  */
 package io.kairo.spring.execution;
 
+import io.kairo.api.event.KairoEvent;
+import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.execution.DurableExecution;
 import io.kairo.api.execution.DurableExecutionStore;
 import io.kairo.api.execution.ExecutionEvent;
@@ -24,7 +26,11 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import javax.annotation.Nullable;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -45,11 +51,20 @@ public class JdbcDurableExecutionStore implements DurableExecutionStore {
 
     private final JdbcTemplate jdbcTemplate;
     private final TransactionTemplate transactionTemplate;
+    @Nullable private final KairoEventBus eventBus;
 
     public JdbcDurableExecutionStore(
             JdbcTemplate jdbcTemplate, TransactionTemplate transactionTemplate) {
+        this(jdbcTemplate, transactionTemplate, null);
+    }
+
+    public JdbcDurableExecutionStore(
+            JdbcTemplate jdbcTemplate,
+            TransactionTemplate transactionTemplate,
+            @Nullable KairoEventBus eventBus) {
         this.jdbcTemplate = jdbcTemplate;
         this.transactionTemplate = transactionTemplate;
+        this.eventBus = eventBus;
     }
 
     @Override
@@ -83,7 +98,8 @@ public class JdbcDurableExecutionStore implements DurableExecutionStore {
                         e ->
                                 new IllegalStateException(
                                         "Execution already exists: " + execution.executionId(), e))
-                .then();
+                .then()
+                .doOnSuccess(v -> publishLifecycle("EXECUTION_PERSISTED", execution));
     }
 
     @Override
@@ -154,7 +170,8 @@ public class JdbcDurableExecutionStore implements DurableExecutionStore {
                             return (Void) null;
                         })
                 .subscribeOn(Schedulers.boundedElastic())
-                .then();
+                .then()
+                .doOnSuccess(v -> publishEventAppended(executionId, event));
     }
 
     @Override
@@ -183,7 +200,8 @@ public class JdbcDurableExecutionStore implements DurableExecutionStore {
                             return (Void) null;
                         })
                 .subscribeOn(Schedulers.boundedElastic())
-                .then();
+                .then()
+                .doOnSuccess(v -> publishStatusChanged(executionId, status));
     }
 
     @Override
@@ -199,7 +217,65 @@ public class JdbcDurableExecutionStore implements DurableExecutionStore {
                             return (Void) null;
                         })
                 .subscribeOn(Schedulers.boundedElastic())
-                .then();
+                .then()
+                .doOnSuccess(v -> publishDeleted(executionId));
+    }
+
+    private void publishLifecycle(String eventType, DurableExecution execution) {
+        if (eventBus == null) {
+            return;
+        }
+        Map<String, Object> attributes = new HashMap<>();
+        attributes.put("executionId", execution.executionId());
+        attributes.put("agentId", execution.agentId());
+        attributes.put("status", execution.status().name());
+        attributes.put("version", execution.version());
+        safePublish(eventType, execution, attributes);
+    }
+
+    private void publishEventAppended(String executionId, ExecutionEvent event) {
+        if (eventBus == null) {
+            return;
+        }
+        Map<String, Object> attributes = new HashMap<>();
+        attributes.put("executionId", executionId);
+        attributes.put("eventId", event.eventId());
+        attributes.put("executionEventType", event.eventType().name());
+        safePublish("EXECUTION_EVENT_APPENDED", event, attributes);
+    }
+
+    private void publishStatusChanged(String executionId, ExecutionStatus newStatus) {
+        if (eventBus == null) {
+            return;
+        }
+        Map<String, Object> attributes = new HashMap<>();
+        attributes.put("executionId", executionId);
+        attributes.put("status", newStatus.name());
+        safePublish("EXECUTION_STATUS_CHANGED", null, attributes);
+    }
+
+    private void publishDeleted(String executionId) {
+        if (eventBus == null) {
+            return;
+        }
+        Map<String, Object> attributes = new HashMap<>();
+        attributes.put("executionId", executionId);
+        safePublish("EXECUTION_DELETED", null, attributes);
+    }
+
+    private void safePublish(String eventType, Object payload, Map<String, Object> attributes) {
+        try {
+            eventBus.publish(
+                    new KairoEvent(
+                            UUID.randomUUID().toString(),
+                            Instant.now(),
+                            KairoEvent.DOMAIN_EXECUTION,
+                            eventType,
+                            payload,
+                            attributes));
+        } catch (RuntimeException ignored) {
+            // deny-safe: bus failures never break the durable store
+        }
     }
 
     private void insertEvent(String executionId, ExecutionEvent event) {

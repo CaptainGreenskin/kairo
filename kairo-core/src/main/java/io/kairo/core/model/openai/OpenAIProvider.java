@@ -21,6 +21,7 @@ import io.kairo.api.message.Msg;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
+import io.kairo.api.model.ProviderPipeline;
 import io.kairo.api.model.RawStreamingModelProvider;
 import io.kairo.api.model.StreamChunk;
 import io.kairo.core.model.ExceptionMapper;
@@ -57,7 +58,7 @@ import reactor.core.publisher.Sinks;
  * @see io.kairo.spring.boot.AgentRuntimeAutoConfiguration AgentRuntimeAutoConfiguration — Spring
  *     Boot auto-configuration that creates an OpenAIProvider using the 2-arg constructor
  */
-public class OpenAIProvider implements RawStreamingModelProvider {
+public class OpenAIProvider implements RawStreamingModelProvider, ProviderPipeline<String, String> {
 
     private static final Duration STREAM_IDLE_TIMEOUT = Duration.ofMinutes(5);
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(30);
@@ -356,5 +357,36 @@ public class OpenAIProvider implements RawStreamingModelProvider {
                                         errorClassifier::isRetryableError,
                                         STREAM_IDLE_TIMEOUT))
                 .onErrorMap(ExceptionMapper::toApiException);
+    }
+
+    // ----------------------------------------------------------------------
+    // ProviderPipeline<String, String> SPI — ADR-005 provider decomposition.
+    // ----------------------------------------------------------------------
+
+    @Override
+    public ProviderPipeline.RequestBuilder<String> requestBuilder() {
+        return requestBuilder;
+    }
+
+    @Override
+    public ProviderPipeline.ResponseParser<String> responseParser() {
+        return responseParser;
+    }
+
+    /**
+     * Returns a stateless prototype subscriber. The real subscriber is {@link OpenAISseSubscriber}
+     * and is constructed per-stream inside {@link #stream(List, ModelConfig)} because it must be
+     * bound to a {@link Sinks.Many} sink at construction time.
+     */
+    @Override
+    public ProviderPipeline.StreamSubscriber<String> streamSubscriber() {
+        return chunk -> {
+            /* prototype — real subscriber is created per-stream inside stream() */
+        };
+    }
+
+    @Override
+    public ProviderPipeline.ErrorClassifier errorClassifier() {
+        return errorClassifier;
     }
 }

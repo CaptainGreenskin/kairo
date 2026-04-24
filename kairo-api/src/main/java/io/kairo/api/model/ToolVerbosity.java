@@ -15,7 +15,10 @@
  */
 package io.kairo.api.model;
 
+import io.kairo.api.Stable;
+
 /** Controls the verbosity level of tool descriptions sent to the model. */
+@Stable(value = "Tool verbosity enum; values frozen since v0.3", since = "1.0.0")
 public enum ToolVerbosity {
 
     /** Minimal descriptions, no examples. Suitable for Haiku and small models. */

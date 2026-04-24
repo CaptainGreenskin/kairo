@@ -15,6 +15,7 @@
  */
 package io.kairo.api.execution;
 
+import io.kairo.api.Stable;
 import java.time.Duration;
 import java.util.Objects;
 import javax.annotation.Nullable;
@@ -29,6 +30,7 @@ import javax.annotation.Nullable;
  * @param agentName the name of the agent being constrained
  * @param agentState optional agent state snapshot (may be null)
  */
+@Stable(value = "Resource context snapshot; shape frozen since v0.8", since = "1.0.0")
 public record ResourceContext(
         int iteration,
         long tokensUsed,

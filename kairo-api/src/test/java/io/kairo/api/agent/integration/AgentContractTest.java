@@ -25,7 +25,6 @@ import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
-import io.kairo.api.task.TaskStatus;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.Arrays;
@@ -39,8 +38,8 @@ import reactor.core.publisher.Mono;
 /**
  * Contract-level tests for the Agent API surface in kairo-api.
  *
- * <p>Validates Agent interface contract, AgentState transitions, TaskStatus completeness,
- * ModelConfig defaults, and AgentConfig validation rules.
+ * <p>Validates Agent interface contract, AgentState transitions, ModelConfig defaults, and
+ * AgentConfig validation rules.
  */
 @Tag("integration")
 class AgentContractTest {
@@ -130,27 +129,6 @@ class AgentContractTest {
     }
 
     // ================================
-    // TaskStatus enum completeness
-    // ================================
-
-    @Test
-    @DisplayName("TaskStatus contains all expected values including ABANDONED")
-    void taskStatus_completenessIncludingAbandoned() {
-        Set<String> names =
-                Arrays.stream(TaskStatus.values()).map(Enum::name).collect(Collectors.toSet());
-
-        Set<String> expected =
-                Set.of("PENDING", "IN_PROGRESS", "COMPLETED", "FAILED", "CANCELLED", "ABANDONED");
-        assertEquals(expected, names);
-    }
-
-    @Test
-    @DisplayName("TaskStatus has exactly 6 values")
-    void taskStatus_exactCount() {
-        assertEquals(6, TaskStatus.values().length);
-    }
-
-    // ================================
     // ModelConfig defaults
     // ================================
 
@@ -200,11 +178,11 @@ class AgentContractTest {
         assertNull(config.toolRegistry());
         assertNull(config.modelName());
         assertTrue(config.hooks().isEmpty());
-        assertTrue(config.mcpServerConfigs().isEmpty());
+        assertTrue(config.mcpCapability().serverConfigs().isEmpty());
     }
 
     @Test
-    @DisplayName("AgentConfig hooks and mcpServerConfigs lists are immutable")
+    @DisplayName("AgentConfig hooks list is immutable")
     void agentConfig_listsAreImmutable() {
         ModelProvider provider = mock(ModelProvider.class);
         AgentConfig config =
@@ -212,11 +190,8 @@ class AgentContractTest {
                         .name("test")
                         .modelProvider(provider)
                         .addHook(new Object())
-                        .addMcpServerConfig(new Object())
                         .build();
 
         assertThrows(UnsupportedOperationException.class, () -> config.hooks().add(null));
-        assertThrows(
-                UnsupportedOperationException.class, () -> config.mcpServerConfigs().add(null));
     }
 }

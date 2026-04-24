@@ -16,23 +16,27 @@
 package io.kairo.api.model;
 
 import io.kairo.api.Experimental;
+import io.kairo.api.message.Msg;
+import java.util.List;
 
 /**
  * Structural SPI capturing the four stages every {@link ModelProvider} decomposes into. Named
  * stages map directly onto the ADR-005 provider decomposition template:
  *
  * <ul>
- *   <li>{@link RequestBuilder}: assembles an {@link io.kairo.api.model.ModelConfig} into the
+ *   <li>{@link RequestBuilder}: assembles messages and a {@link ModelConfig} into the
  *       provider-specific request payload.
  *   <li>{@link ResponseParser}: parses the provider response into a canonical {@link
  *       io.kairo.api.model.ModelResponse}.
  *   <li>{@link StreamSubscriber}: consumes provider SSE / streaming chunks.
- *   <li>{@link ErrorClassifier}: normalizes provider error responses into Kairo exceptions.
+ *   <li>{@link ErrorClassifier}: determines whether a provider error is transient and worth
+ *       retrying.
  * </ul>
  *
- * <p>v0.10 introduces the SPI alongside the existing concrete Anthropic and OpenAI implementations;
- * actual migration of those providers to depend on this pipeline is tracked as a follow-up task in
- * {@code docs/roadmap/v0.10-core-refactor-verification.md}.
+ * <p>v0.10.2 wires the concrete Anthropic and OpenAI providers to this SPI; the delegate classes
+ * (request builder, response parser, SSE subscriber, error classifier) implement the matching
+ * functional interfaces, and {@link AnthropicProvider} / {@link OpenAIProvider} expose them via
+ * this facade.
  *
  * @since v0.10 (Experimental)
  */
@@ -47,27 +51,32 @@ public interface ProviderPipeline<RequestT, ResponseT> {
 
     ErrorClassifier errorClassifier();
 
-    /** Builds a provider-specific request payload. */
+    /** Builds a provider-specific request payload from the conversation and model config. */
     @FunctionalInterface
     interface RequestBuilder<RequestT> {
-        RequestT build(ModelConfig config);
+        RequestT build(List<Msg> messages, ModelConfig config, boolean stream) throws Exception;
     }
 
     /** Converts a provider response payload into a canonical {@link ModelResponse}. */
     @FunctionalInterface
     interface ResponseParser<ResponseT> {
-        ModelResponse parse(ResponseT raw);
+        ModelResponse parse(ResponseT raw) throws Exception;
     }
 
-    /** Consumes provider streaming chunks; implementations typically accumulate tool calls. */
+    /**
+     * Consumes provider streaming chunks. The concrete SSE subscribers used by the provider's
+     * {@code stream()} method implement this interface; the {@link
+     * ProviderPipeline#streamSubscriber()} getter typically returns a prototype that callers may
+     * substitute via pipeline injection to intercept chunk-level events.
+     */
     @FunctionalInterface
     interface StreamSubscriber<ResponseT> {
         void onChunk(ResponseT chunk);
     }
 
-    /** Normalises provider errors into {@link ClassifiedError}. */
+    /** Determines whether a provider error is transient and worth retrying. */
     @FunctionalInterface
     interface ErrorClassifier {
-        ClassifiedError classify(Throwable error);
+        boolean isRetryable(Throwable error);
     }
 }

@@ -15,6 +15,7 @@
  */
 package io.kairo.api.model;
 
+import io.kairo.api.Stable;
 import java.time.Duration;
 import java.util.Map;
 
@@ -27,6 +28,7 @@ import java.util.Map;
  *     ApiErrorType#RATE_LIMITED})
  * @param metadata additional metadata about the error
  */
+@Stable(value = "Classified API error record; shape frozen since v0.2", since = "1.0.0")
 public record ClassifiedError(
         ApiErrorType type, String message, Duration retryAfter, Map<String, Object> metadata) {
 

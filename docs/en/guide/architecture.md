@@ -45,8 +45,7 @@ MCP (Model Context Protocol) integration via StreamableHTTP + Elicitation Protoc
 
 Multi-agent orchestration layer:
 - **A2A Protocol** — Google ADK-compatible Agent-to-Agent communication
-- **TaskBoard** — DAG-based task dependency tracking
-- **TeamScheduler** — Team collaboration orchestration
+- **TeamCoordinator SPI** — Pluggable team-orchestration contract (ADR-016); default implementation is the expert-team coordinator (plan → generate → evaluate)
 - **MessageBus** — In-process pub/sub messaging
 
 ### kairo-observability

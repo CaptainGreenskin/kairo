@@ -15,12 +15,15 @@
  */
 package io.kairo.api.execution;
 
+import io.kairo.api.Stable;
+
 /**
  * Actions that can be taken when a {@link ResourceConstraint} is violated.
  *
  * <p>Ordered by severity — when multiple constraints are evaluated, the most severe action wins.
  * Ordinal comparison is used: higher ordinal = more severe.
  */
+@Stable(value = "Resource action enum; severity ordering frozen since v0.8", since = "1.0.0")
 public enum ResourceAction {
     /** No action needed — constraint is satisfied. */
     ALLOW,

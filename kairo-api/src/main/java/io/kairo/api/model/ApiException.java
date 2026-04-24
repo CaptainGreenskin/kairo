@@ -15,9 +15,11 @@
  */
 package io.kairo.api.model;
 
+import io.kairo.api.Stable;
 import java.util.Map;
 
 /** An exception representing a classified API error. */
+@Stable(value = "Classified API exception; shape frozen since v0.2", since = "1.0.0")
 public class ApiException extends RuntimeException {
 
     private final ApiErrorType errorType;

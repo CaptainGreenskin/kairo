@@ -15,7 +15,10 @@
  */
 package io.kairo.api.plan;
 
+import io.kairo.api.Stable;
+
 /** Status of a plan through its lifecycle. */
+@Stable(value = "Plan status enum; values frozen since v0.1", since = "1.0.0")
 public enum PlanStatus {
 
     /** The plan is in draft state and not yet approved. */

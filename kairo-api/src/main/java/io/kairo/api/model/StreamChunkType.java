@@ -15,7 +15,10 @@
  */
 package io.kairo.api.model;
 
+import io.kairo.api.Stable;
+
 /** Type of a streaming response chunk. */
+@Stable(value = "Streaming chunk type enum; values frozen since v0.3", since = "1.0.0")
 public enum StreamChunkType {
 
     /** A text content chunk. */

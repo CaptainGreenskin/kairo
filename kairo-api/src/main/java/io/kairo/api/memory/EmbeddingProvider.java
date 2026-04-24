@@ -15,6 +15,7 @@
  */
 package io.kairo.api.memory;
 
+import io.kairo.api.Experimental;
 import java.util.List;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -33,6 +34,7 @@ import reactor.core.publisher.Mono;
  *     consistent value for the lifetime of the provider instance.
  * @since 0.5.0
  */
+@Experimental("Embedding provider SPI — may change as integration matures; targeting v0.11")
 public interface EmbeddingProvider {
 
     /**

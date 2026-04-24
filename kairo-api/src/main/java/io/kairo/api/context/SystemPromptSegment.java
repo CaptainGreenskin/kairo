@@ -15,6 +15,8 @@
  */
 package io.kairo.api.context;
 
+import io.kairo.api.Stable;
+
 /**
  * A named segment of the system prompt with a cache scope.
  *
@@ -26,6 +28,7 @@ package io.kairo.api.context;
  * @param content the segment text content
  * @param scope the cache scope for this segment
  */
+@Stable(value = "System prompt segment record; shape frozen since v0.1", since = "1.0.0")
 public record SystemPromptSegment(String name, String content, CacheScope scope) {
 
     /** Whether this segment is eligible for caching. */

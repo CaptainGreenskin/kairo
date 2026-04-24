@@ -15,6 +15,7 @@
  */
 package io.kairo.api.hook;
 
+import io.kairo.api.Stable;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -24,6 +25,7 @@ import java.lang.annotation.Target;
  * Marks a hook method to be invoked after each tool execution completes. Fires after tool result is
  * received, before PostActing hook. This is a notification-only event — no HookResult return.
  */
+@Stable(value = "Legacy per-phase hook annotation; shape frozen since v0.6", since = "1.0.0")
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface OnToolResult {

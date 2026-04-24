@@ -15,7 +15,7 @@
  */
 package io.kairo.api.execution;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 import reactor.core.publisher.Mono;
 
 /**
@@ -31,7 +31,9 @@ import reactor.core.publisher.Mono;
  * @see ResourceAction
  * @see ResourceContext
  */
-@Experimental("ResourceConstraint SPI — contract may change in v0.9")
+@Stable(
+        value = "Resource constraint SPI; shape frozen since v0.8, promoted post-v0.9 GA",
+        since = "1.0.0")
 public interface ResourceConstraint {
 
     /**

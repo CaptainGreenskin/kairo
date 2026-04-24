@@ -15,6 +15,7 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
 import io.kairo.api.agent.CancellationSignal;
 import java.time.Duration;
 import java.util.List;
@@ -50,6 +51,7 @@ import reactor.core.publisher.Mono;
  * @see ToolSideEffect
  * @since 0.1.0
  */
+@Stable(value = "Tool executor SPI; shape frozen since v0.1", since = "1.0.0")
 public interface ToolExecutor {
 
     /**

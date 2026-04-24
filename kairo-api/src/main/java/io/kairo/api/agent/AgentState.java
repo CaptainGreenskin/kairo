@@ -15,7 +15,10 @@
  */
 package io.kairo.api.agent;
 
+import io.kairo.api.Stable;
+
 /** Lifecycle state of an agent. */
+@Stable(value = "Agent lifecycle enum; values frozen since v0.4", since = "1.0.0")
 public enum AgentState {
 
     /** Agent is idle, waiting for input. */

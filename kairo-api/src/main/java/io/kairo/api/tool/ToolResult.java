@@ -15,6 +15,7 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
 import java.util.Map;
 
 /**
@@ -25,5 +26,6 @@ import java.util.Map;
  * @param isError whether the execution resulted in an error
  * @param metadata additional metadata about the execution
  */
+@Stable(value = "Tool execution result record; shape frozen since v0.1", since = "1.0.0")
 public record ToolResult(
         String toolUseId, String content, boolean isError, Map<String, Object> metadata) {}

@@ -15,6 +15,7 @@
  */
 package io.kairo.api.memory;
 
+import io.kairo.api.Stable;
 import java.time.Instant;
 import java.util.Set;
 
@@ -33,6 +34,7 @@ import java.util.Set;
  * @param minImportance minimum importance threshold (default 0.0)
  * @param limit maximum number of results (default 20)
  */
+@Stable(value = "Memory query record; hybrid-retrieval shape frozen since v0.5", since = "1.0.0")
 public record MemoryQuery(
         String agentId,
         String keyword,

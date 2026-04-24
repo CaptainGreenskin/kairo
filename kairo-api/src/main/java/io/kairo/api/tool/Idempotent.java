@@ -15,6 +15,7 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
 import java.lang.annotation.*;
 
 /**
@@ -30,6 +31,7 @@ import java.lang.annotation.*;
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
+@Stable(value = "Idempotency marker annotation; shape frozen since v0.8", since = "1.0.0")
 public @interface Idempotent {
     /** Optional description of idempotency semantics. */
     String value() default "";

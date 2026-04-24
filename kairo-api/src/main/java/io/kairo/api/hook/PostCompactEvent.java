@@ -15,6 +15,7 @@
  */
 package io.kairo.api.hook;
 
+import io.kairo.api.Stable;
 import io.kairo.api.context.BoundaryMarker;
 import io.kairo.api.message.Msg;
 import java.util.ArrayList;
@@ -26,6 +27,7 @@ import java.util.List;
  * <p>Hook handlers can inspect the compaction results and append recovery messages that will be
  * merged into the final compacted message list.
  */
+@Stable(value = "Post-compact hook event; shape frozen since v0.6", since = "1.0.0")
 public class PostCompactEvent implements HookEvent {
 
     private final List<Msg> compactedMessages;

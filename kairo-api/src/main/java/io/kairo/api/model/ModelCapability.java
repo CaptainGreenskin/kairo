@@ -15,6 +15,8 @@
  */
 package io.kairo.api.model;
 
+import io.kairo.api.Stable;
+
 /**
  * Describes the capabilities and characteristics of a specific model.
  *
@@ -28,6 +30,7 @@ package io.kairo.api.model;
  * @param thinkingBudgetRange the thinking budget range, or null if thinking is not supported
  * @param promptGuidance model-specific guidance injected into the system prompt, or empty
  */
+@Stable(value = "Model capability record; shape frozen since v0.3", since = "1.0.0")
 public record ModelCapability(
         String modelFamily,
         String modelTier,

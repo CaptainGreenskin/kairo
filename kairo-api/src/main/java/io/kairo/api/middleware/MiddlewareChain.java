@@ -15,6 +15,7 @@
  */
 package io.kairo.api.middleware;
 
+import io.kairo.api.Experimental;
 import reactor.core.publisher.Mono;
 
 /**
@@ -25,6 +26,8 @@ import reactor.core.publisher.Mono;
  * in tests and internal code.
  */
 @FunctionalInterface
+@Experimental(
+        "Middleware chain SPI; shape pending v1.0 census review, targeting stabilization in v1.1")
 public interface MiddlewareChain {
 
     /**

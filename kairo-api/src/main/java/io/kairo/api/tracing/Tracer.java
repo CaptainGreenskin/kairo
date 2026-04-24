@@ -15,6 +15,7 @@
  */
 package io.kairo.api.tracing;
 
+import io.kairo.api.Stable;
 import io.kairo.api.message.Msg;
 import java.time.Duration;
 import java.util.Map;
@@ -39,6 +40,7 @@ import java.util.Map;
  * @see Span
  * @see NoopSpan
  */
+@Stable(value = "Tracer SPI; OTel-aligned shape frozen since v0.3", since = "1.0.0")
 public interface Tracer {
 
     // --- Span factories (override these) ---

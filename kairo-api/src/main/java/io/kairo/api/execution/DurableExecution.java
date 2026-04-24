@@ -15,7 +15,7 @@
  */
 package io.kairo.api.execution;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -35,9 +35,11 @@ import javax.annotation.Nullable;
  * @param version optimistic lock version — incremented on each status update
  * @param createdAt when the execution was created
  * @param updatedAt when the execution was last modified
- * @since v0.8 (Experimental)
+ * @since v0.8 (promoted to @Stable in v1.0.0)
  */
-@Experimental("DurableExecution SPI — contract may change in v0.9")
+@Stable(
+        value = "Durable execution aggregate root; shape frozen since v0.8, promoted post-v0.9 GA",
+        since = "1.0.0")
 public record DurableExecution(
         String executionId,
         String agentId,

@@ -15,7 +15,10 @@
  */
 package io.kairo.api.message;
 
+import io.kairo.api.Stable;
+
 /** The role of a participant in a conversation. */
+@Stable(value = "Message role enum; values frozen since v0.1", since = "1.0.0")
 public enum MsgRole {
 
     /** System-level instructions or context. */

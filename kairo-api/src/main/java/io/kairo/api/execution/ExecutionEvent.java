@@ -15,7 +15,7 @@
  */
 package io.kairo.api.execution;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 import java.time.Instant;
 import java.util.Objects;
 
@@ -31,9 +31,11 @@ import java.util.Objects;
  * @param payloadJson canonical JSON payload
  * @param eventHash SHA-256 hash for event-chain integrity verification
  * @param schemaVersion schema version of the payload format
- * @since v0.8 (Experimental)
+ * @since v0.8 (promoted to @Stable in v1.0.0)
  */
-@Experimental("DurableExecution SPI — contract may change in v0.9")
+@Stable(
+        value = "Execution event envelope; shape frozen since v0.8, promoted post-v0.9 GA",
+        since = "1.0.0")
 public record ExecutionEvent(
         String eventId,
         ExecutionEventType eventType,

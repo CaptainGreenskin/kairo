@@ -15,7 +15,10 @@
  */
 package io.kairo.api.skill;
 
+import io.kairo.api.Stable;
+
 /** Categorization for skills. */
+@Stable(value = "Skill category enum; values frozen since v0.1", since = "1.0.0")
 public enum SkillCategory {
 
     /** Code-related skills. */

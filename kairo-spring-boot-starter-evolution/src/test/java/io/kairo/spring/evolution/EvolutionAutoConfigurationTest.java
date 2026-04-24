@@ -6,6 +6,8 @@ import static org.mockito.Mockito.mock;
 import io.kairo.api.evolution.EvolvedSkillStore;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.evolution.*;
+import io.kairo.skill.InMemoryEvolvedSkillStore;
+import io.kairo.skill.SkillContentInjector;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;

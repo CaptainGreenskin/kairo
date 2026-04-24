@@ -15,6 +15,7 @@
  */
 package io.kairo.api.tracing;
 
+import io.kairo.api.Stable;
 import java.util.Map;
 
 /**
@@ -25,6 +26,7 @@ import java.util.Map;
  * (tokens, tools, compaction) lives on {@link Tracer} as convenience methods that delegate to
  * setAttribute.
  */
+@Stable(value = "Span SPI; OTel-aligned shape frozen since v0.3", since = "1.0.0")
 public interface Span {
     String spanId();
 

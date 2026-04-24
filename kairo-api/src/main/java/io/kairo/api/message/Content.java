@@ -15,6 +15,7 @@
  */
 package io.kairo.api.message;
 
+import io.kairo.api.Stable;
 import java.util.Map;
 
 /**
@@ -23,6 +24,7 @@ import java.util.Map;
  * <p>Uses Java sealed interfaces to represent the different content types that can appear in a
  * conversation message.
  */
+@Stable(value = "Sealed content block hierarchy; shape frozen since v0.1", since = "1.0.0")
 public sealed interface Content {
 
     /**

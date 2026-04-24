@@ -15,6 +15,7 @@
  */
 package io.kairo.api.hook;
 
+import io.kairo.api.Stable;
 import io.kairo.api.tool.ToolResult;
 
 /**
@@ -23,4 +24,5 @@ import io.kairo.api.tool.ToolResult;
  * @param toolName the name of the tool that was executed
  * @param result the tool execution result
  */
+@Stable(value = "Post-acting hook event; shape frozen since v0.6", since = "1.0.0")
 public record PostActingEvent(String toolName, ToolResult result) implements HookEvent {}

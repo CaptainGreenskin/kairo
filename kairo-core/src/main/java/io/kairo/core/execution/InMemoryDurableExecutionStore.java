@@ -15,14 +15,19 @@
  */
 package io.kairo.core.execution;
 
+import io.kairo.api.event.KairoEvent;
+import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.execution.DurableExecution;
 import io.kairo.api.execution.DurableExecutionStore;
 import io.kairo.api.execution.ExecutionEvent;
 import io.kairo.api.execution.ExecutionStatus;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import javax.annotation.Nullable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -32,11 +37,25 @@ import reactor.core.publisher.Mono;
  * <p>Backed by a {@link ConcurrentHashMap}. Thread-safe for concurrent access. Not suitable for
  * production use — all data is lost on process exit.
  *
+ * <p>When a {@link KairoEventBus} is supplied, lifecycle transitions (persist / appendEvent /
+ * updateStatus / delete) are bridged onto {@link KairoEvent#DOMAIN_EXECUTION}. A {@code null} bus
+ * disables publishing — publish failures on the bus are swallowed to preserve the store's at-least-
+ * once contract.
+ *
  * @since v0.8
  */
 public class InMemoryDurableExecutionStore implements DurableExecutionStore {
 
     private final ConcurrentHashMap<String, DurableExecution> store = new ConcurrentHashMap<>();
+    @Nullable private final KairoEventBus eventBus;
+
+    public InMemoryDurableExecutionStore() {
+        this(null);
+    }
+
+    public InMemoryDurableExecutionStore(@Nullable KairoEventBus eventBus) {
+        this.eventBus = eventBus;
+    }
 
     @Override
     public Mono<Void> persist(DurableExecution execution) {
@@ -49,6 +68,7 @@ public class InMemoryDurableExecutionStore implements DurableExecutionStore {
                                 new IllegalStateException(
                                         "Execution already exists: " + execution.executionId()));
                     }
+                    publishLifecycle("EXECUTION_PERSISTED", execution);
                     return Mono.empty();
                 });
     }
@@ -95,6 +115,7 @@ public class InMemoryDurableExecutionStore implements DurableExecutionStore {
                         return Mono.error(
                                 new IllegalStateException("Execution not found: " + executionId));
                     }
+                    publishEventAppended(executionId, event, updated.agentId());
                     return Mono.empty();
                 });
     }
@@ -136,6 +157,7 @@ public class InMemoryDurableExecutionStore implements DurableExecutionStore {
                                                 + ": expected "
                                                 + expectedVersion));
                     }
+                    publishStatusChanged(executionId, status);
                     return Mono.empty();
                 });
     }
@@ -144,8 +166,60 @@ public class InMemoryDurableExecutionStore implements DurableExecutionStore {
     public Mono<Void> delete(String executionId) {
         return Mono.defer(
                 () -> {
-                    store.remove(executionId);
+                    DurableExecution removed = store.remove(executionId);
+                    if (removed != null) {
+                        publishLifecycle("EXECUTION_DELETED", removed);
+                    }
                     return Mono.empty();
                 });
+    }
+
+    private void publishLifecycle(String eventType, DurableExecution execution) {
+        if (eventBus == null) {
+            return;
+        }
+        Map<String, Object> attributes = new HashMap<>();
+        attributes.put("executionId", execution.executionId());
+        attributes.put("agentId", execution.agentId());
+        attributes.put("status", execution.status().name());
+        attributes.put("version", execution.version());
+        safePublish(eventType, execution, attributes);
+    }
+
+    private void publishEventAppended(String executionId, ExecutionEvent event, String agentId) {
+        if (eventBus == null) {
+            return;
+        }
+        Map<String, Object> attributes = new HashMap<>();
+        attributes.put("executionId", executionId);
+        attributes.put("agentId", agentId);
+        attributes.put("eventId", event.eventId());
+        attributes.put("executionEventType", event.eventType().name());
+        safePublish("EXECUTION_EVENT_APPENDED", event, attributes);
+    }
+
+    private void publishStatusChanged(String executionId, ExecutionStatus newStatus) {
+        if (eventBus == null) {
+            return;
+        }
+        Map<String, Object> attributes = new HashMap<>();
+        attributes.put("executionId", executionId);
+        attributes.put("status", newStatus.name());
+        safePublish("EXECUTION_STATUS_CHANGED", null, attributes);
+    }
+
+    private void safePublish(String eventType, Object payload, Map<String, Object> attributes) {
+        try {
+            eventBus.publish(
+                    new KairoEvent(
+                            java.util.UUID.randomUUID().toString(),
+                            Instant.now(),
+                            KairoEvent.DOMAIN_EXECUTION,
+                            eventType,
+                            payload,
+                            attributes));
+        } catch (RuntimeException ignored) {
+            // deny-safe: bus failures never break the durable store
+        }
     }
 }

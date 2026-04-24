@@ -15,6 +15,7 @@
  */
 package io.kairo.api.middleware;
 
+import io.kairo.api.Experimental;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -41,6 +42,8 @@ import java.lang.annotation.Target;
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
+@Experimental(
+        "Middleware ordering annotation; shape pending v1.0 census review, targeting stabilization in v1.1")
 public @interface MiddlewareOrder {
 
     /**

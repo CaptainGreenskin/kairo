@@ -73,7 +73,27 @@
             </dependency>
             <dependency>
                 <groupId>io.github.captaingreenskin</groupId>
+                <artifactId>kairo-skill</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captaingreenskin</groupId>
+                <artifactId>kairo-channel-dingtalk</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captaingreenskin</groupId>
+                <artifactId>kairo-spring-boot-starter-channel-dingtalk</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captaingreenskin</groupId>
                 <artifactId>kairo-evolution</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captaingreenskin</groupId>
+                <artifactId>kairo-expert-team</artifactId>
                 <version>${revision}</version>
             </dependency>
             <dependency>
@@ -99,6 +119,16 @@
             <dependency>
                 <groupId>io.github.captaingreenskin</groupId>
                 <artifactId>kairo-spring-boot-starter-multi-agent</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captaingreenskin</groupId>
+                <artifactId>kairo-spring-boot-starter-expert-team</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captaingreenskin</groupId>
+                <artifactId>kairo-security-pii</artifactId>
                 <version>${revision}</version>
             </dependency>
         </dependencies>

@@ -45,8 +45,7 @@ MCP（Model Context Protocol）协议集成，通过 StreamableHTTP + Elicitatio
 
 多 Agent 编排层：
 - **A2A 协议** — Google ADK 兼容的 Agent-to-Agent 通信
-- **TaskBoard** — 基于 DAG 的任务依赖追踪
-- **TeamScheduler** — 团队协作编排
+- **TeamCoordinator SPI** — 可插拔的团队编排契约（ADR-016），默认实现为 expert-team 编排器（plan → generate → evaluate）
 - **MessageBus** — 进程内发布/订阅消息
 
 ### kairo-observability

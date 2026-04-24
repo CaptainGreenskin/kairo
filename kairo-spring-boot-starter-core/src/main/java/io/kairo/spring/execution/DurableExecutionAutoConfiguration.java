@@ -15,9 +15,11 @@
  */
 package io.kairo.spring.execution;
 
+import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.execution.DurableExecutionStore;
 import io.kairo.core.execution.InMemoryDurableExecutionStore;
 import io.kairo.core.execution.RecoveryHandler;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -47,8 +49,9 @@ public class DurableExecutionAutoConfiguration {
             name = "store-type",
             havingValue = "memory",
             matchIfMissing = true)
-    DurableExecutionStore inMemoryDurableExecutionStore() {
-        return new InMemoryDurableExecutionStore();
+    DurableExecutionStore inMemoryDurableExecutionStore(
+            ObjectProvider<KairoEventBus> eventBusProvider) {
+        return new InMemoryDurableExecutionStore(eventBusProvider.getIfAvailable());
     }
 
     @Bean
@@ -58,8 +61,11 @@ public class DurableExecutionAutoConfiguration {
             name = "store-type",
             havingValue = "jdbc")
     DurableExecutionStore jdbcDurableExecutionStore(
-            JdbcTemplate jdbcTemplate, TransactionTemplate transactionTemplate) {
-        return new JdbcDurableExecutionStore(jdbcTemplate, transactionTemplate);
+            JdbcTemplate jdbcTemplate,
+            TransactionTemplate transactionTemplate,
+            ObjectProvider<KairoEventBus> eventBusProvider) {
+        return new JdbcDurableExecutionStore(
+                jdbcTemplate, transactionTemplate, eventBusProvider.getIfAvailable());
     }
 
     @Bean

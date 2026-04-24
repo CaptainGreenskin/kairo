@@ -15,6 +15,7 @@
  */
 package io.kairo.api.hook;
 
+import io.kairo.api.Stable;
 import io.kairo.api.message.Msg;
 
 /**
@@ -25,5 +26,6 @@ import io.kairo.api.message.Msg;
  * @param modelName the model being used
  * @param maxIterations the maximum iteration limit
  */
+@Stable(value = "Session-start hook event; shape frozen since v0.6", since = "1.0.0")
 public record SessionStartEvent(String agentName, Msg input, String modelName, int maxIterations)
         implements HookEvent {}

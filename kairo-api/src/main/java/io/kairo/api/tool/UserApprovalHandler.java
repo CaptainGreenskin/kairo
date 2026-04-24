@@ -15,6 +15,7 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
 import reactor.core.publisher.Mono;
 
 /**
@@ -28,6 +29,7 @@ import reactor.core.publisher.Mono;
  *     ApprovalResult#denied()} is preferred over hanging indefinitely.
  * @since 0.4.0
  */
+@Stable(value = "User approval handler SPI; shape frozen since v0.4", since = "1.0.0")
 public interface UserApprovalHandler {
 
     /**

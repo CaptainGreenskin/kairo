@@ -15,6 +15,7 @@
  */
 package io.kairo.api.execution;
 
+import io.kairo.api.Stable;
 import java.util.Map;
 import java.util.Objects;
 
@@ -25,6 +26,7 @@ import java.util.Objects;
  * @param reason human-readable explanation (empty string when not violated)
  * @param metrics constraint-specific telemetry (e.g., tokens remaining, cost accrued)
  */
+@Stable(value = "Resource validation result; shape frozen since v0.8", since = "1.0.0")
 public record ResourceValidation(boolean violated, String reason, Map<String, Object> metrics) {
 
     public ResourceValidation {

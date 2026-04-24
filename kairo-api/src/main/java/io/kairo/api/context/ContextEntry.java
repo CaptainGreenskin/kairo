@@ -15,6 +15,8 @@
  */
 package io.kairo.api.context;
 
+import io.kairo.api.Stable;
+
 /**
  * A single piece of context collected from a {@link ContextSource}.
  *
@@ -25,6 +27,7 @@ package io.kairo.api.context;
  * @param priority the priority of the source
  * @param content the collected context content
  */
+@Stable(value = "Context entry record; shape frozen since v0.1", since = "1.0.0")
 public record ContextEntry(String sourceName, int priority, String content) {
 
     /**

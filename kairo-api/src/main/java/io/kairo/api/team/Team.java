@@ -15,23 +15,40 @@
  */
 package io.kairo.api.team;
 
+import io.kairo.api.Experimental;
 import io.kairo.api.agent.Agent;
-import io.kairo.api.task.TaskBoard;
 import java.util.List;
+import java.util.Objects;
 
-/** A team of agents collaborating on a shared task board via a message bus. */
+/**
+ * A team of agents collaborating via a shared {@link MessageBus}.
+ *
+ * <p>Task-board semantics that the legacy v0.9 {@code Team} aggregated directly are now an
+ * implementation detail of the concrete {@link TeamCoordinator} that drives the team (for example,
+ * {@code DefaultTaskDispatchCoordinator} in {@code kairo-multi-agent}). Callers wire a team with
+ * its agents and message bus and hand it to a coordinator.
+ *
+ * @since v0.10
+ */
+@Experimental("Team aggregate root; introduced in v0.10, targeting stabilization in v1.1")
 public class Team {
 
     private final String name;
     private final List<Agent> agents;
-    private final TaskBoard taskBoard;
     private final MessageBus messageBus;
 
-    public Team(String name, List<Agent> agents, TaskBoard taskBoard, MessageBus messageBus) {
-        this.name = name;
-        this.agents = agents;
-        this.taskBoard = taskBoard;
-        this.messageBus = messageBus;
+    /**
+     * Create a new team.
+     *
+     * @param name team name; non-null
+     * @param agents initial agent roster; defensively copied, may be empty
+     * @param messageBus message bus for inter-agent communication; non-null
+     */
+    public Team(String name, List<Agent> agents, MessageBus messageBus) {
+        this.name = Objects.requireNonNull(name, "name must not be null");
+        Objects.requireNonNull(agents, "agents must not be null");
+        this.agents = List.copyOf(agents);
+        this.messageBus = Objects.requireNonNull(messageBus, "messageBus must not be null");
     }
 
     /** The team name. */
@@ -39,14 +56,9 @@ public class Team {
         return name;
     }
 
-    /** The agents in this team. */
+    /** The agents in this team (immutable view). */
     public List<Agent> agents() {
         return agents;
-    }
-
-    /** The shared task board. */
-    public TaskBoard taskBoard() {
-        return taskBoard;
     }
 
     /** The message bus for inter-agent communication. */

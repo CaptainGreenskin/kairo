@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kairo.api.message.Content;
 import io.kairo.api.model.ModelResponse;
+import io.kairo.api.model.ProviderPipeline;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,7 +35,7 @@ import org.slf4j.LoggerFactory;
  * <p>Owns the {@link ObjectMapper} and all JSON-to-domain conversion logic: content block parsing,
  * stop reason mapping, and usage extraction.
  */
-public class AnthropicResponseParser {
+public class AnthropicResponseParser implements ProviderPipeline.ResponseParser<String> {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicResponseParser.class);
 
@@ -52,6 +53,17 @@ public class AnthropicResponseParser {
     /** Return the ObjectMapper used by this parser. */
     public ObjectMapper objectMapper() {
         return objectMapper;
+    }
+
+    /**
+     * SPI entry point — delegates to {@link #parseResponse(String)}.
+     *
+     * @param raw the raw JSON response string
+     * @return the parsed ModelResponse
+     */
+    @Override
+    public ModelResponse parse(String raw) throws JsonProcessingException {
+        return parseResponse(raw);
     }
 
     /**

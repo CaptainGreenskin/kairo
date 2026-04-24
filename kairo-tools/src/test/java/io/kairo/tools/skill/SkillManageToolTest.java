@@ -23,7 +23,7 @@ import io.kairo.api.skill.SkillCategory;
 import io.kairo.api.skill.SkillDefinition;
 import io.kairo.api.skill.SkillRegistry;
 import io.kairo.api.tool.ToolResult;
-import io.kairo.core.skill.SkillChangeHistory;
+import io.kairo.skill.SkillChangeHistory;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

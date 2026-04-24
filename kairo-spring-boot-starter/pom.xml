@@ -43,6 +43,11 @@
             <artifactId>kairo-spring-boot-starter-multi-agent</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-spring-boot-starter-expert-team</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 
     <build>

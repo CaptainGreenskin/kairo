@@ -15,10 +15,12 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
 import java.util.List;
 import java.util.Optional;
 
 /** Registry for tool definitions. Supports registration, lookup, and classpath scanning. */
+@Stable(value = "Tool registry SPI; shape frozen since v0.1", since = "1.0.0")
 public interface ToolRegistry {
 
     /**

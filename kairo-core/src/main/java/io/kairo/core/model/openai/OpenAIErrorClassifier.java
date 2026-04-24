@@ -15,6 +15,7 @@
  */
 package io.kairo.core.model.openai;
 
+import io.kairo.api.model.ProviderPipeline;
 import io.kairo.core.model.ProviderRetry;
 
 /**
@@ -22,7 +23,7 @@ import io.kairo.core.model.ProviderRetry;
  *
  * <p>This class only classifies — {@link ProviderRetry} handles the actual retry wrapping.
  */
-public class OpenAIErrorClassifier {
+public class OpenAIErrorClassifier implements ProviderPipeline.ErrorClassifier {
 
     /**
      * Determine if an error is transient and worth retrying.
@@ -32,5 +33,10 @@ public class OpenAIErrorClassifier {
      */
     public boolean isRetryableError(Throwable t) {
         return ProviderRetry.isTransientProviderError(t);
+    }
+
+    @Override
+    public boolean isRetryable(Throwable error) {
+        return isRetryableError(error);
     }
 }

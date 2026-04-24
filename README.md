@@ -60,7 +60,7 @@ kairo-parent
 - **21 Built-in Tools** — File ops (Read/Write/Edit/Glob/Grep), execution (Bash/Monitor), interaction (AskUser), skills (SkillList/SkillLoad), and agent ops (Spawn/Message/Task/Team/Plan)
 - **Read/Write Partition** — READ_ONLY tools execute in parallel, WRITE/SYSTEM_CHANGE tools serialize automatically
 - **Human-in-the-Loop** — Three-state permission model (ALLOWED/ASK/DENIED) with `PermissionGuard`
-- **Multi-Agent Orchestration** — TaskBoard, PlanBuilder, TeamScheduler, and in-process MessageBus
+- **Multi-Agent Orchestration** — `TeamCoordinator` SPI with expert-team (plan → generate → evaluate) default, plus in-process MessageBus
 - **A2A Protocol** — Agent-to-Agent communication standard (Google ADK-compatible), in-process discovery + invocation, team auto-registration
 - **Middleware Pipeline** — Declarative request/response interception with `@MiddlewareOrder` for cross-cutting concerns (logging, auth, rate-limiting)
 - **Agent Snapshot/Checkpoint** — Serialize agent state mid-conversation, restore from checkpoint with `AgentBuilder.restoreFrom(snapshot)`
@@ -97,7 +97,7 @@ This track accumulates release-over-release evidence for tool correctness, long-
         <dependency>
             <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-bom</artifactId>
-            <version>0.5.0-SNAPSHOT</version>
+            <version>1.0.0-RC1</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -212,7 +212,7 @@ OpenAIProvider provider = new OpenAIProvider(apiKey, baseUrl, "/chat/completions
 # Build and install all modules (required before running demos)
 mvn clean install
 
-# Run tests only (1,792 tests)
+# Run tests only (2,525 tests across 350 suites as of v1.0.0-RC1)
 mvn test
 ```
 
@@ -259,10 +259,17 @@ More demos available:
 
 | Version | Theme | Status |
 |---------|-------|--------|
-| v0.1–v0.4 | Core Runtime + SPI + A2A + Middleware + Snapshot | Implemented |
-| v0.5 | Agents That Remember — Memory SPI + Embedding + Checkpoint/Rollback | Implemented |
-| v0.6 | Agents That Are Safe — Guardrail SPI + Interrupt/Resume + Team Patterns | Planned v0.6 |
-| v0.7+ | Metrics + Execution Event Stream + Dashboard + Execution Replay | Planned v0.7 |
+| v0.1–v0.4 | Core Runtime + SPI + A2A + Middleware + Snapshot | Released |
+| v0.5 | Agents That Remember — Memory SPI + Embedding + Checkpoint/Rollback | Released |
+| v0.6 | Exception Phase B + Interrupt/Resume + Team Patterns | Released |
+| v0.7 | Guardrail SPI + Security Observability + MCP Default DENY_SAFE | Released |
+| v0.8 | DurableExecutionStore + ResourceConstraint + Cost-Aware Routing | Released |
+| v0.9.0 | Channel SPI + KairoEventBus + OTel Exporter | Released |
+| v0.9.1 | DingTalk Channel Adapter (first concrete `Channel` transport) | Released |
+| v0.10.2 | Structural Debt — kairo-skill split, ProviderPipeline, MCP capability record | Released |
+| v1.0.0-RC1 | SPI Stabilization — 119 `@Stable` / 78 `@Experimental`, japicmp gate, 77.4% core coverage | Released |
+| v1.0.0-RC2 | API Reference docs, bilingual parity, observability + channel examples | In Progress |
+| v1.0.0 GA | Enterprise Security (PII + Audit + Compliance), OSS GA ceremony | Planned |
 
 ## Contributing
 

@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-04-24 — The Java Agent Standard
+
+### Added
+- **`kairo-security-pii` module (#26 in reactor)**: Enterprise security capabilities, no new SPI
+  - `PiiRedactionPolicy` implements existing `GuardrailPolicy` SPI — composable via `GuardrailChain`
+  - `PiiRedactionConfig` + `PiiPattern` enum (EMAIL / US_PHONE / CREDIT_CARD / SSN / API_KEY / JWT)
+  - `JdbcAuditEventSink` implements existing `SecurityEventSink` SPI — append-only `kairo_audit` table
+  - Flyway `V1__create_kairo_audit_table.sql` ships in `src/main/resources/db/migration/`
+  - `ComplianceReport` + `ComplianceReportCollector` (implements `Consumer<KairoEvent>`) — per-run Markdown audit-trail evidence
+- **ADR-024**: PII redaction is a `GuardrailPolicy`, not a new SPI (codifies the deliberate departure from plan text)
+- **`docs/roadmap/v1.0.0-ga-release-verification.md`**: Six-item closure evidence
+
+### Changed
+- Root `pom.xml` `<revision>` bumped: `0.8.0` → `1.0.0` — Maven coordinate now matches the public version
+
+### Reactor
+- 26 modules (was 25 at v0.9.1)
+- `mvn -pl kairo-security-pii test` green: 26/26 (15 PII + 5 audit + 6 compliance)
+- `mvn clean install -Dgpg.skip=true` green: BUILD SUCCESS for "Kairo 1.0.0", 2,551 surefire tests reactor-wide
+
+### Notes
+- Maven Central publication requires explicit user authorization for OSSRH credentials per the v1.0 plan risk register; this release does **not** auto-deploy
+
+## [0.9.1] - 2026-04-24 — CD-train: DingTalk Channel Adapter
+
+### Added
+- **`kairo-channel-dingtalk` module**: First concrete `Channel` implementation on top of the v0.9 Channel SPI
+  - `DingTalkSignatureVerifier` — HMAC-SHA256 over `timestamp\nsigningSecret` with 1-hour replay window
+  - `DingTalkMessageMapper` — `DingTalk JSON ↔ ChannelMessage` with `conversationId`/`senderId` fallback
+  - `DingTalkOutboundClient` — JDK-`HttpClient` POST; maps DingTalk errcodes 130101..130103 / HTTP 429 to `RATE_LIMITED`
+  - `DingTalkChannel` — in-memory `msgId` dedup so replayed webhook deliveries coalesce
+- **`kairo-spring-boot-starter-channel-dingtalk` starter**: Opt-in via `kairo.channel.dingtalk.enabled=true`
+  - `DingTalkProperties` — `webhookUrl` / `signingSecret` / `channelId` / `atMobiles` / `outboundTimeout` / `replayWindow`
+  - `DingTalkWebhookController @PostMapping /kairo/channel/dingtalk/callback` — signature-gated dispatch
+  - `@ConditionalOnBean(ChannelInboundHandler.class)` deny-safe posture
+- **TCK extension**: `DingTalkChannelTckTest` extends `ChannelTCK`; `DingTalkChannelExtendedScenariosTest` covers duplicate-`msgId` dedup, signature mismatch rejection, outbound HTTP 429, and DingTalk `errcode=130101` classification
+- **Demo**: `kairo-examples/.../dingtalk/DingTalkBotDemo.java` showing the programmatic round-trip
+- **ADR-021 addendum**: Documents DingTalk as first concrete transport — no SPI shape changes required
+
+### Reactor
+- 25 modules (was 23 at v0.10.2)
+- `mvn clean verify` green: 2,525 tests / 350 suites, 0 failures, 0 errors
+
 ## [0.8.0] - 2026-04-23 — Execution Model
 
 ### Added

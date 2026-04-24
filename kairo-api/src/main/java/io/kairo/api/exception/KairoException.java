@@ -15,6 +15,8 @@
  */
 package io.kairo.api.exception;
 
+import io.kairo.api.Stable;
+
 /**
  * Base unchecked exception for all Kairo framework errors.
  *
@@ -39,6 +41,9 @@ package io.kairo.api.exception;
  * }
  * }</pre>
  */
+@Stable(
+        value = "Base exception with structured error fields; shape frozen since v0.7",
+        since = "1.0.0")
 public class KairoException extends RuntimeException {
 
     private final String errorCode;

@@ -15,6 +15,7 @@
  */
 package io.kairo.api.hook;
 
+import io.kairo.api.Stable;
 import reactor.core.publisher.Mono;
 
 /**
@@ -44,6 +45,9 @@ import reactor.core.publisher.Mono;
  * @see PreReasoning
  * @see PostActing
  */
+@Stable(
+        value = "Hook chain SPI; registration + per-phase fire methods frozen since v0.6",
+        since = "1.0.0")
 public interface HookChain {
 
     /**

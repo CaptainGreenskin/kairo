@@ -15,6 +15,8 @@
  */
 package io.kairo.api.context;
 
+import io.kairo.api.Stable;
+
 /**
  * A pluggable context source that provides information to be injected into the LLM prompt.
  *
@@ -24,6 +26,7 @@ package io.kairo.api.context;
  * <p>Sources are ordered by {@link #priority()} — lower values are considered more important and
  * are less likely to be dropped when context length is constrained.
  */
+@Stable(value = "Context source SPI; shape frozen since v0.1", since = "1.0.0")
 public interface ContextSource {
 
     /**

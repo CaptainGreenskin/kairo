@@ -15,6 +15,7 @@
  */
 package io.kairo.api.model;
 
+import io.kairo.api.Stable;
 import java.time.Duration;
 import java.util.function.Predicate;
 
@@ -36,6 +37,7 @@ import java.util.function.Predicate;
  *     .build();
  * }</pre>
  */
+@Stable(value = "Retry config record + Builder; shape frozen since v0.3 (ADR-007)", since = "1.0.0")
 public record RetryConfig(
         int maxAttempts,
         Duration initialBackoff,

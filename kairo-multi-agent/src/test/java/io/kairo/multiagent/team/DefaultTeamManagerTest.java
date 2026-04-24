@@ -40,7 +40,6 @@ class DefaultTeamManagerTest {
         Team team = manager.create("alpha");
         assertNotNull(team);
         assertEquals("alpha", team.name());
-        assertNotNull(team.taskBoard());
         assertNotNull(team.messageBus());
         assertTrue(team.agents().isEmpty());
     }
@@ -73,10 +72,11 @@ class DefaultTeamManagerTest {
 
     @Test
     void deleteTeamShouldInterruptAgents() {
-        Team team = manager.create("delta");
+        manager.create("delta");
         Agent agent = mock(Agent.class);
         when(agent.id()).thenReturn("agent-1");
-        team.agents().add(agent);
+        when(agent.name()).thenReturn("Agent 1");
+        manager.addAgent("delta", agent);
 
         manager.delete("delta");
         verify(agent).interrupt();

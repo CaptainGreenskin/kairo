@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import io.kairo.api.evolution.*;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
+import io.kairo.skill.InMemoryEvolvedSkillStore;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

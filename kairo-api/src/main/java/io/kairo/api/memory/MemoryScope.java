@@ -15,7 +15,10 @@
  */
 package io.kairo.api.memory;
 
+import io.kairo.api.Stable;
+
 /** The scope of a memory entry, controlling its lifetime and visibility. */
+@Stable(value = "Memory scope enum; values frozen since v0.1", since = "1.0.0")
 public enum MemoryScope {
 
     /** Memory scoped to the current session only. */

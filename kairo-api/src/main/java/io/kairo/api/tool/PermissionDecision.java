@@ -15,10 +15,13 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
+
 /**
  * Structured permission decision with reason and policy context. Allows agents to understand WHY a
  * tool was denied and adapt accordingly.
  */
+@Stable(value = "Permission decision record; shape frozen since v0.7", since = "1.0.0")
 public record PermissionDecision(
         boolean allowed,
         String reason, // nullable when allowed=true

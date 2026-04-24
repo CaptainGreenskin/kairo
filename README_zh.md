@@ -60,7 +60,7 @@ kairo-parent
 - **21 个内置工具** — 文件操作（Read/Write/Edit/Glob/Grep）、执行（Bash/Monitor）、交互（AskUser）、技能（SkillList/SkillLoad）、Agent 操作（Spawn/Message/Task/Team/Plan）
 - **读写分区** — READ_ONLY 工具并行执行，WRITE/SYSTEM_CHANGE 工具自动串行化
 - **人机协作** — 三态权限模型（ALLOWED/ASK/DENIED），通过 `PermissionGuard` 控制
-- **多 Agent 编排** — TaskBoard、PlanBuilder、TeamScheduler 和进程内 MessageBus
+- **多 Agent 编排** — `TeamCoordinator` SPI（默认 expert-team 编排：plan → generate → evaluate）和进程内 MessageBus
 - **A2A 协议** — Agent-to-Agent 通信标准（Google ADK 兼容），进程内发现 + 调用，团队自动注册
 - **中间件管道** — 声明式请求/响应拦截，通过 `@MiddlewareOrder` 实现横切关注点（日志、认证、限流）
 - **Agent 快照/检查点** — 对话中序列化 Agent 状态，通过 `AgentBuilder.restoreFrom(snapshot)` 从检查点恢复
@@ -97,7 +97,7 @@ Kairo 在 `benchmarks/` 提供了轻量验证基线，帮助在 `v1.0` 前把能
         <dependency>
             <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-bom</artifactId>
-            <version>0.5.0-SNAPSHOT</version>
+            <version>1.0.0-RC1</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -212,7 +212,7 @@ OpenAIProvider provider = new OpenAIProvider(apiKey, baseUrl, "/chat/completions
 # 构建并安装所有模块（运行 Demo 前必须先执行）
 mvn clean install
 
-# 仅运行测试（1,792 个测试）
+# 仅运行测试（v1.0.0-RC1 基线：2,525 个测试 / 350 个套件）
 mvn test
 ```
 
@@ -257,12 +257,19 @@ mvn exec:java -pl kairo-examples \
 
 ## Roadmap
 
-| Version | Theme | Status |
-|---------|-------|--------|
-| v0.1–v0.4 | Core Runtime + SPI + A2A + Middleware + Snapshot | Implemented |
-| v0.5 | Agents That Remember — Memory SPI + Embedding + Checkpoint/Rollback | Implemented |
-| v0.6 | Agents That Are Safe — Guardrail SPI + Interrupt/Resume + Team Patterns | Planned v0.6 |
-| v0.7+ | Metrics + Execution Event Stream + Dashboard + Execution Replay | Planned v0.7 |
+| 版本 | 主题 | 状态 |
+|------|------|------|
+| v0.1–v0.4 | 核心运行时 + SPI + A2A + 中间件 + 快照 | Released |
+| v0.5 | 记忆层 — Memory SPI + Embedding + Checkpoint/Rollback | Released |
+| v0.6 | 异常 Phase B + 中断/恢复 + Team 模式 | Released |
+| v0.7 | Guardrail SPI + 安全可观测 + MCP 默认 DENY_SAFE | Released |
+| v0.8 | DurableExecutionStore + ResourceConstraint + 成本感知路由 | Released |
+| v0.9.0 | Channel SPI + KairoEventBus + OTel Exporter | Released |
+| v0.9.1 | 钉钉 Channel 适配器（首个真实 `Channel` 传输实现） | Released |
+| v0.10.2 | 结构性债务清理 — kairo-skill 拆分、ProviderPipeline、MCP 能力 record | Released |
+| v1.0.0-RC1 | SPI 稳定化 — 119 `@Stable` / 78 `@Experimental`、japicmp 门禁、77.4% core 覆盖 | Released |
+| v1.0.0-RC2 | API 参考文档、中英文完全对齐、可观测 + Channel 示例 | In Progress |
+| v1.0.0 GA | 企业安全（PII + 审计 + 合规）、OSS GA 发布仪式 | Planned |
 
 ## 贡献
 

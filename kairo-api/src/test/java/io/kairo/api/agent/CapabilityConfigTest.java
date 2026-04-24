@@ -53,7 +53,7 @@ class CapabilityConfigTest {
     }
 
     @Test
-    void agentConfigDerivesCapabilitiesFromLegacyFields() {
+    void agentConfigExposesCapabilitiesViaCapabilityRecords() {
         ModelProvider provider = Mockito.mock(ModelProvider.class);
         AgentConfig config =
                 AgentConfig.builder()
@@ -78,8 +78,8 @@ class CapabilityConfigTest {
         assertEquals(400, loop.freqHardLimit());
         assertEquals(Duration.ofMinutes(5), loop.freqWindow());
 
-        // sanity: existing legacy accessors still align with capability view
-        assertTrue(config.mcpServerConfigs().equals(mcp.serverConfigs()));
+        // sanity: loop-detection record view stays in sync with the individual fields
+        assertTrue(config.mcpCapability().serverConfigs().equals(mcp.serverConfigs()));
         assertEquals(config.loopHashWarnThreshold(), loop.hashWarnThreshold());
     }
 }

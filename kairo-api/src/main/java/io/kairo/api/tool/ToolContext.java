@@ -15,6 +15,7 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
 import java.util.Map;
 import javax.annotation.Nullable;
 
@@ -31,6 +32,7 @@ import javax.annotation.Nullable;
  * @param idempotencyKey optional key for at-least-once idempotency during crash recovery (null in
  *     normal execution)
  */
+@Stable(value = "Tool runtime context record; shape frozen since v0.4", since = "1.0.0")
 public record ToolContext(
         String agentId,
         String sessionId,

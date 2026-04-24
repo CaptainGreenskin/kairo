@@ -703,8 +703,13 @@ public class AgentBuilder {
             configBuilder.addMiddleware(mw);
         }
 
-        for (Object mcpConfig : mcpServerConfigs) {
-            configBuilder.addMcpServerConfig(mcpConfig);
+        if (!mcpServerConfigs.isEmpty()) {
+            configBuilder.mcpCapability(
+                    new io.kairo.api.agent.McpCapabilityConfig(
+                            mcpServerConfigs,
+                            io.kairo.api.agent.McpCapabilityConfig.EMPTY.maxToolsPerServer(),
+                            io.kairo.api.agent.McpCapabilityConfig.EMPTY.strictSchemaAlignment(),
+                            io.kairo.api.agent.McpCapabilityConfig.EMPTY.toolSearchQuery()));
         }
 
         return configBuilder.build();

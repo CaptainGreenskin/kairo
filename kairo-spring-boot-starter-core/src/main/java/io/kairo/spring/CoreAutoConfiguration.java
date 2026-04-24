@@ -19,6 +19,7 @@ import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentBuilderCustomizer;
 import io.kairo.api.agent.AgentFactory;
 import io.kairo.api.agent.SystemPromptContributor;
+import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.execution.DurableExecutionStore;
 import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.guardrail.GuardrailPolicy;
@@ -31,6 +32,8 @@ import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.core.agent.AgentBuilder;
 import io.kairo.core.agent.DefaultAgentFactory;
+import io.kairo.core.event.BusBridgingSecurityEventSink;
+import io.kairo.core.event.DefaultKairoEventBus;
 import io.kairo.core.execution.RecoveryHandler;
 import io.kairo.core.guardrail.DefaultGuardrailChain;
 import io.kairo.core.guardrail.LoggingSecurityEventSink;
@@ -147,17 +150,42 @@ class CoreAutoConfiguration {
         return guard;
     }
 
+    // ---- Event Bus ----
+
     /**
-     * Default {@link SecurityEventSink} bean that logs security events via SLF4J.
+     * Default {@link KairoEventBus} bean — a process-local multicast facade that fans out execution
+     * / evolution / security / team domain events to all active subscribers (OTel exporter,
+     * metrics, custom audit sinks).
      *
-     * <p>Uses {@link LoggingSecurityEventSink}: DENY and MCP_BLOCK events are logged at WARN level,
-     * all others at INFO level. Replace this bean with a custom {@link SecurityEventSink}
-     * implementation to route security events to an external audit system (e.g., SIEM, database).
+     * <p>Marked primary so Spring can inject it unambiguously when multiple candidates exist (for
+     * example, an application-supplied test double). Override by providing your own {@code
+     * KairoEventBus} bean.
      */
     @Bean
     @ConditionalOnMissingBean
-    SecurityEventSink securityEventSink() {
-        return new LoggingSecurityEventSink();
+    @org.springframework.context.annotation.Primary
+    KairoEventBus kairoEventBus() {
+        return new DefaultKairoEventBus();
+    }
+
+    /**
+     * Default {@link SecurityEventSink} bean that logs security events via SLF4J and bridges every
+     * event onto the {@link KairoEventBus}.
+     *
+     * <p>Uses {@link LoggingSecurityEventSink} as the terminal sink: DENY and MCP_BLOCK events are
+     * logged at WARN level, all others at INFO level. The sink is wrapped with {@link
+     * BusBridgingSecurityEventSink} so subscribers on the bus (OTel exporter, metrics, audit
+     * consumers) see every guardrail decision.
+     *
+     * <p>Replace this bean with a custom {@link SecurityEventSink} implementation to route security
+     * events to an external audit system (e.g., SIEM, database). User-supplied sinks are
+     * <strong>not</strong> wrapped automatically — application owners must bridge the bus
+     * themselves if they want unified observability.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    SecurityEventSink securityEventSink(KairoEventBus kairoEventBus) {
+        return new BusBridgingSecurityEventSink(new LoggingSecurityEventSink(), kairoEventBus);
     }
 
     /**
