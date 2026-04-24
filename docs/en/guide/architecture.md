@@ -2,18 +2,46 @@
 
 ## Module Overview
 
+26 leaf modules grouped under three reactor-only aggregators (`kairo-capabilities` / `kairo-transports` / `kairo-starters`). Foundation modules stay flat at the top.
+
 ```
 kairo-parent
-├── kairo-bom                  — BOM for dependency version management
-├── kairo-api                  — SPI interface layer (zero implementation dependencies)
-├── kairo-core                 — Core runtime (ReAct engine, compaction, model providers)
-├── kairo-tools                — Built-in tool suite (21 tools)
-├── kairo-mcp                  — MCP protocol integration (StreamableHTTP)
-├── kairo-multi-agent          — Multi-agent orchestration (A2A Protocol, Team, TaskBoard)
-├── kairo-observability        — OpenTelemetry tracing integration (spans + attributes)
-├── kairo-spring-boot-starter  — Spring Boot auto-configuration
-└── kairo-examples             — Example applications
+├── kairo-bom                       — BOM for dependency version management
+├── kairo-api                       — SPI interface layer (zero implementation deps)
+├── kairo-core                      — Core runtime (ReAct, compaction, providers)
+│
+├── kairo-capabilities/             — vertical capability cohort (8 modules)
+│   ├── kairo-tools                 — built-in tool suite
+│   ├── kairo-mcp                   — MCP protocol integration
+│   ├── kairo-multi-agent           — A2A protocol + team coordination
+│   ├── kairo-skill                 — Markdown skill registry & loader
+│   ├── kairo-evolution             — self-evolution pipeline + governance
+│   ├── kairo-expert-team           — plan/generate/evaluate coordinator
+│   ├── kairo-observability         — OpenTelemetry exporter
+│   └── kairo-security-pii          — PII redaction + JDBC audit + compliance
+│
+├── kairo-transports/               — I/O boundary cohort (5 modules)
+│   ├── kairo-event-stream          — KairoEventBus filtering + backpressure
+│   ├── kairo-event-stream-sse      — SSE transport
+│   ├── kairo-event-stream-ws       — WebSocket transport
+│   ├── kairo-channel               — Channel SPI + LoopbackChannel + TCK
+│   └── kairo-channel-dingtalk      — DingTalk webhook + signature verifier
+│
+├── kairo-starters/                 — Spring Boot starter cohort (9 modules)
+│   ├── kairo-spring-boot-starter-core
+│   ├── kairo-spring-boot-starter-mcp
+│   ├── kairo-spring-boot-starter-multi-agent
+│   ├── kairo-spring-boot-starter-evolution
+│   ├── kairo-spring-boot-starter-expert-team
+│   ├── kairo-spring-boot-starter-event-stream
+│   ├── kairo-spring-boot-starter-channel
+│   ├── kairo-spring-boot-starter-channel-dingtalk
+│   └── kairo-spring-boot-starter-observability
+│
+└── kairo-examples                  — example applications
 ```
+
+Each cohort aggregator carries zero `<dependencies>` and never appears on a runtime classpath; every leaf still inherits `kairo-parent` directly.
 
 ## Module Descriptions
 
@@ -30,12 +58,12 @@ The core runtime engine. Includes:
 
 ### kairo-tools
 
-21 built-in tools organized by category:
+17 built-in tools organized by category:
 - **File ops** — Read, Write, Edit, Glob, Grep
 - **Execution** — Bash, Monitor
 - **Interaction** — AskUser
-- **Skills** — SkillList, SkillLoad
-- **Agent ops** — Spawn, Message, Task, Team, Plan
+- **Skills** — SkillList, SkillLoad, SkillManage
+- **Agent ops** — Spawn, Message, Team, Plan
 
 ### kairo-mcp
 
@@ -52,6 +80,6 @@ Multi-agent orchestration layer:
 
 OpenTelemetry tracing integration centered on distributed tracing (span tree + attributes/events). Currently provides `OTelTracer`, `OTelSpan`, and `GenAiSemanticAttributes` for GenAI-standard span instrumentation. Metrics collection and dashboards are planned for v0.7.
 
-### kairo-spring-boot-starter
+### kairo-spring-boot-starter-* (per-feature)
 
-Spring Boot auto-configuration. Add the starter and configure via `application.yml` — agent is ready with minimal code.
+Spring Boot auto-configuration is split into nine per-feature starters under `kairo-starters/`. Start with `kairo-spring-boot-starter-core`; add `-mcp`, `-multi-agent`, `-evolution`, `-expert-team`, `-event-stream`, `-channel`, `-channel-dingtalk`, or `-observability` as needed.

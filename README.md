@@ -31,7 +31,7 @@ Kairo is not a wrapper — it's infrastructure. Think Netty for networking, Jack
 | File System | Memory | Persistent knowledge storage (file / in-memory / JDBC) | Implemented |
 | Signal | Hook | 10 hook points with CONTINUE/MODIFY/SKIP/ABORT/INJECT decisions | Implemented |
 | Executable | Skill | Plug-and-play capability packs in Markdown format | Implemented |
-| Job Scheduling | Task + Team | Multi-agent task orchestration and team collaboration | Implemented |
+| Job Scheduling | Team | Multi-agent team orchestration via `TeamCoordinator` SPI | Implemented |
 | IPC | A2A Protocol | Agent-to-Agent communication for cross-agent invocation | Implemented |
 | Middleware | Middleware Pipeline | Declarative request/response interception | Implemented |
 | Checkpoint | Snapshot | Agent state serialization and restoration | Implemented |
@@ -40,24 +40,52 @@ Kairo is built on Project Reactor for fully reactive, non-blocking execution and
 
 ## Architecture
 
+26 leaf modules grouped under three reactor-only aggregators (`kairo-capabilities` / `kairo-transports` / `kairo-starters`). Foundation modules stay flat at the top.
+
 ```
 kairo-parent
-├── kairo-bom                  — BOM for dependency version management
-├── kairo-api                  — SPI interface layer (zero implementation dependencies)
-├── kairo-core                 — Core runtime (ReAct engine, compaction, model providers)
-├── kairo-tools                — Built-in tool suite (21 tools)
-├── kairo-mcp                  — MCP protocol integration (StreamableHTTP)
-├── kairo-multi-agent          — Multi-agent orchestration (A2A Protocol, Team, TaskBoard)
-├── kairo-observability        — OpenTelemetry tracing integration (spans + attributes)
-├── kairo-spring-boot-starter  — Spring Boot auto-configuration
-└── kairo-examples             — Example applications
+├── kairo-bom                       — BOM for dependency version management
+├── kairo-api                       — SPI interface layer (zero implementation deps)
+├── kairo-core                      — Core runtime (ReAct, compaction, providers)
+│
+├── kairo-capabilities/             — vertical capability cohort (8 modules)
+│   ├── kairo-tools                 — built-in tool suite
+│   ├── kairo-mcp                   — MCP protocol integration
+│   ├── kairo-multi-agent           — A2A protocol + team coordination
+│   ├── kairo-skill                 — Markdown skill registry & loader
+│   ├── kairo-evolution             — self-evolution pipeline + governance
+│   ├── kairo-expert-team           — plan/generate/evaluate coordinator
+│   ├── kairo-observability         — OpenTelemetry exporter
+│   └── kairo-security-pii          — PII redaction + JDBC audit + compliance
+│
+├── kairo-transports/               — I/O boundary cohort (5 modules)
+│   ├── kairo-event-stream          — KairoEventBus filtering + backpressure
+│   ├── kairo-event-stream-sse      — SSE transport
+│   ├── kairo-event-stream-ws       — WebSocket transport
+│   ├── kairo-channel               — Channel SPI + LoopbackChannel + TCK
+│   └── kairo-channel-dingtalk      — DingTalk webhook + signature verifier
+│
+├── kairo-starters/                 — Spring Boot starter cohort (9 modules)
+│   ├── kairo-spring-boot-starter-core
+│   ├── kairo-spring-boot-starter-mcp
+│   ├── kairo-spring-boot-starter-multi-agent
+│   ├── kairo-spring-boot-starter-evolution
+│   ├── kairo-spring-boot-starter-expert-team
+│   ├── kairo-spring-boot-starter-event-stream
+│   ├── kairo-spring-boot-starter-channel
+│   ├── kairo-spring-boot-starter-channel-dingtalk
+│   └── kairo-spring-boot-starter-observability
+│
+└── kairo-examples                  — Quick-Start, Skill, Multi-Agent, Channel, Observability demos
 ```
+
+The aggregators carry zero `<dependencies>` and never appear on a runtime classpath; every leaf still inherits `kairo-parent` directly. Use `mvn -f kairo-<group>/pom.xml test` to build a cohort in one shot.
 
 ## Key Features
 
 - **ReAct Engine** — `DefaultReActAgent` implements the full Reasoning-Acting cycle with configurable iteration limits, streaming responses, and multi-layer error recovery
 - **6-Stage Context Compaction** — Progressive pipeline (Snip → Micro → Collapse → Auto → Partial → CircuitBreaker) with "Facts First" strategy to preserve raw context as long as possible
-- **21 Built-in Tools** — File ops (Read/Write/Edit/Glob/Grep), execution (Bash/Monitor), interaction (AskUser), skills (SkillList/SkillLoad), and agent ops (Spawn/Message/Task/Team/Plan)
+- **17 Built-in Tools** — File ops (Read/Write/Edit/Glob/Grep), execution (Bash/Monitor), interaction (AskUser), skills (SkillList/SkillLoad/SkillManage), and agent ops (Spawn/Message/Team/Plan)
 - **Read/Write Partition** — READ_ONLY tools execute in parallel, WRITE/SYSTEM_CHANGE tools serialize automatically
 - **Human-in-the-Loop** — Three-state permission model (ALLOWED/ASK/DENIED) with `PermissionGuard`
 - **Multi-Agent Orchestration** — `TeamCoordinator` SPI with expert-team (plan → generate → evaluate) default, plus in-process MessageBus
@@ -87,7 +115,7 @@ kairo-parent
         <dependency>
             <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-bom</artifactId>
-            <version>1.0.0-RC1</version>
+            <version>1.0.0</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -153,9 +181,11 @@ Add the starter dependency and configure via `application.yml`:
 ```xml
 <dependency>
     <groupId>io.github.captaingreenskin</groupId>
-    <artifactId>kairo-spring-boot-starter</artifactId>
+    <artifactId>kairo-spring-boot-starter-core</artifactId>
 </dependency>
 ```
+
+Add per-feature starters as needed: `kairo-spring-boot-starter-mcp`, `-multi-agent`, `-evolution`, `-expert-team`, `-event-stream`, `-channel`, `-channel-dingtalk`, `-observability`.
 
 ```yaml
 kairo:
@@ -202,7 +232,7 @@ OpenAIProvider provider = new OpenAIProvider(apiKey, baseUrl, "/chat/completions
 # Build and install all modules (required before running demos)
 mvn clean install
 
-# Run tests only (2,525 tests across 350 suites as of v1.0.0-RC1)
+# Run tests only (2,551 tests across the reactor as of v1.0.0 GA)
 mvn test
 ```
 
@@ -241,7 +271,7 @@ More demos available:
 | `AgentExample --qwen` | Qwen | ReAct loop with Qwen-Plus |
 | `FullToolsetExample` | Qwen | All 6 tools: read, write, edit, glob, grep, bash |
 | `SkillExample` | Qwen | Skill system: list, load, and use Markdown skills |
-| `MultiAgentExample` | No | TaskBoard DAG tracking + MessageBus pub/sub |
+| `MultiAgentExample` | No | TeamCoordinator dispatch + in-process MessageBus pub/sub |
 | `SessionExample` | No | FileMemoryStore + SessionSerializer round-trip |
 | Spring Boot Demo | Yes | REST API, streaming, structured output, hooks, MCP |
 
@@ -256,10 +286,12 @@ More demos available:
 | v0.8 | DurableExecutionStore + ResourceConstraint + Cost-Aware Routing | Released |
 | v0.9.0 | Channel SPI + KairoEventBus + OTel Exporter | Released |
 | v0.9.1 | DingTalk Channel Adapter (first concrete `Channel` transport) | Released |
+| v0.10.0 | Core Refactor Waves — hooks, deprecations, SPI scaffolding | Released |
+| v0.10.1 | Expert Team Orchestration MVP | Released |
 | v0.10.2 | Structural Debt — kairo-skill split, ProviderPipeline, MCP capability record | Released |
 | v1.0.0-RC1 | SPI Stabilization — 119 `@Stable` / 78 `@Experimental`, japicmp gate, 77.4% core coverage | Released |
-| v1.0.0-RC2 | API Reference docs, bilingual parity, observability + channel examples | In Progress |
-| v1.0.0 GA | Enterprise Security (PII + Audit + Compliance), OSS GA ceremony | Planned |
+| v1.0.0-RC2 | API Reference docs, bilingual parity, observability + channel examples | Released |
+| v1.0.0 GA | Enterprise Security (PII + Audit + Compliance), reactor restructure | Released |
 
 ## Contributing
 

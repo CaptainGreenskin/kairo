@@ -40,17 +40,18 @@
     </dependencyManagement>
 
     <dependencies>
-        <!-- Kairo Spring Boot Starter (brings in core, mcp, multi-agent starters).
-             For minimal dependency, use kairo-spring-boot-starter-core instead. -->
+        <!-- Kairo per-feature starters (core + mcp + multi-agent demo surface). -->
         <dependency>
             <groupId>io.github.captaingreenskin</groupId>
-            <artifactId>kairo-spring-boot-starter</artifactId>
+            <artifactId>kairo-spring-boot-starter-core</artifactId>
         </dependency>
-
-        <!-- Kairo MCP -->
         <dependency>
             <groupId>io.github.captaingreenskin</groupId>
-            <artifactId>kairo-mcp</artifactId>
+            <artifactId>kairo-spring-boot-starter-mcp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-spring-boot-starter-multi-agent</artifactId>
         </dependency>
 
         <!-- Kairo Observability (optional) -->

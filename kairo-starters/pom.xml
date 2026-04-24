@@ -32,6 +32,5 @@
         <module>../kairo-spring-boot-starter-channel</module>
         <module>../kairo-spring-boot-starter-channel-dingtalk</module>
         <module>../kairo-spring-boot-starter-observability</module>
-        <module>../kairo-spring-boot-starter</module>
     </modules>
 </project>

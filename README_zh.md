@@ -31,7 +31,7 @@ Kairo 不是封装层 — 它是基础设施。正如 Netty 之于网络、Jacks
 | 文件系统 | Memory | 持久化知识存储（文件 / 内存 / JDBC） | Implemented |
 | 信号处理 | Hook | 10 个钩子点，支持 CONTINUE/MODIFY/SKIP/ABORT/INJECT 决策 | Implemented |
 | 可执行文件 | Skill | Markdown 格式的即插即用能力包 | Implemented |
-| 作业调度 | Task + Team | 多 Agent 任务编排与团队协作 | Implemented |
+| 作业调度 | Team | 通过 `TeamCoordinator` SPI 实现多 Agent 团队编排 | Implemented |
 | IPC | A2A 协议 | Agent-to-Agent 通信，跨 Agent 调用 | Implemented |
 | 中间件 | 中间件管道 | 声明式请求/响应拦截 | Implemented |
 | 检查点 | 快照 | Agent 状态序列化与恢复 | Implemented |
@@ -40,24 +40,52 @@ Kairo 不是封装层 — 它是基础设施。正如 Netty 之于网络、Jacks
 
 ## 架构
 
+26 个叶子模块，按三个 reactor-only 聚合器组织（`kairo-capabilities` / `kairo-transports` / `kairo-starters`）。基础模块仍位于顶层。
+
 ```
 kairo-parent
-├── kairo-bom                  — BOM 依赖版本管理
-├── kairo-api                  — SPI 接口层（零实现依赖）
-├── kairo-core                 — 核心运行时（ReAct 引擎、压缩管道、模型提供者）
-├── kairo-tools                — 内置工具集（21 个工具）
-├── kairo-mcp                  — MCP 协议集成（StreamableHTTP）
-├── kairo-multi-agent          — 多 Agent 编排（A2A 协议、Team、TaskBoard）
-├── kairo-observability        — OpenTelemetry 集成
-├── kairo-spring-boot-starter  — Spring Boot 自动装配
-└── kairo-examples             — 示例应用
+├── kairo-bom                       — BOM 依赖版本管理
+├── kairo-api                       — SPI 接口层（零实现依赖）
+├── kairo-core                      — 核心运行时（ReAct、压缩、模型提供者）
+│
+├── kairo-capabilities/             — 垂直能力组群（8 个模块）
+│   ├── kairo-tools                 — 内置工具集
+│   ├── kairo-mcp                   — MCP 协议集成
+│   ├── kairo-multi-agent           — A2A 协议 + 团队协调
+│   ├── kairo-skill                 — Markdown 技能注册表与加载器
+│   ├── kairo-evolution             — 自进化管道 + 治理
+│   ├── kairo-expert-team           — plan/generate/evaluate 协调器
+│   ├── kairo-observability         — OpenTelemetry exporter
+│   └── kairo-security-pii          — PII 脱敏 + JDBC 审计 + 合规
+│
+├── kairo-transports/               — I/O 边界组群（5 个模块）
+│   ├── kairo-event-stream          — KairoEventBus 过滤 + 背压
+│   ├── kairo-event-stream-sse      — SSE 传输
+│   ├── kairo-event-stream-ws       — WebSocket 传输
+│   ├── kairo-channel               — Channel SPI + LoopbackChannel + TCK
+│   └── kairo-channel-dingtalk      — 钉钉 webhook + 签名验证器
+│
+├── kairo-starters/                 — Spring Boot starter 组群（9 个模块）
+│   ├── kairo-spring-boot-starter-core
+│   ├── kairo-spring-boot-starter-mcp
+│   ├── kairo-spring-boot-starter-multi-agent
+│   ├── kairo-spring-boot-starter-evolution
+│   ├── kairo-spring-boot-starter-expert-team
+│   ├── kairo-spring-boot-starter-event-stream
+│   ├── kairo-spring-boot-starter-channel
+│   ├── kairo-spring-boot-starter-channel-dingtalk
+│   └── kairo-spring-boot-starter-observability
+│
+└── kairo-examples                  — Quick-Start、Skill、Multi-Agent、Channel、Observability 示例
 ```
+
+聚合器自身的 `<dependencies>` 为空，从不出现在运行时类路径上；每个叶子模块仍直接继承 `kairo-parent`。使用 `mvn -f kairo-<group>/pom.xml test` 一键构建一个组群。
 
 ## 核心特性
 
 - **ReAct 引擎** — `DefaultReActAgent` 实现完整的推理-行动循环，支持可配置迭代上限、流式响应和多层错误恢复
 - **6 级上下文压缩管道** — 渐进式管道（Snip → Micro → Collapse → Auto → Partial → 熔断器），采用"Facts First"策略尽可能保留原始上下文
-- **21 个内置工具** — 文件操作（Read/Write/Edit/Glob/Grep）、执行（Bash/Monitor）、交互（AskUser）、技能（SkillList/SkillLoad）、Agent 操作（Spawn/Message/Task/Team/Plan）
+- **17 个内置工具** — 文件操作（Read/Write/Edit/Glob/Grep）、执行（Bash/Monitor）、交互（AskUser）、技能（SkillList/SkillLoad/SkillManage）、Agent 操作（Spawn/Message/Team/Plan）
 - **读写分区** — READ_ONLY 工具并行执行，WRITE/SYSTEM_CHANGE 工具自动串行化
 - **人机协作** — 三态权限模型（ALLOWED/ASK/DENIED），通过 `PermissionGuard` 控制
 - **多 Agent 编排** — `TeamCoordinator` SPI（默认 expert-team 编排：plan → generate → evaluate）和进程内 MessageBus
@@ -87,7 +115,7 @@ kairo-parent
         <dependency>
             <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-bom</artifactId>
-            <version>1.0.0-RC1</version>
+            <version>1.0.0</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -153,9 +181,11 @@ System.out.println(reply.getTextContent());
 ```xml
 <dependency>
     <groupId>io.github.captaingreenskin</groupId>
-    <artifactId>kairo-spring-boot-starter</artifactId>
+    <artifactId>kairo-spring-boot-starter-core</artifactId>
 </dependency>
 ```
+
+按需添加每个特性的 starter：`kairo-spring-boot-starter-mcp`、`-multi-agent`、`-evolution`、`-expert-team`、`-event-stream`、`-channel`、`-channel-dingtalk`、`-observability`。
 
 ```yaml
 kairo:
@@ -202,7 +232,7 @@ OpenAIProvider provider = new OpenAIProvider(apiKey, baseUrl, "/chat/completions
 # 构建并安装所有模块（运行 Demo 前必须先执行）
 mvn clean install
 
-# 仅运行测试（v1.0.0-RC1 基线：2,525 个测试 / 350 个套件）
+# 仅运行测试（v1.0.0 GA 基线：2,551 个测试）
 mvn test
 ```
 
@@ -241,7 +271,7 @@ mvn exec:java -pl kairo-examples \
 | `AgentExample --qwen` | Qwen | Qwen-Plus 的 ReAct 循环 |
 | `FullToolsetExample` | Qwen | 全部 6 个工具：read, write, edit, glob, grep, bash |
 | `SkillExample` | Qwen | 技能系统：列出、加载和使用 Markdown 技能 |
-| `MultiAgentExample` | 否 | TaskBoard DAG 依赖追踪 + MessageBus 发布/订阅 |
+| `MultiAgentExample` | 否 | TeamCoordinator 任务派发 + 进程内 MessageBus 发布/订阅 |
 | `SessionExample` | 否 | FileMemoryStore + SessionSerializer 序列化往返 |
 | Spring Boot Demo | 是 | REST API、流式输出、结构化输出、Hook、MCP |
 
@@ -256,10 +286,12 @@ mvn exec:java -pl kairo-examples \
 | v0.8 | DurableExecutionStore + ResourceConstraint + 成本感知路由 | Released |
 | v0.9.0 | Channel SPI + KairoEventBus + OTel Exporter | Released |
 | v0.9.1 | 钉钉 Channel 适配器（首个真实 `Channel` 传输实现） | Released |
+| v0.10.0 | 核心重构波次 — Hook、废弃项、SPI 脚手架 | Released |
+| v0.10.1 | Expert Team 编排 MVP | Released |
 | v0.10.2 | 结构性债务清理 — kairo-skill 拆分、ProviderPipeline、MCP 能力 record | Released |
 | v1.0.0-RC1 | SPI 稳定化 — 119 `@Stable` / 78 `@Experimental`、japicmp 门禁、77.4% core 覆盖 | Released |
-| v1.0.0-RC2 | API 参考文档、中英文完全对齐、可观测 + Channel 示例 | In Progress |
-| v1.0.0 GA | 企业安全（PII + 审计 + 合规）、OSS GA 发布仪式 | Planned |
+| v1.0.0-RC2 | API 参考文档、中英文完全对齐、可观测 + Channel 示例 | Released |
+| v1.0.0 GA | 企业安全（PII + 审计 + 合规）、reactor 重组 | Released |
 
 ## 贡献
 
