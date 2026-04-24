@@ -75,16 +75,6 @@ kairo-parent
 - **Model Harness** — Deep Anthropic integration + OpenAI-compatible fallback for GLM, Qwen, GPT, etc.
 - **Session Persistence** — File-based state serialization with TTL cleanup
 
-## Capability Verification (Lightweight Track)
-
-Kairo now includes a lightweight verification baseline in `benchmarks/` so capability claims can be reproduced before `v1.0`:
-
-- `benchmarks/scenarios/v0-lite-scenarios.jsonl` — 20 representative scenarios
-- `benchmarks/metrics-schema.json` — canonical benchmark output schema
-- `benchmarks/README.md` — run flow and aggregation guidance
-
-This track accumulates release-over-release evidence for tool correctness, long-task stability, safety governance, and cost/latency trends.
-
 ## Quick Start
 
 **Requirements:** JDK 17+, Maven 3.8+

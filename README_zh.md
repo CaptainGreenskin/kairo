@@ -75,16 +75,6 @@ kairo-parent
 - **模型适配** — 深度 Anthropic 集成 + OpenAI 兼容回退（GLM、Qwen、GPT 等）
 - **会话持久化** — 基于文件的状态序列化，支持 TTL 自动清理
 
-## 能力验证（轻量轨道）
-
-Kairo 在 `benchmarks/` 提供了轻量验证基线，帮助在 `v1.0` 前把能力声明变成可复现证据：
-
-- `benchmarks/scenarios/v0-lite-scenarios.jsonl` — 20 个代表性场景
-- `benchmarks/metrics-schema.json` — 统一 benchmark 输出结构
-- `benchmarks/README.md` — 运行流程与聚合说明
-
-该轨道用于持续积累跨版本证据，覆盖工具正确性、长任务稳定性、安全治理有效性以及成本/延迟趋势。
-
 ## 快速开始
 
 **环境要求：** JDK 17+, Maven 3.8+

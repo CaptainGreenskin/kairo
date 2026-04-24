@@ -52,17 +52,3 @@ OpenAIProvider provider = new OpenAIProvider(apiKey, baseUrl, "/chat/completions
 | `SessionExample` | No | FileMemoryStore + SessionSerializer round-trip |
 | Spring Boot Demo | Yes | REST API, streaming, structured output, hooks, MCP |
 
-## Capability Verification (Lightweight Track)
-
-To make agent capability claims reproducible before `v1.0`, Kairo now ships a lightweight benchmark baseline in `benchmarks/`:
-
-- `benchmarks/scenarios/v0-lite-scenarios.jsonl`: 20 representative scenarios
-- `benchmarks/metrics-schema.json`: canonical output schema (status, latency, tokens, safety decisions)
-- `benchmarks/README.md`: run and aggregation guidance
-
-This track is intended to accumulate release-over-release evidence for:
-
-- tool-call correctness
-- long-task stability
-- safety governance effectiveness
-- cost/latency trend visibility
