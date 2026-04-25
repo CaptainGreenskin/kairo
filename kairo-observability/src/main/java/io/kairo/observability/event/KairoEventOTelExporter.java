@@ -18,6 +18,7 @@ package io.kairo.observability.event;
 import io.kairo.api.Experimental;
 import io.kairo.api.event.KairoEvent;
 import io.kairo.api.event.KairoEventBus;
+import io.kairo.api.tenant.TenantContext;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
@@ -54,6 +55,12 @@ public final class KairoEventOTelExporter {
             LoggerFactory.getLogger(KairoEventOTelExporter.class);
     private static final String INSTRUMENTATION_SCOPE = "io.kairo.observability.event";
     private static final String REDACTED = "<redacted>";
+
+    /** Top-level span/log attribute key for the tenant id (cross-domain semantic convention). */
+    static final String SPAN_ATTR_TENANT_ID = "kairo.tenant.id";
+
+    /** Top-level span/log attribute key for the principal id (cross-domain semantic convention). */
+    static final String SPAN_ATTR_PRINCIPAL_ID = "kairo.tenant.principal";
 
     private final KairoEventBus bus;
     private final Logger logger;
@@ -155,8 +162,23 @@ public final class KairoEventOTelExporter {
 
         String prefix = "kairo." + event.domain() + ".";
         for (var entry : event.attributes().entrySet()) {
+            String key = entry.getKey();
             Object value = entry.getValue();
-            String flatKey = prefix + entry.getKey();
+            // Tenant attributes are cross-cutting; promote them to top-level keys instead of
+            // burying them under the per-domain prefix.
+            if (TenantContext.ATTR_TENANT_ID.equals(key)) {
+                attrs.put(
+                        AttributeKey.stringKey(SPAN_ATTR_TENANT_ID),
+                        redactIfNeeded(SPAN_ATTR_TENANT_ID, value));
+                continue;
+            }
+            if (TenantContext.ATTR_PRINCIPAL_ID.equals(key)) {
+                attrs.put(
+                        AttributeKey.stringKey(SPAN_ATTR_PRINCIPAL_ID),
+                        redactIfNeeded(SPAN_ATTR_PRINCIPAL_ID, value));
+                continue;
+            }
+            String flatKey = prefix + key;
             attrs.put(AttributeKey.stringKey(flatKey), redactIfNeeded(flatKey, value));
         }
 

@@ -1,7 +1,9 @@
-# japicmp API-Compatibility Gate — Policy (v1.0)
+# japicmp API-Compatibility Gate — Policy (v1.1)
 
-**Status**: Wired in `kairo-api/pom.xml` as of v1.0.0-RC1 (2026-04-24). First enforcement
-run becomes useful in v1.0.0-RC2, after RC1 is published as the comparison baseline.
+**Status**: Wired in `kairo-api/pom.xml` as of v1.0.0-RC1 (2026-04-24). Baseline default
+bumped to `1.0.0` at v1.1.0 cut (2026-04-25). The gate enforces v1.0 GA's `@Stable`
+surface; new v1.1 SPIs (sandbox / workspace / tenant / bridge) are pure additions and
+produce no break diffs on the v1.0 baseline.
 
 **Related**: ADR-023 (SPI Stability Policy) • `spi-census-v1.0.md` • `spi-annotation-application.md`
 
@@ -63,7 +65,8 @@ mvn -pl kairo-api -am verify -Papi-compat -Djapicmp.skip=true
 | v1.0.0-RC2 | `1.0.0-RC1` | First enforcement — freezes RC1 surface |
 | v1.0.0 GA | `1.0.0-RC2` (or latest RC) | Enforcement active |
 | v1.0.x patches | latest v1.0.x | Enforcement active |
-| v1.1.0 | `1.0.0` | Enforcement active |
+| **v1.1.0 (current)** | **`1.0.0`** | **Enforcement active — additions only (sandbox / workspace / tenant / bridge)** |
+| v1.2.0 | `1.1.0` | Enforcement active |
 | v2.0.0-RC1 | empty | Reset — major version allowed to break |
 
 **Promotion rule**: when cutting a release `vX.Y.Z`, the *next* release bumps
@@ -141,7 +144,8 @@ When the gate fails:
 
 ## Open items
 
-- [ ] First enforcement run at v1.0.0-RC2 cut.
+- [x] First enforcement run at v1.0.0-RC2 cut.
+- [x] Baseline promoted to `1.0.0` at v1.1.0 cut (2026-04-25).
 - [ ] CI workflow integration (planned post-RC1 publish).
 - [ ] Baseline promotion automation (release script should bump the property).
 

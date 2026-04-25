@@ -43,12 +43,20 @@
             <artifactId>swagger-parser</artifactId>
         </dependency>
 
-        <!-- Test -->
+        <!-- ExecutionSandboxTCK depends on JUnit 5 + AssertJ at compile scope so
+             sandbox-backend authors can reuse the scenarios in their own test suites. -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <scope>test</scope>
+            <scope>compile</scope>
         </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- Test -->
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>

@@ -54,15 +54,19 @@
       The gate is scoped to @Stable-annotated types only. @Experimental / @Internal / unannotated
       surfaces pass through silently — intentionally, since those carry no stability commitment.
 
-      For v1.0.0-RC1 (the first release carrying @Stable annotations), the gate is a no-op:
-      there is no prior baseline to compare against. Starting in v1.0.0-RC2, `api.baseline.version`
-      will default to `1.0.0-RC1` and subsequent releases will accumulate protection.
+      Baseline lifecycle (per docs/governance/japicmp-policy.md):
+        - v1.0.0-RC1: empty (bootstrap, no prior baseline).
+        - v1.0.0-RC2 / v1.0.0 GA: enforced against the prior tag.
+        - v1.1.0 (current): defaults to `1.0.0` — the v1.0 GA frozen surface. New v1.1 SPIs
+          (sandbox/, workspace/, tenant/, bridge/) are pure additions, so japicmp produces
+          no break diffs against this baseline; the gate exists to catch silent regressions
+          on the existing v1.0 surface.
     -->
     <profiles>
         <profile>
             <id>api-compat</id>
             <properties>
-                <api.baseline.version></api.baseline.version>
+                <api.baseline.version>1.0.0</api.baseline.version>
             </properties>
             <build>
                 <plugins>

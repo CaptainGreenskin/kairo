@@ -19,6 +19,8 @@ import io.kairo.api.event.KairoEvent;
 import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.guardrail.SecurityEvent;
 import io.kairo.api.guardrail.SecurityEventSink;
+import io.kairo.api.tenant.TenantContext;
+import io.kairo.api.tenant.TenantContextHolder;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -30,24 +32,70 @@ import java.util.Objects;
  * <p>Use this to preserve the existing logging/audit contract while making every security event
  * observable through the unified event bus (OTel exporter, metrics, correlation).
  *
+ * <p>When a {@link TenantContextHolder} is configured, security events are stamped with {@link
+ * TenantContext#ATTR_TENANT_ID} / {@link TenantContext#ATTR_PRINCIPAL_ID} BEFORE the delegate sink
+ * is invoked, so JDBC/audit-log delegates see tenant attribution end-to-end. Caller-supplied keys
+ * are preserved (call-site override always wins).
+ *
  * @since v0.10
  */
 public class BusBridgingSecurityEventSink implements SecurityEventSink {
 
     private final SecurityEventSink delegate;
     private final KairoEventBus bus;
+    private final TenantContextHolder tenantHolder;
 
     public BusBridgingSecurityEventSink(SecurityEventSink delegate, KairoEventBus bus) {
+        this(delegate, bus, TenantContextHolder.NOOP);
+    }
+
+    public BusBridgingSecurityEventSink(
+            SecurityEventSink delegate, KairoEventBus bus, TenantContextHolder tenantHolder) {
         this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
         this.bus = Objects.requireNonNull(bus, "bus must not be null");
+        this.tenantHolder = Objects.requireNonNull(tenantHolder, "tenantHolder must not be null");
     }
 
     @Override
     public void record(SecurityEvent event) {
-        delegate.record(event);
-        if (event != null) {
-            bus.publish(toBusEvent(event));
+        if (event == null) {
+            return;
         }
+        SecurityEvent stamped = stampTenant(event);
+        delegate.record(stamped);
+        bus.publish(toBusEvent(stamped));
+    }
+
+    private SecurityEvent stampTenant(SecurityEvent event) {
+        Map<String, Object> existing = event.attributes() == null ? Map.of() : event.attributes();
+        boolean hasTenant = existing.containsKey(TenantContext.ATTR_TENANT_ID);
+        boolean hasPrincipal = existing.containsKey(TenantContext.ATTR_PRINCIPAL_ID);
+        if (hasTenant && hasPrincipal) {
+            return event;
+        }
+        TenantContext ctx = tenantHolder.current();
+        // Preserve v0.10 contract for delegates: do NOT mutate SecurityEvent.attributes when no
+        // real tenant is bound. The bus path still enriches its KairoEvent envelope so OTel and
+        // other downstream consumers always see a tenant key, but JDBC/log delegates stay clean.
+        if (ctx == TenantContext.SINGLE) {
+            return event;
+        }
+        Map<String, Object> merged = new HashMap<>(existing);
+        if (!hasTenant) {
+            merged.put(TenantContext.ATTR_TENANT_ID, ctx.tenantId());
+        }
+        if (!hasPrincipal) {
+            merged.put(TenantContext.ATTR_PRINCIPAL_ID, ctx.principalId());
+        }
+        return new SecurityEvent(
+                event.timestamp(),
+                event.type(),
+                event.agentName(),
+                event.targetName(),
+                event.phase(),
+                event.policyName(),
+                event.reason(),
+                merged);
     }
 
     private static KairoEvent toBusEvent(SecurityEvent event) {

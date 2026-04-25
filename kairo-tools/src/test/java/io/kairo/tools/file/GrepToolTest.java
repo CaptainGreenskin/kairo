@@ -17,7 +17,11 @@ package io.kairo.tools.file;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.api.workspace.Workspace;
+import io.kairo.api.workspace.WorkspaceRequest;
+import io.kairo.core.workspace.LocalDirectoryWorkspaceProvider;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -111,6 +115,23 @@ class GrepToolTest {
         ToolResult result = tool.execute(Map.of("pattern", "test"));
         assertTrue(result.isError());
         assertTrue(result.content().contains("'path' is required"));
+    }
+
+    @Test
+    void relativePathResolvesAgainstWorkspaceRoot(@TempDir Path otherRoot) throws IOException {
+        Path sub = otherRoot.resolve("docs");
+        Files.createDirectories(sub);
+        Files.writeString(sub.resolve("notes.txt"), "alpha\nbeta\nfound-me\n");
+        Workspace ws =
+                new LocalDirectoryWorkspaceProvider(otherRoot)
+                        .acquire(WorkspaceRequest.writable(null));
+        ToolContext ctx = new ToolContext("a", "s", Map.of(), null, null, ws);
+
+        // "docs" is relative — must resolve against workspace root.
+        ToolResult result = tool.execute(Map.of("pattern", "found-me", "path", "docs"), ctx);
+
+        assertFalse(result.isError(), result.content());
+        assertTrue(result.content().contains("found-me"));
     }
 
     @Test

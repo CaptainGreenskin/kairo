@@ -15,29 +15,39 @@
  */
 package io.kairo.tools.exec;
 
+import io.kairo.api.sandbox.ExecutionSandbox;
+import io.kairo.api.sandbox.SandboxExit;
+import io.kairo.api.sandbox.SandboxHandle;
+import io.kairo.api.sandbox.SandboxOutputChunk;
+import io.kairo.api.sandbox.SandboxRequest;
+import io.kairo.api.tenant.TenantContext;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.InputStreamReader;
+import io.kairo.api.workspace.Workspace;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Executes a shell command and returns its output.
  *
- * <p>Uses {@link ProcessBuilder} to run commands with configurable timeout and working directory.
- * Captures both stdout and stderr.
+ * <p>Backed by the {@link ExecutionSandbox} SPI. The active sandbox is resolved via {@link
+ * ToolContext#getBean(Class)}; when no implementation is bound (legacy callers using {@link
+ * #execute(Map)} or DI without a sandbox bean) BashTool falls back to {@link
+ * LocalProcessSandbox#INSTANCE}, preserving v1.0 behaviour byte-for-byte.
+ *
+ * <p>Output is drained synchronously into a single string for backward compatibility; tools that
+ * want streaming output should subscribe to {@link SandboxHandle#output()} directly.
  */
 @Tool(
         name = "bash",
@@ -49,7 +59,8 @@ public class BashTool implements ToolHandler {
 
     private static final Logger log = LoggerFactory.getLogger(BashTool.class);
     private static final int DEFAULT_TIMEOUT_SECONDS = 120;
-    private static final int MAX_OUTPUT_CHARS = 100_000;
+    private static final long MAX_OUTPUT_BYTES = 100_000L;
+    private static final Duration EXIT_DRAIN_TIMEOUT = Duration.ofSeconds(30);
 
     @ToolParam(description = "The shell command to execute", required = true)
     private String command;
@@ -62,92 +73,108 @@ public class BashTool implements ToolHandler {
 
     @Override
     public ToolResult execute(Map<String, Object> input) {
+        return doExecute(input, null);
+    }
+
+    @Override
+    public ToolResult execute(Map<String, Object> input, ToolContext context) {
+        return doExecute(input, context);
+    }
+
+    private ToolResult doExecute(Map<String, Object> input, ToolContext context) {
         String cmd = (String) input.get("command");
         if (cmd == null || cmd.isBlank()) {
             return error("Parameter 'command' is required");
         }
 
-        int timeoutSec = DEFAULT_TIMEOUT_SECONDS;
-        Object timeoutObj = input.get("timeout");
-        if (timeoutObj instanceof Number n) {
-            timeoutSec = n.intValue();
-        } else if (timeoutObj instanceof String s) {
-            try {
-                timeoutSec = Integer.parseInt(s);
-            } catch (NumberFormatException ignored) {
-            }
+        int timeoutSec = parseTimeout(input.get("timeout"));
+        Path workspaceRoot = resolveWorkspaceRoot(input.get("workingDirectory"), context);
+        if (workspaceRoot == null) {
+            return error("Working directory does not exist: " + input.get("workingDirectory"));
         }
 
-        String workDir = (String) input.get("workingDirectory");
+        ExecutionSandbox sandbox =
+                context == null
+                        ? LocalProcessSandbox.INSTANCE
+                        : context.getBean(ExecutionSandbox.class)
+                                .orElse(LocalProcessSandbox.INSTANCE);
+        TenantContext tenant = context == null ? TenantContext.SINGLE : context.tenant();
 
-        try {
-            ProcessBuilder pb = new ProcessBuilder("/bin/sh", "-c", cmd);
-            pb.redirectErrorStream(true);
-            if (workDir != null && !workDir.isBlank()) {
-                File wd = new File(workDir);
-                if (wd.isDirectory()) {
-                    pb.directory(wd);
-                } else {
-                    return error("Working directory does not exist: " + workDir);
-                }
+        SandboxRequest request =
+                new SandboxRequest(
+                        cmd,
+                        workspaceRoot,
+                        Map.of(),
+                        Duration.ofSeconds(timeoutSec),
+                        MAX_OUTPUT_BYTES,
+                        tenant,
+                        false);
+
+        log.debug("Executing command: {}", cmd);
+        try (SandboxHandle handle = sandbox.start(request)) {
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            handle.output()
+                    .doOnNext(
+                            chunk -> {
+                                if (chunk instanceof SandboxOutputChunk.Stdout s) {
+                                    buffer.writeBytes(s.data());
+                                } else if (chunk instanceof SandboxOutputChunk.Stderr e) {
+                                    buffer.writeBytes(e.data());
+                                }
+                            })
+                    .blockLast(EXIT_DRAIN_TIMEOUT);
+
+            SandboxExit exit = handle.exit().block(EXIT_DRAIN_TIMEOUT);
+            String output = buffer.toString(StandardCharsets.UTF_8);
+
+            if (exit == null) {
+                return error("Sandbox did not report exit");
             }
-
-            log.debug("Executing command: {}", cmd);
-            Process process = pb.start();
-
-            // Schedule a watchdog to kill the process on timeout.
-            // This ensures the timeout is enforced even while we block reading output.
-            AtomicBoolean timedOut = new AtomicBoolean(false);
-            ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor();
-            watchdog.schedule(
-                    () -> {
-                        if (process.isAlive()) {
-                            timedOut.set(true);
-                            process.destroyForcibly();
-                        }
-                    },
-                    timeoutSec,
-                    TimeUnit.SECONDS);
-
-            StringBuilder output = new StringBuilder();
-            try (BufferedReader reader =
-                    new BufferedReader(
-                            new InputStreamReader(
-                                    process.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (output.length() < MAX_OUTPUT_CHARS) {
-                        output.append(line).append('\n');
-                    }
-                }
-            } finally {
-                watchdog.shutdownNow();
-            }
-
-            process.waitFor(5, TimeUnit.SECONDS);
-
-            if (timedOut.get()) {
+            if (exit.timedOut()) {
                 return new ToolResult(
                         "bash",
                         "Command timed out after " + timeoutSec + "s.\nPartial output:\n" + output,
                         true,
                         Map.of("exitCode", -1, "timedOut", true));
             }
-
-            int exitCode = process.exitValue();
-            String outputStr = output.toString();
-            if (outputStr.length() >= MAX_OUTPUT_CHARS) {
-                outputStr += "\n... (output truncated at " + MAX_OUTPUT_CHARS + " characters)";
+            if (exit.truncated()) {
+                output += "\n... (output truncated at " + MAX_OUTPUT_BYTES + " bytes)";
             }
-
-            boolean isError = exitCode != 0;
+            boolean isError = exit.exitCode() != 0;
             return new ToolResult(
-                    "bash", outputStr, isError, Map.of("exitCode", exitCode, "command", cmd));
+                    "bash", output, isError, Map.of("exitCode", exit.exitCode(), "command", cmd));
 
         } catch (Exception e) {
             log.error("Command execution failed: {}", cmd, e);
             return error("Failed to execute command: " + e.getMessage());
         }
+    }
+
+    private static int parseTimeout(Object timeoutObj) {
+        if (timeoutObj instanceof Number n) {
+            return n.intValue();
+        }
+        if (timeoutObj instanceof String s) {
+            try {
+                return Integer.parseInt(s);
+            } catch (NumberFormatException ignored) {
+                // fall through
+            }
+        }
+        return DEFAULT_TIMEOUT_SECONDS;
+    }
+
+    /**
+     * Resolves the working directory: explicit {@code workingDirectory} param wins; otherwise uses
+     * the active workspace (or JVM cwd when no context). Returns {@code null} if an explicit
+     * directory was supplied but does not exist.
+     */
+    private static Path resolveWorkspaceRoot(Object explicitDir, ToolContext context) {
+        if (explicitDir instanceof String s && !s.isBlank()) {
+            Path explicit = Path.of(s);
+            return Files.isDirectory(explicit) ? explicit : null;
+        }
+        return context == null ? Workspace.cwd().root() : context.workspace().root();
     }
 
     private ToolResult error(String msg) {

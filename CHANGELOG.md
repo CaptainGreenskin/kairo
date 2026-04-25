@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-04-25 — SPI Foundations for Cloud / Multi-Tenant / Code-Agent
+
+### Added — four new SPI packages, all pure additions on top of the v1.0 GA contract
+- **F1 `io.kairo.api.sandbox.*`** — `ExecutionSandbox` / `SandboxRequest` (record + Builder, 30 s
+  timeout / 1 MiB output defaults) / `SandboxHandle` (AutoCloseable, hot `Flux<SandboxOutputChunk>`,
+  cached `Mono<SandboxExit>`, idempotent `cancel()` / `close()`) / `SandboxOutputChunk` (sealed —
+  `Stdout` / `Stderr`) / `SandboxExit` (record). Default `LocalProcessSandbox` lives in
+  `kairo-tools`. 8-scenario `ExecutionSandboxTCK` is the public contract. `BashTool` refactored to
+  consume the SPI; public method signatures unchanged.
+- **F2 `io.kairo.api.workspace.*`** — `Workspace` / `WorkspaceProvider` / `WorkspaceKind` enum
+  (`LOCAL` ships, `REMOTE_GIT` + `EPHEMERAL` reserved for v1.3) / `WorkspaceRequest`. Default
+  `LocalDirectoryWorkspaceProvider` + `Workspace.cwd()` no-dep static factory mean existing
+  single-workspace callers observe **zero** behavior change. Five file tools (Read / Write / Edit /
+  Glob / Grep) now resolve relative paths against `currentWorkspace().root()`; absolute paths
+  honoured verbatim; defence-in-depth `startsWith(root)` after `normalize()` rejects path traversal.
+- **F3 `io.kairo.api.tenant.*`** — `TenantContext` record (with `SINGLE` sentinel +
+  `ATTR_TENANT_ID` / `ATTR_PRINCIPAL_ID` constants) / `TenantContextHolder` (with `Scope`
+  AutoCloseable + `NOOP` opt-out). Default `ThreadLocalTenantContextHolder` +
+  `ReactorTenantContextPropagator`. Five passive consumption sites project tenant id without
+  changing any method signature: `KairoEventBus.publish`, `KairoEventOTelExporter` (OTel
+  `kairo.tenant.id` / `kairo.tenant.principal` attributes), `SecurityEventSink.record`,
+  `ToolContext.tenant()`, `BridgeMeta.tenant`. Quota / isolation deferred to v1.2.
+- **F4 `io.kairo.api.bridge.*`** — `BridgeRequest` / `BridgeResponse` / `BridgeMeta` /
+  `BridgeRequestHandler` / `BridgeServer`. Default transport `WebSocketBridgeServer` +
+  `KairoBridgeWebSocketHandler` mounted on `/ws/bridge` inside `kairo-event-stream-ws` (separate
+  from event-stream channel). Frozen 5-op catalog: `agent.run` / `agent.cancel` / `agent.status` /
+  `tool.approve` / `workspace.list`. Schemaless envelope, HTTP-style status codes (200/400/404/500),
+  sessions never close on application-level errors.
+- **ADR-025 / ADR-026 / ADR-027 / ADR-028** — all `Status: Accepted` under `docs/adr/`.
+
+### Changed
+- japicmp baseline default in `kairo-api/pom.xml` bumped from empty → `1.0.0`. Gate produces no
+  break diffs (v1.1 surface is purely additive).
+- `docs/governance/japicmp-policy.md` Baseline Lifecycle table promoted v1.1.0 to current state.
+
+### Reactor
+- 31 entries (parent + 30 modules) — unchanged from v1.0 GA.
+- Root `pom.xml` `<revision>` remains `1.0.0-SNAPSHOT` (artifact bumps follow GA cadence, not
+  SPI-foundation milestones).
+- Verification doc: `docs/roadmap/V1.1-verification.md`.
+
 ## [1.0.0] - 2026-04-24 — The Java Agent Standard
 
 ### Added

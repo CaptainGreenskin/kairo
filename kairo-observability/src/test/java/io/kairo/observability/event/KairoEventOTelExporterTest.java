@@ -18,7 +18,10 @@ package io.kairo.observability.event;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.kairo.api.event.KairoEvent;
+import io.kairo.api.tenant.TenantContext;
+import io.kairo.api.tenant.TenantContextHolder;
 import io.kairo.core.event.DefaultKairoEventBus;
+import io.kairo.core.tenant.ThreadLocalTenantContextHolder;
 import io.opentelemetry.api.logs.Severity;
 import io.opentelemetry.sdk.logs.SdkLoggerProvider;
 import io.opentelemetry.sdk.logs.data.LogRecordData;
@@ -255,6 +258,65 @@ class KairoEventOTelExporterTest {
         exporter.start();
         exporter.stop();
         exporter.stop(); // must not throw
+    }
+
+    @Test
+    void tenantAttributes_arePromotedToTopLevelKeys() {
+        ThreadLocalTenantContextHolder holder = new ThreadLocalTenantContextHolder();
+        DefaultKairoEventBus tenantBus = new DefaultKairoEventBus(holder);
+        KairoEventOTelExporter exporter =
+                new KairoEventOTelExporter(
+                        tenantBus,
+                        loggerProvider,
+                        Set.of(KairoEvent.DOMAIN_EXECUTION, KairoEvent.DOMAIN_SECURITY),
+                        1.0,
+                        null);
+        exporter.start();
+
+        try (TenantContextHolder.Scope ignored =
+                holder.bind(new TenantContext("acme", "alice", Map.of()))) {
+            tenantBus.publish(
+                    new KairoEvent(
+                            "exec-tenant",
+                            Instant.ofEpochMilli(7_000),
+                            KairoEvent.DOMAIN_EXECUTION,
+                            "MODEL_TURN",
+                            null,
+                            Map.of("model", "gpt-4")));
+        }
+
+        List<LogRecordData> records = logExporter.getFinishedLogRecordItems();
+        assertThat(records).hasSize(1);
+        LogRecordData record = records.get(0);
+
+        // Tenant lives at the cross-cutting top-level key, NOT under the per-domain prefix.
+        assertThat(attr(record, "kairo.tenant.id")).isEqualTo("acme");
+        assertThat(attr(record, "kairo.tenant.principal")).isEqualTo("alice");
+        assertThat(attr(record, "kairo.execution.tenant.id")).isNull();
+        assertThat(attr(record, "kairo.execution.tenant.principal")).isNull();
+
+        // Domain-specific attributes still flow through the per-domain prefix.
+        assertThat(attr(record, "kairo.execution.model")).isEqualTo("gpt-4");
+
+        exporter.stop();
+    }
+
+    @Test
+    void noopHolder_emitsSingleTenantSentinelOnEverySpan() {
+        // bus uses default ctor → NOOP holder → enriches with TenantContext.SINGLE
+        KairoEventOTelExporter exporter =
+                new KairoEventOTelExporter(
+                        bus, loggerProvider, Set.of(KairoEvent.DOMAIN_EXECUTION), 1.0, null);
+        exporter.start();
+
+        bus.publish(KairoEvent.of(KairoEvent.DOMAIN_EXECUTION, "MODEL_TURN", Map.of()));
+
+        List<LogRecordData> records = logExporter.getFinishedLogRecordItems();
+        assertThat(records).hasSize(1);
+        assertThat(attr(records.get(0), "kairo.tenant.id")).isEqualTo("default");
+        assertThat(attr(records.get(0), "kairo.tenant.principal")).isEqualTo("anonymous");
+
+        exporter.stop();
     }
 
     @Test

@@ -17,7 +17,11 @@ package io.kairo.tools.file;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.api.workspace.Workspace;
+import io.kairo.api.workspace.WorkspaceRequest;
+import io.kairo.core.workspace.LocalDirectoryWorkspaceProvider;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -87,6 +91,20 @@ class WriteToolTest {
         ToolResult result = tool.execute(Map.of("path", file.toString(), "content", ""));
         assertFalse(result.isError());
         assertEquals("", Files.readString(file));
+    }
+
+    @Test
+    void relativePathResolvesAgainstWorkspaceRoot(@TempDir Path otherRoot) throws IOException {
+        Workspace ws =
+                new LocalDirectoryWorkspaceProvider(otherRoot)
+                        .acquire(WorkspaceRequest.writable(null));
+        ToolContext ctx = new ToolContext("a", "s", Map.of(), null, null, ws);
+
+        ToolResult result = tool.execute(Map.of("path", "out.txt", "content", "rooted"), ctx);
+
+        assertFalse(result.isError(), result.content());
+        // File MUST land under the workspace root, not under JVM cwd.
+        assertEquals("rooted", Files.readString(otherRoot.resolve("out.txt")));
     }
 
     @Test

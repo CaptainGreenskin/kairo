@@ -17,6 +17,11 @@ package io.kairo.core.event;
 
 import io.kairo.api.event.KairoEvent;
 import io.kairo.api.event.KairoEventBus;
+import io.kairo.api.tenant.TenantContext;
+import io.kairo.api.tenant.TenantContextHolder;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -30,6 +35,14 @@ import reactor.core.publisher.Sinks;
  * the publisher. Events published when no subscribers are connected are dropped; this is
  * intentional — subscribers must attach before publishers start emitting.
  *
+ * <p>The bus is also the single enrichment seam for {@link TenantContext} propagation: every
+ * envelope is decorated with {@link TenantContext#ATTR_TENANT_ID} and {@link
+ * TenantContext#ATTR_PRINCIPAL_ID} attributes drawn from the configured {@link
+ * TenantContextHolder}, unless the publisher already populated those keys (call-site override
+ * always wins). When no holder is configured the bus falls back to {@link TenantContextHolder#NOOP}
+ * and tenants are reported as {@link TenantContext#SINGLE}, preserving v0.10 behavior bit-for-bit
+ * for single-tenant deployments.
+ *
  * @since v0.10 (Experimental)
  */
 public class DefaultKairoEventBus implements KairoEventBus {
@@ -37,9 +50,15 @@ public class DefaultKairoEventBus implements KairoEventBus {
     private static final Logger log = LoggerFactory.getLogger(DefaultKairoEventBus.class);
 
     private final Sinks.Many<KairoEvent> sink;
+    private final TenantContextHolder tenantHolder;
 
     public DefaultKairoEventBus() {
+        this(TenantContextHolder.NOOP);
+    }
+
+    public DefaultKairoEventBus(TenantContextHolder tenantHolder) {
         this.sink = Sinks.many().multicast().onBackpressureBuffer();
+        this.tenantHolder = Objects.requireNonNull(tenantHolder, "tenantHolder");
     }
 
     @Override
@@ -47,12 +66,13 @@ public class DefaultKairoEventBus implements KairoEventBus {
         if (event == null) {
             return;
         }
-        Sinks.EmitResult result = sink.tryEmitNext(event);
+        KairoEvent enriched = enrichWithTenant(event);
+        Sinks.EmitResult result = sink.tryEmitNext(enriched);
         if (result.isFailure()) {
             log.debug(
                     "KairoEventBus dropped event (domain={}, type={}, result={})",
-                    event.domain(),
-                    event.eventType(),
+                    enriched.domain(),
+                    enriched.eventType(),
                     result);
         }
     }
@@ -68,5 +88,29 @@ public class DefaultKairoEventBus implements KairoEventBus {
             return subscribe();
         }
         return sink.asFlux().filter(event -> domain.equals(event.domain()));
+    }
+
+    private KairoEvent enrichWithTenant(KairoEvent event) {
+        Map<String, Object> existing = event.attributes();
+        boolean hasTenant = existing.containsKey(TenantContext.ATTR_TENANT_ID);
+        boolean hasPrincipal = existing.containsKey(TenantContext.ATTR_PRINCIPAL_ID);
+        if (hasTenant && hasPrincipal) {
+            return event;
+        }
+        TenantContext ctx = tenantHolder.current();
+        Map<String, Object> merged = new HashMap<>(existing);
+        if (!hasTenant) {
+            merged.put(TenantContext.ATTR_TENANT_ID, ctx.tenantId());
+        }
+        if (!hasPrincipal) {
+            merged.put(TenantContext.ATTR_PRINCIPAL_ID, ctx.principalId());
+        }
+        return new KairoEvent(
+                event.eventId(),
+                event.timestamp(),
+                event.domain(),
+                event.eventType(),
+                event.payload(),
+                merged);
     }
 }

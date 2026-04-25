@@ -17,7 +17,11 @@ package io.kairo.tools.file;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.api.workspace.Workspace;
+import io.kairo.api.workspace.WorkspaceRequest;
+import io.kairo.core.workspace.LocalDirectoryWorkspaceProvider;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -132,6 +136,26 @@ class EditToolTest {
         ToolResult result = tool.execute(Map.of("path", file.toString(), "originalText", "a"));
         assertTrue(result.isError());
         assertTrue(result.content().contains("'newText' is required"));
+    }
+
+    @Test
+    void relativePathResolvesAgainstWorkspaceRoot(@TempDir Path otherRoot) throws IOException {
+        Files.writeString(otherRoot.resolve("doc.txt"), "before-edit");
+        Workspace ws =
+                new LocalDirectoryWorkspaceProvider(otherRoot)
+                        .acquire(WorkspaceRequest.writable(null));
+        ToolContext ctx = new ToolContext("a", "s", Map.of(), null, null, ws);
+
+        ToolResult result =
+                tool.execute(
+                        Map.of(
+                                "path", "doc.txt",
+                                "originalText", "before-edit",
+                                "newText", "after-edit"),
+                        ctx);
+
+        assertFalse(result.isError(), result.content());
+        assertEquals("after-edit", Files.readString(otherRoot.resolve("doc.txt")));
     }
 
     @Test

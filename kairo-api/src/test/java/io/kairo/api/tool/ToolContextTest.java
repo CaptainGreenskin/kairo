@@ -17,6 +17,7 @@ package io.kairo.api.tool;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.tenant.TenantContext;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -54,5 +55,54 @@ class ToolContextTest {
         ToolContext ctx2 = new ToolContext("a", "s", Map.of());
         assertEquals(ctx1, ctx2);
         assertEquals(ctx1.hashCode(), ctx2.hashCode());
+    }
+
+    @Test
+    @DisplayName("Legacy 3-arg ctor defaults tenant to SINGLE")
+    void legacyCtorDefaultsTenantToSingle() {
+        ToolContext ctx = new ToolContext("a", "s", Map.of());
+        assertSame(TenantContext.SINGLE, ctx.tenant());
+        assertEquals("default", ctx.tenant().tenantId());
+        assertEquals("anonymous", ctx.tenant().principalId());
+    }
+
+    @Test
+    @DisplayName("Legacy 4-arg ctor (with idempotency key) defaults tenant to SINGLE")
+    void legacyFourArgCtorDefaultsTenantToSingle() {
+        ToolContext ctx = new ToolContext("a", "s", Map.of(), "idem-1");
+        assertSame(TenantContext.SINGLE, ctx.tenant());
+        assertEquals("idem-1", ctx.idempotencyKey());
+    }
+
+    @Test
+    @DisplayName("Full ctor stores the provided tenant")
+    void fullCtorStoresTenant() {
+        TenantContext acme = new TenantContext("acme", "alice", Map.of("region", "us-west-2"));
+        ToolContext ctx = new ToolContext("a", "s", Map.of(), null, acme);
+
+        assertEquals("acme", ctx.tenant().tenantId());
+        assertEquals("alice", ctx.tenant().principalId());
+        assertEquals("us-west-2", ctx.tenant().attributes().get("region"));
+    }
+
+    @Test
+    @DisplayName("Null tenant in compact ctor coerces to SINGLE")
+    void nullTenantCoercesToSingle() {
+        ToolContext ctx = new ToolContext("a", "s", Map.of(), null, null);
+        assertSame(TenantContext.SINGLE, ctx.tenant());
+    }
+
+    @Test
+    @DisplayName("Tenant participates in record equality")
+    void tenantParticipatesInEquality() {
+        TenantContext acme = new TenantContext("acme", "alice", Map.of());
+        TenantContext other = new TenantContext("other", "bob", Map.of());
+
+        ToolContext ctx1 = new ToolContext("a", "s", Map.of(), null, acme);
+        ToolContext ctx2 = new ToolContext("a", "s", Map.of(), null, acme);
+        ToolContext ctx3 = new ToolContext("a", "s", Map.of(), null, other);
+
+        assertEquals(ctx1, ctx2);
+        assertNotEquals(ctx1, ctx3);
     }
 }
