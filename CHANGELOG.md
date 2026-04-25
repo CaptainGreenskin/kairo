@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-04-25 — ConsoleApprovalHandler cancellation safety + Kairo Code rebrand
+
+### Changed
+- **`kairo-core/.../tool/ConsoleApprovalHandler.java`** rewritten for cancellation safety. The previous
+  implementation blocked on `BufferedReader.readLine()` against `System.in`, which ignores
+  `Thread.interrupt()` — Reactor `dispose()` (Ctrl+C, parent-stream cancel) could not cancel a
+  pending tool-approval prompt. New version uses `Mono.create` + `sink.onDispose(thread::interrupt)`
+  and `reader.ready()` polling at 50 ms granularity so the read loop is interruptible.
+- Constructor surface upgraded: explicit `(BufferedReader, PrintWriter)` for testability + JLine
+  integration; no-arg default still wires to `System.in` / `System.out`.
+- `ApprovalDecision` enum (`ALWAYS_ALLOW` / `ALWAYS_DENY`) replaces the prior `Set<String> alwaysAllowed`
+  field — the prompt now offers `[a]lways` and `ne[v]er` answers symmetrically.
+- `getApprovalState()` / `restoreApprovals(Map)` added to support session-resume integrations.
+
+### Removed
+- The `ConsoleApprovalHandler(Duration timeout)` and no-arg constructors backed by the old
+  `Set<String>` memory are gone. Hard break — incubation-stage policy. Verified no callers in
+  `kairo-*` reactor depended on the removed surface (grep across reactor returns only the file
+  itself + a CHANGELOG mention).
+
+### Added
+- 18-test `ConsoleApprovalHandlerTest` in `kairo-core/src/test/java/io/kairo/core/tool/`,
+  including a cancellation regression that verifies dispose interrupts a blocked reader within
+  the 2 s budget.
+
+### Companion (line B — Kairo Code repo)
+- `agentcode` repo + 4 child modules + main class renamed → `kairo-code` /
+  `kairo-code-{cli,core,server,examples}` / `KairoCodeMain`. POM `groupId` (`io.kairo.code`) and
+  `artifactId` (`kairo-code-*`) were already correct from line B's M1 build out — this rename
+  closes the directory + class-name + doc-literal gap. 5-module reactor builds clean; 42 tests
+  green (M1 baseline preserved).
+
+### Reactor
+- Unchanged at 31 entries (parent + 30 modules).
+- `mvn -pl kairo-core -am verify` green: 1419 tests in `kairo-core`.
+- No SPI surface change — japicmp gate against `1.0.0` baseline remains green.
+
 ## [1.1.0] - 2026-04-25 — SPI Foundations for Cloud / Multi-Tenant / Code-Agent
 
 ### Added — four new SPI packages, all pure additions on top of the v1.0 GA contract
