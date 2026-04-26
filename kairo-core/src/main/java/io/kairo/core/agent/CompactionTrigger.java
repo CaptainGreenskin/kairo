@@ -16,6 +16,8 @@
 package io.kairo.core.agent;
 
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.hook.HookChain;
+import io.kairo.api.hook.PostCompactEvent;
 import io.kairo.api.memory.MemoryEntry;
 import io.kairo.api.memory.MemoryScope;
 import io.kairo.api.memory.MemoryStore;
@@ -25,6 +27,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -47,9 +50,10 @@ class CompactionTrigger {
     private final ReActLoop reactLoop;
     private final MemoryStore memoryStore; // nullable
     private final Predicate<Msg> importancePredicate;
+    @Nullable private final HookChain hookChain;
 
     CompactionTrigger(ContextManager contextManager, ReActLoop reactLoop) {
-        this(contextManager, reactLoop, null, null);
+        this(contextManager, reactLoop, null, null, null);
     }
 
     CompactionTrigger(
@@ -57,11 +61,21 @@ class CompactionTrigger {
             ReActLoop reactLoop,
             MemoryStore memoryStore,
             Predicate<Msg> importancePredicate) {
+        this(contextManager, reactLoop, memoryStore, importancePredicate, null);
+    }
+
+    CompactionTrigger(
+            ContextManager contextManager,
+            ReActLoop reactLoop,
+            MemoryStore memoryStore,
+            Predicate<Msg> importancePredicate,
+            @Nullable HookChain hookChain) {
         this.contextManager = contextManager;
         this.reactLoop = reactLoop;
         this.memoryStore = memoryStore;
         this.importancePredicate =
                 importancePredicate != null ? importancePredicate : DEFAULT_IMPORTANCE_PREDICATE;
+        this.hookChain = hookChain;
     }
 
     /**
@@ -100,6 +114,9 @@ class CompactionTrigger {
                                                                     && compacted.size()
                                                                             < previousSize) {
                                                                 reactLoop.replaceHistory(compacted);
+                                                                int messagesSaved =
+                                                                        previousSize
+                                                                                - compacted.size();
                                                                 log.info(
                                                                         "Compaction complete: {} -> {} messages",
                                                                         previousSize,
@@ -112,11 +129,31 @@ class CompactionTrigger {
                                                                 return storeCompactionMemory(
                                                                                 compacted,
                                                                                 rawContent)
+                                                                        .then(
+                                                                                firePostCompactBestEffort(
+                                                                                        compacted,
+                                                                                        messagesSaved))
                                                                         .thenReturn(true);
                                                             }
                                                             return Mono.just(true);
                                                         })
                                                 .defaultIfEmpty(false)));
+    }
+
+    private Mono<Void> firePostCompactBestEffort(List<Msg> compacted, int messagesSaved) {
+        if (hookChain == null) {
+            return Mono.empty();
+        }
+        PostCompactEvent event =
+                new PostCompactEvent(compacted, messagesSaved, "CompactionTrigger", List.of());
+        return hookChain
+                .firePostCompact(event)
+                .onErrorResume(
+                        e -> {
+                            log.warn("PostCompact hook failed: {}", e.getMessage());
+                            return Mono.empty();
+                        })
+                .then();
     }
 
     /**
