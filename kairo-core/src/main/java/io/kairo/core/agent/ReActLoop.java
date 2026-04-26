@@ -117,7 +117,8 @@ class ReActLoop {
                         ctx.config().loopHashHardLimit(),
                         ctx.config().loopFreqWarnThreshold(),
                         ctx.config().loopFreqHardLimit(),
-                        ctx.config().loopFreqWindow());
+                        ctx.config().loopFreqWindow(),
+                        3);
 
         // Build phase collaborators
         List<ResourceConstraint> effectiveConstraints = resolveResourceConstraints(ctx.config());
