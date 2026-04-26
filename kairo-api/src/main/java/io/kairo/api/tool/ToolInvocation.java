@@ -15,6 +15,7 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
 import java.util.Map;
 
 /**
@@ -23,4 +24,5 @@ import java.util.Map;
  * @param toolName the name of the tool to invoke
  * @param input the tool input parameters
  */
+@Stable(value = "Batch tool invocation record; shape frozen since v0.1", since = "1.0.0")
 public record ToolInvocation(String toolName, Map<String, Object> input) {}

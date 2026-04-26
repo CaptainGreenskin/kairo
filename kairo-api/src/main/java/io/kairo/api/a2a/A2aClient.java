@@ -15,6 +15,7 @@
  */
 package io.kairo.api.a2a;
 
+import io.kairo.api.Experimental;
 import io.kairo.api.message.Msg;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -31,6 +32,7 @@ import reactor.core.publisher.Mono;
  *
  * @see AgentCardResolver
  */
+@Experimental("A2A client SPI; introduced in v0.10, targeting stabilization in v1.1")
 public interface A2aClient {
 
     /**

@@ -18,9 +18,8 @@ package io.kairo.examples.demo;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
-import io.kairo.api.model.ModelProvider;
-import io.kairo.api.middleware.MiddlewareContext;
 import io.kairo.api.middleware.MiddlewareRejectException;
+import io.kairo.api.model.ModelProvider;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.core.agent.AgentBuilder;
@@ -36,18 +35,20 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * REST controller demonstrating the Middleware pipeline for cross-cutting concerns.
  *
- * <p>Shows how to register {@link io.kairo.api.middleware.Middleware} via
- * {@link AgentBuilder#middleware(io.kairo.api.middleware.Middleware)} and how
- * middleware can reject requests (auth failure, rate limit) before the agent loop starts.
+ * <p>Shows how to register {@link io.kairo.api.middleware.Middleware} via {@link
+ * AgentBuilder#middleware(io.kairo.api.middleware.Middleware)} and how middleware can reject
+ * requests (auth failure, rate limit) before the agent loop starts.
  *
- * <p>This controller demonstrates the difference between <strong>Middleware</strong>
- * (pre-agent, request-level) and <strong>Hooks</strong> (in-agent, lifecycle-level):
+ * <p>This controller demonstrates the difference between <strong>Middleware</strong> (pre-agent,
+ * request-level) and <strong>Hooks</strong> (in-agent, lifecycle-level):
+ *
  * <ul>
- *   <li>Authentication and rate limiting belong in Middleware</li>
- *   <li>Modifying model config or skipping tool execution belong in Hooks</li>
+ *   <li>Authentication and rate limiting belong in Middleware
+ *   <li>Modifying model config or skipping tool execution belong in Hooks
  * </ul>
  *
  * <p>Usage:
+ *
  * <pre>{@code
  * # Successful request with valid API key
  * curl -X POST http://localhost:8080/middleware/chat \
@@ -88,23 +89,24 @@ public class MiddlewareDemoController {
     /**
      * Chat endpoint protected by auth + rate-limit middleware.
      *
-     * <p>Builds an agent with two middleware: {@link AuthMiddleware} validates the API key,
-     * then {@link RateLimitMiddleware} enforces per-session request limits.
+     * <p>Builds an agent with two middleware: {@link AuthMiddleware} validates the API key, then
+     * {@link RateLimitMiddleware} enforces per-session request limits.
      */
     @PostMapping("/chat")
     public ResponseEntity<Map<String, Object>> chat(@RequestBody MiddlewareChatRequest request) {
-        Agent agent = AgentBuilder.create()
-                .name("middleware-demo-agent")
-                .model(modelProvider)
-                .modelName(modelName)
-                .tools(toolRegistry)
-                .toolExecutor(toolExecutor)
-                .systemPrompt("You are a helpful assistant. Keep responses brief.")
-                .maxIterations(5)
-                .tokenBudget(20_000)
-                .middleware(new AuthMiddleware("demo-key"))
-                .middleware(new RateLimitMiddleware(5))
-                .build();
+        Agent agent =
+                AgentBuilder.create()
+                        .name("middleware-demo-agent")
+                        .model(modelProvider)
+                        .modelName(modelName)
+                        .tools(toolRegistry)
+                        .toolExecutor(toolExecutor)
+                        .systemPrompt("You are a helpful assistant. Keep responses brief.")
+                        .maxIterations(5)
+                        .tokenBudget(20_000)
+                        .middleware(new AuthMiddleware("demo-key"))
+                        .middleware(new RateLimitMiddleware(5))
+                        .build();
 
         // Build context with API key from request — the middleware will validate it
         Msg input = Msg.of(MsgRole.USER, request.message());

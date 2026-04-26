@@ -141,4 +141,58 @@ class MonitorToolTest {
         assertFalse(result.isError());
         assertEquals(String.valueOf(pid), result.metadata().get("target"));
     }
+
+    @Test
+    void successResultContainsLinesInMetadata() {
+        long pid = ProcessHandle.current().pid();
+        ToolResult result = tool.execute(Map.of("target", String.valueOf(pid), "lines", 10));
+        assertFalse(result.isError());
+        assertEquals(10, result.metadata().get("lines"));
+    }
+
+    @Test
+    void defaultLinesIsUsedWhenNotSpecified() {
+        long pid = ProcessHandle.current().pid();
+        ToolResult result = tool.execute(Map.of("target", String.valueOf(pid)));
+        assertFalse(result.isError());
+        assertEquals(50, result.metadata().get("lines"));
+    }
+
+    @Test
+    void negativeLinesClampedToOne() {
+        long pid = ProcessHandle.current().pid();
+        ToolResult result = tool.execute(Map.of("target", String.valueOf(pid), "lines", -5));
+        assertFalse(result.isError());
+        assertEquals(1, result.metadata().get("lines"));
+    }
+
+    @Test
+    void linesAt500NotExceededInMetadata() {
+        long pid = ProcessHandle.current().pid();
+        ToolResult result = tool.execute(Map.of("target", String.valueOf(pid), "lines", 500));
+        assertFalse(result.isError());
+        assertEquals(500, result.metadata().get("lines"));
+    }
+
+    @Test
+    void successResultToolUseIdIsMonitor() {
+        long pid = ProcessHandle.current().pid();
+        ToolResult result = tool.execute(Map.of("target", String.valueOf(pid)));
+        assertFalse(result.isError());
+        assertEquals("monitor", result.toolUseId());
+    }
+
+    @Test
+    void nonNumericWithLeadingDigitsRejected() {
+        ToolResult result = tool.execute(Map.of("target", "123abc"));
+        assertTrue(result.isError());
+        assertTrue(result.content().contains("must be a numeric PID"));
+    }
+
+    @Test
+    void tooLongNumericPidRejected() {
+        ToolResult result = tool.execute(Map.of("target", "12345678901"));
+        assertTrue(result.isError());
+        assertTrue(result.content().contains("must be a numeric PID"));
+    }
 }

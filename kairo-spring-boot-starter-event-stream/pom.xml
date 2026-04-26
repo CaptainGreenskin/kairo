@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.captaingreenskin</groupId>
+        <artifactId>kairo-parent</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>kairo-spring-boot-starter-event-stream</artifactId>
+    <name>Kairo Spring Boot Starter — Event Stream</name>
+    <description>SSE + WebSocket transports for Kairo's KairoEventBus, wired via Spring Boot auto-configuration (deny-safe by default)</description>
+
+    <dependencies>
+        <!-- Core starter provides base Kairo infrastructure (event bus, config, etc.). -->
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-spring-boot-starter-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Event stream core + both transports. -->
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-event-stream</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-event-stream-sse</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-event-stream-ws</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- WebFlux powers both SSE streaming and reactive WebSocket. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
+
+        <!-- Generates metadata for kairo.event-stream.* properties. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

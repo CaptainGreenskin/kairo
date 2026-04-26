@@ -15,8 +15,10 @@
  */
 package io.kairo.api.model;
 
+import io.kairo.api.Stable;
 import io.kairo.api.context.SystemPromptSegment;
 import io.kairo.api.tool.ToolDefinition;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +37,9 @@ import java.util.Objects;
  *     .build();
  * }</pre>
  */
+@Stable(
+        value = "Model config record + Builder + ThinkingConfig; shape frozen since v0.3",
+        since = "1.0.0")
 public record ModelConfig(
         String model,
         int maxTokens,
@@ -48,7 +53,10 @@ public record ModelConfig(
         ToolVerbosity toolVerbosity,
         List<SystemPromptSegment> systemPromptSegments,
         Class<?> responseSchema,
-        Double effort) {
+        Double effort,
+        RetryConfig retryConfig,
+        Duration timeout,
+        Double costBudget) {
 
     /**
      * Default model name used when no model is explicitly configured.
@@ -114,6 +122,9 @@ public record ModelConfig(
                 toolVerbosity,
                 null,
                 null,
+                null,
+                null,
+                null,
                 null);
     }
 
@@ -145,6 +156,9 @@ public record ModelConfig(
                 thinking,
                 systemPrompt,
                 systemPromptParts,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -187,6 +201,9 @@ public record ModelConfig(
                 toolVerbosity,
                 systemPromptSegments,
                 null,
+                null,
+                null,
+                null,
                 null);
     }
 
@@ -217,6 +234,9 @@ public record ModelConfig(
         private List<SystemPromptSegment> systemPromptSegments;
         private Class<?> responseSchema;
         private Double effort;
+        private RetryConfig retryConfig;
+        private Duration timeout;
+        private Double costBudget;
 
         private Builder() {}
 
@@ -401,6 +421,47 @@ public record ModelConfig(
         }
 
         /**
+         * Set the retry configuration for model API calls.
+         *
+         * <p>When {@code null}, providers fall back to {@link RetryConfig#MODEL_DEFAULTS}.
+         *
+         * @param retryConfig the retry config, or {@code null} for defaults
+         * @return this builder
+         */
+        public Builder retryConfig(RetryConfig retryConfig) {
+            this.retryConfig = retryConfig;
+            return this;
+        }
+
+        /**
+         * Set the overall timeout for a model call.
+         *
+         * <p>When {@code null}, providers use their own default timeout (typically 30s for
+         * non-streaming, 5min idle timeout for streaming).
+         *
+         * @param timeout the timeout duration, or {@code null} for provider default
+         * @return this builder
+         */
+        public Builder timeout(Duration timeout) {
+            this.timeout = timeout;
+            return this;
+        }
+
+        /**
+         * Set the cost budget for routing decisions.
+         *
+         * <p>When set, a {@link io.kairo.api.routing.RoutingPolicy} may use this value to select a
+         * provider that fits within the budget. Null means no budget constraint.
+         *
+         * @param costBudget the cost budget limit, or {@code null} for no constraint
+         * @return this builder
+         */
+        public Builder costBudget(Double costBudget) {
+            this.costBudget = costBudget;
+            return this;
+        }
+
+        /**
          * Build an immutable {@link ModelConfig} from the current builder state.
          *
          * @return the constructed config
@@ -421,7 +482,10 @@ public record ModelConfig(
                     toolVerbosity,
                     systemPromptSegments != null ? List.copyOf(systemPromptSegments) : null,
                     responseSchema,
-                    effort);
+                    effort,
+                    retryConfig,
+                    timeout,
+                    costBudget);
         }
     }
 }

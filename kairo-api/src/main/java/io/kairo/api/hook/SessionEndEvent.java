@@ -15,8 +15,13 @@
  */
 package io.kairo.api.hook;
 
+import io.kairo.api.Stable;
 import io.kairo.api.agent.AgentState;
+import io.kairo.api.message.Msg;
 import java.time.Duration;
+import java.util.List;
+import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 /**
  * Event fired when an Agent session completes (success or error).
@@ -27,11 +32,27 @@ import java.time.Duration;
  * @param tokensUsed the total tokens consumed
  * @param duration the total session duration
  * @param error the error message, or null on success
+ * @param conversationHistorySupplier lazy supplier for the full conversation history (nullable)
  */
+@Stable(value = "Session-end hook event; shape frozen since v0.6", since = "1.0.0")
 public record SessionEndEvent(
         String agentName,
         AgentState finalState,
         int iterations,
         long tokensUsed,
         Duration duration,
-        String error) {}
+        String error,
+        @Nullable Supplier<List<Msg>> conversationHistorySupplier)
+        implements HookEvent {
+
+    /** Backward-compatible constructor without conversationHistorySupplier. */
+    public SessionEndEvent(
+            String agentName,
+            AgentState finalState,
+            int iterations,
+            long tokensUsed,
+            Duration duration,
+            String error) {
+        this(agentName, finalState, iterations, tokensUsed, duration, error, null);
+    }
+}

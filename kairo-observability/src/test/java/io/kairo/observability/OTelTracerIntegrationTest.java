@@ -109,16 +109,21 @@ class OTelTracerIntegrationTest {
         assertEquals(iterationData.getSpanId(), reasoningData.getParentSpanId());
         assertEquals(iterationData.getSpanId(), toolData.getParentSpanId());
 
-        // Verify agent span attributes
+        // Verify agent span attributes (Kairo "agent.name" → GenAI semconv "gen_ai.agent.name").
         assertEquals(
-                "math-agent", agentData.getAttributes().get(AttributeKey.stringKey("agent.name")));
+                "math-agent",
+                agentData.getAttributes().get(AttributeKey.stringKey("gen_ai.agent.name")));
         assertEquals(
                 10L,
                 agentData.getAttributes().get(AttributeKey.longKey("gen_ai.usage.input_tokens")));
         assertEquals(StatusCode.OK, agentData.getStatus().getStatusCode());
 
         // Verify reasoning span attributes
-        assertEquals(3L, reasoningData.getAttributes().get(AttributeKey.longKey("message_count")));
+        assertEquals(
+                3L,
+                reasoningData
+                        .getAttributes()
+                        .get(AttributeKey.longKey("gen_ai.request.message_count")));
         assertEquals(
                 100L,
                 reasoningData

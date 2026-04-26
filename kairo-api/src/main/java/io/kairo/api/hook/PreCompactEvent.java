@@ -15,6 +15,7 @@
  */
 package io.kairo.api.hook;
 
+import io.kairo.api.Stable;
 import io.kairo.api.message.Msg;
 import java.util.List;
 
@@ -24,7 +25,8 @@ import java.util.List;
  * <p>Hook handlers can inspect the current messages and pressure, and optionally cancel the
  * compaction by calling {@link #cancel()}.
  */
-public class PreCompactEvent {
+@Stable(value = "Pre-compact hook event; shape frozen since v0.6", since = "1.0.0")
+public class PreCompactEvent implements HookEvent {
 
     private final List<Msg> messages;
     private final double pressure;

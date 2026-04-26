@@ -1,5 +1,0 @@
-io.kairo.spring.AgentRuntimeAutoConfiguration
-io.kairo.spring.AgentActuatorAutoConfiguration
-io.kairo.spring.McpAutoConfiguration
-io.kairo.spring.A2aAutoConfiguration
-io.kairo.spring.SnapshotAutoConfiguration
