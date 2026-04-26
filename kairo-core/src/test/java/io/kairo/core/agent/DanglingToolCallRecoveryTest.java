@@ -291,6 +291,75 @@ class DanglingToolCallRecoveryTest {
                 "Error message should contain 'interrupted' but was: " + trc.content());
     }
 
+    // ===== NEW: 3 tool_use, only 1 has result → inject 2 error results =====
+
+    @Test
+    void partiallyAnswered_threeToolUsesOneResult_injectsTwoErrors() {
+        ReActLoop loop = createLoop();
+
+        Msg userMsg = Msg.of(MsgRole.USER, "do three things");
+        Msg assistantMsg =
+                MsgBuilder.create()
+                        .role(MsgRole.ASSISTANT)
+                        .toolUse("tc-x", "search", Map.of("q", "x"))
+                        .toolUse("tc-y", "read_file", Map.of("path", "y.txt"))
+                        .toolUse("tc-z", "write_file", Map.of("path", "z.txt"))
+                        .build();
+        // Only tc-x has a result; tc-y and tc-z are dangling
+        Msg partialTool =
+                MsgBuilder.create()
+                        .role(MsgRole.TOOL)
+                        .addToolResult("tc-x", "x results", false)
+                        .build();
+
+        loop.injectMessages(List.of(userMsg, assistantMsg, partialTool));
+        loop.recoverDanglingToolCalls();
+
+        List<Msg> history = loop.getHistory();
+        assertEquals(4, history.size(), "Should inject one TOOL message covering tc-y and tc-z");
+
+        Msg injected = history.get(3);
+        assertEquals(MsgRole.TOOL, injected.role());
+        assertEquals(2, injected.contents().size(), "Should inject exactly 2 error results");
+
+        List<String> recoveredIds =
+                injected.contents().stream()
+                        .filter(Content.ToolResultContent.class::isInstance)
+                        .map(Content.ToolResultContent.class::cast)
+                        .map(Content.ToolResultContent::toolUseId)
+                        .toList();
+        assertTrue(recoveredIds.contains("tc-y"));
+        assertTrue(recoveredIds.contains("tc-z"));
+        assertFalse(
+                recoveredIds.contains("tc-x"), "tc-x already answered, must not be re-injected");
+    }
+
+    // ===== NEW: last message is USER — no recovery should occur =====
+
+    @Test
+    void lastMessageIsUser_noRecoveryPerformed() {
+        ReActLoop loop = createLoop();
+
+        Msg userMsg1 = Msg.of(MsgRole.USER, "first turn");
+        Msg assistantMsg =
+                MsgBuilder.create()
+                        .role(MsgRole.ASSISTANT)
+                        .toolUse("tc-done", "search", Map.of("q", "ok"))
+                        .build();
+        Msg toolMsg =
+                MsgBuilder.create()
+                        .role(MsgRole.TOOL)
+                        .addToolResult("tc-done", "ok", false)
+                        .build();
+        Msg userMsg2 = Msg.of(MsgRole.USER, "second turn");
+
+        loop.injectMessages(List.of(userMsg1, assistantMsg, toolMsg, userMsg2));
+        loop.recoverDanglingToolCalls();
+
+        List<Msg> history = loop.getHistory();
+        assertEquals(4, history.size(), "No injection expected when last message is USER");
+    }
+
     @Test
     void testRecoveredToolUseIdMatchesDanglingCall() {
         ReActLoop loop = createLoop();
