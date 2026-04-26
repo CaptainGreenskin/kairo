@@ -187,7 +187,7 @@ class LoopDetectorTest {
 
     @Test
     void freqLayer_warnMessageContainsToolName() {
-        LoopDetector detector = new LoopDetector(100, 200, 3, 100, Duration.ofMinutes(10));
+        LoopDetector detector = new LoopDetector(100, 200, 3, 100, Duration.ofMinutes(10), 1000);
 
         for (int i = 0; i < 3; i++) {
             detector.check(toolCallsWithArgs("unique_tool", Map.of("i", i)));
@@ -201,7 +201,7 @@ class LoopDetectorTest {
     @Test
     void hashLayer_exactlyAtWarnThreshold_isWarn() {
         // Custom detector: warn=2, hard=5
-        LoopDetector detector = new LoopDetector(2, 5, 100, 200, Duration.ofMinutes(10));
+        LoopDetector detector = new LoopDetector(2, 5, 100, 200, Duration.ofMinutes(10), 1000);
         var calls = toolCalls("x");
 
         assertEquals(DetectionResult.Level.NONE, detector.check(calls).level());
@@ -212,7 +212,7 @@ class LoopDetectorTest {
     @Test
     void freqLayer_multipleToolsSameCheck_onlyHighFreqTriggersWarn() {
         // warn=3 for freq
-        LoopDetector detector = new LoopDetector(100, 200, 3, 10, Duration.ofMinutes(10));
+        LoopDetector detector = new LoopDetector(100, 200, 3, 10, Duration.ofMinutes(10), 1000);
 
         // Build up tool_a to warn threshold
         for (int i = 0; i < 3; i++) {

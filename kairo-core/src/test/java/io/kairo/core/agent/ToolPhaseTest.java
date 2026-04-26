@@ -84,7 +84,7 @@ class ToolPhaseTest {
         ReActLoopContext ctx = buildContext();
         IterationGuards guards = new IterationGuards(ctx, interrupted, currentIteration);
         HookDecisionApplier hookDecisions = new HookDecisionApplier(ctx);
-        LoopDetector loopDetector = new LoopDetector(100, 200, 5, 10, Duration.ofMinutes(10));
+        LoopDetector loopDetector = new LoopDetector(100, 200, 5, 10, Duration.ofMinutes(10), 1000);
 
         assertThatNoException()
                 .isThrownBy(
@@ -103,7 +103,7 @@ class ToolPhaseTest {
         ReActLoopContext ctx = buildContext();
         IterationGuards guards = new IterationGuards(ctx, interrupted, currentIteration);
         HookDecisionApplier hookDecisions = new HookDecisionApplier(ctx);
-        LoopDetector loopDetector = new LoopDetector(100, 200, 5, 10, Duration.ofMinutes(10));
+        LoopDetector loopDetector = new LoopDetector(100, 200, 5, 10, Duration.ofMinutes(10), 1000);
         ToolPhase phase =
                 new ToolPhase(
                         ctx,
