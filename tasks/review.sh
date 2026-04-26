@@ -24,10 +24,10 @@ for dir in "${DIRS[@]}"; do
     for f in "$dir"/*-task.md; do
         [[ -f "$f" ]] || continue
 
-        status=$(grep "^- 状态：" "$f" | head -1 | sed 's/- 状态：//')
-        source=$(grep "^- 任务来源：" "$f" | head -1 | sed 's/- 任务来源：//')
-        start=$(grep "^- 开始时间：" "$f" | head -1 | sed 's/- 开始时间：//')
-        elapsed=$(grep "^- 耗时：" "$f" | head -1 | sed 's/- 耗时：//')
+        status=$(awk '/^- 状态：/{print substr($0,8); exit}' "$f")
+        source=$(awk '/^- 任务来源：/{print substr($0,10); exit}' "$f")
+        start=$(awk '/^- 开始时间：/{print substr($0,10); exit}' "$f")
+        elapsed=$(awk '/^- 耗时：/{print substr($0,7); exit}' "$f")
         summary=$(awk '/^## 执行摘要/{found=1; next} found && /^##/{exit} found && NF{print; exit}' "$f")
 
         case "$status" in
@@ -56,7 +56,7 @@ echo "成功: $SUCCESS | 失败: $FAILED | 超时: $TIMEOUT"
 echo ""
 echo "## 任务详情"
 for d in "${DETAILS[@]}"; do
-    echo -e "$d"
+    printf '%b\n' "$d"
 done
 
 echo ""
