@@ -17,6 +17,7 @@ package io.kairo.multiagent.a2a;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.kairo.api.a2a.A2aNamespaces;
 import io.kairo.api.a2a.AgentCard;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentState;
@@ -82,6 +83,10 @@ class TeamAutoRegistrationTest {
         return stubAgent(id, "stub-" + id, response);
     }
 
+    private String scoped(String team, String agentId) {
+        return A2aNamespaces.scoped(team, agentId);
+    }
+
     @Nested
     @DisplayName("Auto-Registration Lifecycle")
     class AutoRegistrationLifecycle {
@@ -94,8 +99,8 @@ class TeamAutoRegistrationTest {
 
             teamManager.addAgent("team-alpha", agent);
 
-            assertThat(resolver.resolve("agent-1")).isPresent();
-            assertThat(resolver.resolve("agent-1"))
+            assertThat(resolver.resolveScoped("team-alpha", "agent-1")).isPresent();
+            assertThat(resolver.resolveScoped("team-alpha", "agent-1"))
                     .hasValueSatisfying(
                             card -> {
                                 assertThat(card.id()).isEqualTo("agent-1");
@@ -109,11 +114,11 @@ class TeamAutoRegistrationTest {
             teamManager.create("team-beta");
             Agent agent = stubAgent("agent-2", Mono.empty());
             teamManager.addAgent("team-beta", agent);
-            assertThat(resolver.resolve("agent-2")).isPresent();
+            assertThat(resolver.resolveScoped("team-beta", "agent-2")).isPresent();
 
             teamManager.removeAgent("team-beta", "agent-2");
 
-            assertThat(resolver.resolve("agent-2")).isEmpty();
+            assertThat(resolver.resolveScoped("team-beta", "agent-2")).isEmpty();
         }
 
         @Test
@@ -128,10 +133,10 @@ class TeamAutoRegistrationTest {
             teamManager.addAgent("team-gamma", a2);
             teamManager.addAgent("team-gamma", a3);
 
-            assertThat(resolver.listAll()).hasSize(3);
-            assertThat(resolver.resolve("a1")).isPresent();
-            assertThat(resolver.resolve("a2")).isPresent();
-            assertThat(resolver.resolve("a3")).isPresent();
+            assertThat(resolver.listAllScoped("team-gamma")).hasSize(3);
+            assertThat(resolver.resolveScoped("team-gamma", "a1")).isPresent();
+            assertThat(resolver.resolveScoped("team-gamma", "a2")).isPresent();
+            assertThat(resolver.resolveScoped("team-gamma", "a3")).isPresent();
         }
 
         @Test
@@ -145,8 +150,8 @@ class TeamAutoRegistrationTest {
 
             teamManager.removeAgent("team-delta", "d1");
 
-            assertThat(resolver.resolve("d1")).isEmpty();
-            assertThat(resolver.resolve("d2")).isPresent();
+            assertThat(resolver.resolveScoped("team-delta", "d1")).isEmpty();
+            assertThat(resolver.resolveScoped("team-delta", "d2")).isPresent();
         }
     }
 
@@ -170,15 +175,15 @@ class TeamAutoRegistrationTest {
                             false,
                             List.of(),
                             null);
-            resolver.register(taggedCard);
+            resolver.registerScoped("team-discover", taggedCard);
             Agent agent = stubAgent("tagged-agent", Mono.empty());
             // Add agent to team (this will overwrite card with auto-generated one)
             // So for tag-based discovery, register the card after addAgent
             teamManager.addAgent("team-discover", agent);
             // Re-register with tags since auto-registration creates tagless card
-            resolver.register(taggedCard);
+            resolver.registerScoped("team-discover", taggedCard);
 
-            List<AgentCard> results = resolver.discover(Set.of("java"));
+            List<AgentCard> results = resolver.discoverScoped("team-discover", Set.of("java"));
             assertThat(results).hasSize(1);
             assertThat(results.get(0).id()).isEqualTo("tagged-agent");
         }
@@ -192,7 +197,7 @@ class TeamAutoRegistrationTest {
             teamManager.addAgent("team-all", a1);
             teamManager.addAgent("team-all", a2);
 
-            List<AgentCard> results = resolver.discover(Set.of());
+            List<AgentCard> results = resolver.discoverScoped("team-all", Set.of());
             assertThat(results).hasSize(2);
             assertThat(results)
                     .extracting(AgentCard::id)
@@ -205,11 +210,11 @@ class TeamAutoRegistrationTest {
             teamManager.create("team-gone");
             Agent agent = stubAgent("gone-1", Mono.empty());
             teamManager.addAgent("team-gone", agent);
-            assertThat(resolver.discover(Set.of())).hasSize(1);
+            assertThat(resolver.discoverScoped("team-gone", Set.of())).hasSize(1);
 
             teamManager.removeAgent("team-gone", "gone-1");
 
-            assertThat(resolver.discover(Set.of())).isEmpty();
+            assertThat(resolver.discoverScoped("team-gone", Set.of())).isEmpty();
         }
     }
 
@@ -224,9 +229,11 @@ class TeamAutoRegistrationTest {
             Msg expected = Msg.of(MsgRole.ASSISTANT, "hello from agent");
             Agent agent = stubAgent("invoke-1", Mono.just(expected));
             teamManager.addAgent("team-invoke", agent);
-            a2aClient.registerAgent(agent);
+            a2aClient.registerScopedAgent("team-invoke", agent);
 
-            StepVerifier.create(a2aClient.send("invoke-1", Msg.of(MsgRole.USER, "hi")))
+            StepVerifier.create(
+                            a2aClient.send(
+                                    scoped("team-invoke", "invoke-1"), Msg.of(MsgRole.USER, "hi")))
                     .assertNext(msg -> assertThat(msg.text()).isEqualTo("hello from agent"))
                     .verifyComplete();
         }
@@ -238,9 +245,11 @@ class TeamAutoRegistrationTest {
             Msg expected = Msg.of(MsgRole.ASSISTANT, "streamed response");
             Agent agent = stubAgent("stream-1", Mono.just(expected));
             teamManager.addAgent("team-stream", agent);
-            a2aClient.registerAgent(agent);
+            a2aClient.registerScopedAgent("team-stream", agent);
 
-            StepVerifier.create(a2aClient.stream("stream-1", Msg.of(MsgRole.USER, "go")))
+            StepVerifier.create(
+                            a2aClient.stream(
+                                    scoped("team-stream", "stream-1"), Msg.of(MsgRole.USER, "go")))
                     .expectNext(expected)
                     .verifyComplete();
         }
@@ -251,19 +260,23 @@ class TeamAutoRegistrationTest {
             teamManager.create("team-fail");
             Agent agent = stubAgent("fail-1", Mono.just(Msg.of(MsgRole.ASSISTANT, "ok")));
             teamManager.addAgent("team-fail", agent);
-            a2aClient.registerAgent(agent);
+            a2aClient.registerScopedAgent("team-fail", agent);
 
             // Verify it works first
-            StepVerifier.create(a2aClient.send("fail-1", Msg.of(MsgRole.USER, "hi")))
+            StepVerifier.create(
+                            a2aClient.send(
+                                    scoped("team-fail", "fail-1"), Msg.of(MsgRole.USER, "hi")))
                     .assertNext(msg -> assertThat(msg.text()).isEqualTo("ok"))
                     .verifyComplete();
 
             // Remove agent — unregisters card from resolver
             teamManager.removeAgent("team-fail", "fail-1");
-            a2aClient.unregisterAgent("fail-1");
+            a2aClient.unregisterScopedAgent("team-fail", "fail-1");
 
             // Now send should fail
-            StepVerifier.create(a2aClient.send("fail-1", Msg.of(MsgRole.USER, "hi")))
+            StepVerifier.create(
+                            a2aClient.send(
+                                    scoped("team-fail", "fail-1"), Msg.of(MsgRole.USER, "hi")))
                     .expectErrorSatisfies(
                             e -> assertThat(e.getMessage()).contains("No agent card registered"))
                     .verify();

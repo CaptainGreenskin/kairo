@@ -15,6 +15,8 @@
  */
 package io.kairo.api.exception;
 
+import io.kairo.api.Stable;
+
 /**
  * Thrown when a tool with write or system-change side effects is invoked while the agent is in plan
  * mode.
@@ -22,7 +24,10 @@ package io.kairo.api.exception;
  * <p>Plan mode restricts the agent to read-only tools. This exception signals that the requested
  * tool is blocked until plan mode is exited.
  */
+@Stable(value = "Plan mode violation exception; shape frozen since v0.7", since = "1.0.0")
 public class PlanModeViolationException extends ToolException {
+
+    private static final String DEFAULT_ERROR_CODE = "PLAN_MODE_VIOLATION";
 
     private final String toolName;
 
@@ -42,7 +47,7 @@ public class PlanModeViolationException extends ToolException {
      * @param toolName the name of the blocked tool
      */
     public PlanModeViolationException(String message, String toolName) {
-        super(message);
+        super(message, null, DEFAULT_ERROR_CODE);
         this.toolName = toolName;
     }
 
@@ -53,7 +58,7 @@ public class PlanModeViolationException extends ToolException {
      * @param cause the underlying cause
      */
     public PlanModeViolationException(String message, Throwable cause) {
-        super(message, cause);
+        super(message, cause, DEFAULT_ERROR_CODE);
         this.toolName = null;
     }
 

@@ -15,7 +15,10 @@
  */
 package io.kairo.api.tracing;
 
+import io.kairo.api.Stable;
+
 /** No-operation Span implementation. All methods are silent no-ops. */
+@Stable(value = "Noop span default implementation; shape frozen since v0.3", since = "1.0.0")
 public final class NoopSpan implements Span {
     public static final NoopSpan INSTANCE = new NoopSpan();
 

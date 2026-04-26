@@ -17,6 +17,7 @@ package io.kairo.core.agent;
 
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.hook.HookChain;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tracing.Tracer;
@@ -38,4 +39,5 @@ record ReActLoopContext(
         ErrorRecoveryStrategy errorRecovery,
         TokenBudgetManager tokenBudgetManager,
         GracefulShutdownManager shutdownManager,
-        ContextManager contextManager) {}
+        ContextManager contextManager,
+        GuardrailChain guardrailChain) {}

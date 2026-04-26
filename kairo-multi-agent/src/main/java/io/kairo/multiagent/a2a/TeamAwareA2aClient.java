@@ -17,11 +17,14 @@ package io.kairo.multiagent.a2a;
 
 import io.kairo.api.a2a.A2aClient;
 import io.kairo.api.a2a.A2aException;
+import io.kairo.api.a2a.A2aNamespaces;
 import io.kairo.api.a2a.AgentCard;
 import io.kairo.api.a2a.AgentCardResolver;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.message.Msg;
 import io.kairo.api.team.TeamManager;
+import io.kairo.core.a2a.InProcessA2aClient;
+import io.kairo.core.a2a.InProcessAgentCardResolver;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -65,10 +68,8 @@ public final class TeamAwareA2aClient implements A2aClient {
      * @param agent the agent instance
      */
     public void registerTeamAgent(AgentCard card, Agent agent) {
-        resolver.register(card);
-        if (delegate.supportsAgentRegistration()) {
-            delegate.registerAgent(agent);
-        }
+        registerCardForTeam(card);
+        registerAgentForTeam(agent);
         teamManager.addAgent(teamName, agent);
     }
 
@@ -81,21 +82,23 @@ public final class TeamAwareA2aClient implements A2aClient {
     public List<AgentCard> discoverTeamAgents(Set<String> requiredTags) {
         List<String> teamAgentIds =
                 teamManager.get(teamName).agents().stream().map(Agent::id).toList();
-        return resolver.discover(requiredTags).stream()
-                .filter(card -> teamAgentIds.contains(card.id()))
-                .toList();
+        List<AgentCard> discovered =
+                resolver instanceof InProcessAgentCardResolver inProcessResolver
+                        ? inProcessResolver.discoverScoped(teamName, requiredTags)
+                        : resolver.discover(requiredTags);
+        return discovered.stream().filter(card -> teamAgentIds.contains(card.id())).toList();
     }
 
     @Override
     public Mono<Msg> send(String targetAgentId, Msg message) {
         validateTeamAgent(targetAgentId);
-        return delegate.send(targetAgentId, message);
+        return delegate.send(scopedTargetId(targetAgentId), message);
     }
 
     @Override
     public Flux<Msg> stream(String targetAgentId, Msg message) {
         validateTeamAgent(targetAgentId);
-        return delegate.stream(targetAgentId, message);
+        return delegate.stream(scopedTargetId(targetAgentId), message);
     }
 
     private void validateTeamAgent(String targetAgentId) {
@@ -109,5 +112,30 @@ public final class TeamAwareA2aClient implements A2aClient {
                     targetAgentId,
                     "Agent '" + targetAgentId + "' is not a member of team '" + teamName + "'");
         }
+    }
+
+    private void registerCardForTeam(AgentCard card) {
+        if (resolver instanceof InProcessAgentCardResolver inProcessResolver) {
+            inProcessResolver.registerScoped(teamName, card);
+            return;
+        }
+        resolver.register(card);
+    }
+
+    private void registerAgentForTeam(Agent agent) {
+        if (delegate instanceof InProcessA2aClient inProcessDelegate) {
+            inProcessDelegate.registerScopedAgent(teamName, agent);
+            return;
+        }
+        if (delegate.supportsAgentRegistration()) {
+            delegate.registerAgent(agent);
+        }
+    }
+
+    private String scopedTargetId(String targetAgentId) {
+        if (delegate instanceof InProcessA2aClient) {
+            return A2aNamespaces.scoped(teamName, targetAgentId);
+        }
+        return targetAgentId;
     }
 }

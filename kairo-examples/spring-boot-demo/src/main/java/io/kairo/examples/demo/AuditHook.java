@@ -24,14 +24,14 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Hook that audits all tool invocations by capturing tool name, input parameters,
- * result content, and timestamps.
+ * Hook that audits all tool invocations by capturing tool name, input parameters, result content,
+ * and timestamps.
  *
- * <p>Audit entries are stored in a thread-safe list and can be retrieved via
- * {@link #getAuditLog()} for inspection or serialization.
+ * <p>Audit entries are stored in a thread-safe list and can be retrieved via {@link #getAuditLog()}
+ * for inspection or serialization.
  *
- * <p>This hook uses {@link PreActing} to capture tool inputs and {@link PostActing}
- * to capture tool results, combining them into a single audit entry per tool invocation.
+ * <p>This hook uses {@link PreActing} to capture tool inputs and {@link PostActing} to capture tool
+ * results, combining them into a single audit entry per tool invocation.
  */
 public class AuditHook {
 
@@ -40,20 +40,21 @@ public class AuditHook {
     /**
      * Capture tool invocation details after tool execution completes.
      *
-     * <p>Records the tool name, input parameters (from the tool result metadata),
-     * the result content, whether it was an error, and the timestamp.
+     * <p>Records the tool name, input parameters (from the tool result metadata), the result
+     * content, whether it was an error, and the timestamp.
      *
      * @param event the post-acting event containing the tool name and result
      * @return the unmodified event
      */
     @PostActing
     public PostActingEvent onPostActing(PostActingEvent event) {
-        Map<String, Object> entry = Map.of(
-                "toolName", event.toolName(),
-                "result", event.result().content(),
-                "isError", event.result().isError(),
-                "metadata", event.result().metadata(),
-                "timestamp", Instant.now().toString());
+        Map<String, Object> entry =
+                Map.of(
+                        "toolName", event.toolName(),
+                        "result", event.result().content(),
+                        "isError", event.result().isError(),
+                        "metadata", event.result().metadata(),
+                        "timestamp", Instant.now().toString());
         auditLog.add(entry);
         return event;
     }
@@ -67,9 +68,7 @@ public class AuditHook {
         return Collections.unmodifiableList(auditLog);
     }
 
-    /**
-     * Clear all audit log entries.
-     */
+    /** Clear all audit log entries. */
     public void reset() {
         auditLog.clear();
     }

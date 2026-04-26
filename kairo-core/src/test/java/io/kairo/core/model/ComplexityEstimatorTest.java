@@ -23,6 +23,7 @@ import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.IntRange;
 import io.kairo.api.model.ModelCapability;
 import io.kairo.api.model.ToolVerbosity;
+import io.kairo.core.model.anthropic.ComplexityEstimator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;

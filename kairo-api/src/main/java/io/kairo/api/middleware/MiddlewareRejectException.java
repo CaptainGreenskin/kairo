@@ -15,6 +15,7 @@
  */
 package io.kairo.api.middleware;
 
+import io.kairo.api.Experimental;
 import io.kairo.api.exception.KairoException;
 
 /**
@@ -30,6 +31,8 @@ import io.kairo.api.exception.KairoException;
  * <p>The agent runtime catches this exception and converts it to an error response, preventing the
  * ReAct loop from executing.
  */
+@Experimental(
+        "Middleware reject exception; shape pending v1.0 census review, targeting stabilization in v1.1")
 public class MiddlewareRejectException extends KairoException {
 
     private final String middlewareName;

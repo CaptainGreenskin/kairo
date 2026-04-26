@@ -15,6 +15,7 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
 import java.util.Map;
 
 /**
@@ -24,5 +25,6 @@ import java.util.Map;
  * @param args the arguments to pass to the tool
  * @param sideEffect the side-effect classification of the tool
  */
+@Stable(value = "Tool approval request record; shape frozen since v0.4", since = "1.0.0")
 public record ToolCallRequest(
         String toolName, Map<String, Object> args, ToolSideEffect sideEffect) {}

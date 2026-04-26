@@ -15,6 +15,7 @@
  */
 package io.kairo.api.a2a;
 
+import io.kairo.api.Experimental;
 import java.util.List;
 
 /**
@@ -31,6 +32,7 @@ import java.util.List;
  * @param tags categorization tags for discovery; may be empty
  * @see AgentCard
  */
+@Experimental("A2A agent skill; introduced in v0.10, targeting stabilization in v1.1")
 public record AgentSkill(String id, String name, String description, List<String> tags) {
 
     /** Compact constructor with null-safe defaults. */

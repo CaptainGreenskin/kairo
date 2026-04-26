@@ -21,12 +21,18 @@ import io.kairo.api.tool.JsonSchema;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolDefinition;
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.core.agent.AgentBuilder;
+import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import reactor.test.StepVerifier;
 
 /**
@@ -81,9 +87,14 @@ class ToolContextInjectionTest {
                 };
 
         registerToolHandler("ctx-tool", contextTool);
-        executor.setToolContext(new ToolContext("agent-123", "session-456", Map.of()));
-
-        StepVerifier.create(executor.execute("ctx-tool", Map.of()))
+        ToolContext toolContext = new ToolContext("agent-123", "session-456", Map.of());
+        StepVerifier.create(
+                        executor.execute("ctx-tool", Map.of())
+                                .contextWrite(
+                                        ctx ->
+                                                ctx.put(
+                                                        DefaultToolExecutor.CONTEXT_KEY,
+                                                        toolContext)))
                 .assertNext(result -> assertFalse(result.isError()))
                 .verifyComplete();
 
@@ -112,9 +123,14 @@ class ToolContextInjectionTest {
                 };
 
         registerToolHandler("ctx-tool", contextTool);
-        executor.setToolContext(new ToolContext("agent-1", "session-XYZ", Map.of()));
-
-        StepVerifier.create(executor.execute("ctx-tool", Map.of()))
+        ToolContext toolContext = new ToolContext("agent-1", "session-XYZ", Map.of());
+        StepVerifier.create(
+                        executor.execute("ctx-tool", Map.of())
+                                .contextWrite(
+                                        ctx ->
+                                                ctx.put(
+                                                        DefaultToolExecutor.CONTEXT_KEY,
+                                                        toolContext)))
                 .assertNext(result -> assertFalse(result.isError()))
                 .verifyComplete();
 
@@ -143,9 +159,14 @@ class ToolContextInjectionTest {
 
         registerToolHandler("ctx-tool", contextTool);
         Map<String, Object> deps = Map.of("dbConn", "jdbc:h2:mem:test", "apiKey", "secret-key");
-        executor.setToolContext(new ToolContext("agent-1", "session-1", deps));
-
-        StepVerifier.create(executor.execute("ctx-tool", Map.of()))
+        ToolContext toolContext = new ToolContext("agent-1", "session-1", deps);
+        StepVerifier.create(
+                        executor.execute("ctx-tool", Map.of())
+                                .contextWrite(
+                                        ctx ->
+                                                ctx.put(
+                                                        DefaultToolExecutor.CONTEXT_KEY,
+                                                        toolContext)))
                 .assertNext(result -> assertFalse(result.isError()))
                 .verifyComplete();
 
@@ -164,9 +185,14 @@ class ToolContextInjectionTest {
                                 "legacy", "legacy-result: " + input.get("x"), false, Map.of());
 
         registerToolHandler("legacy", legacyTool);
-        executor.setToolContext(new ToolContext("agent-1", "session-1", Map.of("key", "value")));
-
-        StepVerifier.create(executor.execute("legacy", Map.of("x", "42")))
+        ToolContext toolContext = new ToolContext("agent-1", "session-1", Map.of("key", "value"));
+        StepVerifier.create(
+                        executor.execute("legacy", Map.of("x", "42"))
+                                .contextWrite(
+                                        ctx ->
+                                                ctx.put(
+                                                        DefaultToolExecutor.CONTEXT_KEY,
+                                                        toolContext)))
                 .assertNext(
                         result -> {
                             assertFalse(result.isError());
@@ -252,7 +278,7 @@ class ToolContextInjectionTest {
                         tool1.getClass());
         registry1.register(def1);
         registry1.registerInstance("tool", tool1);
-        executor1.setToolContext(new ToolContext("agent-A", "session-A", Map.of("env", "prod")));
+        ToolContext context1 = new ToolContext("agent-A", "session-A", Map.of("env", "prod"));
 
         // Executor 2 with deps B
         DefaultToolRegistry registry2 = new DefaultToolRegistry();
@@ -280,13 +306,21 @@ class ToolContextInjectionTest {
                         tool2.getClass());
         registry2.register(def2);
         registry2.registerInstance("tool", tool2);
-        executor2.setToolContext(new ToolContext("agent-B", "session-B", Map.of("env", "staging")));
+        ToolContext context2 = new ToolContext("agent-B", "session-B", Map.of("env", "staging"));
 
-        StepVerifier.create(executor1.execute("tool", Map.of()))
+        StepVerifier.create(
+                        executor1
+                                .execute("tool", Map.of())
+                                .contextWrite(
+                                        ctx -> ctx.put(DefaultToolExecutor.CONTEXT_KEY, context1)))
                 .assertNext(result -> assertFalse(result.isError()))
                 .verifyComplete();
 
-        StepVerifier.create(executor2.execute("tool", Map.of()))
+        StepVerifier.create(
+                        executor2
+                                .execute("tool", Map.of())
+                                .contextWrite(
+                                        ctx -> ctx.put(DefaultToolExecutor.CONTEXT_KEY, context2)))
                 .assertNext(result -> assertFalse(result.isError()))
                 .verifyComplete();
 
@@ -317,7 +351,7 @@ class ToolContextInjectionTest {
                 };
 
         registerToolHandler("ctx-tool", contextTool);
-        // Do NOT call executor.setToolContext — leave it null
+        // No ToolContext in Reactor Context — executor should provide an empty default
 
         StepVerifier.create(executor.execute("ctx-tool", Map.of()))
                 .assertNext(result -> assertFalse(result.isError()))
@@ -327,5 +361,172 @@ class ToolContextInjectionTest {
         assertNull(capturedCtx.get().agentId());
         assertNull(capturedCtx.get().sessionId());
         assertTrue(capturedCtx.get().dependencies().isEmpty());
+    }
+
+    // --- Test: Reactor Context propagation provides per-subscription isolation ---
+
+    /**
+     * When a ToolContext is written into the Reactor Context (per-subscription), the executor sees
+     * that context and keeps multiple agents sharing a single executor isolated from each other.
+     */
+    @Test
+    void reactorContextOverridesMutableField() {
+        AtomicReference<ToolContext> capturedCtx = new AtomicReference<>();
+        ToolHandler contextTool =
+                new ToolHandler() {
+                    @Override
+                    public ToolResult execute(Map<String, Object> input) {
+                        throw new AssertionError("Should not be called");
+                    }
+
+                    @Override
+                    public ToolResult execute(Map<String, Object> input, ToolContext context) {
+                        capturedCtx.set(context);
+                        return new ToolResult("ctx-tool", "ok", false, Map.of());
+                    }
+                };
+        registerToolHandler("ctx-tool", contextTool);
+
+        // The Reactor Context wins: per-subscription isolation preserved.
+        ToolContext isolated = new ToolContext("right-agent", "right-session", Map.of("k", "v"));
+        StepVerifier.create(
+                        executor.execute("ctx-tool", Map.of())
+                                .contextWrite(
+                                        ctx -> ctx.put(DefaultToolExecutor.CONTEXT_KEY, isolated)))
+                .assertNext(result -> assertFalse(result.isError()))
+                .verifyComplete();
+
+        assertEquals("right-agent", capturedCtx.get().agentId());
+        assertEquals("right-session", capturedCtx.get().sessionId());
+        assertEquals("v", capturedCtx.get().dependencies().get("k"));
+    }
+
+    // --- Test: Concurrent sessions on a SINGLE shared executor see no cross-talk ---
+
+    /**
+     * Two parallel subscriptions write different ToolContext values into the same executor. Each
+     * tool invocation must see only its own session's ToolContext — never the other's.
+     */
+    @Test
+    void concurrentSessionsOnSharedExecutorHaveNoContextCrossTalk() throws InterruptedException {
+        // Collect every captured ToolContext along with the expected session id
+        record Capture(String expectedSession, ToolContext actual) {}
+        CopyOnWriteArrayList<Capture> captures = new CopyOnWriteArrayList<>();
+        CountDownLatch latch = new CountDownLatch(1);
+
+        ToolHandler slowTool =
+                new ToolHandler() {
+                    @Override
+                    public ToolResult execute(Map<String, Object> input) {
+                        throw new AssertionError("Should not be called");
+                    }
+
+                    @Override
+                    public ToolResult execute(Map<String, Object> input, ToolContext context) {
+                        // Simulate a non-trivial execution that amplifies any race
+                        try {
+                            latch.await();
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        String expected = (String) input.get("expected");
+                        captures.add(new Capture(expected, context));
+                        return new ToolResult("slow", "ok:" + context.sessionId(), false, Map.of());
+                    }
+                };
+        registerToolHandler("slow", slowTool);
+
+        ToolContext ctx1 = new ToolContext("agent-1", "session-AAA", Map.of("tenant", "A"));
+        ToolContext ctx2 = new ToolContext("agent-2", "session-BBB", Map.of("tenant", "B"));
+
+        // Launch both on the same executor in parallel
+        Mono<ToolResult> call1 =
+                executor.execute("slow", Map.of("expected", "session-AAA"))
+                        .contextWrite(ctx -> ctx.put(DefaultToolExecutor.CONTEXT_KEY, ctx1));
+        Mono<ToolResult> call2 =
+                executor.execute("slow", Map.of("expected", "session-BBB"))
+                        .contextWrite(ctx -> ctx.put(DefaultToolExecutor.CONTEXT_KEY, ctx2));
+
+        Mono<Void> both =
+                Mono.when(
+                        call1.subscribeOn(Schedulers.boundedElastic()),
+                        call2.subscribeOn(Schedulers.boundedElastic()));
+
+        // Release both tool executions at the same time
+        latch.countDown();
+
+        StepVerifier.create(both).expectComplete().verify(Duration.ofSeconds(10));
+
+        assertEquals(2, captures.size());
+        for (Capture c : captures) {
+            assertEquals(
+                    c.expectedSession(),
+                    c.actual().sessionId(),
+                    "Session cross-talk detected! Expected "
+                            + c.expectedSession()
+                            + " but got "
+                            + c.actual().sessionId());
+        }
+    }
+
+    // --- Test: Circuit breaker is session-scoped (no cross-tenant tripping) ---
+
+    /** Session-A failing a tool 3 times should NOT circuit-break the same tool for Session-B. */
+    @Test
+    void circuitBreakerIsSessionScoped() {
+        DefaultToolExecutor cbExecutor = new DefaultToolExecutor(registry, guard, null, null, 3);
+
+        registerToolHandler(
+                "flaky",
+                new ToolHandler() {
+                    @Override
+                    public ToolResult execute(Map<String, Object> input) {
+                        boolean fail = Boolean.TRUE.equals(input.get("fail"));
+                        return new ToolResult("flaky", fail ? "Error: boom" : "ok", fail, Map.of());
+                    }
+                });
+
+        ToolContext sessionA = new ToolContext("a", "sess-A", Map.of());
+        ToolContext sessionB = new ToolContext("b", "sess-B", Map.of());
+
+        // Session-A: 3 consecutive failures → should trip its own breaker
+        for (int i = 0; i < 3; i++) {
+            StepVerifier.create(
+                            cbExecutor
+                                    .execute("flaky", Map.of("fail", true))
+                                    .contextWrite(
+                                            ctx ->
+                                                    ctx.put(
+                                                            DefaultToolExecutor.CONTEXT_KEY,
+                                                            sessionA)))
+                    .assertNext(r -> assertTrue(r.isError()))
+                    .verifyComplete();
+        }
+
+        // Session-A: 4th call → circuit-broken
+        StepVerifier.create(
+                        cbExecutor
+                                .execute("flaky", Map.of("fail", false))
+                                .contextWrite(
+                                        ctx -> ctx.put(DefaultToolExecutor.CONTEXT_KEY, sessionA)))
+                .assertNext(
+                        r -> {
+                            assertTrue(r.isError());
+                            assertTrue(r.content().contains("circuit-broken"));
+                        })
+                .verifyComplete();
+
+        // Session-B: same tool should still work fine (different session)
+        StepVerifier.create(
+                        cbExecutor
+                                .execute("flaky", Map.of("fail", false))
+                                .contextWrite(
+                                        ctx -> ctx.put(DefaultToolExecutor.CONTEXT_KEY, sessionB)))
+                .assertNext(
+                        r -> {
+                            assertFalse(r.isError());
+                            assertEquals("ok", r.content());
+                        })
+                .verifyComplete();
     }
 }

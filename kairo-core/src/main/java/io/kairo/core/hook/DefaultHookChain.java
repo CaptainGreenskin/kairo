@@ -21,6 +21,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -54,6 +55,11 @@ public class DefaultHookChain implements HookChain {
     public void unregister(Object hookHandler) {
         handlers.remove(hookHandler);
         log.debug("Unregistered hook handler: {}", hookHandler.getClass().getSimpleName());
+    }
+
+    /** Returns an unmodifiable snapshot of the currently registered hook handlers. */
+    public List<Object> getRegisteredHandlers() {
+        return Collections.unmodifiableList(new ArrayList<>(handlers));
     }
 
     @Override
@@ -135,6 +141,14 @@ public class DefaultHookChain implements HookChain {
     @Override
     public <T> Mono<T> fireOnToolResult(T event) {
         return fireEvent(event, OnToolResult.class);
+    }
+
+    /**
+     * Fire all {@link OnError}-annotated methods with the given error event. Best-effort: errors
+     * thrown by handlers are logged and swallowed so hook failures never mask the original error.
+     */
+    public Mono<Void> fireOnError(AgentErrorEvent event) {
+        return fireEvent(event, OnError.class).then();
     }
 
     /**
@@ -331,25 +345,52 @@ public class DefaultHookChain implements HookChain {
     }
 
     /**
-     * Find all methods annotated with the given annotation across all registered handlers, sorted
-     * by their order value.
+     * Find all methods annotated with the given legacy annotation OR with the unified {@link
+     * io.kairo.api.hook.HookHandler} tagged with the matching {@link HookPhase}, across all
+     * registered handlers, sorted by their order value.
      */
     private List<AnnotatedMethod> findAnnotatedMethods(Class<? extends Annotation> annotationType) {
+        HookPhase targetPhase = phaseFor(annotationType);
         List<AnnotatedMethod> result = new ArrayList<>();
 
         for (Object handler : handlers) {
             for (Method method : handler.getClass().getMethods()) {
-                Annotation annotation = method.getAnnotation(annotationType);
-                if (annotation != null && method.getParameterCount() == 1) {
+                if (method.getParameterCount() != 1) {
+                    continue;
+                }
+
+                Annotation legacy = method.getAnnotation(annotationType);
+                if (legacy != null) {
                     method.setAccessible(true);
-                    int order = getOrder(annotation);
-                    result.add(new AnnotatedMethod(handler, method, order));
+                    result.add(new AnnotatedMethod(handler, method, getOrder(legacy)));
+                    continue;
+                }
+
+                if (targetPhase != null) {
+                    HookHandler unified = method.getAnnotation(HookHandler.class);
+                    if (unified != null && unified.value() == targetPhase) {
+                        method.setAccessible(true);
+                        result.add(new AnnotatedMethod(handler, method, unified.order()));
+                    }
                 }
             }
         }
 
         result.sort(Comparator.comparingInt(AnnotatedMethod::order));
         return result;
+    }
+
+    private static HookPhase phaseFor(Class<? extends Annotation> annotationType) {
+        if (annotationType == PreReasoning.class) return HookPhase.PRE_REASONING;
+        if (annotationType == PostReasoning.class) return HookPhase.POST_REASONING;
+        if (annotationType == PreActing.class) return HookPhase.PRE_ACTING;
+        if (annotationType == PostActing.class) return HookPhase.POST_ACTING;
+        if (annotationType == PreCompact.class) return HookPhase.PRE_COMPACT;
+        if (annotationType == PostCompact.class) return HookPhase.POST_COMPACT;
+        if (annotationType == OnSessionStart.class) return HookPhase.SESSION_START;
+        if (annotationType == OnSessionEnd.class) return HookPhase.SESSION_END;
+        if (annotationType == OnToolResult.class) return HookPhase.TOOL_RESULT;
+        return null;
     }
 
     /** Extract the order value from a hook annotation. */

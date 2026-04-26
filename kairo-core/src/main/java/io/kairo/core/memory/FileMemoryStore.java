@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import io.kairo.api.exception.MemoryStoreException;
 import io.kairo.api.memory.MemoryEntry;
 import io.kairo.api.memory.MemoryScope;
 import io.kairo.api.memory.MemoryStore;
@@ -193,7 +194,7 @@ public class FileMemoryStore implements MemoryStore {
                             }
                         }
                     } catch (IOException e) {
-                        throw new RuntimeException("Failed to delete memory entry: " + id, e);
+                        throw new MemoryStoreException("Failed to delete memory entry: " + id, e);
                     } finally {
                         lock.writeLock().unlock();
                     }
@@ -269,7 +270,7 @@ public class FileMemoryStore implements MemoryStore {
 
                         log.debug("Saved raw entry {} to {}", key, targetFile);
                     } catch (IOException e) {
-                        throw new RuntimeException("Failed to save raw entry: " + key, e);
+                        throw new MemoryStoreException("Failed to save raw entry: " + key, e);
                     } finally {
                         lock.writeLock().unlock();
                     }

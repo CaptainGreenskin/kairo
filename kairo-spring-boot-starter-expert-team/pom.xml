@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.captaingreenskin</groupId>
+        <artifactId>kairo-parent</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>kairo-spring-boot-starter-expert-team</artifactId>
+    <name>Kairo Spring Boot Starter — Expert Team</name>
+    <description>Expert-team (plan → generate → evaluate) auto-configuration for Kairo</description>
+
+    <dependencies>
+        <!-- Core starter provides base Kairo infrastructure (event bus, config, etc.). -->
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-spring-boot-starter-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Expert-team coordinator + evaluation strategies. -->
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-expert-team</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Spring Boot configuration-processor generates metadata for kairo.expert-team.* -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

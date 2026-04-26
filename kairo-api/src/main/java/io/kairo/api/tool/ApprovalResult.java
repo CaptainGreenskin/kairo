@@ -15,12 +15,15 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
+
 /**
  * Result of a user approval request.
  *
  * @param approved whether the request was approved
  * @param reason the reason for denial, or null if approved
  */
+@Stable(value = "User approval result record; shape frozen since v0.4", since = "1.0.0")
 public record ApprovalResult(boolean approved, String reason) {
 
     /** Create an approved result. */

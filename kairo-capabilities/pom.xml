@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.captaingreenskin</groupId>
+        <artifactId>kairo-parent</artifactId>
+        <version>${revision}</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>kairo-capabilities</artifactId>
+    <packaging>pom</packaging>
+
+    <name>Kairo :: Capabilities (reactor aggregator)</name>
+    <description>
+        Reactor-only aggregator for the optional vertical capability modules layered on
+        kairo-api + kairo-core. Use `mvn -pl kairo-capabilities -am test` to build the
+        capability cohort in one shot. Each module still inherits `kairo-parent` directly.
+    </description>
+
+    <modules>
+        <module>../kairo-tools</module>
+        <module>../kairo-mcp</module>
+        <module>../kairo-multi-agent</module>
+        <module>../kairo-observability</module>
+        <module>../kairo-skill</module>
+        <module>../kairo-evolution</module>
+        <module>../kairo-expert-team</module>
+        <module>../kairo-security-pii</module>
+    </modules>
+</project>

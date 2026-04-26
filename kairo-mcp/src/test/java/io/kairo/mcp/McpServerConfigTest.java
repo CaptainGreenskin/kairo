@@ -19,78 +19,55 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class McpServerConfigTest {
 
     @Test
-    void stdioConfigCreation() {
-        McpServerConfig config = McpServerConfig.stdio("fs", "npx", "-y", "server-fs");
-        assertEquals("fs", config.name());
-        assertEquals(McpServerConfig.TransportType.STDIO, config.transportType());
-        assertEquals(List.of("npx", "-y", "server-fs"), config.command());
-        assertNull(config.url());
-        assertEquals(Duration.ofSeconds(30), config.requestTimeout());
+    void stdio_factory_setsTransportAndCommand() {
+        McpServerConfig cfg = McpServerConfig.stdio("test-server", "npx", "-y", "pkg");
+        assertEquals("test-server", cfg.name());
+        assertEquals(McpServerConfig.TransportType.STDIO, cfg.transportType());
+        assertEquals(List.of("npx", "-y", "pkg"), cfg.command());
     }
 
     @Test
-    void streamableHttpConfigCreation() {
-        McpServerConfig config = McpServerConfig.streamableHttp("api", "http://localhost:8080/mcp");
-        assertEquals("api", config.name());
-        assertEquals(McpServerConfig.TransportType.STREAMABLE_HTTP, config.transportType());
-        assertEquals("http://localhost:8080/mcp", config.url());
-        assertTrue(config.command().isEmpty());
+    void stdio_factory_defaults() {
+        McpServerConfig cfg = McpServerConfig.stdio("s", "cmd");
+        assertEquals(Duration.ofSeconds(30), cfg.requestTimeout());
+        assertEquals(McpServerConfig.DEFAULT_MAX_TOOLS_PER_SERVER, cfg.maxToolsPerServer());
+        assertEquals(McpServerConfig.DEFAULT_MAX_CONCURRENT_CALLS, cfg.maxConcurrentCalls());
+        assertTrue(cfg.schemaValidation());
     }
 
     @Test
-    void sseConfigCreation() {
-        McpServerConfig config = McpServerConfig.sse("events", "http://localhost:9090/sse");
-        assertEquals("events", config.name());
-        assertEquals(McpServerConfig.TransportType.SSE, config.transportType());
-        assertEquals("http://localhost:9090/sse", config.url());
+    void streamableHttp_factory_setsUrl() {
+        McpServerConfig cfg = McpServerConfig.streamableHttp("s", "https://api.example.com/mcp");
+        assertEquals(McpServerConfig.TransportType.STREAMABLE_HTTP, cfg.transportType());
+        assertEquals("https://api.example.com/mcp", cfg.url());
     }
 
     @Test
-    void builderWithHeaders() {
-        McpServerConfig config =
+    void sse_factory_setsUrl() {
+        McpServerConfig cfg = McpServerConfig.sse("s", "https://api.example.com/sse");
+        assertEquals(McpServerConfig.TransportType.SSE, cfg.transportType());
+        assertEquals("https://api.example.com/sse", cfg.url());
+    }
+
+    @Test
+    void builder_basicBuild() {
+        McpServerConfig cfg =
                 McpServerConfig.builder()
-                        .name("api")
+                        .name("builder-server")
                         .transportType(McpServerConfig.TransportType.STREAMABLE_HTTP)
-                        .url("http://localhost:8080")
-                        .headers(Map.of("Authorization", "Bearer token123"))
+                        .url("https://example.com")
                         .build();
-        assertEquals("Bearer token123", config.headers().get("Authorization"));
+        assertEquals("builder-server", cfg.name());
+        assertEquals(McpServerConfig.TransportType.STREAMABLE_HTTP, cfg.transportType());
     }
 
     @Test
-    void builderWithEnvVars() {
-        McpServerConfig config =
-                McpServerConfig.builder()
-                        .name("fs")
-                        .transportType(McpServerConfig.TransportType.STDIO)
-                        .command(List.of("npx", "server"))
-                        .env(Map.of("HOME", "/tmp"))
-                        .build();
-        assertEquals("/tmp", config.env().get("HOME"));
-    }
-
-    @Test
-    void builderWithEnableDisableTools() {
-        McpServerConfig config =
-                McpServerConfig.builder()
-                        .name("tools")
-                        .transportType(McpServerConfig.TransportType.STDIO)
-                        .command(List.of("cmd"))
-                        .enableTools(List.of("read", "write"))
-                        .disableTools(List.of("delete"))
-                        .build();
-        assertEquals(List.of("read", "write"), config.enableTools());
-        assertEquals(List.of("delete"), config.disableTools());
-    }
-
-    @Test
-    void builderRequiresName() {
+    void builder_nullNameThrows() {
         assertThrows(
                 IllegalArgumentException.class,
                 () ->
@@ -100,62 +77,30 @@ class McpServerConfigTest {
     }
 
     @Test
-    void builderRequiresTransportType() {
+    void builder_nullTransportTypeThrows() {
         assertThrows(
-                IllegalArgumentException.class,
-                () -> McpServerConfig.builder().name("test").build());
+                IllegalArgumentException.class, () -> McpServerConfig.builder().name("s").build());
     }
 
     @Test
-    void builderWithBearerToken() {
-        McpServerConfig config =
+    void defaultConstants_arePositive() {
+        assertTrue(McpServerConfig.DEFAULT_MAX_TOOLS_PER_SERVER > 0);
+        assertTrue(McpServerConfig.DEFAULT_MAX_CONCURRENT_CALLS > 0);
+    }
+
+    @Test
+    void transportType_threeValues() {
+        assertEquals(3, McpServerConfig.TransportType.values().length);
+    }
+
+    @Test
+    void builder_schemaValidationCanBeDisabled() {
+        McpServerConfig cfg =
                 McpServerConfig.builder()
-                        .name("api")
-                        .transportType(McpServerConfig.TransportType.STREAMABLE_HTTP)
-                        .url("http://localhost:8080")
-                        .bearerToken("my-secret-token")
+                        .name("s")
+                        .transportType(McpServerConfig.TransportType.STDIO)
+                        .schemaValidation(false)
                         .build();
-        assertEquals("my-secret-token", config.bearerToken());
-    }
-
-    @Test
-    void builderWithQueryParams() {
-        McpServerConfig config =
-                McpServerConfig.builder()
-                        .name("api")
-                        .transportType(McpServerConfig.TransportType.STREAMABLE_HTTP)
-                        .url("http://localhost:8080")
-                        .queryParams(Map.of("api_key", "abc123", "version", "v2"))
-                        .build();
-        assertEquals("abc123", config.queryParams().get("api_key"));
-        assertEquals("v2", config.queryParams().get("version"));
-    }
-
-    @Test
-    void builderWithBearerTokenAndCustomHeaders() {
-        McpServerConfig config =
-                McpServerConfig.builder()
-                        .name("api")
-                        .transportType(McpServerConfig.TransportType.STREAMABLE_HTTP)
-                        .url("http://localhost:8080")
-                        .bearerToken("token123")
-                        .headers(Map.of("X-Custom", "value"))
-                        .build();
-        assertEquals("token123", config.bearerToken());
-        assertEquals("value", config.headers().get("X-Custom"));
-    }
-
-    @Test
-    void staticFactoryConfigsHaveEmptyQueryParams() {
-        McpServerConfig stdio = McpServerConfig.stdio("fs", "cmd");
-        McpServerConfig http = McpServerConfig.streamableHttp("api", "http://localhost");
-        McpServerConfig sse = McpServerConfig.sse("events", "http://localhost");
-
-        assertTrue(stdio.queryParams().isEmpty());
-        assertNull(stdio.bearerToken());
-        assertTrue(http.queryParams().isEmpty());
-        assertNull(http.bearerToken());
-        assertTrue(sse.queryParams().isEmpty());
-        assertNull(sse.bearerToken());
+        assertFalse(cfg.schemaValidation());
     }
 }

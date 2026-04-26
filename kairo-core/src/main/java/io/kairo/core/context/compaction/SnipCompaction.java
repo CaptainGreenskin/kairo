@@ -23,6 +23,7 @@ import io.kairo.api.context.ContextState;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
+import io.kairo.core.context.CompactionThresholds;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -39,14 +40,29 @@ import reactor.core.publisher.Mono;
 public class SnipCompaction implements CompactionStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(SnipCompaction.class);
-    private static final float TRIGGER_THRESHOLD = 0.80f;
     private static final int ABSOLUTE_BUFFER = 40_000;
     private static final int PRESERVE_RECENT_TOOL_RESULTS = 5;
     private static final int PRESERVE_RECENT_MESSAGES = 3;
 
+    private final float triggerThreshold;
+
+    /** Create with default threshold. */
+    public SnipCompaction() {
+        this(CompactionThresholds.DEFAULT_SNIP_PRESSURE);
+    }
+
+    /**
+     * Create with a custom trigger threshold.
+     *
+     * @param triggerThreshold pressure threshold to trigger this stage
+     */
+    public SnipCompaction(float triggerThreshold) {
+        this.triggerThreshold = triggerThreshold;
+    }
+
     @Override
     public boolean shouldTrigger(ContextState state) {
-        return HybridThreshold.shouldTrigger(state, TRIGGER_THRESHOLD, ABSOLUTE_BUFFER);
+        return HybridThreshold.shouldTrigger(state, triggerThreshold, ABSOLUTE_BUFFER);
     }
 
     @Override

@@ -24,6 +24,7 @@ import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelProvider;
+import io.kairo.core.context.CompactionThresholds;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -54,7 +55,6 @@ import reactor.core.publisher.Mono;
 public class AutoCompaction implements CompactionStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(AutoCompaction.class);
-    private static final float TRIGGER_THRESHOLD = 0.95f;
 
     private static final int MAX_RETRY_ATTEMPTS = 3;
 
@@ -88,19 +88,31 @@ public class AutoCompaction implements CompactionStrategy {
             """;
 
     private final ModelProvider modelProvider;
+    private final float triggerThreshold;
 
     /**
-     * Create an AutoCompaction with the given model provider.
+     * Create an AutoCompaction with the given model provider and default threshold.
      *
      * @param modelProvider the model provider for generating summaries (may be null)
      */
     public AutoCompaction(ModelProvider modelProvider) {
+        this(modelProvider, CompactionThresholds.DEFAULT_AUTO_PRESSURE);
+    }
+
+    /**
+     * Create an AutoCompaction with the given model provider and custom threshold.
+     *
+     * @param modelProvider the model provider for generating summaries (may be null)
+     * @param triggerThreshold pressure threshold to trigger this stage
+     */
+    public AutoCompaction(ModelProvider modelProvider, float triggerThreshold) {
         this.modelProvider = modelProvider;
+        this.triggerThreshold = triggerThreshold;
     }
 
     @Override
     public boolean shouldTrigger(ContextState state) {
-        return state.pressure() >= TRIGGER_THRESHOLD && modelProvider != null;
+        return state.pressure() >= triggerThreshold && modelProvider != null;
     }
 
     @Override

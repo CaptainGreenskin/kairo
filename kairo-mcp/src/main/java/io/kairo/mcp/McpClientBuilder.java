@@ -128,27 +128,25 @@ public class McpClientBuilder {
                 builder.activeTransport = TransportType.STDIO;
             }
             case STREAMABLE_HTTP -> {
-                builder.httpUrl = config.url();
-                if (config.headers() != null) {
-                    builder.httpHeaders.putAll(config.headers());
-                }
-                if (config.queryParams() != null) {
-                    builder.httpQueryParams.putAll(config.queryParams());
-                }
+                applyHttpTransportConfig(builder, config);
                 builder.activeTransport = TransportType.STREAMABLE_HTTP;
             }
             case SSE -> {
-                builder.httpUrl = config.url();
-                if (config.headers() != null) {
-                    builder.httpHeaders.putAll(config.headers());
-                }
-                if (config.queryParams() != null) {
-                    builder.httpQueryParams.putAll(config.queryParams());
-                }
+                applyHttpTransportConfig(builder, config);
                 builder.activeTransport = TransportType.SSE;
             }
         }
         return builder;
+    }
+
+    private static void applyHttpTransportConfig(McpClientBuilder builder, McpServerConfig config) {
+        builder.httpUrl = config.url();
+        if (config.headers() != null) {
+            builder.httpHeaders.putAll(config.headers());
+        }
+        if (config.queryParams() != null) {
+            builder.httpQueryParams.putAll(config.queryParams());
+        }
     }
 
     /** Configures Stdio transport. */
@@ -212,7 +210,7 @@ public class McpClientBuilder {
     /**
      * Sets the elicitation handler for MCP server elicitation requests.
      *
-     * <p>If not set, an {@link AutoApproveElicitationHandler} is used by default.
+     * <p>If not set, an {@link AutoDeclineElicitationHandler} is used by default.
      *
      * @param handler the elicitation handler
      * @return this builder
@@ -220,6 +218,25 @@ public class McpClientBuilder {
     public McpClientBuilder onElicitation(ElicitationHandler handler) {
         this.elicitationHandler = handler;
         return this;
+    }
+
+    /**
+     * Sets the elicitation policy for MCP server elicitation requests.
+     *
+     * <p>Alias for {@link #onElicitation(ElicitationHandler)}. If not set, an {@link
+     * AutoDeclineElicitationHandler} is used by default (safe for CI/server environments).
+     *
+     * <p>To opt-in to auto-approve (development/testing only):
+     *
+     * <pre>{@code
+     * builder.elicitationPolicy(new DevOnlyAutoApproveHandler());
+     * }</pre>
+     *
+     * @param handler the elicitation handler
+     * @return this builder
+     */
+    public McpClientBuilder elicitationPolicy(ElicitationHandler handler) {
+        return onElicitation(handler);
     }
 
     /**
@@ -257,11 +274,11 @@ public class McpClientBuilder {
         McpSchema.Implementation clientInfo =
                 new McpSchema.Implementation(CLIENT_NAME, CLIENT_VERSION);
 
-        // Use AutoApproveElicitationHandler as default if no handler is set
+        // Use security-first default if no handler is set
         ElicitationHandler effectiveHandler =
                 elicitationHandler != null
                         ? elicitationHandler
-                        : new AutoApproveElicitationHandler();
+                        : new AutoDeclineElicitationHandler();
 
         // Adapt Kairo ElicitationHandler to MCP SDK Function
         Function<McpSchema.ElicitRequest, reactor.core.publisher.Mono<McpSchema.ElicitResult>>
@@ -320,23 +337,31 @@ public class McpClientBuilder {
     }
 
     private McpClientTransport createStreamableHttpTransport() {
-        String resolvedUrl = appendQueryParams(httpUrl);
+        String resolvedUrl = resolvedHttpUrl();
         HttpClientStreamableHttpTransport.Builder builder =
                 HttpClientStreamableHttpTransport.builder(resolvedUrl);
         if (!httpHeaders.isEmpty()) {
-            builder.customizeRequest(requestBuilder -> httpHeaders.forEach(requestBuilder::header));
+            builder.customizeRequest(requestCustomizer());
         }
         return builder.build();
     }
 
     private McpClientTransport createSseTransport() {
-        String resolvedUrl = appendQueryParams(httpUrl);
+        String resolvedUrl = resolvedHttpUrl();
         HttpClientSseClientTransport.Builder builder =
                 HttpClientSseClientTransport.builder(resolvedUrl);
         if (!httpHeaders.isEmpty()) {
-            builder.customizeRequest(requestBuilder -> httpHeaders.forEach(requestBuilder::header));
+            builder.customizeRequest(requestCustomizer());
         }
         return builder.build();
+    }
+
+    private String resolvedHttpUrl() {
+        return appendQueryParams(httpUrl);
+    }
+
+    private java.util.function.Consumer<java.net.http.HttpRequest.Builder> requestCustomizer() {
+        return requestBuilder -> httpHeaders.forEach(requestBuilder::header);
     }
 
     private String appendQueryParams(String baseUrl) {

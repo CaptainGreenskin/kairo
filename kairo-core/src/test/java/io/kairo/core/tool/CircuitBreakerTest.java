@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.kairo.api.tool.JsonSchema;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -288,6 +289,33 @@ class CircuitBreakerTest {
         // tool_y should still work fine
         StepVerifier.create(executor.execute("tool_y", Map.of()))
                 .assertNext(r -> assertFalse(r.isError()))
+                .verifyComplete();
+    }
+
+    @Test
+    void circuitBreakerTracksByToolNameNotToolResultId() {
+        DefaultToolExecutor executor = executorWithThreshold(2);
+
+        registerToolHandler(
+                "unstable_tool",
+                input ->
+                        // Simulate tools returning invocation-scoped IDs instead of static tool
+                        // names
+                        new ToolResult(
+                                "invocation-" + System.nanoTime(),
+                                "Error: transient",
+                                true,
+                                Map.of()));
+
+        StepVerifier.create(executor.execute("unstable_tool", Map.of()))
+                .assertNext(r -> assertTrue(r.isError()))
+                .verifyComplete();
+        StepVerifier.create(executor.execute("unstable_tool", Map.of()))
+                .assertNext(r -> assertTrue(r.isError()))
+                .verifyComplete();
+
+        StepVerifier.create(executor.execute("unstable_tool", Map.of()))
+                .assertNext(r -> assertTrue(r.content().contains("circuit-broken")))
                 .verifyComplete();
     }
 

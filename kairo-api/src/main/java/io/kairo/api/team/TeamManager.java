@@ -15,9 +15,11 @@
  */
 package io.kairo.api.team;
 
+import io.kairo.api.Experimental;
 import io.kairo.api.agent.Agent;
 
 /** Manages team lifecycle: creation, deletion, and agent membership. */
+@Experimental("Team manager SPI; introduced in v0.10, targeting stabilization in v1.1")
 public interface TeamManager {
 
     /**

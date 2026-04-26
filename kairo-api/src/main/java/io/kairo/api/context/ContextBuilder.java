@@ -15,6 +15,7 @@
  */
 package io.kairo.api.context;
 
+import io.kairo.api.Stable;
 import java.util.List;
 
 /**
@@ -40,6 +41,7 @@ import java.util.List;
  * List<ContextEntry> entries = builder.build();
  * }</pre>
  */
+@Stable(value = "Context builder SPI; shape frozen since v0.1", since = "1.0.0")
 public interface ContextBuilder {
 
     /**

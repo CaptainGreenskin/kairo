@@ -22,14 +22,16 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * Spring Boot demo application showcasing Kairo framework integration.
  *
  * <p>This application demonstrates:
+ *
  * <ul>
- *   <li>Auto-configuration via {@code kairo-spring-boot-starter}</li>
- *   <li>Exposing a Kairo agent as a REST API</li>
- *   <li>Structured output with {@code ModelConfig.responseSchema()}</li>
- *   <li>MCP server registration via configuration</li>
+ *   <li>Auto-configuration via {@code kairo-spring-boot-starter}
+ *   <li>Exposing a Kairo agent as a REST API
+ *   <li>Structured output with {@code ModelConfig.responseSchema()}
+ *   <li>MCP server registration via configuration
  * </ul>
  *
  * <p>To run: set {@code ANTHROPIC_API_KEY} (or {@code OPENAI_API_KEY}) and execute:
+ *
  * <pre>{@code
  * mvn spring-boot:run
  * }</pre>
