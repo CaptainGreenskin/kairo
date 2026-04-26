@@ -15,6 +15,7 @@
  */
 package io.kairo.api.middleware;
 
+import io.kairo.api.Experimental;
 import io.kairo.api.message.Msg;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -35,6 +36,8 @@ import java.util.Map;
  * @param conversationHistory prior messages in this session, may be empty
  * @param attributes mutable cross-middleware data; never null
  */
+@Experimental(
+        "Middleware context; shape pending v1.0 census review, targeting stabilization in v1.1")
 public record MiddlewareContext(
         String agentName,
         String sessionId,

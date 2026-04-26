@@ -26,6 +26,11 @@ import io.opentelemetry.sdk.trace.data.SpanData;
 import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,7 +63,7 @@ class OTelSpanTest {
         return spans.get(spans.size() - 1);
     }
 
-    // --- Attribute mapping tests ---
+    // --- Attribute mapping tests (all use registered Kairo keys) ---
 
     @Test
     void tokenInputMapsToGenAiUsageInputTokens() {
@@ -166,57 +171,99 @@ class OTelSpanTest {
                 data.getAttributes().get(AttributeKey.longKey("gen_ai.compaction.tokens_saved")));
     }
 
-    // --- Unmapped key pass-through ---
+    // --- Unknown key rejection ---
 
     @Test
-    void unmappedKeyPassesThroughAsIs() {
+    void unknownKeyIsRejectedAndNotSetOnSpan() {
         OTelSpan span = createSpan("test-span");
         span.setAttribute("my.custom.key", "custom-value");
         SpanData data = endAndGetSpan(span);
-        assertEquals(
-                "custom-value", data.getAttributes().get(AttributeKey.stringKey("my.custom.key")));
+        assertNull(data.getAttributes().get(AttributeKey.stringKey("my.custom.key")));
     }
 
-    // --- Type handling ---
+    @Test
+    void unknownKeyLogsWarning() {
+        Logger logger = Logger.getLogger(OTelSpan.class.getName());
+        TestLogHandler handler = new TestLogHandler();
+        logger.addHandler(handler);
+        logger.setLevel(Level.WARNING);
+        try {
+            OTelSpan span = createSpan("test-span");
+            span.setAttribute("unknown.key", "val");
+            span.end();
+            assertTrue(
+                    handler.hasWarningContaining("Rejecting unknown span attribute key"),
+                    "Expected warning log for unknown key");
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
+    // --- additionalAllowedKeys ---
+
+    @Test
+    void additionalAllowedKeyIsAccepted() {
+        io.opentelemetry.api.trace.Span otelSpan = otelTracer.spanBuilder("test").startSpan();
+        OTelSpan span = new OTelSpan(otelSpan, "test", null, Set.of("my.custom.key"));
+        span.setAttribute("my.custom.key", "allowed-value");
+        SpanData data = endAndGetSpan(span);
+        assertEquals(
+                "allowed-value", data.getAttributes().get(AttributeKey.stringKey("my.custom.key")));
+    }
+
+    @Test
+    void nonAllowedCustomKeyStillRejected() {
+        io.opentelemetry.api.trace.Span otelSpan = otelTracer.spanBuilder("test").startSpan();
+        OTelSpan span = new OTelSpan(otelSpan, "test", null, Set.of("my.allowed"));
+        span.setAttribute("my.not.allowed", "value");
+        SpanData data = endAndGetSpan(span);
+        assertNull(data.getAttributes().get(AttributeKey.stringKey("my.not.allowed")));
+    }
+
+    // --- Type handling (using registered keys) ---
 
     @Test
     void longValueSetCorrectly() {
         OTelSpan span = createSpan("test-span");
-        span.setAttribute("my.long", 42L);
+        span.setAttribute("token.input", 42L);
         SpanData data = endAndGetSpan(span);
-        assertEquals(42L, data.getAttributes().get(AttributeKey.longKey("my.long")));
+        assertEquals(
+                42L, data.getAttributes().get(AttributeKey.longKey("gen_ai.usage.input_tokens")));
     }
 
     @Test
     void integerValueConvertedToLong() {
         OTelSpan span = createSpan("test-span");
-        span.setAttribute("my.int", 42);
+        span.setAttribute("token.output", 42);
         SpanData data = endAndGetSpan(span);
-        assertEquals(42L, data.getAttributes().get(AttributeKey.longKey("my.int")));
+        assertEquals(
+                42L, data.getAttributes().get(AttributeKey.longKey("gen_ai.usage.output_tokens")));
     }
 
     @Test
     void doubleValueSetCorrectly() {
         OTelSpan span = createSpan("test-span");
-        span.setAttribute("my.double", 3.14);
+        span.setAttribute("cache.hit_ratio", 3.14);
         SpanData data = endAndGetSpan(span);
-        assertEquals(3.14, data.getAttributes().get(AttributeKey.doubleKey("my.double")));
+        assertEquals(
+                3.14, data.getAttributes().get(AttributeKey.doubleKey("gen_ai.cache.hit_ratio")));
     }
 
     @Test
     void booleanValueSetCorrectly() {
         OTelSpan span = createSpan("test-span");
-        span.setAttribute("my.bool", true);
+        span.setAttribute("tool.success", true);
         SpanData data = endAndGetSpan(span);
-        assertEquals(true, data.getAttributes().get(AttributeKey.booleanKey("my.bool")));
+        assertEquals(
+                true, data.getAttributes().get(AttributeKey.booleanKey("gen_ai.tool.success")));
     }
 
     @Test
     void stringValueSetCorrectly() {
         OTelSpan span = createSpan("test-span");
-        span.setAttribute("my.string", "hello");
+        span.setAttribute("tool.name", "hello");
         SpanData data = endAndGetSpan(span);
-        assertEquals("hello", data.getAttributes().get(AttributeKey.stringKey("my.string")));
+        assertEquals("hello", data.getAttributes().get(AttributeKey.stringKey("gen_ai.tool.name")));
     }
 
     @Test
@@ -230,7 +277,7 @@ class OTelSpanTest {
     @Test
     void nullValueIsIgnored() {
         OTelSpan span = createSpan("test-span");
-        span.setAttribute("key", null);
+        span.setAttribute("token.input", null);
         SpanData data = endAndGetSpan(span);
         assertTrue(data.getAttributes().isEmpty());
     }
@@ -397,5 +444,31 @@ class OTelSpanTest {
     private OTelSpan createSpan(String name) {
         io.opentelemetry.api.trace.Span otelSpan = otelTracer.spanBuilder(name).startSpan();
         return new OTelSpan(otelSpan, name, null);
+    }
+
+    /** Simple test log handler that captures log records for assertions. */
+    private static class TestLogHandler extends Handler {
+        private final java.util.List<LogRecord> records =
+                java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
+        @Override
+        public void publish(LogRecord record) {
+            records.add(record);
+        }
+
+        @Override
+        public void flush() {}
+
+        @Override
+        public void close() throws SecurityException {}
+
+        boolean hasWarningContaining(String substring) {
+            return records.stream()
+                    .anyMatch(
+                            r ->
+                                    r.getLevel() == Level.WARNING
+                                            && r.getMessage() != null
+                                            && r.getMessage().contains(substring));
+        }
     }
 }

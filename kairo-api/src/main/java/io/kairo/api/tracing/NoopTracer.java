@@ -15,10 +15,13 @@
  */
 package io.kairo.api.tracing;
 
+import io.kairo.api.Stable;
+
 /**
  * No-operation Tracer implementation. All span factories return {@link NoopSpan#INSTANCE}. Uses
  * default method implementations from {@link Tracer}.
  */
+@Stable(value = "Noop tracer default implementation; shape frozen since v0.3", since = "1.0.0")
 public final class NoopTracer implements Tracer {
     public static final NoopTracer INSTANCE = new NoopTracer();
     // All methods inherited from Tracer defaults (return NoopSpan.INSTANCE)

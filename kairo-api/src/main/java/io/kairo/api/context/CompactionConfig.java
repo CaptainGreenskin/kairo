@@ -15,6 +15,7 @@
  */
 package io.kairo.api.context;
 
+import io.kairo.api.Stable;
 import io.kairo.api.model.ModelProvider;
 
 /**
@@ -26,6 +27,7 @@ import io.kairo.api.model.ModelProvider;
  * @param partialDirection the direction for partial compaction
  * @param boundaryMarkerId the boundary marker ID for UP_TO partial compaction (nullable)
  */
+@Stable(value = "Compaction config record; shape frozen since v0.1", since = "1.0.0")
 public record CompactionConfig(
         int targetTokens,
         boolean preserveVerbatim,

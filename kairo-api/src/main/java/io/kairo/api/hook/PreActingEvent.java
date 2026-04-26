@@ -15,6 +15,7 @@
  */
 package io.kairo.api.hook;
 
+import io.kairo.api.Stable;
 import java.util.Map;
 
 /**
@@ -24,4 +25,6 @@ import java.util.Map;
  * @param input the tool input parameters
  * @param cancelled whether this event has been cancelled by a hook
  */
-public record PreActingEvent(String toolName, Map<String, Object> input, boolean cancelled) {}
+@Stable(value = "Pre-acting hook event; shape frozen since v0.6", since = "1.0.0")
+public record PreActingEvent(String toolName, Map<String, Object> input, boolean cancelled)
+        implements HookEvent {}

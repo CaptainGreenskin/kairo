@@ -15,6 +15,7 @@
  */
 package io.kairo.api.context;
 
+import io.kairo.api.Stable;
 import io.kairo.api.message.Msg;
 import java.util.List;
 
@@ -25,5 +26,6 @@ import java.util.List;
  * @param tokensSaved number of tokens reclaimed
  * @param marker the boundary marker for this compaction
  */
+@Stable(value = "Compaction result record; shape frozen since v0.1", since = "1.0.0")
 public record CompactionResult(
         List<Msg> compactedMessages, int tokensSaved, BoundaryMarker marker) {}

@@ -15,6 +15,7 @@
  */
 package io.kairo.api.model;
 
+import io.kairo.api.Stable;
 import java.util.Map;
 
 /**
@@ -26,6 +27,7 @@ import java.util.Map;
  * @param toolName for TOOL_USE_START, the tool name
  * @param metadata additional metadata
  */
+@Stable(value = "Streaming chunk record; shape frozen since v0.3", since = "1.0.0")
 public record StreamChunk(
         StreamChunkType type,
         String content,

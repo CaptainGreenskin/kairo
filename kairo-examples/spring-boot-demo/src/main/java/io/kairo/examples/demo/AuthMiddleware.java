@@ -25,9 +25,9 @@ import reactor.core.publisher.Mono;
 /**
  * Example middleware that validates an API key from request attributes.
  *
- * <p>Demonstrates how to write a {@link Middleware} for request-level authentication.
- * In a real application, the API key would be extracted from HTTP headers by a filter
- * and stored in the {@link MiddlewareContext#attributes()} map before reaching the agent.
+ * <p>Demonstrates how to write a {@link Middleware} for request-level authentication. In a real
+ * application, the API key would be extracted from HTTP headers by a filter and stored in the
+ * {@link MiddlewareContext#attributes()} map before reaching the agent.
  *
  * <pre>{@code
  * // Register as a Spring bean — the starter will auto-detect it

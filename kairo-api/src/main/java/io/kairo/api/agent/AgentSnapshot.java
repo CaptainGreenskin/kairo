@@ -15,6 +15,7 @@
  */
 package io.kairo.api.agent;
 
+import io.kairo.api.Stable;
 import io.kairo.api.message.Msg;
 import java.time.Instant;
 import java.util.List;
@@ -40,6 +41,7 @@ import java.util.Map;
  * @param contextState extensible metadata (model name, config flags, etc.)
  * @param createdAt when this snapshot was taken
  */
+@Stable(value = "Agent snapshot persistence record; shape frozen since v0.5", since = "1.0.0")
 public record AgentSnapshot(
         String agentId,
         String agentName,

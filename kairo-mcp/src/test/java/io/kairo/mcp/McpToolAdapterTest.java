@@ -122,4 +122,45 @@ class McpToolAdapterTest {
         assertTrue(def.inputSchema().required().contains("path"));
         assertFalse(def.inputSchema().required().contains("encoding"));
     }
+
+    @Test
+    void preservesArrayItemSchemaAsSyntheticItemsProperty() {
+        Map<String, Object> props =
+                Map.of(
+                        "tags",
+                        Map.of(
+                                "type",
+                                "array",
+                                "items",
+                                Map.of("type", "string", "description", "tag item")));
+        McpSchema.Tool tool = makeTool("list_tags", "List tags", props, List.of());
+
+        ToolDefinition def =
+                McpToolAdapter.toToolDefinition(tool, "catalog", Duration.ofSeconds(10));
+        var tagsSchema = def.inputSchema().properties().get("tags");
+        assertNotNull(tagsSchema);
+        assertEquals("array", tagsSchema.type());
+        assertTrue(tagsSchema.properties().containsKey("$items"));
+        assertEquals("string", tagsSchema.properties().get("$items").type());
+    }
+
+    @Test
+    void oneOfSchemaFallsBackToFirstVariantWithHint() {
+        Map<String, Object> props =
+                Map.of(
+                        "selector",
+                        Map.of(
+                                "oneOf",
+                                List.of(
+                                        Map.of("type", "string", "description", "by id"),
+                                        Map.of("type", "number", "description", "by index"))));
+        McpSchema.Tool tool = makeTool("pick", "Pick item", props, List.of());
+
+        ToolDefinition def =
+                McpToolAdapter.toToolDefinition(tool, "chooser", Duration.ofSeconds(10));
+        var selectorSchema = def.inputSchema().properties().get("selector");
+        assertNotNull(selectorSchema);
+        assertEquals("string", selectorSchema.type());
+        assertTrue(selectorSchema.description().contains("composite variants=2"));
+    }
 }
