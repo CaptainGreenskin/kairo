@@ -286,7 +286,7 @@ public class DefaultReActAgent implements Agent {
         this.skillToolManager = new SkillToolManager(config, toolExecutor);
         this.compactionTrigger =
                 new CompactionTrigger(
-                        this.contextManager, this.reactLoop, config.memoryStore(), null);
+                        this.contextManager, this.reactLoop, config.memoryStore(), null, hookChain);
         this.reactLoop.setCompactionTrigger(this.compactionTrigger);
     }
 
