@@ -40,6 +40,8 @@ import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
 import io.kairo.core.context.TokenBudgetManager;
 import io.kairo.core.execution.RecoveryHandler;
+import io.kairo.core.hook.AgentErrorEvent;
+import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.middleware.DefaultMiddlewarePipeline;
 import io.kairo.core.model.ModelFallbackManager;
 import io.kairo.core.prompt.SystemPromptBuilder;
@@ -284,7 +286,7 @@ public class DefaultReActAgent implements Agent {
         this.skillToolManager = new SkillToolManager(config, toolExecutor);
         this.compactionTrigger =
                 new CompactionTrigger(
-                        this.contextManager, this.reactLoop, config.memoryStore(), null);
+                        this.contextManager, this.reactLoop, config.memoryStore(), null, hookChain);
         this.reactLoop.setCompactionTrigger(this.compactionTrigger);
     }
 
@@ -478,11 +480,37 @@ public class DefaultReActAgent implements Agent {
                                                                                                         .get(),
                                                                                                 e
                                                                                                         .getMessage());
-                                                                                        return fireSessionEndBestEffort(
-                                                                                                        AgentState
-                                                                                                                .FAILED,
-                                                                                                        e
-                                                                                                                .getMessage())
+                                                                                        Mono<Void>
+                                                                                                onErrorHook =
+                                                                                                        hookChain
+                                                                                                                        instanceof
+                                                                                                                        DefaultHookChain
+                                                                                                                                dhc
+                                                                                                                ? dhc.fireOnError(
+                                                                                                                                AgentErrorEvent
+                                                                                                                                        .of(
+                                                                                                                                                name,
+                                                                                                                                                e))
+                                                                                                                        .onErrorResume(
+                                                                                                                                he -> {
+                                                                                                                                    log
+                                                                                                                                            .warn(
+                                                                                                                                                    "OnError hook failed for agent '{}': {}",
+                                                                                                                                                    name,
+                                                                                                                                                    he
+                                                                                                                                                            .getMessage());
+                                                                                                                                    return Mono
+                                                                                                                                            .empty();
+                                                                                                                                })
+                                                                                                                : Mono
+                                                                                                                        .empty();
+                                                                                        return onErrorHook
+                                                                                                .then(
+                                                                                                        fireSessionEndBestEffort(
+                                                                                                                AgentState
+                                                                                                                        .FAILED,
+                                                                                                                e
+                                                                                                                        .getMessage()))
                                                                                                 .then(
                                                                                                         Mono
                                                                                                                 .error(
@@ -615,7 +643,9 @@ public class DefaultReActAgent implements Agent {
                 currentIteration.get(),
                 totalTokensUsed.get(),
                 reactLoop.getHistory(),
-                Map.of("modelName", config.modelName()),
+                Map.of(
+                        "modelName", config.modelName(),
+                        "totalToolCalls", reactLoop.getTotalToolCalls()),
                 Instant.now());
     }
 

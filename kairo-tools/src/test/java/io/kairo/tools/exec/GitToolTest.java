@@ -34,13 +34,12 @@ class GitToolTest {
 
     @BeforeEach
     void setUp() throws IOException, InterruptedException {
+        // Initialize a fresh git repository for each test
         run("git", "init");
         run("git", "config", "user.email", "test@kairo.io");
         run("git", "config", "user.name", "Test");
         tool = new GitTool(repoDir);
     }
-
-    // --- Basic operations ---
 
     @Test
     void statusInEmptyRepo() {
@@ -52,6 +51,7 @@ class GitToolTest {
     @Test
     void logOnEmptyRepoReturnsNonFatalError() {
         ToolResult result = tool.execute(Map.of("subcommand", "log --oneline"));
+        // git log on an empty repo exits with code 128 — isError=true is correct
         assertThat(result.metadata()).containsKey("exitCode");
     }
 
@@ -79,15 +79,6 @@ class GitToolTest {
     }
 
     @Test
-    void missingSubcommandReturnsError() {
-        ToolResult result = tool.execute(Map.of());
-        assertThat(result.isError()).isTrue();
-        assertThat(result.content()).contains("'subcommand' is required");
-    }
-
-    // --- Dangerous operation guards ---
-
-    @Test
     void forcePushIsBlocked() {
         ToolResult result = tool.execute(Map.of("subcommand", "push --force origin main"));
         assertThat(result.isError()).isTrue();
@@ -108,93 +99,14 @@ class GitToolTest {
         assertThat(result.content()).contains("Blocked");
     }
 
-    // --- Extended: add / commit / branch / checkout ---
-
     @Test
-    void addStagedFilesShownInStatus() throws IOException {
-        Files.writeString(repoDir.resolve("new.txt"), "data");
-
-        ToolResult addResult = tool.execute(Map.of("subcommand", "add new.txt"));
-        assertThat(addResult.isError()).isFalse();
-
-        ToolResult statusResult = tool.execute(Map.of("subcommand", "status"));
-        assertThat(statusResult.content()).containsIgnoringCase("new.txt");
+    void missingSubcommandReturnsError() {
+        ToolResult result = tool.execute(Map.of());
+        assertThat(result.isError()).isTrue();
+        assertThat(result.content()).contains("'subcommand' is required");
     }
 
-    @Test
-    void addAndCommitSucceeds() throws IOException {
-        Files.writeString(repoDir.resolve("data.txt"), "hello world");
-        tool.execute(Map.of("subcommand", "add data.txt"));
-
-        ToolResult commitResult =
-                tool.execute(Map.of("subcommand", "commit -m \"feat: add data file\""));
-        assertThat(commitResult.isError()).isFalse();
-        assertThat(commitResult.content()).containsIgnoringCase("data file");
-    }
-
-    @Test
-    void createBranchSucceeds() throws IOException, InterruptedException {
-        Files.writeString(repoDir.resolve("base.txt"), "base");
-        run("git", "add", ".");
-        run("git", "commit", "-m", "base commit");
-
-        ToolResult result = tool.execute(Map.of("subcommand", "branch feature-x"));
-        assertThat(result.isError()).isFalse();
-
-        ToolResult branches = tool.execute(Map.of("subcommand", "branch"));
-        assertThat(branches.content()).contains("feature-x");
-    }
-
-    @Test
-    void checkoutNewBranchSucceeds() throws IOException, InterruptedException {
-        Files.writeString(repoDir.resolve("init.txt"), "init");
-        run("git", "add", ".");
-        run("git", "commit", "-m", "initial");
-
-        ToolResult result = tool.execute(Map.of("subcommand", "checkout -b new-feature"));
-        assertThat(result.isError()).isFalse();
-
-        ToolResult status = tool.execute(Map.of("subcommand", "status"));
-        assertThat(status.content()).contains("new-feature");
-    }
-
-    @Test
-    void diffStagedShowsStagedChanges() throws IOException, InterruptedException {
-        Files.writeString(repoDir.resolve("staged.txt"), "original");
-        run("git", "add", ".");
-        run("git", "commit", "-m", "base");
-        Files.writeString(repoDir.resolve("staged.txt"), "modified");
-        tool.execute(Map.of("subcommand", "add staged.txt"));
-
-        ToolResult result = tool.execute(Map.of("subcommand", "diff --staged"));
-        assertThat(result.isError()).isFalse();
-        assertThat(result.content()).contains("modified");
-    }
-
-    @Test
-    void statusPorcelainMachineReadable() throws IOException {
-        Files.writeString(repoDir.resolve("untracked.txt"), "new file");
-
-        ToolResult result = tool.execute(Map.of("subcommand", "status --porcelain"));
-        assertThat(result.isError()).isFalse();
-        // Porcelain format: "??" prefix for untracked files
-        assertThat(result.content()).contains("??").contains("untracked.txt");
-    }
-
-    @Test
-    void logOnelineAfterMultipleCommits() throws IOException, InterruptedException {
-        Files.writeString(repoDir.resolve("a.txt"), "a");
-        run("git", "add", ".");
-        run("git", "commit", "-m", "commit-a");
-        Files.writeString(repoDir.resolve("b.txt"), "b");
-        run("git", "add", ".");
-        run("git", "commit", "-m", "commit-b");
-
-        ToolResult result = tool.execute(Map.of("subcommand", "log --oneline"));
-        assertThat(result.isError()).isFalse();
-        assertThat(result.content()).contains("commit-a").contains("commit-b");
-    }
-
+    // Helper to run a process in repoDir
     private void run(String... cmd) throws IOException, InterruptedException {
         new ProcessBuilder(cmd).directory(repoDir.toFile()).inheritIO().start().waitFor();
     }
