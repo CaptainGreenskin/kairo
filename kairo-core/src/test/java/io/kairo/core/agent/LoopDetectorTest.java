@@ -162,4 +162,86 @@ class LoopDetectorTest {
         var result = detector.check(calls);
         assertEquals(DetectionResult.Level.WARN, result.level());
     }
+
+    // ---- Edge cases ----
+
+    @Test
+    void emptyToolCallsList_returnsNone() {
+        LoopDetector detector = LoopDetector.withDefaults();
+        var result = detector.check(List.of());
+        assertEquals(DetectionResult.Level.NONE, result.level());
+    }
+
+    @Test
+    void hashLayer_warnMessageContainsCount() {
+        LoopDetector detector = LoopDetector.withDefaults();
+        var calls = toolCalls("my_tool");
+
+        detector.check(calls);
+        detector.check(calls);
+        var result = detector.check(calls); // 3rd = WARN (default threshold 3)
+
+        assertEquals(DetectionResult.Level.WARN, result.level());
+        assertTrue(result.message().contains("3"), "Message should contain consecutive count");
+    }
+
+    @Test
+    void freqLayer_warnMessageContainsToolName() {
+        LoopDetector detector = new LoopDetector(100, 200, 3, 100, Duration.ofMinutes(10));
+
+        for (int i = 0; i < 3; i++) {
+            detector.check(toolCallsWithArgs("unique_tool", Map.of("i", i)));
+        }
+        var result = detector.check(toolCallsWithArgs("unique_tool", Map.of("i", 99)));
+
+        assertEquals(DetectionResult.Level.WARN, result.level());
+        assertTrue(result.message().contains("unique_tool"));
+    }
+
+    @Test
+    void hashLayer_exactlyAtWarnThreshold_isWarn() {
+        // Custom detector: warn=2, hard=5
+        LoopDetector detector = new LoopDetector(2, 5, 100, 200, Duration.ofMinutes(10));
+        var calls = toolCalls("x");
+
+        assertEquals(DetectionResult.Level.NONE, detector.check(calls).level());
+        // 2nd call = exactly at warnThreshold
+        assertEquals(DetectionResult.Level.WARN, detector.check(calls).level());
+    }
+
+    @Test
+    void freqLayer_multipleToolsSameCheck_onlyHighFreqTriggersWarn() {
+        // warn=3 for freq
+        LoopDetector detector = new LoopDetector(100, 200, 3, 10, Duration.ofMinutes(10));
+
+        // Build up tool_a to warn threshold
+        for (int i = 0; i < 3; i++) {
+            detector.check(toolCallsWithArgs("tool_a", Map.of("i", i)));
+        }
+
+        // Next check has tool_a (now at 4, > warn) and tool_b (first call) together
+        var mixed =
+                List.of(
+                        new Content.ToolUseContent("id-a", "tool_a", Map.of("i", 100)),
+                        new Content.ToolUseContent("id-b", "tool_b", Map.of()));
+        var result = detector.check(mixed);
+        assertEquals(DetectionResult.Level.WARN, result.level());
+        assertTrue(result.message().contains("tool_a"));
+    }
+
+    @Test
+    void reset_afterHardStop_allowsCheckToReturnNone() {
+        LoopDetector detector = LoopDetector.withDefaults();
+        var calls = toolCalls("boom");
+
+        // Drive to HARD_STOP
+        for (int i = 0; i < 5; i++) {
+            detector.check(calls);
+        }
+        assertEquals(DetectionResult.Level.HARD_STOP, detector.check(calls).level());
+
+        // After reset, same calls should start fresh
+        detector.reset();
+        assertEquals(DetectionResult.Level.NONE, detector.check(calls).level());
+    }
 }
