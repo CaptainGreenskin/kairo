@@ -138,6 +138,14 @@ public class DefaultHookChain implements HookChain {
     }
 
     /**
+     * Fire all {@link OnError}-annotated methods with the given error event. Best-effort: errors
+     * thrown by handlers are logged and swallowed so hook failures never mask the original error.
+     */
+    public Mono<Void> fireOnError(AgentErrorEvent event) {
+        return fireEvent(event, OnError.class).then();
+    }
+
+    /**
      * Fire an event through all handlers that have methods annotated with the given annotation.
      * Methods are sorted by their {@code order()} value and invoked sequentially. If the event has
      * a {@code cancelled()} method that returns true, the chain is short-circuited.
