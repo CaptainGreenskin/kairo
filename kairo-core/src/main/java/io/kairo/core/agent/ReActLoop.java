@@ -117,7 +117,8 @@ class ReActLoop {
                         ctx.config().loopHashHardLimit(),
                         ctx.config().loopFreqWarnThreshold(),
                         ctx.config().loopFreqHardLimit(),
-                        ctx.config().loopFreqWindow());
+                        ctx.config().loopFreqWindow(),
+                        3);
 
         // Build phase collaborators
         List<ResourceConstraint> effectiveConstraints = resolveResourceConstraints(ctx.config());
@@ -169,6 +170,11 @@ class ReActLoop {
 
     void setCompactionTrigger(CompactionTrigger compactionTrigger) {
         this.toolPhase.setCompactionTrigger(compactionTrigger);
+    }
+
+    /** Returns the total number of tool calls executed in this loop. */
+    int getTotalToolCalls() {
+        return toolPhase.getTotalToolCalls();
     }
 
     void setStreamingEnabled(boolean enabled) {
