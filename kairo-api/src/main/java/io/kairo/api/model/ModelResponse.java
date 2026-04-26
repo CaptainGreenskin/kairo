@@ -15,8 +15,9 @@
  */
 package io.kairo.api.model;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.kairo.api.Stable;
 import io.kairo.api.message.Content;
+import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,13 +30,18 @@ import java.util.Optional;
  * @param stopReason why the model stopped generating
  * @param model the model identifier that produced this response
  */
+@Stable(
+        value = "Model response record; Usage + StopReason nested types frozen since v0.2",
+        since = "1.0.0")
 public record ModelResponse(
         String id, List<Content> contents, Usage usage, StopReason stopReason, String model) {
 
-    private static final ObjectMapper SHARED_MAPPER = new ObjectMapper();
-
     /**
-     * Deserialize the first text content block as the given type using Jackson.
+     * Deserialize the first text content block as the given type.
+     *
+     * <p>This method uses Jackson via reflection so `kairo-api` does not require a compile-time
+     * dependency on `jackson-databind`. If Jackson is not present at runtime, an {@link
+     * IllegalStateException} is thrown with a guidance message.
      *
      * @param <T> the target type
      * @param type the class to deserialize into
@@ -54,7 +60,7 @@ public record ModelResponse(
                                                 "No text content found in response to deserialize as "
                                                         + type.getSimpleName()));
         try {
-            return SHARED_MAPPER.readValue(text, type);
+            return JacksonBridge.readValue(text, type);
         } catch (Exception e) {
             throw new IllegalStateException(
                     "Failed to parse response text as "
@@ -62,6 +68,37 @@ public record ModelResponse(
                             + ": "
                             + e.getMessage(),
                     e);
+        }
+    }
+
+    /** Runtime-only bridge to Jackson to keep API module lightweight. */
+    private static final class JacksonBridge {
+        private static final String MAPPER_CLASS = "com.fasterxml.jackson.databind.ObjectMapper";
+
+        private JacksonBridge() {}
+
+        @SuppressWarnings("unchecked")
+        static <T> T readValue(String text, Class<T> type) throws Exception {
+            try {
+                Class<?> mapperClass = Class.forName(MAPPER_CLASS);
+                Object mapper = mapperClass.getDeclaredConstructor().newInstance();
+                Object value =
+                        mapperClass
+                                .getMethod("readValue", String.class, Class.class)
+                                .invoke(mapper, text, type);
+                return (T) value;
+            } catch (ClassNotFoundException e) {
+                throw new IllegalStateException(
+                        "Jackson databind is required for ModelResponse.contentAs(...). "
+                                + "Add dependency: com.fasterxml.jackson.core:jackson-databind",
+                        e);
+            } catch (InvocationTargetException e) {
+                Throwable target = e.getTargetException();
+                if (target instanceof Exception ex) {
+                    throw ex;
+                }
+                throw new RuntimeException(target);
+            }
         }
     }
 

@@ -37,6 +37,12 @@ class MemoryQueryTest {
         assertEquals(Set.of(), query.tags());
         assertEquals(0.0, query.minImportance());
         assertEquals(20, query.limit());
+        assertNull(query.namespace());
+        assertNull(query.embeddingModelId());
+        assertEquals(MemoryQuery.RankingMode.LEXICAL_ONLY, query.rankingMode());
+        assertEquals(MemoryQuery.FusionStrategy.RRF, query.fusionStrategy());
+        assertEquals(20, query.lexicalTopK());
+        assertEquals(20, query.vectorTopK());
     }
 
     @Test
@@ -56,6 +62,12 @@ class MemoryQueryTest {
                         .tags(Set.of("tag1", "tag2"))
                         .minImportance(0.5)
                         .limit(10)
+                        .namespace("project-alpha")
+                        .embeddingModelId("text-embedding-3-large")
+                        .rankingMode(MemoryQuery.RankingMode.HYBRID)
+                        .fusionStrategy(MemoryQuery.FusionStrategy.SCORE_SUM)
+                        .lexicalTopK(30)
+                        .vectorTopK(50)
                         .build();
 
         assertEquals("agent-1", query.agentId());
@@ -66,29 +78,43 @@ class MemoryQueryTest {
         assertEquals(Set.of("tag1", "tag2"), query.tags());
         assertEquals(0.5, query.minImportance());
         assertEquals(10, query.limit());
+        assertEquals("project-alpha", query.namespace());
+        assertEquals("text-embedding-3-large", query.embeddingModelId());
+        assertEquals(MemoryQuery.RankingMode.HYBRID, query.rankingMode());
+        assertEquals(MemoryQuery.FusionStrategy.SCORE_SUM, query.fusionStrategy());
+        assertEquals(30, query.lexicalTopK());
+        assertEquals(50, query.vectorTopK());
     }
 
     @Test
     @DisplayName("Null tags defaults to empty set")
     void nullTagsDefaultsToEmptySet() {
-        MemoryQuery query = new MemoryQuery(null, null, null, null, null, null, 0.0, 20);
+        MemoryQuery query =
+                new MemoryQuery(
+                        null, null, null, null, null, null, 0.0, 20, null, null, null, null, 0, 0);
         assertEquals(Set.of(), query.tags());
     }
 
     @Test
     @DisplayName("Invalid limit defaults to 20")
     void invalidLimitDefaults() {
-        MemoryQuery query = new MemoryQuery(null, null, null, null, null, null, 0.0, 0);
+        MemoryQuery query =
+                new MemoryQuery(
+                        null, null, null, null, null, null, 0.0, 0, null, null, null, null, 0, 0);
         assertEquals(20, query.limit());
 
-        MemoryQuery query2 = new MemoryQuery(null, null, null, null, null, null, 0.0, -5);
+        MemoryQuery query2 =
+                new MemoryQuery(
+                        null, null, null, null, null, null, 0.0, -5, null, null, null, null, 0, 0);
         assertEquals(20, query2.limit());
     }
 
     @Test
     @DisplayName("Negative minImportance defaults to 0.0")
     void negativeMinImportanceDefaults() {
-        MemoryQuery query = new MemoryQuery(null, null, null, null, null, null, -1.0, 20);
+        MemoryQuery query =
+                new MemoryQuery(
+                        null, null, null, null, null, null, -1.0, 20, null, null, null, null, 0, 0);
         assertEquals(0.0, query.minImportance());
     }
 
@@ -98,5 +124,30 @@ class MemoryQueryTest {
         MemoryQuery query = MemoryQuery.builder().tags(Set.of("a", "b")).build();
         // The Set returned should be unmodifiable
         assertThrows(UnsupportedOperationException.class, () -> query.tags().add("c"));
+    }
+
+    @Test
+    @DisplayName("queryVector is defensively copied")
+    void queryVectorDefensivelyCopied() {
+        float[] input = new float[] {0.1f, 0.2f, 0.3f};
+        MemoryQuery query = MemoryQuery.builder().queryVector(input).build();
+
+        input[0] = 9.9f;
+        assertEquals(0.1f, query.queryVector()[0], 0.0001f);
+
+        float[] returned = query.queryVector();
+        returned[1] = 8.8f;
+        assertEquals(0.2f, query.queryVector()[1], 0.0001f);
+    }
+
+    @Test
+    @DisplayName("Hybrid defaults are inferred from query vector")
+    void hybridDefaultsInferredFromVector() {
+        MemoryQuery query = MemoryQuery.builder().queryVector(new float[] {0.2f, 0.1f}).build();
+
+        assertEquals(MemoryQuery.RankingMode.HYBRID, query.rankingMode());
+        assertEquals(MemoryQuery.FusionStrategy.RRF, query.fusionStrategy());
+        assertEquals(20, query.lexicalTopK());
+        assertEquals(20, query.vectorTopK());
     }
 }

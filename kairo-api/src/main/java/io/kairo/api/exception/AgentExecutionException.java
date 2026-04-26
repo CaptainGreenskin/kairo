@@ -15,8 +15,13 @@
  */
 package io.kairo.api.exception;
 
+import io.kairo.api.Stable;
+
 /** Thrown when agent execution fails due to a non-recoverable internal error. */
+@Stable(value = "Agent execution exception; shape frozen since v0.7", since = "1.0.0")
 public class AgentExecutionException extends AgentException {
+
+    private static final String DEFAULT_ERROR_CODE = "AGENT_EXECUTION_ERROR";
 
     /**
      * Create a new AgentExecutionException with the given message.
@@ -24,7 +29,7 @@ public class AgentExecutionException extends AgentException {
      * @param message the detail message
      */
     public AgentExecutionException(String message) {
-        super(message);
+        super(message, null, DEFAULT_ERROR_CODE);
     }
 
     /**
@@ -34,6 +39,6 @@ public class AgentExecutionException extends AgentException {
      * @param cause the underlying cause
      */
     public AgentExecutionException(String message, Throwable cause) {
-        super(message, cause);
+        super(message, cause, DEFAULT_ERROR_CODE);
     }
 }

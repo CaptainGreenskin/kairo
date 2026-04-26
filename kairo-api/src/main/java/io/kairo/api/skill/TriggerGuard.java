@@ -15,12 +15,15 @@
  */
 package io.kairo.api.skill;
 
+import io.kairo.api.Stable;
+
 /**
  * Guards against unintended skill activation (prompt pollution prevention).
  *
  * <p>Ensures that a skill is only activated when the user's input matches the skill's trigger
  * conditions with sufficiently high confidence.
  */
+@Stable(value = "Skill trigger guard SPI; shape frozen since v0.5", since = "1.0.0")
 public interface TriggerGuard {
 
     /**

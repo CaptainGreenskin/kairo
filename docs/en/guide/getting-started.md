@@ -72,10 +72,12 @@ Add the starter dependency and configure via `application.yml`:
 
 ```xml
 <dependency>
-    <groupId>io.github.captainreenskin</groupId>
-    <artifactId>kairo-spring-boot-starter</artifactId>
+    <groupId>io.github.captaingreenskin</groupId>
+    <artifactId>kairo-spring-boot-starter-core</artifactId>
 </dependency>
 ```
+
+Add per-feature starters as needed: `kairo-spring-boot-starter-mcp`, `-multi-agent`, `-evolution`, `-expert-team`, `-event-stream`, `-channel`, `-channel-dingtalk`, `-observability`.
 
 ```yaml
 kairo:

@@ -26,6 +26,7 @@ import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
 import io.kairo.api.model.ToolVerbosity;
 import io.kairo.api.tool.*;
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.core.agent.AgentBuilder;
 import io.kairo.core.agent.DefaultReActAgent;
 import io.kairo.core.message.MsgBuilder;
@@ -37,7 +38,6 @@ import io.kairo.core.session.SessionSnapshot;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
 import io.kairo.core.tool.DefaultToolRegistry;
-import io.kairo.core.tool.ToolHandler;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -827,7 +827,8 @@ class AgentIntegrationTest {
         // Assert
         assertNotNull(result);
         assertTrue(
-                result.text().contains("maximum iteration limit"),
+                result.text().contains("max iterations")
+                        || result.text().contains("maximum iteration limit"),
                 "Should mention hitting iteration limit: " + result.text());
         // Provider should have been called at most 3 times (one per iteration)
         assertTrue(

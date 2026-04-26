@@ -18,6 +18,7 @@ package io.kairo.core.agent;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.agent.AgentFactory;
+import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.middleware.DefaultMiddlewarePipeline;
@@ -32,6 +33,7 @@ public class DefaultAgentFactory implements AgentFactory {
 
     private final ToolExecutor toolExecutor;
     private final GracefulShutdownManager shutdownManager;
+    private final GuardrailChain guardrailChain; // nullable
 
     /**
      * Create a factory with the given tool executor.
@@ -39,7 +41,7 @@ public class DefaultAgentFactory implements AgentFactory {
      * @param toolExecutor the executor used by created agents
      */
     public DefaultAgentFactory(ToolExecutor toolExecutor) {
-        this(toolExecutor, null);
+        this(toolExecutor, null, null);
     }
 
     /**
@@ -49,8 +51,23 @@ public class DefaultAgentFactory implements AgentFactory {
      * @param shutdownManager the graceful shutdown manager (null creates a new instance per agent)
      */
     public DefaultAgentFactory(ToolExecutor toolExecutor, GracefulShutdownManager shutdownManager) {
+        this(toolExecutor, shutdownManager, null);
+    }
+
+    /**
+     * Create a factory with the given tool executor, shutdown manager, and guardrail chain.
+     *
+     * @param toolExecutor the executor used by created agents
+     * @param shutdownManager the graceful shutdown manager (null creates a new instance per agent)
+     * @param guardrailChain the guardrail chain (null skips guardrail evaluation)
+     */
+    public DefaultAgentFactory(
+            ToolExecutor toolExecutor,
+            GracefulShutdownManager shutdownManager,
+            GuardrailChain guardrailChain) {
         this.toolExecutor = toolExecutor;
         this.shutdownManager = shutdownManager;
+        this.guardrailChain = guardrailChain;
     }
 
     @Override
@@ -61,7 +78,7 @@ public class DefaultAgentFactory implements AgentFactory {
                         config.middlewares() != null ? config.middlewares() : List.of());
         GracefulShutdownManager sm =
                 shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
-        return new DefaultReActAgent(config, toolExecutor, hookChain, pipeline, sm);
+        return new DefaultReActAgent(config, toolExecutor, hookChain, pipeline, sm, guardrailChain);
     }
 
     @Override
@@ -79,6 +96,7 @@ public class DefaultAgentFactory implements AgentFactory {
             parentContext.addAll(reactAgent.conversationHistory());
         }
 
-        return new DefaultReActAgent(config, toolExecutor, hookChain, pipeline, sm, parentContext);
+        return new DefaultReActAgent(
+                config, toolExecutor, hookChain, pipeline, sm, parentContext, guardrailChain);
     }
 }
