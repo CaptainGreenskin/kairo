@@ -21,6 +21,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -54,6 +55,11 @@ public class DefaultHookChain implements HookChain {
     public void unregister(Object hookHandler) {
         handlers.remove(hookHandler);
         log.debug("Unregistered hook handler: {}", hookHandler.getClass().getSimpleName());
+    }
+
+    /** Returns an unmodifiable snapshot of the currently registered hook handlers. */
+    public List<Object> getRegisteredHandlers() {
+        return Collections.unmodifiableList(new ArrayList<>(handlers));
     }
 
     @Override
