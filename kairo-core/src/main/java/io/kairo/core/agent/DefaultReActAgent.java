@@ -40,6 +40,8 @@ import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
 import io.kairo.core.context.TokenBudgetManager;
 import io.kairo.core.execution.RecoveryHandler;
+import io.kairo.core.hook.AgentErrorEvent;
+import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.middleware.DefaultMiddlewarePipeline;
 import io.kairo.core.model.ModelFallbackManager;
 import io.kairo.core.prompt.SystemPromptBuilder;
@@ -478,11 +480,37 @@ public class DefaultReActAgent implements Agent {
                                                                                                         .get(),
                                                                                                 e
                                                                                                         .getMessage());
-                                                                                        return fireSessionEndBestEffort(
-                                                                                                        AgentState
-                                                                                                                .FAILED,
-                                                                                                        e
-                                                                                                                .getMessage())
+                                                                                        Mono<Void>
+                                                                                                onErrorHook =
+                                                                                                        hookChain
+                                                                                                                        instanceof
+                                                                                                                        DefaultHookChain
+                                                                                                                                dhc
+                                                                                                                ? dhc.fireOnError(
+                                                                                                                                AgentErrorEvent
+                                                                                                                                        .of(
+                                                                                                                                                name,
+                                                                                                                                                e))
+                                                                                                                        .onErrorResume(
+                                                                                                                                he -> {
+                                                                                                                                    log
+                                                                                                                                            .warn(
+                                                                                                                                                    "OnError hook failed for agent '{}': {}",
+                                                                                                                                                    name,
+                                                                                                                                                    he
+                                                                                                                                                            .getMessage());
+                                                                                                                                    return Mono
+                                                                                                                                            .empty();
+                                                                                                                                })
+                                                                                                                : Mono
+                                                                                                                        .empty();
+                                                                                        return onErrorHook
+                                                                                                .then(
+                                                                                                        fireSessionEndBestEffort(
+                                                                                                                AgentState
+                                                                                                                        .FAILED,
+                                                                                                                e
+                                                                                                                        .getMessage()))
                                                                                                 .then(
                                                                                                         Mono
                                                                                                                 .error(
