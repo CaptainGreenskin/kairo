@@ -107,4 +107,56 @@ class BashToolTest {
         assertFalse(result.isError());
         assertTrue(result.content().contains("ok"));
     }
+
+    @Test
+    void stderrIsCapturedInOutput() {
+        ToolResult result = tool.execute(Map.of("command", "echo errline >&2"));
+        assertFalse(result.isError());
+        assertTrue(result.content().contains("errline"));
+    }
+
+    @Test
+    void commandWithPipeSucceeds() {
+        ToolResult result = tool.execute(Map.of("command", "echo hello | tr a-z A-Z"));
+        assertFalse(result.isError());
+        assertTrue(result.content().contains("HELLO"));
+    }
+
+    @Test
+    void metadataContainsCommandString() {
+        ToolResult result = tool.execute(Map.of("command", "echo meta-test"));
+        assertFalse(result.isError());
+        assertEquals("echo meta-test", result.metadata().get("command"));
+    }
+
+    @Test
+    void invalidTimeoutStringDefaultsGracefully() {
+        ToolResult result =
+                tool.execute(Map.of("command", "echo fallback", "timeout", "notanumber"));
+        assertFalse(result.isError());
+        assertTrue(result.content().contains("fallback"));
+    }
+
+    @Test
+    void exitCodeTwoIsReportedInMetadata() {
+        ToolResult result = tool.execute(Map.of("command", "exit 2"));
+        assertTrue(result.isError());
+        assertEquals(2, result.metadata().get("exitCode"));
+    }
+
+    @Test
+    void commandWithStdoutAndStderrCapturesBoth() {
+        ToolResult result = tool.execute(Map.of("command", "echo stdout && echo stderr >&2"));
+        assertFalse(result.isError());
+        assertTrue(result.content().contains("stdout"));
+        assertTrue(result.content().contains("stderr"));
+    }
+
+    @Test
+    void commandOutputContainsNewline() {
+        ToolResult result = tool.execute(Map.of("command", "printf 'a\\nb\\n'"));
+        assertFalse(result.isError());
+        assertTrue(result.content().contains("a"));
+        assertTrue(result.content().contains("b"));
+    }
 }
