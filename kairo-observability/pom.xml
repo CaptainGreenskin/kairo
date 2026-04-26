@@ -19,6 +19,15 @@
             <artifactId>kairo-api</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- KairoEventOTelExporter subscribes to KairoEventBus which returns Flux. -->
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
         <!-- OpenTelemetry versions are pinned by the opentelemetry-bom imported in the
              parent pom's <dependencyManagement>; do not restate <version/> here. -->
         <dependency>
@@ -37,6 +46,12 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-core</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
@@ -44,6 +59,11 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

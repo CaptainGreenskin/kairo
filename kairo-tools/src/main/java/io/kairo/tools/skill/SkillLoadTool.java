@@ -22,8 +22,8 @@ import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
-import io.kairo.core.skill.SkillLoader;
-import io.kairo.core.skill.SkillMarkdownParser;
+import io.kairo.skill.SkillLoader;
+import io.kairo.skill.SkillMarkdownParser;
 import java.util.HashMap;
 import java.util.Map;
 

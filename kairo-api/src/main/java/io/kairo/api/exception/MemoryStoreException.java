@@ -15,7 +15,10 @@
  */
 package io.kairo.api.exception;
 
+import io.kairo.api.Stable;
+
 /** Thrown when a memory storage operation fails (SQL errors, connection failures, I/O errors). */
+@Stable(value = "Memory store exception; shape frozen since v0.7", since = "1.0.0")
 public class MemoryStoreException extends KairoException {
 
     private static final String DEFAULT_ERROR_CODE = "STORAGE_ERROR";

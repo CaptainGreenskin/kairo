@@ -15,256 +15,141 @@
  */
 package io.kairo.examples.demo;
 
+import io.kairo.api.agent.Agent;
+import io.kairo.api.agent.AgentState;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
-import io.kairo.api.task.Task;
-import io.kairo.api.task.TaskStatus;
-import io.kairo.multiagent.task.DefaultTaskBoard;
+import io.kairo.api.team.Team;
+import io.kairo.api.team.TeamConfig;
+import io.kairo.api.team.TeamCoordinator;
+import io.kairo.api.team.TeamExecutionRequest;
+import io.kairo.api.team.TeamResult;
+import io.kairo.multiagent.team.DefaultTaskDispatchCoordinator;
 import io.kairo.multiagent.team.InProcessMessageBus;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Mono;
 
 /**
- * REST controller demonstrating Kairo's multi-agent orchestration primitives.
+ * REST controller demonstrating Kairo v0.10's {@link TeamCoordinator} SPI (ADR-015, ADR-016).
  *
- * <p>This is a pure orchestration demo — no LLM API key is required. It exposes {@link
- * DefaultTaskBoard} for DAG-based task management and {@link InProcessMessageBus} for inter-agent
- * messaging over HTTP.
+ * <p>This is a pure orchestration demo — no LLM API key is required. A POST to {@code
+ * /multi-agent/execute} assembles a {@link Team} of in-process echo agents, hands it to a {@link
+ * DefaultTaskDispatchCoordinator}, and returns the resulting {@link TeamResult}.
  *
- * <p>Usage:
+ * <p>Example:
  *
  * <pre>{@code
- * # Create a plan with dependency DAG
- * curl -X POST http://localhost:8080/multi-agent/plan \
+ * curl -X POST http://localhost:8080/multi-agent/execute \
  *   -H "Content-Type: application/json" \
- *   -d '{"tasks": [
- *     {"subject": "Design API", "description": "Design the REST API schema"},
- *     {"subject": "Implement", "description": "Code the endpoints", "blockedBy": ["1"]},
- *     {"subject": "Test", "description": "Write tests", "blockedBy": ["2"]}
- *   ]}'
- *
- * # List all tasks
- * curl http://localhost:8080/multi-agent/tasks
- *
- * # Update task status
- * curl -X PUT http://localhost:8080/multi-agent/tasks/1/status \
- *   -H "Content-Type: application/json" \
- *   -d '{"status": "IN_PROGRESS"}'
- *
- * # Send a message between agents
- * curl -X POST http://localhost:8080/multi-agent/message \
- *   -H "Content-Type: application/json" \
- *   -d '{"from": "architect", "to": "coder", "content": "Schema is ready"}'
- *
- * # Poll an agent's inbox
- * curl http://localhost:8080/multi-agent/inbox/coder
- *
- * # Reset everything
- * curl -X POST http://localhost:8080/multi-agent/reset
+ *   -d '{"goal": "Ship the v0.10 docs", "agentIds": ["architect", "coder", "tester"]}'
  * }</pre>
  */
 @RestController
 @RequestMapping("/multi-agent")
 public class MultiAgentController {
 
-    private DefaultTaskBoard taskBoard;
-    private InProcessMessageBus messageBus;
-
-    /** Creates the controller with fresh TaskBoard and MessageBus instances. */
-    public MultiAgentController() {
-        this.taskBoard = new DefaultTaskBoard();
-        this.messageBus = new InProcessMessageBus();
-    }
+    private final TeamCoordinator coordinator = new DefaultTaskDispatchCoordinator();
 
     /**
-     * Create a plan by submitting a list of tasks with optional dependency relationships.
+     * Execute a single team run and return its outcome.
      *
-     * <p>Each task in the request may reference other tasks via {@code blockedBy}, using the
-     * 1-based index that corresponds to creation order (the first task created gets ID "1").
-     *
-     * @param request the plan request containing the task list
-     * @return the created tasks with their assigned IDs and dependency info
+     * @param request goal + agent roster; agent roster defaults to {@code ["agent-1"]} if omitted
+     * @return serialised {@link TeamResult}
      */
-    @PostMapping("/plan")
-    public ResponseEntity<Map<String, Object>> createPlan(@RequestBody PlanRequest request) {
-        List<Map<String, Object>> createdTasks = new ArrayList<>();
-
-        // Resolve task inputs: support both "task" (single string) and "tasks" (list)
-        List<TaskInput> taskInputs = request.resolveTaskInputs();
-        if (taskInputs.isEmpty()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Either 'task' or 'tasks' must be provided"));
+    @PostMapping("/execute")
+    public ResponseEntity<Map<String, Object>> execute(@RequestBody ExecuteRequest request) {
+        String goal = request.goal();
+        if (goal == null || goal.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "'goal' must not be blank"));
         }
 
-        // Phase 1: create all tasks
-        List<Task> tasks = new ArrayList<>();
-        for (TaskInput input : taskInputs) {
-            Task task = taskBoard.create(input.subject(), input.description());
-            tasks.add(task);
+        List<String> agentIds =
+                request.agentIds() == null || request.agentIds().isEmpty()
+                        ? List.of("agent-1")
+                        : request.agentIds();
+        InProcessMessageBus bus = new InProcessMessageBus();
+        List<Agent> agents = new ArrayList<>();
+        for (String id : agentIds) {
+            agents.add(new EchoAgent(id));
+            bus.registerAgent(id);
+        }
+        Team team = new Team("demo-team", agents, bus);
+
+        TeamExecutionRequest execRequest =
+                new TeamExecutionRequest(
+                        UUID.randomUUID().toString(), goal, Map.of(), TeamConfig.defaults());
+
+        TeamResult result = coordinator.execute(execRequest, team).block();
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("requestId", result.requestId());
+        body.put("status", result.status().name());
+        body.put("totalDurationMs", result.totalDuration().toMillis());
+        body.put(
+                "stepOutcomes",
+                result.stepOutcomes().stream()
+                        .map(
+                                step ->
+                                        Map.of(
+                                                "stepId",
+                                                step.stepId(),
+                                                "verdict",
+                                                step.finalVerdict().outcome().name(),
+                                                "attempts",
+                                                step.attempts(),
+                                                "output",
+                                                step.output()))
+                        .toList());
+        result.finalOutput().ifPresent(out -> body.put("finalOutput", out));
+        body.put("warnings", result.warnings());
+        return ResponseEntity.ok(body);
+    }
+
+    /** Request body for {@link #execute(ExecuteRequest)}. */
+    public record ExecuteRequest(String goal, List<String> agentIds) {}
+
+    /** Minimal in-process {@link Agent} that echoes its prompt — no LLM required. */
+    private static final class EchoAgent implements Agent {
+
+        private final String id;
+
+        EchoAgent(String id) {
+            this.id = id;
         }
 
-        // Phase 2: wire up dependencies
-        for (int i = 0; i < taskInputs.size(); i++) {
-            TaskInput input = taskInputs.get(i);
-            if (input.blockedBy() != null) {
-                for (String blockerId : input.blockedBy()) {
-                    taskBoard.addDependency(tasks.get(i).id(), blockerId);
-                }
-            }
+        @Override
+        public Mono<Msg> call(Msg input) {
+            return Mono.just(
+                    Msg.of(MsgRole.ASSISTANT, "[" + id + "] acknowledged: " + input.text()));
         }
 
-        // Phase 3: build response
-        for (Task task : tasks) {
-            createdTasks.add(toTaskMap(taskBoard.get(task.id())));
+        @Override
+        public String id() {
+            return id;
         }
 
-        return ResponseEntity.ok(
-                Map.of(
-                        "plan",
-                        createdTasks,
-                        "unblockedTasks",
-                        taskBoard.getUnblockedTasks().stream().map(t -> t.id()).toList()));
-    }
+        @Override
+        public String name() {
+            return id;
+        }
 
-    /**
-     * List all tasks with their current statuses and dependency information.
-     *
-     * @return all tasks on the board
-     */
-    @GetMapping("/tasks")
-    public ResponseEntity<Map<String, Object>> listTasks() {
-        List<Task> allTasks = taskBoard.list();
-        List<Task> unblocked = taskBoard.getUnblockedTasks();
-        return ResponseEntity.ok(
-                Map.of(
-                        "tasks", allTasks.stream().map(this::toTaskMap).toList(),
-                        "unblockedTasks", unblocked.stream().map(t -> t.id()).toList()));
-    }
+        @Override
+        public AgentState state() {
+            return AgentState.IDLE;
+        }
 
-    /**
-     * Update the status of a task by its ID.
-     *
-     * <p>When a task is marked {@code COMPLETED}, all downstream tasks that were blocked by it are
-     * automatically unblocked.
-     *
-     * @param id the task ID
-     * @param request the status update request
-     * @return the updated task
-     */
-    @PutMapping("/tasks/{id}/status")
-    public ResponseEntity<Map<String, Object>> updateTaskStatus(
-            @PathVariable String id, @RequestBody StatusUpdateRequest request) {
-        TaskStatus status = TaskStatus.valueOf(request.status());
-        Task updated = taskBoard.update(id, status);
-        return ResponseEntity.ok(
-                Map.of(
-                        "task", toTaskMap(updated),
-                        "unblockedTasks",
-                                taskBoard.getUnblockedTasks().stream().map(t -> t.id()).toList()));
-    }
-
-    /**
-     * Send a direct message from one agent to another.
-     *
-     * <p>Agents are auto-registered on first use (either as sender or receiver).
-     *
-     * @param request the message request containing from, to, and content
-     * @return confirmation with message details
-     */
-    @PostMapping("/message")
-    public ResponseEntity<Map<String, String>> sendMessage(@RequestBody MessageRequest request) {
-        messageBus.registerAgent(request.from());
-        messageBus.registerAgent(request.to());
-        Msg msg = Msg.of(MsgRole.ASSISTANT, request.content());
-        messageBus.send(request.from(), request.to(), msg).block();
-        return ResponseEntity.ok(
-                Map.of(
-                        "status", "sent",
-                        "from", request.from(),
-                        "to", request.to(),
-                        "content", request.content()));
-    }
-
-    /**
-     * Poll all pending messages for the given agent.
-     *
-     * <p>Messages are consumed upon polling — subsequent polls will not return the same messages.
-     *
-     * @param agentName the agent whose inbox to poll
-     * @return the list of pending messages
-     */
-    @GetMapping("/inbox/{agentName}")
-    public ResponseEntity<Map<String, Object>> pollInbox(@PathVariable String agentName) {
-        messageBus.registerAgent(agentName);
-        List<Msg> messages = messageBus.poll(agentName);
-        List<Map<String, String>> messageList =
-                messages.stream()
-                        .map(m -> Map.of("role", m.role().name(), "text", m.text()))
-                        .toList();
-        return ResponseEntity.ok(
-                Map.of(
-                        "agent", agentName,
-                        "messageCount", messageList.size(),
-                        "messages", messageList));
-    }
-
-    /**
-     * Reset the task board and message bus to a clean state.
-     *
-     * @return confirmation of the reset
-     */
-    @PostMapping("/reset")
-    public ResponseEntity<Map<String, String>> reset() {
-        this.taskBoard = new DefaultTaskBoard();
-        this.messageBus = new InProcessMessageBus();
-        return ResponseEntity.ok(
-                Map.of("status", "reset", "message", "TaskBoard and MessageBus have been reset"));
-    }
-
-    private Map<String, Object> toTaskMap(Task task) {
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("id", task.id());
-        map.put("subject", task.subject());
-        map.put("description", task.description());
-        map.put("status", task.status().name());
-        map.put("blockedBy", task.blockedBy());
-        map.put("blocks", task.blocks());
-        return map;
-    }
-
-    /**
-     * Request body for creating a plan. Accepts either a single {@code task} string or a {@code
-     * tasks} list.
-     */
-    public record PlanRequest(String task, List<TaskInput> tasks) {
-        /** Resolves task inputs from either the single task string or the tasks list. */
-        public List<TaskInput> resolveTaskInputs() {
-            if (tasks != null && !tasks.isEmpty()) {
-                return tasks;
-            }
-            if (task != null && !task.isBlank()) {
-                return List.of(new TaskInput(task, task, null));
-            }
-            return List.of();
+        @Override
+        public void interrupt() {
+            // no-op
         }
     }
-
-    /** Single task input within a plan request. */
-    public record TaskInput(String subject, String description, List<String> blockedBy) {}
-
-    /** Request body for updating task status. */
-    public record StatusUpdateRequest(String status) {}
-
-    /** Request body for sending an inter-agent message. */
-    public record MessageRequest(String from, String to, String content) {}
 }

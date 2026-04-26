@@ -25,6 +25,7 @@ import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelCapability;
 import io.kairo.api.model.ModelConfig;
+import io.kairo.api.model.ProviderPipeline;
 import io.kairo.api.model.ToolVerbosity;
 import io.kairo.api.tool.ToolDefinition;
 import io.kairo.core.model.JsonSchemaGenerator;
@@ -40,7 +41,7 @@ import java.util.Map;
  * control), structured output, extended thinking, and effort parameters into the Anthropic JSON
  * format.
  */
-public class AnthropicRequestBuilder {
+public class AnthropicRequestBuilder implements ProviderPipeline.RequestBuilder<String> {
 
     private final ObjectMapper objectMapper;
     private final ComplexityEstimator complexityEstimator = new ComplexityEstimator();
@@ -62,6 +63,16 @@ public class AnthropicRequestBuilder {
      * @param config model configuration
      * @param stream whether this is a streaming request
      * @return JSON string of the request body
+     */
+    @Override
+    public String build(List<Msg> messages, ModelConfig config, boolean stream)
+            throws JsonProcessingException {
+        return buildRequestBody(messages, config, stream);
+    }
+
+    /**
+     * Build the Anthropic Messages API request body (legacy entry point retained for backward
+     * compatibility with intra-module callers).
      */
     public String buildRequestBody(List<Msg> messages, ModelConfig config, boolean stream)
             throws JsonProcessingException {

@@ -19,6 +19,8 @@ All public SPIs are listed below with their location and stability level.
 | `GuardrailPolicy` | kairo-api | `io.kairo.api.guardrail` | Experimental |
 | `SecurityEventSink` | kairo-api | `io.kairo.api.guardrail` | Experimental |
 | `RoutingPolicy` | kairo-api | `io.kairo.api.routing` | Experimental |
+| `DurableExecutionStore` | kairo-api | `io.kairo.api.execution` | Experimental |
+| `ResourceConstraint` | kairo-api | `io.kairo.api.execution` | Experimental |
 
 ## Compatibility Levels
 
@@ -103,3 +105,5 @@ When an SPI is deprecated and replaced, a migration guide following this templat
 | `GuardrailPolicy` | v0.7.0 |
 | `SecurityEventSink` | v0.7.0 |
 | `RoutingPolicy` | v0.7.0 |
+| `DurableExecutionStore` | v0.8.0 |
+| `ResourceConstraint` | v0.8.0 |

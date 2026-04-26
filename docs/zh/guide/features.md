@@ -7,7 +7,7 @@
 - **21 个内置工具** — 文件操作（Read/Write/Edit/Glob/Grep）、执行（Bash/Monitor）、交互（AskUser）、技能（SkillList/SkillLoad）、Agent 操作（Spawn/Message/Task/Team/Plan）
 - **读写分区** — READ_ONLY 工具并行执行，WRITE/SYSTEM_CHANGE 工具自动串行化
 - **人机协作** — 三态权限模型（ALLOWED/ASK/DENIED），通过 `PermissionGuard` 控制
-- **多 Agent 编排** — TaskBoard、PlanBuilder、TeamScheduler 和进程内 MessageBus
+- **多 Agent 编排** — `TeamCoordinator` SPI（默认 expert-team 编排：plan → generate → evaluate）和进程内 MessageBus
 - **A2A 协议** — Agent-to-Agent 通信标准（Google ADK 兼容），进程内发现 + 调用，团队自动注册
 - **中间件管道** — 声明式请求/响应拦截，通过 `@MiddlewareOrder` 实现横切关注点（日志、认证、限流）
 - **Agent 快照/检查点** — 对话中序列化 Agent 状态，通过 `AgentBuilder.restoreFrom(snapshot)` 从检查点恢复
@@ -52,17 +52,3 @@ OpenAIProvider provider = new OpenAIProvider(apiKey, baseUrl, "/chat/completions
 | `SessionExample` | 否 | FileMemoryStore + SessionSerializer 序列化往返 |
 | Spring Boot Demo | 是 | REST API、流式输出、结构化输出、Hook、MCP |
 
-## 能力验证（轻量轨道）
-
-为了在 `v1.0` 之前把 Agent 能力从“描述”变成“可复现证据”，Kairo 新增了轻量 benchmark 基线目录 `benchmarks/`：
-
-- `benchmarks/scenarios/v0-lite-scenarios.jsonl`：20 个代表性场景
-- `benchmarks/metrics-schema.json`：统一结果结构（状态、延迟、Token、安全决策）
-- `benchmarks/README.md`：运行与聚合说明
-
-该轨道用于持续积累跨版本证据，重点覆盖：
-
-- 工具调用正确性
-- 长任务稳定性
-- 安全治理有效性
-- 成本/延迟趋势可见性

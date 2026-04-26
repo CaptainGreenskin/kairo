@@ -15,8 +15,11 @@
  */
 package io.kairo.api.agent;
 
+import io.kairo.api.Stable;
+
 /** Cooperative cancellation signal exposed to reactive execution chains. */
 @FunctionalInterface
+@Stable(value = "Cancellation signal SPI; single-method interface", since = "1.0.0")
 public interface CancellationSignal {
 
     /** Context key used in Reactor context propagation. */

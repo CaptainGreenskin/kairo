@@ -15,9 +15,11 @@
  */
 package io.kairo.api.a2a;
 
+import io.kairo.api.Experimental;
 import java.util.Objects;
 
 /** Utilities for namespacing in-process A2A agent identifiers. */
+@Experimental("A2A namespace utility; introduced in v0.10, targeting stabilization in v1.1")
 public final class A2aNamespaces {
 
     private A2aNamespaces() {}

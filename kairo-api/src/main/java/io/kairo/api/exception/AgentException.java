@@ -15,10 +15,13 @@
  */
 package io.kairo.api.exception;
 
+import io.kairo.api.Stable;
+
 /**
  * Base exception for agent-related errors such as lifecycle failures, interruptions, and execution
  * errors.
  */
+@Stable(value = "Agent subsystem base exception; shape frozen since v0.7", since = "1.0.0")
 public class AgentException extends KairoException {
 
     /**

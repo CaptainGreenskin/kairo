@@ -15,6 +15,7 @@
  */
 package io.kairo.api.plan;
 
+import io.kairo.api.Stable;
 import java.time.Instant;
 
 /**
@@ -26,5 +27,6 @@ import java.time.Instant;
  * @param createdAt when the plan was created
  * @param status the current plan status
  */
+@Stable(value = "Plan file record; shape frozen since v0.1", since = "1.0.0")
 public record PlanFile(
         String id, String name, String content, Instant createdAt, PlanStatus status) {}

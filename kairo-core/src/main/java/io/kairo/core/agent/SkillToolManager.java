@@ -61,8 +61,8 @@ class SkillToolManager {
      */
     Mono<Void> initMcpIfConfigured() {
         if (mcpInitialized
-                || config.mcpServerConfigs() == null
-                || config.mcpServerConfigs().isEmpty()) {
+                || config.mcpCapability().serverConfigs() == null
+                || config.mcpCapability().serverConfigs().isEmpty()) {
             return Mono.empty();
         }
         return Mono.fromCallable(
@@ -77,7 +77,7 @@ class SkillToolManager {
                             }
                             this.mcpRegistryPlugin = plugin;
 
-                            for (Object serverConfig : config.mcpServerConfigs()) {
+                            for (Object serverConfig : config.mcpCapability().serverConfigs()) {
                                 if (!plugin.supports(serverConfig)) {
                                     log.warn(
                                             "MCP config type '{}' is not supported by plugin '{}'; skipping",
@@ -197,7 +197,7 @@ class SkillToolManager {
     private List<McpPluginTool> applyMcpGovernance(
             String serverName, List<McpPluginTool> discoveredTools) {
         List<McpPluginTool> filtered = filterToolsBySearchQuery(serverName, discoveredTools);
-        int maxTools = Math.max(1, config.mcpMaxToolsPerServer());
+        int maxTools = Math.max(1, config.mcpCapability().maxToolsPerServer());
         List<McpPluginTool> bounded = filtered;
         if (filtered.size() > maxTools) {
             log.warn(
@@ -211,7 +211,8 @@ class SkillToolManager {
         List<McpPluginTool> normalized = new ArrayList<>();
         for (McpPluginTool tool : bounded) {
             ToolDefinition normalizedDef =
-                    normalizeToolDefinition(tool.definition(), config.mcpStrictSchemaAlignment());
+                    normalizeToolDefinition(
+                            tool.definition(), config.mcpCapability().strictSchemaAlignment());
             normalized.add(new McpPluginTool(normalizedDef, tool.executor()));
         }
         return normalized;
@@ -219,7 +220,7 @@ class SkillToolManager {
 
     private List<McpPluginTool> filterToolsBySearchQuery(
             String serverName, List<McpPluginTool> discoveredTools) {
-        String query = config.mcpToolSearchQuery();
+        String query = config.mcpCapability().toolSearchQuery();
         if (query == null || query.isBlank()) {
             return discoveredTools;
         }

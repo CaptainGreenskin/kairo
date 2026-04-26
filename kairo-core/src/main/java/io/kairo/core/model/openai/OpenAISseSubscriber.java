@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kairo.api.message.Content;
 import io.kairo.api.model.ModelResponse;
+import io.kairo.api.model.ProviderPipeline;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -33,7 +34,8 @@ import reactor.core.publisher.Sinks;
  * <p>Accumulates text deltas and tool call deltas from the SSE stream, emitting partial {@link
  * ModelResponse} objects for text chunks, and a final aggregated response on {@code [DONE]}.
  */
-public class OpenAISseSubscriber implements Flow.Subscriber<String> {
+public class OpenAISseSubscriber
+        implements Flow.Subscriber<String>, ProviderPipeline.StreamSubscriber<String> {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAISseSubscriber.class);
 
@@ -56,6 +58,12 @@ public class OpenAISseSubscriber implements Flow.Subscriber<String> {
     public void onSubscribe(Flow.Subscription subscription) {
         this.subscription = subscription;
         subscription.request(Long.MAX_VALUE);
+    }
+
+    /** SPI entry point — routes an SSE line to {@link #onNext(String)} for parsing. */
+    @Override
+    public void onChunk(String chunk) {
+        onNext(chunk);
     }
 
     @Override

@@ -17,9 +17,11 @@ package io.kairo.tools.file;
 
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.api.workspace.Workspace;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -76,6 +78,15 @@ public class GrepTool implements ToolHandler {
 
     @Override
     public ToolResult execute(Map<String, Object> input) {
+        return doExecute(input, Workspace.cwd().root());
+    }
+
+    @Override
+    public ToolResult execute(Map<String, Object> input, ToolContext context) {
+        return doExecute(input, context.workspace().root());
+    }
+
+    private ToolResult doExecute(Map<String, Object> input, Path workspaceRoot) {
         String regexStr = (String) input.get("pattern");
         String searchPath = (String) input.get("path");
         String globFilter = (String) input.get("glob");
@@ -105,7 +116,7 @@ public class GrepTool implements ToolHandler {
                             + "backtracking. Please simplify the pattern.");
         }
 
-        Path dir = Path.of(searchPath);
+        Path dir = workspaceRoot.resolve(searchPath);
         if (!Files.isDirectory(dir)) {
             return error("Not a directory: " + searchPath);
         }

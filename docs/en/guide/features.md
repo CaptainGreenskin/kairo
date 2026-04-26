@@ -7,7 +7,7 @@
 - **21 Built-in Tools** — File ops (Read/Write/Edit/Glob/Grep), execution (Bash/Monitor), interaction (AskUser), skills (SkillList/SkillLoad), and agent ops (Spawn/Message/Task/Team/Plan)
 - **Read/Write Partition** — READ_ONLY tools execute in parallel, WRITE/SYSTEM_CHANGE tools serialize automatically
 - **Human-in-the-Loop** — Three-state permission model (ALLOWED/ASK/DENIED) with `PermissionGuard`
-- **Multi-Agent Orchestration** — TaskBoard, PlanBuilder, TeamScheduler, and in-process MessageBus
+- **Multi-Agent Orchestration** — `TeamCoordinator` SPI with expert-team (plan → generate → evaluate) default, plus in-process MessageBus
 - **A2A Protocol** — Agent-to-Agent communication standard (Google ADK-compatible), in-process discovery + invocation, team auto-registration
 - **Middleware Pipeline** — Declarative request/response interception with `@MiddlewareOrder` for cross-cutting concerns (logging, auth, rate-limiting)
 - **Agent Snapshot/Checkpoint** — Serialize agent state mid-conversation, restore from checkpoint with `AgentBuilder.restoreFrom(snapshot)`
@@ -52,17 +52,3 @@ OpenAIProvider provider = new OpenAIProvider(apiKey, baseUrl, "/chat/completions
 | `SessionExample` | No | FileMemoryStore + SessionSerializer round-trip |
 | Spring Boot Demo | Yes | REST API, streaming, structured output, hooks, MCP |
 
-## Capability Verification (Lightweight Track)
-
-To make agent capability claims reproducible before `v1.0`, Kairo now ships a lightweight benchmark baseline in `benchmarks/`:
-
-- `benchmarks/scenarios/v0-lite-scenarios.jsonl`: 20 representative scenarios
-- `benchmarks/metrics-schema.json`: canonical output schema (status, latency, tokens, safety decisions)
-- `benchmarks/README.md`: run and aggregation guidance
-
-This track is intended to accumulate release-over-release evidence for:
-
-- tool-call correctness
-- long-task stability
-- safety governance effectiveness
-- cost/latency trend visibility

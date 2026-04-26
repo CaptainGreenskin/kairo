@@ -15,6 +15,7 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
 import java.time.Duration;
 
 /**
@@ -29,6 +30,7 @@ import java.time.Duration;
  * @param sideEffect the side-effect classification of this tool
  * @param usageGuidance optional usage hint appended to the tool description in the system prompt
  */
+@Stable(value = "Runtime tool description; record shape frozen since v0.1", since = "1.0.0")
 public record ToolDefinition(
         String name,
         String description,

@@ -15,6 +15,7 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
 import java.util.Map;
 
 /**
@@ -31,6 +32,7 @@ import java.util.Map;
  *     per-invocation instances.
  * @since 0.1.0
  */
+@Stable(value = "Tool execution contract; unchanged since v0.1", since = "1.0.0")
 public interface ToolHandler {
 
     /**

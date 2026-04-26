@@ -15,6 +15,7 @@
  */
 package io.kairo.api.memory;
 
+import io.kairo.api.Stable;
 import java.util.List;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -43,6 +44,7 @@ import reactor.core.publisher.Mono;
  * @see MemoryScope
  * @since 0.1.0
  */
+@Stable(value = "Memory store SPI; CRUD + hybrid search shape frozen since v0.1", since = "1.0.0")
 public interface MemoryStore {
 
     /**

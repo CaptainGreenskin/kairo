@@ -15,6 +15,7 @@
  */
 package io.kairo.api.model;
 
+import io.kairo.api.Stable;
 import io.kairo.api.agent.CancellationSignal;
 import io.kairo.api.message.Msg;
 import java.util.List;
@@ -50,6 +51,7 @@ import reactor.core.publisher.Mono;
  * @see ModelResponse
  * @since 0.1.0
  */
+@Stable(value = "Core model invocation contract; unchanged since v0.1", since = "1.0.0")
 public interface ModelProvider {
 
     /**

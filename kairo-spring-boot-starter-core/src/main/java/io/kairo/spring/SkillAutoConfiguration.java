@@ -16,10 +16,10 @@
 package io.kairo.spring;
 
 import io.kairo.api.skill.SkillRegistry;
-import io.kairo.core.skill.DefaultSkillRegistry;
-import io.kairo.core.skill.SkillLoader;
 import io.kairo.core.tool.AnnotationToolScanner;
 import io.kairo.core.tool.DefaultToolRegistry;
+import io.kairo.skill.DefaultSkillRegistry;
+import io.kairo.skill.SkillLoader;
 import io.kairo.tools.skill.SkillListTool;
 import io.kairo.tools.skill.SkillLoadTool;
 import org.slf4j.Logger;

@@ -15,9 +15,12 @@
  */
 package io.kairo.api.exception;
 
+import io.kairo.api.Stable;
+
 /**
  * Thrown when a model provider API returns an error (non-200 HTTP status, response parse failure).
  */
+@Stable(value = "Model API exception; shape frozen since v0.7", since = "1.0.0")
 public class ModelApiException extends ModelException {
 
     private static final String DEFAULT_ERROR_CODE = "MODEL_API_ERROR";

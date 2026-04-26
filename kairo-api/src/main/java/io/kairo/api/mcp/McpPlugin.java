@@ -15,6 +15,7 @@
  */
 package io.kairo.api.mcp;
 
+import io.kairo.api.Stable;
 import reactor.core.publisher.Mono;
 
 /**
@@ -31,6 +32,7 @@ import reactor.core.publisher.Mono;
  *     ServiceLoader}, so they must have a public no-arg constructor.
  * @since 0.4.0
  */
+@Stable(value = "MCP plugin SPI; ServiceLoader discovery shape frozen since v0.4", since = "1.0.0")
 public interface McpPlugin extends AutoCloseable {
 
     /**

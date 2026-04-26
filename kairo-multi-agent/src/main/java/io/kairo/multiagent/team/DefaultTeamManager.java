@@ -22,7 +22,7 @@ import io.kairo.api.team.MessageBus;
 import io.kairo.api.team.Team;
 import io.kairo.api.team.TeamManager;
 import io.kairo.core.a2a.InProcessAgentCardResolver;
-import io.kairo.multiagent.task.DefaultTaskBoard;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.slf4j.Logger;
@@ -31,14 +31,22 @@ import org.slf4j.LoggerFactory;
 /**
  * Default implementation of {@link TeamManager} for managing agent teams.
  *
- * <p>Creates teams with shared {@link DefaultTaskBoard} and {@link InProcessMessageBus} for
- * intra-team coordination. Thread-safe via {@link ConcurrentHashMap}.
+ * <p>Creates teams with a shared {@link InProcessMessageBus} for intra-team communication. ADR-015
+ * retires the public task-board surface: task-dispatch semantics are now an implementation detail
+ * of the {@link io.kairo.api.team.TeamCoordinator} driving the team, so {@code TeamManager} no
+ * longer owns a {@code TaskBoard}.
+ *
+ * <p>The v0.10 {@link Team} record holds an <em>immutable</em> agent roster (snapshot at
+ * construction time). This manager therefore maintains its own mutable per-team state and returns a
+ * fresh {@link Team} instance from {@link #get(String)} that reflects the latest roster.
+ *
+ * <p>Thread-safe via {@link ConcurrentHashMap} and {@link CopyOnWriteArrayList}.
  */
 public class DefaultTeamManager implements TeamManager {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultTeamManager.class);
 
-    private final ConcurrentHashMap<String, Team> teams = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, TeamState> teams = new ConcurrentHashMap<>();
     private final AgentCardResolver agentCardResolver;
 
     /** Creates a {@code DefaultTeamManager} without A2A agent-card integration. */
@@ -61,55 +69,52 @@ public class DefaultTeamManager implements TeamManager {
 
     @Override
     public Team create(String name) {
-        DefaultTaskBoard taskBoard = new DefaultTaskBoard();
-        InProcessMessageBus messageBus = new InProcessMessageBus();
-        Team team = new Team(name, new CopyOnWriteArrayList<>(), taskBoard, messageBus);
-        teams.put(name, team);
+        TeamState state = new TeamState(name, new InProcessMessageBus());
+        teams.put(name, state);
         log.info("Created team '{}'", name);
-        return team;
+        return state.snapshot();
     }
 
     @Override
     public void delete(String name) {
-        Team team = teams.remove(name);
-        if (team != null) {
+        TeamState state = teams.remove(name);
+        if (state != null) {
             // Interrupt all running agents in the team
-            team.agents()
-                    .forEach(
-                            agent -> {
-                                try {
-                                    agent.interrupt();
-                                } catch (Exception e) {
-                                    log.warn(
-                                            "Failed to interrupt agent '{}' during team deletion",
-                                            agent.id(),
-                                            e);
-                                }
-                            });
+            state.agents.forEach(
+                    agent -> {
+                        try {
+                            agent.interrupt();
+                        } catch (Exception e) {
+                            log.warn(
+                                    "Failed to interrupt agent '{}' during team deletion",
+                                    agent.id(),
+                                    e);
+                        }
+                    });
             // Clean up message bus
-            MessageBus bus = team.messageBus();
+            MessageBus bus = state.messageBus;
             if (bus instanceof InProcessMessageBus inProcessBus) {
-                team.agents().forEach(agent -> inProcessBus.unregisterAgent(agent.id()));
+                state.agents.forEach(agent -> inProcessBus.unregisterAgent(agent.id()));
             }
-            log.info("Deleted team '{}' with {} agents", name, team.agents().size());
+            log.info("Deleted team '{}' with {} agents", name, state.agents.size());
         }
     }
 
     @Override
     public Team get(String name) {
-        return teams.get(name);
+        TeamState state = teams.get(name);
+        return state == null ? null : state.snapshot();
     }
 
     @Override
     public void addAgent(String teamName, Agent agent) {
-        Team team = teams.get(teamName);
-        if (team == null) {
+        TeamState state = teams.get(teamName);
+        if (state == null) {
             throw new IllegalArgumentException("Team not found: " + teamName);
         }
-        team.agents().add(agent);
+        state.agents.add(agent);
         // Register agent on message bus for broadcast support
-        MessageBus bus = team.messageBus();
-        if (bus instanceof InProcessMessageBus inProcessBus) {
+        if (state.messageBus instanceof InProcessMessageBus inProcessBus) {
             inProcessBus.registerAgent(agent.id());
         }
         // Register agent card for A2A discovery
@@ -127,14 +132,13 @@ public class DefaultTeamManager implements TeamManager {
 
     @Override
     public void removeAgent(String teamName, String agentId) {
-        Team team = teams.get(teamName);
-        if (team == null) {
+        TeamState state = teams.get(teamName);
+        if (state == null) {
             throw new IllegalArgumentException("Team not found: " + teamName);
         }
-        team.agents().removeIf(a -> a.id().equals(agentId));
+        state.agents.removeIf(a -> a.id().equals(agentId));
         // Unregister from message bus
-        MessageBus bus = team.messageBus();
-        if (bus instanceof InProcessMessageBus inProcessBus) {
+        if (state.messageBus instanceof InProcessMessageBus inProcessBus) {
             inProcessBus.unregisterAgent(agentId);
         }
         // Unregister agent card from A2A discovery
@@ -147,5 +151,24 @@ public class DefaultTeamManager implements TeamManager {
             log.debug("Unregistered AgentCard for '{}'", agentId);
         }
         log.info("Removed agent '{}' from team '{}'", agentId, teamName);
+    }
+
+    /**
+     * Mutable per-team bookkeeping. The public {@link Team} is rebuilt from this state on demand
+     * because v0.10 {@code Team.agents()} is immutable.
+     */
+    private static final class TeamState {
+        final String name;
+        final MessageBus messageBus;
+        final CopyOnWriteArrayList<Agent> agents = new CopyOnWriteArrayList<>();
+
+        TeamState(String name, MessageBus messageBus) {
+            this.name = name;
+            this.messageBus = messageBus;
+        }
+
+        Team snapshot() {
+            return new Team(name, List.copyOf(agents), messageBus);
+        }
     }
 }

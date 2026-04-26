@@ -43,23 +43,34 @@
 
     <!-- Distribution managed by central-publishing-maven-plugin (Sonatype Central Portal) -->
 
+    <!--
+        Module layout: foundation modules are listed flat at the top; the rest are grouped
+        through three reactor-only aggregator POMs (kairo-capabilities / kairo-transports /
+        kairo-starters) so that `mvn -pl kairo-<group> -am test` rebuilds a cohort in one shot.
+        The aggregators are reactor-only — every leaf module still inherits kairo-parent
+        directly and never appears on any runtime classpath via the aggregator.
+    -->
     <modules>
+        <!-- Foundation -->
         <module>kairo-bom</module>
         <module>kairo-api</module>
         <module>kairo-core</module>
-        <module>kairo-tools</module>
-        <module>kairo-mcp</module>
-        <module>kairo-multi-agent</module>
-        <module>kairo-observability</module>
-        <module>kairo-spring-boot-starter-core</module>
-        <module>kairo-spring-boot-starter-mcp</module>
-        <module>kairo-spring-boot-starter-multi-agent</module>
-        <module>kairo-spring-boot-starter</module>
+
+        <!-- Vertical capabilities (8 modules, see kairo-capabilities/pom.xml) -->
+        <module>kairo-capabilities</module>
+
+        <!-- I/O boundary: event stream + channel adapters (5 modules, see kairo-transports/pom.xml) -->
+        <module>kairo-transports</module>
+
+        <!-- Spring Boot starters (10 modules, see kairo-starters/pom.xml) -->
+        <module>kairo-starters</module>
+
+        <!-- Examples / demos -->
         <module>kairo-examples</module>
     </modules>
 
     <properties>
-        <revision>0.5.0-SNAPSHOT</revision>
+        <revision>1.0.0-SNAPSHOT</revision>
         <java.version>17</java.version>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
@@ -83,11 +94,11 @@
         <junit.version>5.11.4</junit.version>
         <jackson.version>2.18.6</jackson.version>
         <mcp-sdk.version>1.1.1</mcp-sdk.version>
-        <opentelemetry.version>1.44.1</opentelemetry.version>
-        <swagger-parser.version>2.1.22</swagger-parser.version>
-        <spring-boot.version>3.3.0</spring-boot.version>
+        <opentelemetry.version>1.61.0</opentelemetry.version>
+        <swagger-parser.version>2.1.40</swagger-parser.version>
+        <spring-boot.version>3.5.3</spring-boot.version>
         <mockito.version>5.11.0</mockito.version>
-        <mockwebserver.version>4.12.0</mockwebserver.version>
+        <mockwebserver.version>5.3.2</mockwebserver.version>
         <assertj.version>3.27.7</assertj.version>
         <jacoco.line.threshold>0</jacoco.line.threshold>
     </properties>
@@ -222,7 +233,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.5.2</version>
+                <version>3.5.5</version>
                 <configuration>
                     <forkedProcessExitTimeoutInSeconds>60</forkedProcessExitTimeoutInSeconds>
                     <groups>${groups}</groups>
@@ -324,7 +335,7 @@
             <plugin>
                 <groupId>org.sonatype.central</groupId>
                 <artifactId>central-publishing-maven-plugin</artifactId>
-                <version>0.7.0</version>
+                <version>0.10.0</version>
                 <extensions>true</extensions>
                 <configuration>
                     <publishingServerId>central</publishingServerId>
@@ -363,7 +374,7 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-source-plugin</artifactId>
-                        <version>3.3.1</version>
+                        <version>3.4.0</version>
                         <executions>
                             <execution>
                                 <id>attach-sources</id>
@@ -388,7 +399,7 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>
-                        <version>3.2.4</version>
+                        <version>3.2.8</version>
                         <executions>
                             <execution>
                                 <id>sign-artifacts</id>

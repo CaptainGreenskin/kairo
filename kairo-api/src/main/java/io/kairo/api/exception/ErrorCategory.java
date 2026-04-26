@@ -15,6 +15,8 @@
  */
 package io.kairo.api.exception;
 
+import io.kairo.api.Stable;
+
 /**
  * Categorizes Kairo exceptions by subsystem origin.
  *
@@ -26,6 +28,9 @@ package io.kairo.api.exception;
  * AGENT, STORAGE, SECURITY, UNKNOWN), which proved more actionable for routing and metrics. See
  * ADR-008 for the rationale behind this divergence.
  */
+@Stable(
+        value = "Error category enum; subsystem taxonomy frozen since v0.7 (ADR-008)",
+        since = "1.0.0")
 public enum ErrorCategory {
     /** Model provider errors (rate limits, timeouts, API failures). */
     MODEL,

@@ -16,11 +16,13 @@
 package io.kairo.core.agent;
 
 import io.kairo.api.exception.AgentInterruptedException;
+import io.kairo.api.execution.ExecutionEventType;
 import io.kairo.api.hook.*;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.core.execution.ExecutionEventEmitter;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -29,6 +31,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -47,11 +50,13 @@ class ToolPhase {
     private static final Logger log = LoggerFactory.getLogger(ToolPhase.class);
 
     private final ReActLoopContext ctx;
+    private final AtomicInteger totalToolCallsCounter = new AtomicInteger(0);
     private final IterationGuards guards;
     private final HookDecisionApplier hookDecisions;
     private final List<Msg> conversationHistory;
     private final LoopDetector loopDetector;
     private final AtomicInteger currentIteration;
+    @Nullable private final ExecutionEventEmitter eventEmitter;
     private CompactionTrigger compactionTrigger;
 
     ToolPhase(
@@ -61,16 +66,33 @@ class ToolPhase {
             List<Msg> conversationHistory,
             LoopDetector loopDetector,
             AtomicInteger currentIteration) {
+        this(ctx, guards, hookDecisions, conversationHistory, loopDetector, currentIteration, null);
+    }
+
+    ToolPhase(
+            ReActLoopContext ctx,
+            IterationGuards guards,
+            HookDecisionApplier hookDecisions,
+            List<Msg> conversationHistory,
+            LoopDetector loopDetector,
+            AtomicInteger currentIteration,
+            @Nullable ExecutionEventEmitter eventEmitter) {
         this.ctx = ctx;
         this.guards = guards;
         this.hookDecisions = hookDecisions;
         this.conversationHistory = conversationHistory;
         this.loopDetector = loopDetector;
         this.currentIteration = currentIteration;
+        this.eventEmitter = eventEmitter;
     }
 
     void setCompactionTrigger(CompactionTrigger compactionTrigger) {
         this.compactionTrigger = compactionTrigger;
+    }
+
+    /** Returns the total number of tool calls executed since this agent was created. */
+    int getTotalToolCalls() {
+        return totalToolCallsCounter.get();
     }
 
     /**
@@ -129,7 +151,7 @@ class ToolPhase {
             List<ToolResult> toolResults,
             Supplier<Mono<Msg>> loopContinuation) {
         applySkillToolRestrictions(toolCalls, toolResults);
-        conversationHistory.add(hookDecisions.buildToolResultMsg(toolResults));
+        conversationHistory.add(hookDecisions.buildToolResultMsg(toolResults, conversationHistory));
         currentIteration.incrementAndGet();
 
         return proceedWithCompactionIfNeeded(loopContinuation);
@@ -137,11 +159,45 @@ class ToolPhase {
 
     private Mono<Msg> proceedWithCompactionIfNeeded(Supplier<Mono<Msg>> loopContinuation) {
         if (compactionTrigger != null) {
+            int messagesBefore = conversationHistory.size();
             return guards.checkCancelled()
                     .then(compactionTrigger.checkAndCompact(conversationHistory))
-                    .flatMap(compacted -> loopContinuation.get());
+                    .flatMap(
+                            compacted -> {
+                                if (Boolean.TRUE.equals(compacted)) {
+                                    return emitContextCompacted(
+                                                    messagesBefore, conversationHistory.size())
+                                            .then(loopContinuation.get());
+                                }
+                                return loopContinuation.get();
+                            });
         }
         return guards.checkCancelled().then(loopContinuation.get());
+    }
+
+    /**
+     * Emit a CONTEXT_COMPACTED event after compaction with before/after message counts.
+     * Best-effort: errors are logged and swallowed.
+     */
+    private Mono<Void> emitContextCompacted(int messagesBefore, int messagesAfter) {
+        if (eventEmitter == null) {
+            return Mono.empty();
+        }
+        String payload =
+                "{\"iteration\":"
+                        + currentIteration.get()
+                        + ",\"messagesBefore\":"
+                        + messagesBefore
+                        + ",\"messagesAfter\":"
+                        + messagesAfter
+                        + "}";
+        return eventEmitter
+                .emit(ExecutionEventType.CONTEXT_COMPACTED, payload)
+                .onErrorResume(
+                        e -> {
+                            log.warn("Failed to emit CONTEXT_COMPACTED event: {}", e.getMessage());
+                            return Mono.empty();
+                        });
     }
 
     // ---- Tool execution with hooks ----
@@ -174,14 +230,61 @@ class ToolPhase {
 
     /** Execute a single tool call with PreActing and PostActing hooks. */
     private Mono<ToolResult> executeSingleToolWithHooks(Content.ToolUseContent toolCall) {
+        totalToolCallsCounter.incrementAndGet();
         Instant toolStart = Instant.now();
         return firePreActing(toolCall)
                 .map(hookResult -> planToolExecution(toolCall, hookResult))
                 .flatMap(this::executePlannedTool)
                 .flatMap(
                         result ->
-                                finishToolExecutionPipeline(
-                                        toolCall.toolName(), result, toolStart));
+                                emitToolCallResponse(toolCall.toolId(), toolCall.toolName(), result)
+                                        .then(
+                                                finishToolExecutionPipeline(
+                                                        toolCall.toolName(), result, toolStart)));
+    }
+
+    /**
+     * Emit a TOOL_CALL_RESPONSE event with the toolCallId for correlation-based recovery matching.
+     * Best-effort: errors are logged and swallowed.
+     */
+    private Mono<Void> emitToolCallResponse(String toolCallId, String toolName, ToolResult result) {
+        if (eventEmitter == null) {
+            return Mono.empty();
+        }
+        String payload =
+                "{\"toolCallId\":\""
+                        + toolCallId
+                        + "\",\"toolName\":\""
+                        + toolName
+                        + "\",\"result\":\""
+                        + escapeJson(result.content())
+                        + "\",\"isError\":"
+                        + result.isError()
+                        + "}";
+        return eventEmitter
+                .emit(ExecutionEventType.TOOL_CALL_RESPONSE, payload)
+                .onErrorResume(
+                        e -> {
+                            log.warn(
+                                    "Failed to emit TOOL_CALL_RESPONSE for {}: {}",
+                                    toolName,
+                                    e.getMessage());
+                            return Mono.empty();
+                        });
+    }
+
+    /** Minimal JSON string escaping for embedding values in JSON payloads. */
+    private static String escapeJson(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t")
+                .replace("\b", "\\b")
+                .replace("\f", "\\f");
     }
 
     private Mono<HookResult<PreActingEvent>> firePreActing(Content.ToolUseContent toolCall) {
@@ -251,7 +354,7 @@ class ToolPhase {
                 toolUseId,
                 "Tool execution blocked by hook: " + (reason != null ? reason : "no reason given"),
                 true,
-                Map.of());
+                Map.of("error_code", "tool_blocked_by_hook"));
     }
 
     private ToolResult skippedByHookToolResult(String toolUseId) {
@@ -259,11 +362,15 @@ class ToolPhase {
                 toolUseId,
                 "Tool execution skipped by hook",
                 false,
-                Map.of("skipped_by_hook", true));
+                Map.of("skipped_by_hook", true, "result_code", "tool_skipped_by_hook"));
     }
 
     private ToolResult cancelledByHookToolResult(String toolUseId) {
-        return new ToolResult(toolUseId, "Tool execution cancelled by hook", true, Map.of());
+        return new ToolResult(
+                toolUseId,
+                "Tool execution cancelled by hook",
+                true,
+                Map.of("error_code", "tool_cancelled_by_hook"));
     }
 
     private Mono<ToolResult> executeToolCall(
@@ -291,7 +398,13 @@ class ToolPhase {
                                             toolUseId,
                                             "Error executing tool: " + e.getMessage(),
                                             true,
-                                            Map.of()));
+                                            Map.of(
+                                                    "error_code",
+                                                    "tool_execution_failed",
+                                                    "error_type",
+                                                    e.getClass().getSimpleName(),
+                                                    "tool_name",
+                                                    toolName)));
                         });
     }
 

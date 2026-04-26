@@ -39,7 +39,12 @@ import java.util.Map;
  * Msg system = MsgBuilder.system("You are a helpful assistant");
  * Msg assistant = MsgBuilder.assistant("Hi there!");
  * }</pre>
+ *
+ * @deprecated since v0.10 — prefer {@link Msg#builder()} / {@link Msg#of(MsgRole, String)} (both in
+ *     {@code kairo-api}). This wrapper will be removed in v0.11 once the convenience factories are
+ *     promoted onto {@code Msg} directly.
  */
+@Deprecated(since = "0.10", forRemoval = true)
 public final class MsgBuilder {
 
     private final Msg.Builder delegate;

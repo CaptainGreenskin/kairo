@@ -15,7 +15,10 @@
  */
 package io.kairo.api.exception;
 
+import io.kairo.api.Stable;
+
 /** Thrown when an agent's processing is interrupted (e.g., timeout, user cancel). */
+@Stable(value = "Agent interrupted exception; shape frozen since v0.7", since = "1.0.0")
 public class AgentInterruptedException extends AgentException {
 
     private static final String DEFAULT_ERROR_CODE = "AGENT_INTERRUPTED";

@@ -21,6 +21,7 @@ import static org.mockito.Mockito.mock;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.tool.ToolRegistry;
 import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class AgentConfigTest {
@@ -41,7 +42,7 @@ class AgentConfigTest {
                         .timeout(Duration.ofMinutes(5))
                         .tokenBudget(100_000)
                         .modelName("gpt-4o")
-                        .mcpToolSearchQuery("calendar")
+                        .mcpCapability(new McpCapabilityConfig(List.of(), 128, true, "calendar"))
                         .addHook(hook)
                         .build();
 
@@ -53,7 +54,7 @@ class AgentConfigTest {
         assertEquals(Duration.ofMinutes(5), config.timeout());
         assertEquals(100_000, config.tokenBudget());
         assertEquals("gpt-4o", config.modelName());
-        assertEquals("calendar", config.mcpToolSearchQuery());
+        assertEquals("calendar", config.mcpCapability().toolSearchQuery());
         assertEquals(1, config.hooks().size());
         assertSame(hook, config.hooks().get(0));
     }
@@ -69,7 +70,7 @@ class AgentConfigTest {
         assertNull(config.systemPrompt());
         assertNull(config.toolRegistry());
         assertNull(config.modelName());
-        assertNull(config.mcpToolSearchQuery());
+        assertNull(config.mcpCapability().toolSearchQuery());
         assertTrue(config.hooks().isEmpty());
     }
 

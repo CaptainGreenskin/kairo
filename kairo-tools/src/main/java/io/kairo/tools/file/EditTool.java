@@ -17,10 +17,12 @@ package io.kairo.tools.file;
 
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
+import io.kairo.api.workspace.Workspace;
 import io.kairo.core.context.recovery.FileAccessTracker;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -69,6 +71,15 @@ public class EditTool implements ToolHandler {
 
     @Override
     public ToolResult execute(Map<String, Object> input) {
+        return doExecute(input, Workspace.cwd().root());
+    }
+
+    @Override
+    public ToolResult execute(Map<String, Object> input, ToolContext context) {
+        return doExecute(input, context.workspace().root());
+    }
+
+    private ToolResult doExecute(Map<String, Object> input, Path workspaceRoot) {
         String filePath = (String) input.get("path");
         String original = (String) input.get("originalText");
         String replacement = (String) input.get("newText");
@@ -83,7 +94,7 @@ public class EditTool implements ToolHandler {
             return error("Parameter 'newText' is required");
         }
 
-        Path file = Path.of(filePath);
+        Path file = workspaceRoot.resolve(filePath);
         if (!Files.exists(file)) {
             return error("File not found: " + filePath);
         }

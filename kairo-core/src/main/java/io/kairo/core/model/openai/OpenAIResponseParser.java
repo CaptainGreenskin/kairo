@@ -20,17 +20,24 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kairo.api.message.Content;
 import io.kairo.api.model.ModelResponse;
+import io.kairo.api.model.ProviderPipeline;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 /** Parses OpenAI Chat Completions API responses into {@link ModelResponse} objects. */
-public class OpenAIResponseParser {
+public class OpenAIResponseParser implements ProviderPipeline.ResponseParser<String> {
 
     private final ObjectMapper objectMapper;
 
     public OpenAIResponseParser(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+    }
+
+    /** SPI entry point — delegates to {@link #parseResponse(String)}. */
+    @Override
+    public ModelResponse parse(String raw) throws JsonProcessingException {
+        return parseResponse(raw);
     }
 
     /** Parse a JSON response body into a {@link ModelResponse}. */

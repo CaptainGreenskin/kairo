@@ -21,6 +21,7 @@ import io.kairo.api.message.Msg;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
+import io.kairo.api.model.ProviderPipeline;
 import io.kairo.api.model.RawStreamingModelProvider;
 import io.kairo.api.model.StreamChunk;
 import io.kairo.api.tool.ToolDefinition;
@@ -55,7 +56,8 @@ import reactor.core.publisher.Sinks;
  *
  * <p>Uses JDK 11+ built-in {@link HttpClient} for non-blocking HTTP calls.
  */
-public class AnthropicProvider implements RawStreamingModelProvider {
+public class AnthropicProvider
+        implements RawStreamingModelProvider, ProviderPipeline<String, String> {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicProvider.class);
     private static final Duration STREAM_IDLE_TIMEOUT = Duration.ofMinutes(5);
@@ -290,5 +292,38 @@ public class AnthropicProvider implements RawStreamingModelProvider {
     public String buildRequestBody(List<Msg> messages, ModelConfig config, boolean stream)
             throws JsonProcessingException {
         return requestBuilder.buildRequestBody(messages, config, stream);
+    }
+
+    // ----------------------------------------------------------------------
+    // ProviderPipeline<String, String> SPI — ADR-005 provider decomposition.
+    // ----------------------------------------------------------------------
+
+    @Override
+    public ProviderPipeline.RequestBuilder<String> requestBuilder() {
+        return requestBuilder;
+    }
+
+    @Override
+    public ProviderPipeline.ResponseParser<String> responseParser() {
+        return responseParser;
+    }
+
+    /**
+     * Returns a stateless prototype of the Anthropic streaming subscriber. The instance is not
+     * wired to a Reactor Sink and therefore cannot emit parsed responses; it exists so callers
+     * inspecting the pipeline can identify the streaming protocol and substitute their own
+     * subscriber via pipeline injection. The provider's {@link #stream(List, ModelConfig)}
+     * continues to construct a sink-bound {@link AnthropicSseSubscriber} per invocation.
+     */
+    @Override
+    public ProviderPipeline.StreamSubscriber<String> streamSubscriber() {
+        return chunk -> {
+            /* prototype — real subscriber is created per-stream inside stream() */
+        };
+    }
+
+    @Override
+    public ProviderPipeline.ErrorClassifier errorClassifier() {
+        return errorClassifier;
     }
 }

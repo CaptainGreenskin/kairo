@@ -68,7 +68,7 @@ class NegativeAutoConfigTest {
     void contextFailsWithoutApiKey() {
         // Default provider is anthropic (matchIfMissing = true).
         // Without kairo.model.api-key and without ANTHROPIC_API_KEY env var
-        // the anthropicModelProvider bean throws IllegalStateException.
+        // ModelProviderUtils.validateApiKey throws IllegalArgumentException.
         // Whether the context actually fails depends on whether the env var is set
         // in the CI/local environment, so we only assert the context completed its
         // attempt (either failed with the expected error or succeeded if env var exists).
@@ -77,8 +77,8 @@ class NegativeAutoConfigTest {
                     if (context.getStartupFailure() != null) {
                         assertThat(context.getStartupFailure())
                                 .rootCause()
-                                .isInstanceOf(IllegalStateException.class)
-                                .hasMessageContaining("API key not configured");
+                                .isInstanceOf(IllegalArgumentException.class)
+                                .hasMessageContaining("apiKey cannot be null or blank");
                     }
                     // If ANTHROPIC_API_KEY env var is set the context will succeed — that's fine.
                 });

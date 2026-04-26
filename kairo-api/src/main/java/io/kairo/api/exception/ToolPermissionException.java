@@ -15,7 +15,10 @@
  */
 package io.kairo.api.exception;
 
+import io.kairo.api.Stable;
+
 /** Thrown when a tool execution is denied by the permission guard. */
+@Stable(value = "Tool permission exception; shape frozen since v0.7", since = "1.0.0")
 public class ToolPermissionException extends ToolException {
 
     private static final String DEFAULT_ERROR_CODE = "TOOL_PERMISSION_DENIED";

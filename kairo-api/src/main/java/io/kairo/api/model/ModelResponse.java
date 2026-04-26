@@ -15,6 +15,7 @@
  */
 package io.kairo.api.model;
 
+import io.kairo.api.Stable;
 import io.kairo.api.message.Content;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
@@ -29,6 +30,9 @@ import java.util.Optional;
  * @param stopReason why the model stopped generating
  * @param model the model identifier that produced this response
  */
+@Stable(
+        value = "Model response record; Usage + StopReason nested types frozen since v0.2",
+        since = "1.0.0")
 public record ModelResponse(
         String id, List<Content> contents, Usage usage, StopReason stopReason, String model) {
 

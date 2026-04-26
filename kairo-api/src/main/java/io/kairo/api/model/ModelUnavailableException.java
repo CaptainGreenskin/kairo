@@ -15,12 +15,15 @@
  */
 package io.kairo.api.model;
 
+import io.kairo.api.Stable;
+
 /**
  * Indicates that a model is temporarily unavailable for serving requests.
  *
  * <p>Typical causes include circuit-breaker open, provider maintenance windows, or capacity
  * protection in upstream gateways.
  */
+@Stable(value = "Model unavailable exception; shape frozen since v0.4", since = "1.0.0")
 public class ModelUnavailableException extends RuntimeException {
 
     private final String modelId;

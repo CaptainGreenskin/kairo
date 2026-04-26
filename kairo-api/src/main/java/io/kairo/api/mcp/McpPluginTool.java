@@ -15,6 +15,7 @@
  */
 package io.kairo.api.mcp;
 
+import io.kairo.api.Stable;
 import io.kairo.api.tool.ToolDefinition;
 
 /**
@@ -23,4 +24,5 @@ import io.kairo.api.tool.ToolDefinition;
  * @param definition normalized tool definition exposed to the runtime
  * @param executor executable instance used by {@code ToolExecutor.registerToolInstance}
  */
+@Stable(value = "MCP plugin tool binding; shape frozen since v0.4", since = "1.0.0")
 public record McpPluginTool(ToolDefinition definition, Object executor) {}

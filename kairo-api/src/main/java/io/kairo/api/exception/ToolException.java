@@ -15,7 +15,10 @@
  */
 package io.kairo.api.exception;
 
+import io.kairo.api.Stable;
+
 /** Base exception for tool execution errors such as permission denials and plan mode violations. */
+@Stable(value = "Tool subsystem base exception; shape frozen since v0.7", since = "1.0.0")
 public class ToolException extends KairoException {
 
     /**
