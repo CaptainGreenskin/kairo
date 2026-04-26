@@ -88,7 +88,7 @@ class LoopDetectorTest {
     @Test
     void freqLayer_warnAfterThresholdCallsInWindow() {
         // Use low thresholds for testing
-        LoopDetector detector = new LoopDetector(100, 200, 5, 10, Duration.ofMinutes(10));
+        LoopDetector detector = new LoopDetector(100, 200, 5, 10, Duration.ofMinutes(10), 1000);
 
         // Different args each time to avoid hash detection
         for (int i = 0; i < 4; i++) {
@@ -102,7 +102,7 @@ class LoopDetectorTest {
 
     @Test
     void freqLayer_hardStopAfterHardLimitCallsInWindow() {
-        LoopDetector detector = new LoopDetector(100, 200, 5, 10, Duration.ofMinutes(10));
+        LoopDetector detector = new LoopDetector(100, 200, 5, 10, Duration.ofMinutes(10), 1000);
 
         for (int i = 0; i < 9; i++) {
             detector.check(toolCallsWithArgs("search", Map.of("q", "query" + i)));
@@ -114,7 +114,7 @@ class LoopDetectorTest {
     @Test
     void freqLayer_oldCallsOutsideWindowDoNotCount() {
         // Use a tiny window (1ms) so calls age out immediately
-        LoopDetector detector = new LoopDetector(100, 200, 5, 10, Duration.ofMillis(1));
+        LoopDetector detector = new LoopDetector(100, 200, 5, 10, Duration.ofMillis(1), 1000);
 
         for (int i = 0; i < 10; i++) {
             detector.check(toolCallsWithArgs("search", Map.of("q", "query" + i)));
@@ -153,7 +153,7 @@ class LoopDetectorTest {
     @Test
     void mixed_highestSeverityWins() {
         // Set hash thresholds high (won't trigger), freq thresholds low (will trigger WARN)
-        LoopDetector detector = new LoopDetector(100, 200, 3, 100, Duration.ofMinutes(10));
+        LoopDetector detector = new LoopDetector(100, 200, 3, 100, Duration.ofMinutes(10), 1000);
         var calls = toolCalls("tool_a");
 
         detector.check(calls);
