@@ -50,6 +50,20 @@ public class SessionSerializer {
     }
 
     /**
+     * Returns the pre-configured {@link ObjectMapper} used by this serializer.
+     *
+     * <p>The mapper is configured with {@link JavaTimeModule}, ISO-8601 date formatting, and
+     * lenient unknown-property handling. Other components that need consistent JSON serialization
+     * (e.g. {@code JsonFileSnapshotStore}) should reuse this instance rather than creating a new
+     * one.
+     *
+     * @return the shared ObjectMapper instance
+     */
+    public ObjectMapper objectMapper() {
+        return objectMapper;
+    }
+
+    /**
      * Serialize a session snapshot to versioned JSON.
      *
      * @param snapshot the snapshot to serialize

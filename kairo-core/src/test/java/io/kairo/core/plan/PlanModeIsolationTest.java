@@ -17,12 +17,13 @@ package io.kairo.core.plan;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.exception.PlanModeViolationException;
 import io.kairo.api.plan.PlanFile;
 import io.kairo.api.plan.PlanStatus;
 import io.kairo.api.tool.*;
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.core.tool.DefaultToolExecutor;
 import io.kairo.core.tool.DefaultToolRegistry;
-import io.kairo.core.tool.ToolHandler;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

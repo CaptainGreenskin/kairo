@@ -30,11 +30,11 @@ import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
 import io.kairo.api.tool.*;
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
 import io.kairo.core.tool.DefaultToolRegistry;
-import io.kairo.core.tool.ToolHandler;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -71,7 +71,7 @@ class DefaultReActAgentTest {
     }
 
     private DefaultReActAgent createAgent(AgentConfig config) {
-        return new DefaultReActAgent(config, toolExecutor, hookChain, null);
+        return new DefaultReActAgent(config, toolExecutor, hookChain, null, null);
     }
 
     private ModelResponse textResponse(String text) {
@@ -183,7 +183,9 @@ class DefaultReActAgentTest {
                 .assertNext(
                         msg -> {
                             assertEquals(MsgRole.ASSISTANT, msg.role());
-                            assertTrue(msg.text().contains("maximum iteration limit"));
+                            assertTrue(
+                                    msg.text().contains("max iterations")
+                                            || msg.text().contains("maximum iteration limit"));
                         })
                 .verifyComplete();
     }
@@ -288,7 +290,7 @@ class DefaultReActAgentTest {
                         });
 
         AgentConfig config = baseConfig().build();
-        DefaultReActAgent agent = new DefaultReActAgent(config, null, hookChain, null);
+        DefaultReActAgent agent = new DefaultReActAgent(config, null, hookChain, null, null);
 
         StepVerifier.create(agent.call(Msg.of(MsgRole.USER, "call tool")))
                 .assertNext(msg -> assertNotNull(msg.text()))

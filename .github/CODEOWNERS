@@ -1,0 +1,22 @@
+# CODEOWNERS — Kairo
+#
+# PR review routing. All changes require at least one owner approval.
+
+# Default — all maintainers
+*       @captaingreenskin
+
+# SPI interfaces — architectural decisions need review
+/kairo-api/src/main/java/io/kairo/api/   @captaingreenskin
+
+# Core runtime — performance and correctness sensitive
+/kairo-core/src/main/java/io/kairo/core/agent/   @captaingreenskin
+/kairo-core/src/main/java/io/kairo/core/middleware/ @captaingreenskin
+/kairo-core/src/main/java/io/kairo/core/hook/     @captaingreenskin
+
+# CI/CD and GitHub configuration
+/.github/    @captaingreenskin
+/scripts/    @captaingreenskin
+
+# Build configuration
+/pom.xml     @captaingreenskin
+/**/pom.xml  @captaingreenskin

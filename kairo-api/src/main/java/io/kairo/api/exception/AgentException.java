@@ -15,10 +15,13 @@
  */
 package io.kairo.api.exception;
 
+import io.kairo.api.Stable;
+
 /**
  * Base exception for agent-related errors such as lifecycle failures, interruptions, and execution
  * errors.
  */
+@Stable(value = "Agent subsystem base exception; shape frozen since v0.7", since = "1.0.0")
 public class AgentException extends KairoException {
 
     /**
@@ -27,7 +30,7 @@ public class AgentException extends KairoException {
      * @param message the detail message
      */
     public AgentException(String message) {
-        super(message);
+        this(message, null, null);
     }
 
     /**
@@ -37,6 +40,17 @@ public class AgentException extends KairoException {
      * @param cause the underlying cause
      */
     public AgentException(String message, Throwable cause) {
-        super(message, cause);
+        this(message, cause, null);
+    }
+
+    /**
+     * Create a new AgentException with all structured error fields.
+     *
+     * @param message the detail message
+     * @param cause the underlying cause (may be null)
+     * @param errorCode machine-readable error code
+     */
+    protected AgentException(String message, Throwable cause, String errorCode) {
+        super(message, cause, errorCode, ErrorCategory.AGENT, false, null);
     }
 }

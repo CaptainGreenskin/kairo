@@ -20,6 +20,9 @@ import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.StatusCode;
 import java.util.Map;
+import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * OpenTelemetry-backed implementation of the Kairo {@link Span} interface.
@@ -27,32 +30,34 @@ import java.util.Map;
  * <p>Package-private — users create spans via {@link OTelTracer}, not directly. Kairo semantic
  * attribute keys are mapped to OpenTelemetry GenAI semantic convention attribute keys before being
  * set on the underlying OTel span.
+ *
+ * <p><strong>Allow-list filtering:</strong> Only keys registered in {@link
+ * GenAiSemanticAttributes#allMappings()} or explicitly added to {@code additionalAllowedKeys} are
+ * accepted. Unknown keys are rejected with a warning log to prevent high-cardinality tag explosion.
  */
 class OTelSpan implements Span {
 
-    // Kairo key → OTel attribute key mapping
-    private static final Map<String, String> ATTRIBUTE_KEY_MAP =
-            Map.ofEntries(
-                    Map.entry("token.input", "gen_ai.usage.input_tokens"),
-                    Map.entry("token.output", "gen_ai.usage.output_tokens"),
-                    Map.entry("token.cache_read", "gen_ai.usage.cache_read_tokens"),
-                    Map.entry("token.cache_write", "gen_ai.usage.cache_creation_tokens"),
-                    Map.entry("tool.name", "gen_ai.tool.name"),
-                    Map.entry("tool.success", "gen_ai.tool.success"),
-                    Map.entry("tool.duration_ms", "gen_ai.tool.duration_ms"),
-                    Map.entry("exception.type", "exception.type"),
-                    Map.entry("exception.message", "exception.message"),
-                    Map.entry("compaction.strategy", "gen_ai.compaction.strategy"),
-                    Map.entry("compaction.tokens_saved", "gen_ai.compaction.tokens_saved"));
+    private static final Logger LOG = Logger.getLogger(OTelSpan.class.getName());
 
     private final io.opentelemetry.api.trace.Span otelSpan;
     private final String spanName;
     private final OTelSpan parentSpan;
+    private final Set<String> additionalAllowedKeys;
 
     OTelSpan(io.opentelemetry.api.trace.Span otelSpan, String name, OTelSpan parent) {
+        this(otelSpan, name, parent, Set.of());
+    }
+
+    OTelSpan(
+            io.opentelemetry.api.trace.Span otelSpan,
+            String name,
+            OTelSpan parent,
+            Set<String> additionalAllowedKeys) {
         this.otelSpan = otelSpan;
         this.spanName = name;
         this.parentSpan = parent;
+        this.additionalAllowedKeys =
+                additionalAllowedKeys != null ? additionalAllowedKeys : Set.of();
     }
 
     /** Returns the underlying OTel span for context propagation. */
@@ -80,7 +85,18 @@ class OTelSpan implements Span {
         if (key == null || value == null) {
             return;
         }
-        String otelKey = ATTRIBUTE_KEY_MAP.getOrDefault(key, key);
+        // Resolve the canonical OTel AttributeKey from the single registry.
+        // Unknown keys are rejected to prevent high-cardinality tag explosion.
+        AttributeKey<?> canonical = GenAiSemanticAttributes.kairoKeyToOTel(key);
+        if (canonical == null && !additionalAllowedKeys.contains(key)) {
+            LOG.log(
+                    Level.WARNING,
+                    "Rejecting unknown span attribute key ''{0}'' on span ''{1}''. "
+                            + "Register it in GenAiSemanticAttributes or add to additionalAllowedKeys.",
+                    new Object[] {key, spanName});
+            return;
+        }
+        String otelKey = canonical != null ? canonical.getKey() : key;
         if (value instanceof Long longVal) {
             otelSpan.setAttribute(AttributeKey.longKey(otelKey), longVal);
         } else if (value instanceof Integer intVal) {

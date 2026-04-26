@@ -39,14 +39,15 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * REST controller demonstrating multi-turn session-based chat with Kairo.
  *
- * <p>Maintains an in-memory conversation history per session, allowing clients to
- * carry context across multiple requests. Each session accumulates user and assistant
- * messages, which are sent as the full conversation history on every model call.
+ * <p>Maintains an in-memory conversation history per session, allowing clients to carry context
+ * across multiple requests. Each session accumulates user and assistant messages, which are sent as
+ * the full conversation history on every model call.
  *
- * <p>This pattern is useful for building stateful chatbots where the model needs
- * prior context to generate coherent multi-turn responses.
+ * <p>This pattern is useful for building stateful chatbots where the model needs prior context to
+ * generate coherent multi-turn responses.
  *
  * <p>Usage:
+ *
  * <pre>{@code
  * # Start a new session
  * curl -X POST http://localhost:8080/session/chat \
@@ -81,47 +82,53 @@ public class SessionChatController {
     /**
      * Send a message within a session, creating a new session if none is provided.
      *
-     * <p>Appends the user message to the session history, calls the model with the
-     * full conversation context, and appends the assistant response. If no
-     * {@code sessionId} is provided in the request, a new UUID-based session is created.
+     * <p>Appends the user message to the session history, calls the model with the full
+     * conversation context, and appends the assistant response. If no {@code sessionId} is provided
+     * in the request, a new UUID-based session is created.
      *
      * @param request the chat request containing an optional sessionId and the message
      * @return the assistant reply along with the sessionId for subsequent calls
      */
     @PostMapping("/chat")
     public ResponseEntity<SessionChatResponse> chat(@RequestBody SessionChatRequest request) {
-        String sessionId = (request.sessionId() != null && !request.sessionId().isBlank())
-                ? request.sessionId()
-                : UUID.randomUUID().toString();
+        String sessionId =
+                (request.sessionId() != null && !request.sessionId().isBlank())
+                        ? request.sessionId()
+                        : UUID.randomUUID().toString();
 
-        List<Msg> history = sessions.computeIfAbsent(
-                sessionId, k -> Collections.synchronizedList(new ArrayList<>()));
+        List<Msg> history =
+                sessions.computeIfAbsent(
+                        sessionId, k -> Collections.synchronizedList(new ArrayList<>()));
 
         // Append user message
         Msg userMsg = Msg.of(MsgRole.USER, request.message());
         history.add(userMsg);
 
         // Build config
-        ModelConfig config = ModelConfig.builder()
-                .model(modelProvider.name().equals("anthropic")
-                        ? ModelConfig.DEFAULT_MODEL
-                        : "qwen-plus")
-                .maxTokens(ModelConfig.DEFAULT_MAX_TOKENS)
-                .temperature(0.7)
-                .systemPrompt("You are a helpful assistant. Remember the conversation context.")
-                .build();
+        ModelConfig config =
+                ModelConfig.builder()
+                        .model(
+                                modelProvider.name().equals("anthropic")
+                                        ? ModelConfig.DEFAULT_MODEL
+                                        : "qwen-plus")
+                        .maxTokens(ModelConfig.DEFAULT_MAX_TOKENS)
+                        .temperature(0.7)
+                        .systemPrompt(
+                                "You are a helpful assistant. Remember the conversation context.")
+                        .build();
 
         // Call model with full history
         ModelResponse response = modelProvider.call(List.copyOf(history), config).block();
 
         String replyText;
         if (response != null && response.contents() != null) {
-            replyText = response.contents().stream()
-                    .filter(Content.TextContent.class::isInstance)
-                    .map(Content.TextContent.class::cast)
-                    .map(Content.TextContent::text)
-                    .findFirst()
-                    .orElse("No response");
+            replyText =
+                    response.contents().stream()
+                            .filter(Content.TextContent.class::isInstance)
+                            .map(Content.TextContent.class::cast)
+                            .map(Content.TextContent::text)
+                            .findFirst()
+                            .orElse("No response");
         } else {
             replyText = "No response";
         }
@@ -148,9 +155,13 @@ public class SessionChatController {
 
         List<MessageView> views;
         synchronized (history) {
-            views = history.stream()
-                    .map(msg -> new MessageView(msg.role().name().toLowerCase(), msg.text()))
-                    .toList();
+            views =
+                    history.stream()
+                            .map(
+                                    msg ->
+                                            new MessageView(
+                                                    msg.role().name().toLowerCase(), msg.text()))
+                            .toList();
         }
         return ResponseEntity.ok(views);
     }

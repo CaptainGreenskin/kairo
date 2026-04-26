@@ -16,15 +16,28 @@
 package io.kairo.core.agent;
 
 import io.kairo.api.agent.Agent;
+import io.kairo.api.agent.AgentBuilderCustomizer;
 import io.kairo.api.agent.AgentConfig;
+import io.kairo.api.agent.AgentSnapshot;
+import io.kairo.api.agent.SystemPromptContributor;
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.evolution.EvolutionConfig;
+import io.kairo.api.execution.DurableExecutionStore;
+import io.kairo.api.execution.ResourceConstraint;
+import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.memory.MemoryStore;
+import io.kairo.api.middleware.Middleware;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.api.tool.UserApprovalHandler;
 import io.kairo.api.tracing.Tracer;
+import io.kairo.core.context.CompactionThresholds;
+import io.kairo.core.context.DefaultContextManager;
+import io.kairo.core.context.TokenBudgetManager;
+import io.kairo.core.execution.RecoveryHandler;
 import io.kairo.core.hook.DefaultHookChain;
+import io.kairo.core.middleware.DefaultMiddlewarePipeline;
 import io.kairo.core.session.SessionManager;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import java.nio.file.Path;
@@ -32,6 +45,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -64,6 +78,7 @@ public class AgentBuilder {
     private int tokenBudget = 200_000;
     private String modelName;
     private final List<Object> hooks = new ArrayList<>();
+    private final List<Middleware> middlewares = new ArrayList<>();
     private ContextManager contextManager;
     private MemoryStore memoryStore;
     private String sessionId;
@@ -72,7 +87,23 @@ public class AgentBuilder {
     private Tracer tracer;
     private boolean streamingEnabled = false;
     private GracefulShutdownManager shutdownManager;
+    private AgentSnapshot restoreFrom;
     private final List<Object> mcpServerConfigs = new ArrayList<>();
+    private int loopHashWarn = 3;
+    private int loopHashStop = 5;
+    private int loopFreqWarn = 50;
+    private int loopFreqStop = 100;
+    private Duration loopFreqWindow = Duration.ofMinutes(10);
+    private Map<String, Object> toolDependencies = Map.of();
+    private CompactionThresholds compactionThresholds;
+    private GuardrailChain guardrailChain;
+    @javax.annotation.Nullable private DurableExecutionStore durableExecutionStore;
+    @javax.annotation.Nullable private RecoveryHandler recoveryHandler;
+    private boolean recoveryOnStartup = false;
+    @javax.annotation.Nullable private java.util.List<ResourceConstraint> resourceConstraints;
+    @javax.annotation.Nullable private EvolutionConfig evolutionConfig;
+    private final List<AgentBuilderCustomizer> customizers = new ArrayList<>();
+    private final List<SystemPromptContributor> systemPromptContributors = new ArrayList<>();
 
     private AgentBuilder() {}
 
@@ -102,6 +133,20 @@ public class AgentBuilder {
     /** Set the tool executor for running tools. */
     public AgentBuilder toolExecutor(ToolExecutor executor) {
         this.toolExecutor = executor;
+        return this;
+    }
+
+    /**
+     * Set runtime dependencies to inject into tools via {@link io.kairo.api.tool.ToolContext}.
+     *
+     * <p>These dependencies (e.g., database connections, API clients) are made available to
+     * context-aware tools at execution time.
+     *
+     * @param dependencies the dependencies map, or null for empty
+     * @return this builder
+     */
+    public AgentBuilder toolDependencies(Map<String, Object> dependencies) {
+        this.toolDependencies = dependencies != null ? Map.copyOf(dependencies) : Map.of();
         return this;
     }
 
@@ -147,6 +192,14 @@ public class AgentBuilder {
     public AgentBuilder hook(Object hookHandler) {
         if (hookHandler != null) {
             this.hooks.add(hookHandler);
+        }
+        return this;
+    }
+
+    /** Register a middleware that runs before the agent loop. */
+    public AgentBuilder middleware(Middleware mw) {
+        if (mw != null) {
+            this.middlewares.add(mw);
         }
         return this;
     }
@@ -230,6 +283,21 @@ public class AgentBuilder {
     }
 
     /**
+     * Restore an agent from a previously captured snapshot.
+     *
+     * <p>The restored agent will continue from the snapshot's conversation history, iteration
+     * count, and token usage. Runtime dependencies (model provider, tool executor, etc.) must still
+     * be set on this builder — they are not stored in the snapshot.
+     *
+     * @param snapshot the snapshot to restore from
+     * @return this builder
+     */
+    public AgentBuilder restoreFrom(AgentSnapshot snapshot) {
+        this.restoreFrom = snapshot;
+        return this;
+    }
+
+    /**
      * Enable or disable streaming responses from the model provider.
      *
      * <p>When enabled, the agent receives tokens in real-time as they are generated. Streaming
@@ -290,6 +358,197 @@ public class AgentBuilder {
     }
 
     /**
+     * Configure loop detection thresholds for the ReAct loop.
+     *
+     * <p>If not called, sensible defaults apply (hash warn=3, hash stop=5, freq warn=50, freq
+     * stop=100, window=10min).
+     *
+     * @param hashWarn consecutive identical tool-call hashes to trigger a warning
+     * @param hashStop consecutive identical tool-call hashes to hard-stop
+     * @param freqWarn per-tool call count within window to trigger a warning
+     * @param freqStop per-tool call count within window to hard-stop
+     * @param freqWindow sliding time window for frequency detection
+     * @return this builder
+     */
+    public AgentBuilder loopDetection(
+            int hashWarn, int hashStop, int freqWarn, int freqStop, Duration freqWindow) {
+        this.loopHashWarn = hashWarn;
+        this.loopHashStop = hashStop;
+        this.loopFreqWarn = freqWarn;
+        this.loopFreqStop = freqStop;
+        this.loopFreqWindow = freqWindow;
+        return this;
+    }
+
+    /**
+     * Configure loop detection via the capability record introduced in v0.10.
+     *
+     * @param config the loop detection configuration, or {@code null} to restore defaults
+     * @return this builder
+     */
+    public AgentBuilder loopDetection(io.kairo.api.agent.LoopDetectionConfig config) {
+        io.kairo.api.agent.LoopDetectionConfig effective =
+                config != null ? config : io.kairo.api.agent.LoopDetectionConfig.DEFAULTS;
+        this.loopHashWarn = effective.hashWarnThreshold();
+        this.loopHashStop = effective.hashHardLimit();
+        this.loopFreqWarn = effective.freqWarnThreshold();
+        this.loopFreqStop = effective.freqHardLimit();
+        this.loopFreqWindow = effective.freqWindow();
+        return this;
+    }
+
+    /**
+     * Configure durable execution in one capability call. Wires both the store and
+     * recovery-on-startup behaviour.
+     *
+     * @param capability the durable capability, or {@code null} for disabled
+     * @return this builder
+     */
+    public AgentBuilder durableCapability(io.kairo.api.agent.DurableCapabilityConfig capability) {
+        io.kairo.api.agent.DurableCapabilityConfig effective =
+                capability != null
+                        ? capability
+                        : io.kairo.api.agent.DurableCapabilityConfig.DISABLED;
+        this.durableExecutionStore = effective.store();
+        this.recoveryOnStartup = effective.recoveryOnStartup();
+        return this;
+    }
+
+    /**
+     * Set compaction thresholds for the agent's context compaction pipeline.
+     *
+     * <p>These thresholds control when each compaction stage triggers, the circuit breaker limit,
+     * and the token buffer. If not set, sensible defaults are used (Principle #6).
+     *
+     * @param thresholds the compaction thresholds
+     * @return this builder
+     */
+    public AgentBuilder compactionThresholds(CompactionThresholds thresholds) {
+        this.compactionThresholds = thresholds;
+        return this;
+    }
+
+    /**
+     * Set the guardrail chain for policy evaluation at model and tool boundaries.
+     *
+     * <p>If not set (null), guardrail evaluation is skipped — backward compatible.
+     *
+     * @param guardrailChain the guardrail chain, or null to disable
+     * @return this builder
+     */
+    public AgentBuilder guardrailChain(GuardrailChain guardrailChain) {
+        this.guardrailChain = guardrailChain;
+        return this;
+    }
+
+    /**
+     * Set the durable execution store for crash recovery persistence.
+     *
+     * @param store the durable execution store, or null to disable
+     * @return this builder
+     */
+    public AgentBuilder durableExecutionStore(DurableExecutionStore store) {
+        this.durableExecutionStore = store;
+        return this;
+    }
+
+    /**
+     * Set the recovery handler for crash recovery.
+     *
+     * @param handler the recovery handler, or null to disable
+     * @return this builder
+     */
+    public AgentBuilder recoveryHandler(RecoveryHandler handler) {
+        this.recoveryHandler = handler;
+        return this;
+    }
+
+    /**
+     * Enable or disable recovery of pending executions on startup.
+     *
+     * @param enabled true to attempt recovery on startup (default: false)
+     * @return this builder
+     */
+    public AgentBuilder recoveryOnStartup(boolean enabled) {
+        this.recoveryOnStartup = enabled;
+        return this;
+    }
+
+    /**
+     * Set custom {@link ResourceConstraint}s for the agent.
+     *
+     * <p>When set, these constraints replace the default iteration/token/timeout checks. Pass an
+     * empty list to explicitly opt out of all resource constraints.
+     *
+     * @param constraints the resource constraints
+     * @return this builder
+     */
+    public AgentBuilder resourceConstraints(java.util.List<ResourceConstraint> constraints) {
+        this.resourceConstraints = constraints != null ? List.copyOf(constraints) : null;
+        return this;
+    }
+
+    /**
+     * Configures the evolution settings for the agent.
+     *
+     * <p>Example (non-Spring usage):
+     *
+     * <pre>{@code
+     * AgentBuilder builder = AgentBuilder.create()
+     *     .name("my-agent")
+     *     .evolutionConfig(EvolutionConfig.builder()
+     *         .enabled(true)
+     *         .evolutionPolicy(myPolicy)
+     *         .evolvedSkillStore(myStore)
+     *         .build());
+     * }</pre>
+     *
+     * @param config the evolution configuration
+     * @return this builder
+     */
+    public AgentBuilder evolutionConfig(EvolutionConfig config) {
+        this.evolutionConfig = config;
+        return this;
+    }
+
+    /**
+     * Registers a customizer that is applied during {@link #build()}. This is the primary extension
+     * point for auto-configuration frameworks to wire additional capabilities (e.g., evolution
+     * hooks) into the agent.
+     *
+     * <p>Example:
+     *
+     * <pre>{@code
+     * builder.customizer(b -> ((AgentBuilder) b).hook(evolutionHook));
+     * }</pre>
+     *
+     * @param customizer the customizer to register
+     * @return this builder
+     */
+    public AgentBuilder customizer(AgentBuilderCustomizer customizer) {
+        this.customizers.add(customizer);
+        return this;
+    }
+
+    /**
+     * Registers a system prompt contributor that provides dynamic content sections injected into
+     * the agent's system prompt.
+     *
+     * <p>Example:
+     *
+     * <pre>{@code
+     * builder.systemPromptContributor(skillContentInjector);
+     * }</pre>
+     *
+     * @param contributor the system prompt contributor
+     * @return this builder
+     */
+    public AgentBuilder systemPromptContributor(SystemPromptContributor contributor) {
+        this.systemPromptContributors.add(contributor);
+        return this;
+    }
+
+    /**
      * Build the agent, validating required parameters.
      *
      * @return a new {@link Agent} instance
@@ -297,6 +556,16 @@ public class AgentBuilder {
      * @throws IllegalArgumentException if parameters are invalid
      */
     public Agent build() {
+        // Apply all registered customizers before building config
+        customizers.forEach(c -> c.customize(this));
+
+        // Wire compactionThresholds into a DefaultContextManager if user didn't provide one
+        if (contextManager == null && compactionThresholds != null) {
+            TokenBudgetManager budgetMgr = TokenBudgetManager.forModel(modelName);
+            contextManager =
+                    new DefaultContextManager(budgetMgr, modelProvider, compactionThresholds);
+        }
+
         AgentConfig config = buildConfig();
 
         // Wire approval handler into tool executor if configured
@@ -307,11 +576,33 @@ public class AgentBuilder {
         // Create hook chain — hooks will be registered by DefaultReActAgent constructor
         DefaultHookChain hookChain = new DefaultHookChain();
 
+        // Build middleware pipeline
+        DefaultMiddlewarePipeline middlewarePipeline = new DefaultMiddlewarePipeline(middlewares);
+
         // Default shutdown manager if none provided
         GracefulShutdownManager sm =
                 shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
 
-        DefaultReActAgent agent = new DefaultReActAgent(config, toolExecutor, hookChain, sm);
+        DefaultReActAgent agent =
+                new DefaultReActAgent(
+                        config,
+                        toolExecutor,
+                        hookChain,
+                        middlewarePipeline,
+                        sm,
+                        guardrailChain,
+                        durableExecutionStore,
+                        recoveryHandler,
+                        recoveryOnStartup);
+
+        // Restore from snapshot if provided
+        if (restoreFrom != null) {
+            if (restoreFrom.conversationHistory() != null
+                    && !restoreFrom.conversationHistory().isEmpty()) {
+                agent.injectMessages(restoreFrom.conversationHistory());
+            }
+        }
+
         if (streamingEnabled) {
             agent.setStreamingEnabled(true);
         }
@@ -389,12 +680,36 @@ public class AgentBuilder {
                         .sessionId(sessionId)
                         .tracer(tracer);
 
+        configBuilder.loopDetection(
+                loopHashWarn, loopHashStop, loopFreqWarn, loopFreqStop, loopFreqWindow);
+
+        if (resourceConstraints != null) {
+            configBuilder.resourceConstraints(resourceConstraints);
+        }
+
+        if (evolutionConfig != null) {
+            configBuilder.evolutionConfig(evolutionConfig);
+        }
+
+        if (!systemPromptContributors.isEmpty()) {
+            configBuilder.systemPromptContributors(List.copyOf(systemPromptContributors));
+        }
+
         for (Object hook : hooks) {
             configBuilder.addHook(hook);
         }
 
-        for (Object mcpConfig : mcpServerConfigs) {
-            configBuilder.addMcpServerConfig(mcpConfig);
+        for (Middleware mw : middlewares) {
+            configBuilder.addMiddleware(mw);
+        }
+
+        if (!mcpServerConfigs.isEmpty()) {
+            configBuilder.mcpCapability(
+                    new io.kairo.api.agent.McpCapabilityConfig(
+                            mcpServerConfigs,
+                            io.kairo.api.agent.McpCapabilityConfig.EMPTY.maxToolsPerServer(),
+                            io.kairo.api.agent.McpCapabilityConfig.EMPTY.strictSchemaAlignment(),
+                            io.kairo.api.agent.McpCapabilityConfig.EMPTY.toolSearchQuery()));
         }
 
         return configBuilder.build();

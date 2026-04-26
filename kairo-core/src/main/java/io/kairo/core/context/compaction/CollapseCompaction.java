@@ -23,6 +23,7 @@ import io.kairo.api.context.ContextState;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
+import io.kairo.core.context.CompactionThresholds;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -42,13 +43,28 @@ import reactor.core.publisher.Mono;
 public class CollapseCompaction implements CompactionStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(CollapseCompaction.class);
-    private static final float TRIGGER_THRESHOLD = 0.90f;
     private static final int ABSOLUTE_BUFFER = 20_000;
     private static final int MIN_GROUP_SIZE = 3;
 
+    private final float triggerThreshold;
+
+    /** Create with default threshold. */
+    public CollapseCompaction() {
+        this(CompactionThresholds.DEFAULT_COLLAPSE_PRESSURE);
+    }
+
+    /**
+     * Create with a custom trigger threshold.
+     *
+     * @param triggerThreshold pressure threshold to trigger this stage
+     */
+    public CollapseCompaction(float triggerThreshold) {
+        this.triggerThreshold = triggerThreshold;
+    }
+
     @Override
     public boolean shouldTrigger(ContextState state) {
-        return HybridThreshold.shouldTrigger(state, TRIGGER_THRESHOLD, ABSOLUTE_BUFFER);
+        return HybridThreshold.shouldTrigger(state, triggerThreshold, ABSOLUTE_BUFFER);
     }
 
     @Override

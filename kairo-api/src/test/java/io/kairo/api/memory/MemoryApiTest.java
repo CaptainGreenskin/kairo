@@ -18,7 +18,7 @@ package io.kairo.api.memory;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.time.Instant;
-import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class MemoryApiTest {
@@ -29,26 +29,30 @@ class MemoryApiTest {
         MemoryEntry entry =
                 new MemoryEntry(
                         "m-1",
+                        null,
                         "user prefers dark mode",
-                        MemoryScope.USER,
+                        null,
+                        MemoryScope.GLOBAL,
+                        0.8,
+                        null,
+                        Set.of("preference", "ui"),
                         now,
-                        List.of("preference", "ui"),
-                        true);
+                        null);
 
         assertEquals("m-1", entry.id());
+        assertNull(entry.agentId());
         assertEquals("user prefers dark mode", entry.content());
-        assertEquals(MemoryScope.USER, entry.scope());
+        assertEquals(MemoryScope.GLOBAL, entry.scope());
         assertEquals(now, entry.timestamp());
-        assertEquals(List.of("preference", "ui"), entry.tags());
-        assertTrue(entry.verbatim());
+        assertEquals(Set.of("preference", "ui"), entry.tags());
+        assertEquals(0.8, entry.importance());
     }
 
     @Test
-    void memoryEntryNonVerbatim() {
-        MemoryEntry entry =
-                new MemoryEntry(
-                        "m-2", "summary", MemoryScope.SESSION, Instant.now(), List.of(), false);
-        assertFalse(entry.verbatim());
+    void memoryEntrySessionFactory() {
+        MemoryEntry entry = MemoryEntry.session("m-2", "summary", Set.of("tag1"));
+        assertEquals(MemoryScope.SESSION, entry.scope());
+        assertEquals(0.5, entry.importance());
     }
 
     @Test
@@ -56,7 +60,7 @@ class MemoryApiTest {
         MemoryScope[] values = MemoryScope.values();
         assertEquals(3, values.length);
         assertNotNull(MemoryScope.valueOf("SESSION"));
-        assertNotNull(MemoryScope.valueOf("PROJECT"));
-        assertNotNull(MemoryScope.valueOf("USER"));
+        assertNotNull(MemoryScope.valueOf("AGENT"));
+        assertNotNull(MemoryScope.valueOf("GLOBAL"));
     }
 }

@@ -172,4 +172,32 @@ class TokenBudgetManagerV2Test {
         // effective = 10_000 - 10_000 - 13_000 = -13_000 => <= 0, return 1.0
         assertEquals(1.0, mgr.getPressure(messages), 0.001);
     }
+
+    @Test
+    @DisplayName("custom TokenEstimator is used when API usage is stale")
+    void testCustomTokenEstimatorFallback() {
+        TokenBudgetManager mgr = new TokenBudgetManager("claude-sonnet-4-20250514", messages -> 42);
+        mgr.updateFromApiUsage(new ModelResponse.Usage(100, 10, 0, 0));
+        assertEquals(100, mgr.estimateTokens(List.of(Msg.of(MsgRole.USER, "fresh"))));
+
+        mgr.advanceTurn();
+        assertEquals(42, mgr.estimateTokens(List.of(Msg.of(MsgRole.USER, "stale"))));
+    }
+
+    @Test
+    @DisplayName("recordModelUsage updates unified accounted tokens once per turn")
+    void testRecordModelUsageSingleSourceAccounting() {
+        TokenBudgetManager mgr = TokenBudgetManager.forModel("claude-sonnet-4-20250514");
+        ModelResponse.Usage usage = new ModelResponse.Usage(120, 30, 0, 0);
+
+        mgr.recordModelUsage(usage);
+        mgr.recordModelUsage(usage);
+
+        assertEquals(150, mgr.totalAccountedTokens());
+        assertEquals(150, mgr.used());
+
+        mgr.advanceTurn();
+        mgr.recordModelUsage(new ModelResponse.Usage(10, 5, 0, 0));
+        assertEquals(165, mgr.totalAccountedTokens());
+    }
 }

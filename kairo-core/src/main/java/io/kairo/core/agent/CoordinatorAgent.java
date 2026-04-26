@@ -70,6 +70,7 @@ public class CoordinatorAgent extends DefaultReActAgent {
                 buildFilteredConfig(config),
                 buildFilteredToolExecutor(config),
                 new DefaultHookChain(),
+                null,
                 new io.kairo.core.shutdown.GracefulShutdownManager());
         this.coordinatorConfig = config;
         log.info(

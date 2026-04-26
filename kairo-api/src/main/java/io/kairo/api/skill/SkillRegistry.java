@@ -15,12 +15,14 @@
  */
 package io.kairo.api.skill;
 
+import io.kairo.api.Stable;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import reactor.core.publisher.Mono;
 
 /** Registry for skill definitions. */
+@Stable(value = "Skill registry SPI; shape frozen since v0.5", since = "1.0.0")
 public interface SkillRegistry {
 
     /**
@@ -79,5 +81,14 @@ public interface SkillRegistry {
      */
     default Mono<SkillDefinition> loadFromClasspath(String resourcePath) {
         return Mono.error(new UnsupportedOperationException("loadFromClasspath not implemented"));
+    }
+
+    /**
+     * Unregisters a skill by name. Default implementation throws UnsupportedOperationException.
+     *
+     * @param name the skill name to unregister
+     */
+    default void unregister(String name) {
+        throw new UnsupportedOperationException("unregister not supported by this registry");
     }
 }

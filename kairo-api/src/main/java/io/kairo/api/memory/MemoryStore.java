@@ -15,6 +15,7 @@
  */
 package io.kairo.api.memory;
 
+import io.kairo.api.Stable;
 import java.util.List;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -32,9 +33,18 @@ import reactor.core.publisher.Mono;
  * <p><strong>Thread safety:</strong> Implementations must be safe for concurrent use from multiple
  * agents or agent iterations.
  *
+ * @apiNote Stable SPI — backward compatible across minor versions. Breaking changes only in major
+ *     versions with 2-minor-version deprecation notice.
+ * @implSpec Implementations must be thread-safe for concurrent use from multiple agents or agent
+ *     iterations. All operations return reactive types and must not block the calling thread. Use
+ *     {@code subscribeOn(Schedulers.boundedElastic())} for blocking I/O backends (JDBC, file
+ *     system). New {@code default} methods may be added in minor versions to preserve backward
+ *     compatibility.
  * @see MemoryEntry
  * @see MemoryScope
+ * @since 0.1.0
  */
+@Stable(value = "Memory store SPI; CRUD + hybrid search shape frozen since v0.1", since = "1.0.0")
 public interface MemoryStore {
 
     /**
@@ -82,6 +92,10 @@ public interface MemoryStore {
      * Search memory entries by query text within a scope, filtered by tags. Only entries containing
      * ALL specified tags are returned (AND semantics).
      *
+     * <p><strong>Performance note:</strong> The default implementation applies post-filtering on
+     * the 2-arg search results. Implementations SHOULD override this method for efficiency,
+     * especially for large datasets where server-side tag filtering reduces data transfer.
+     *
      * @param query the search query
      * @param scope the scope to search within
      * @param tags required tags (all must be present); null or empty falls back to unfiltered
@@ -93,10 +107,110 @@ public interface MemoryStore {
             return search(query, scope);
         }
         return search(query, scope)
+                .filter(entry -> entry.tags() != null && entry.tags().containsAll(tags));
+    }
+
+    /**
+     * Search memory entries using a structured {@link MemoryQuery}.
+     *
+     * <p>The default implementation returns an empty Flux. Implementations should override this
+     * method to provide rich query support including vector similarity search, time range
+     * filtering, and importance thresholds.
+     *
+     * @param query the structured query
+     * @return a Flux of matching entries
+     */
+    default Flux<MemoryEntry> search(MemoryQuery query) {
+        if (query == null) {
+            return Flux.empty();
+        }
+        String normalizedKeyword = normalizeKeyword(query.keyword());
+        return Flux.fromArray(MemoryScope.values())
+                .concatMap(this::list)
+                .distinct(MemoryEntry::id)
                 .filter(
                         entry ->
-                                entry.tags() != null
-                                        && tags.stream()
-                                                .allMatch(tag -> entry.tags().contains(tag)));
+                                query.agentId() == null
+                                        || (entry.agentId() != null
+                                                && query.agentId().equals(entry.agentId())))
+                .filter(entry -> query.tags().isEmpty() || entry.tags().containsAll(query.tags()))
+                .filter(entry -> entry.importance() >= query.minImportance())
+                .filter(
+                        entry ->
+                                query.from() == null
+                                        || (entry.timestamp() != null
+                                                && !entry.timestamp().isBefore(query.from())))
+                .filter(
+                        entry ->
+                                query.to() == null
+                                        || (entry.timestamp() != null
+                                                && !entry.timestamp().isAfter(query.to())))
+                .filter(
+                        entry ->
+                                normalizedKeyword == null
+                                        || (entry.content() != null
+                                                && entry.content()
+                                                        .toLowerCase()
+                                                        .contains(normalizedKeyword))
+                                        || (entry.rawContent() != null
+                                                && entry.rawContent()
+                                                        .toLowerCase()
+                                                        .contains(normalizedKeyword)))
+                .filter(
+                        entry ->
+                                query.namespace() == null
+                                        || query.namespace().equals(resolveNamespace(entry)))
+                .take(query.limit());
+    }
+
+    private static String normalizeKeyword(String keyword) {
+        if (keyword == null) {
+            return null;
+        }
+        String trimmed = keyword.trim();
+        return trimmed.isEmpty() ? null : trimmed.toLowerCase();
+    }
+
+    private static String resolveNamespace(MemoryEntry entry) {
+        if (entry == null || entry.metadata() == null) {
+            return null;
+        }
+        Object raw = entry.metadata().get("namespace");
+        if (raw instanceof String text) {
+            String trimmed = text.trim();
+            return trimmed.isEmpty() ? null : trimmed;
+        }
+        return null;
+    }
+
+    /**
+     * Get the most recent memory entries for an agent, ordered by timestamp descending. Convenience
+     * method for the common "show me recent memories" pattern.
+     *
+     * @param agentId the agent identifier
+     * @param limit maximum number of entries to return
+     * @return a Flux of entries ordered by timestamp descending (most recent first)
+     */
+    default Flux<MemoryEntry> recent(String agentId, int limit) {
+        return search(MemoryQuery.builder().agentId(agentId).limit(limit).build())
+                .sort(
+                        (a, b) -> {
+                            if (a.timestamp() == null && b.timestamp() == null) {
+                                return 0;
+                            }
+                            if (a.timestamp() == null) {
+                                return 1;
+                            }
+                            if (b.timestamp() == null) {
+                                return -1;
+                            }
+                            return b.timestamp().compareTo(a.timestamp());
+                        })
+                .take(limit);
+    }
+
+    /** Get the 20 most recent memory entries for an agent. */
+    default Flux<MemoryEntry> recent(String agentId) {
+        return recent(agentId, 20);
     }
 }

@@ -16,16 +16,21 @@
 package io.kairo.core.agent;
 
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.hook.HookChain;
+import io.kairo.api.hook.PostCompactEvent;
 import io.kairo.api.memory.MemoryEntry;
 import io.kairo.api.memory.MemoryScope;
 import io.kairo.api.memory.MemoryStore;
 import io.kairo.api.message.Msg;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
@@ -45,9 +50,10 @@ class CompactionTrigger {
     private final ReActLoop reactLoop;
     private final MemoryStore memoryStore; // nullable
     private final Predicate<Msg> importancePredicate;
+    @Nullable private final HookChain hookChain;
 
     CompactionTrigger(ContextManager contextManager, ReActLoop reactLoop) {
-        this(contextManager, reactLoop, null, null);
+        this(contextManager, reactLoop, null, null, null);
     }
 
     CompactionTrigger(
@@ -55,11 +61,21 @@ class CompactionTrigger {
             ReActLoop reactLoop,
             MemoryStore memoryStore,
             Predicate<Msg> importancePredicate) {
+        this(contextManager, reactLoop, memoryStore, importancePredicate, null);
+    }
+
+    CompactionTrigger(
+            ContextManager contextManager,
+            ReActLoop reactLoop,
+            MemoryStore memoryStore,
+            Predicate<Msg> importancePredicate,
+            @Nullable HookChain hookChain) {
         this.contextManager = contextManager;
         this.reactLoop = reactLoop;
         this.memoryStore = memoryStore;
         this.importancePredicate =
                 importancePredicate != null ? importancePredicate : DEFAULT_IMPORTANCE_PREDICATE;
+        this.hookChain = hookChain;
     }
 
     /**
@@ -74,49 +90,176 @@ class CompactionTrigger {
             return Mono.just(false);
         }
 
-        // Flush important messages to memory before compaction
-        flushImportantMessages(conversationHistory);
-
         int previousSize = conversationHistory.size();
         log.info("Context pressure high, triggering compaction...");
 
-        return contextManager
-                .compactMessages(conversationHistory)
-                .map(
-                        compacted -> {
-                            if (compacted != null && compacted.size() < previousSize) {
-                                reactLoop.replaceHistory(compacted);
-                                log.info(
-                                        "Compaction complete: {} -> {} messages",
-                                        previousSize,
-                                        reactLoop.getHistory().size());
-                            }
-                            return true;
+        // Capture original messages as rawContent before compaction
+        String rawContent =
+                conversationHistory.stream()
+                        .filter(msg -> msg.text() != null && !msg.text().isBlank())
+                        .map(msg -> "[" + msg.role() + "] " + msg.text())
+                        .reduce((a, b) -> a + "\n" + b)
+                        .orElse("");
+
+        // Flush important messages to memory before compaction (wait for completion)
+        return flushImportantMessages(conversationHistory)
+                .then(
+                        Mono.defer(
+                                () ->
+                                        contextManager
+                                                .compactMessages(conversationHistory)
+                                                .flatMap(
+                                                        compacted -> {
+                                                            if (compacted != null
+                                                                    && compacted.size()
+                                                                            < previousSize) {
+                                                                reactLoop.replaceHistory(compacted);
+                                                                int messagesSaved =
+                                                                        previousSize
+                                                                                - compacted.size();
+                                                                log.info(
+                                                                        "Compaction complete: {} -> {} messages",
+                                                                        previousSize,
+                                                                        reactLoop
+                                                                                .getHistory()
+                                                                                .size());
+
+                                                                // Store compaction summary with
+                                                                // rawContent preserved
+                                                                return storeCompactionMemory(
+                                                                                compacted,
+                                                                                rawContent)
+                                                                        .then(
+                                                                                firePostCompactBestEffort(
+                                                                                        compacted,
+                                                                                        messagesSaved))
+                                                                        .thenReturn(true);
+                                                            }
+                                                            return Mono.just(true);
+                                                        })
+                                                .defaultIfEmpty(false)));
+    }
+
+    private Mono<Void> firePostCompactBestEffort(List<Msg> compacted, int messagesSaved) {
+        if (hookChain == null) {
+            return Mono.empty();
+        }
+        PostCompactEvent event =
+                new PostCompactEvent(compacted, messagesSaved, "CompactionTrigger", List.of());
+        return hookChain
+                .firePostCompact(event)
+                .onErrorResume(
+                        e -> {
+                            log.warn("PostCompact hook failed: {}", e.getMessage());
+                            return Mono.empty();
                         })
-                .defaultIfEmpty(false);
+                .then();
     }
 
     /**
-     * Flush important messages to memory store before they are lost to compaction. No-op if
-     * memoryStore is null.
+     * Store a compaction memory entry with the summary as content and original messages as
+     * rawContent. No-op if memoryStore is null.
      */
-    private void flushImportantMessages(List<Msg> conversationHistory) {
+    private Mono<Void> storeCompactionMemory(List<Msg> compacted, String rawContent) {
         if (memoryStore == null) {
-            return;
+            log.warn(
+                    "CompactionTrigger: MemoryStore is null, rawContent will not be persisted. "
+                            + "Configure a MemoryStore to enable Compaction-aware Retrieval.");
+            return Mono.empty();
         }
-        for (Msg msg : conversationHistory) {
-            if (importancePredicate.test(msg)) {
-                MemoryEntry entry =
-                        new MemoryEntry(
-                                UUID.randomUUID().toString(),
-                                msg.text(),
-                                MemoryScope.SESSION,
-                                Instant.now(),
-                                List.of("compaction-flush"),
-                                true);
-                memoryStore.save(entry).subscribe();
-            }
+        if (rawContent.isBlank()) {
+            return Mono.empty();
         }
-        log.debug("Pre-compaction flush complete for {} messages", conversationHistory.size());
+
+        String summary =
+                compacted.stream()
+                        .filter(msg -> msg.text() != null && !msg.text().isBlank())
+                        .map(Msg::text)
+                        .reduce((a, b) -> a + "\n" + b)
+                        .orElse("");
+
+        if (summary.isBlank()) {
+            return Mono.empty();
+        }
+
+        MemoryEntry entry =
+                new MemoryEntry(
+                        UUID.randomUUID().toString(),
+                        null,
+                        summary,
+                        rawContent,
+                        MemoryScope.SESSION,
+                        0.6,
+                        null,
+                        Set.of("compaction-summary"),
+                        Instant.now(),
+                        null);
+
+        return memoryStore
+                .save(entry)
+                .doOnError(e -> log.warn("Failed to store compaction memory: {}", e.getMessage()))
+                .onErrorComplete()
+                .then();
+    }
+
+    /**
+     * Flush important messages to memory store before they are lost to compaction. Returns a {@link
+     * Mono} that completes when all saves finish. No-op if memoryStore is null.
+     */
+    private Mono<Void> flushImportantMessages(List<Msg> conversationHistory) {
+        if (memoryStore == null) {
+            return Mono.empty();
+        }
+
+        List<Msg> importantMessages =
+                conversationHistory.stream()
+                        .filter(importancePredicate)
+                        .filter(msg -> msg.text() != null && !msg.text().isBlank())
+                        .toList();
+
+        if (importantMessages.isEmpty()) {
+            return Mono.empty();
+        }
+
+        return Flux.fromIterable(importantMessages)
+                .flatMap(
+                        msg -> {
+                            MemoryEntry entry =
+                                    new MemoryEntry(
+                                            UUID.randomUUID().toString(),
+                                            null,
+                                            msg.text(),
+                                            null,
+                                            MemoryScope.SESSION,
+                                            0.5,
+                                            null,
+                                            Set.of("compaction-flush"),
+                                            Instant.now(),
+                                            null);
+                            return memoryStore
+                                    .save(entry)
+                                    .doOnError(
+                                            e ->
+                                                    log.warn(
+                                                            "Failed to flush message to memory store: {}",
+                                                            msg.text() != null
+                                                                    ? msg.text()
+                                                                            .substring(
+                                                                                    0,
+                                                                                    Math.min(
+                                                                                            50,
+                                                                                            msg.text()
+                                                                                                    .length()))
+                                                                    : "null",
+                                                            e))
+                                    .onErrorComplete();
+                        },
+                        10)
+                .then()
+                .doOnTerminate(
+                        () ->
+                                log.debug(
+                                        "Pre-compaction flush complete for {} important messages",
+                                        importantMessages.size()));
     }
 }

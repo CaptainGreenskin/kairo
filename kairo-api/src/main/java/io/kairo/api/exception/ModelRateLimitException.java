@@ -15,8 +15,13 @@
  */
 package io.kairo.api.exception;
 
+import io.kairo.api.Stable;
+
 /** Thrown when a model provider returns a rate-limit (HTTP 429) error. */
+@Stable(value = "Model rate-limit exception; shape frozen since v0.7", since = "1.0.0")
 public class ModelRateLimitException extends ModelException {
+
+    private static final String DEFAULT_ERROR_CODE = "MODEL_RATE_LIMITED";
 
     /**
      * Create a new ModelRateLimitException with the given message.
@@ -24,7 +29,7 @@ public class ModelRateLimitException extends ModelException {
      * @param message the detail message
      */
     public ModelRateLimitException(String message) {
-        super(message);
+        super(message, null, DEFAULT_ERROR_CODE, true, null);
     }
 
     /**
@@ -34,6 +39,17 @@ public class ModelRateLimitException extends ModelException {
      * @param cause the underlying cause
      */
     public ModelRateLimitException(String message, Throwable cause) {
-        super(message, cause);
+        super(message, cause, DEFAULT_ERROR_CODE, true, null);
+    }
+
+    /**
+     * Create a new ModelRateLimitException with the given message, cause, and retry delay.
+     *
+     * @param message the detail message
+     * @param cause the underlying cause
+     * @param retryAfterMs suggested retry delay in milliseconds, or null if not provided
+     */
+    public ModelRateLimitException(String message, Throwable cause, Long retryAfterMs) {
+        super(message, cause, DEFAULT_ERROR_CODE, true, retryAfterMs);
     }
 }

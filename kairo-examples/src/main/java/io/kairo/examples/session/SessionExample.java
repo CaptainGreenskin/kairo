@@ -58,9 +58,9 @@ public class SessionExample {
         store.saveRaw(
                         "project-ctx",
                         "{\"name\": \"kairo\", \"version\": \"0.1.0\"}",
-                        MemoryScope.PROJECT)
+                        MemoryScope.AGENT)
                 .block();
-        System.out.println("  Saved: project-ctx (PROJECT scope)");
+        System.out.println("  Saved: project-ctx (AGENT scope)");
 
         // Load and verify
         String prefs = store.loadRaw("user-prefs", MemoryScope.SESSION).block();
@@ -68,9 +68,9 @@ public class SessionExample {
 
         // List keys per scope
         List<String> sessionKeys = store.listKeys(MemoryScope.SESSION).collectList().block();
-        List<String> projectKeys = store.listKeys(MemoryScope.PROJECT).collectList().block();
+        List<String> agentKeys = store.listKeys(MemoryScope.AGENT).collectList().block();
         System.out.println("  SESSION keys: " + sessionKeys);
-        System.out.println("  PROJECT keys: " + projectKeys);
+        System.out.println("  AGENT keys: " + agentKeys);
 
         // Delete
         store.deleteRaw("user-prefs", MemoryScope.SESSION).block();

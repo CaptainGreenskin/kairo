@@ -21,7 +21,13 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
 
 import io.kairo.api.agent.AgentConfig;
+import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.hook.HookChain;
+import io.kairo.api.hook.HookResult;
+import io.kairo.api.hook.OnToolResult;
+import io.kairo.api.hook.PreActing;
+import io.kairo.api.hook.PreActingEvent;
+import io.kairo.api.hook.ToolResultEvent;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
@@ -39,6 +45,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
@@ -97,7 +104,8 @@ class ReActLoopTest {
                         errorRecovery,
                         tokenBudgetManager,
                         shutdownManager,
-                        null); // contextManager
+                        null, // contextManager
+                        null); // guardrailChain
 
         ModelConfig modelConfig =
                 ModelConfig.builder()
@@ -183,6 +191,48 @@ class ReActLoopTest {
         assertEquals(2, callCount.get());
     }
 
+    @Test
+    void testToolResultBudgetMetadataAndTruncationInHistory() {
+        AtomicInteger callCount = new AtomicInteger(0);
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(
+                                        toolCallResponse(
+                                                "tc-budget", "search", Map.of("q", "big")));
+                            }
+                            return Mono.just(textResponse("done"));
+                        });
+
+        String oversized = "B".repeat(20_000);
+        when(toolExecutor.execute(eq("search"), any()))
+                .thenReturn(Mono.just(new ToolResult("tc-budget", oversized, false, Map.of())));
+
+        ReActLoop loop = createDefaultLoop();
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "search big")));
+
+        StepVerifier.create(loop.runLoop()).expectNextCount(1).verifyComplete();
+
+        Msg toolMsg =
+                loop.getHistory().stream()
+                        .filter(msg -> msg.role() == MsgRole.TOOL)
+                        .findFirst()
+                        .orElseThrow();
+
+        assertEquals(true, toolMsg.metadata().get("tool_result_budget_applied"));
+        assertEquals(1, toolMsg.metadata().get("tool_result_budget_truncated_count"));
+
+        Content.ToolResultContent toolResultContent =
+                toolMsg.contents().stream()
+                        .filter(Content.ToolResultContent.class::isInstance)
+                        .map(Content.ToolResultContent.class::cast)
+                        .findFirst()
+                        .orElseThrow();
+        assertTrue(toolResultContent.content().contains("truncated by ToolResultBudget"));
+    }
+
     // ===== 2. Loop terminates on final text =====
 
     @Test
@@ -225,7 +275,9 @@ class ReActLoopTest {
                 .assertNext(
                         msg -> {
                             assertEquals(MsgRole.ASSISTANT, msg.role());
-                            assertTrue(msg.text().contains("maximum iteration limit"));
+                            assertTrue(
+                                    msg.text().contains("max iterations")
+                                            || msg.text().contains("maximum iteration limit"));
                         })
                 .verifyComplete();
 
@@ -459,6 +511,7 @@ class ReActLoopTest {
                         errorRecovery,
                         tokenBudgetManager,
                         shutdownManager,
+                        null,
                         null);
 
         ModelConfig modelConfig =
@@ -482,6 +535,57 @@ class ReActLoopTest {
                         msg -> {
                             assertEquals(MsgRole.ASSISTANT, msg.role());
                             assertTrue(msg.text().contains("No tools needed."));
+                        })
+                .verifyComplete();
+    }
+
+    @Test
+    void testStreamingEnabledWithNoToolExecutorFallsBackWithoutNpe() {
+        AgentConfig config =
+                AgentConfig.builder()
+                        .name("no-tool-streaming-agent")
+                        .modelProvider(modelProvider)
+                        .modelName("test-model")
+                        .maxIterations(10)
+                        .tokenBudget(200_000)
+                        .build();
+
+        ReActLoopContext ctx =
+                new ReActLoopContext(
+                        "agent-2s",
+                        "no-tool-streaming-agent",
+                        config,
+                        hookChain,
+                        null,
+                        null, // no toolExecutor
+                        errorRecovery,
+                        tokenBudgetManager,
+                        shutdownManager,
+                        null,
+                        null);
+
+        ModelConfig modelConfig =
+                ModelConfig.builder()
+                        .model("test-model")
+                        .maxTokens(4096)
+                        .temperature(0.7)
+                        .tools(List.of())
+                        .build();
+
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenReturn(Mono.just(textResponse("Streaming fallback with no executor works.")));
+
+        ReActLoop loop =
+                new ReActLoop(
+                        ctx, interrupted, currentIteration, totalTokensUsed, () -> modelConfig);
+        loop.setStreamingEnabled(true);
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "simple question")));
+
+        StepVerifier.create(loop.runLoop())
+                .assertNext(
+                        msg -> {
+                            assertEquals(MsgRole.ASSISTANT, msg.role());
+                            assertTrue(msg.text().contains("fallback with no executor"));
                         })
                 .verifyComplete();
     }
@@ -511,6 +615,7 @@ class ReActLoopTest {
                         errorRecovery,
                         tokenBudgetManager,
                         shutdownManager,
+                        null,
                         null);
 
         ModelConfig modelConfig =
@@ -549,6 +654,66 @@ class ReActLoopTest {
         // History should contain the tool error result
         List<Msg> history = loop.getHistory();
         assertTrue(history.stream().anyMatch(m -> m.role() == MsgRole.TOOL));
+    }
+
+    @Test
+    void testNoToolExecutorWithSkillLoadToolCallDoesNotThrowNpe() {
+        AgentConfig config =
+                AgentConfig.builder()
+                        .name("no-exec-skill-agent")
+                        .modelProvider(modelProvider)
+                        .modelName("test-model")
+                        .maxIterations(10)
+                        .tokenBudget(200_000)
+                        .build();
+
+        ReActLoopContext ctx =
+                new ReActLoopContext(
+                        "agent-3s",
+                        "no-exec-skill-agent",
+                        config,
+                        hookChain,
+                        null,
+                        null, // no toolExecutor
+                        errorRecovery,
+                        tokenBudgetManager,
+                        shutdownManager,
+                        null,
+                        null);
+
+        ModelConfig modelConfig =
+                ModelConfig.builder()
+                        .model("test-model")
+                        .maxTokens(4096)
+                        .temperature(0.7)
+                        .tools(List.of())
+                        .build();
+
+        AtomicInteger callCount = new AtomicInteger(0);
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(toolCallResponse("tc-1", "skill_load", Map.of()));
+                            }
+                            return Mono.just(textResponse("Handled skill_load without executor."));
+                        });
+
+        ReActLoop loop =
+                new ReActLoop(
+                        ctx, interrupted, currentIteration, totalTokensUsed, () -> modelConfig);
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "load skill")));
+
+        StepVerifier.create(loop.runLoop())
+                .assertNext(
+                        msg -> {
+                            assertEquals(MsgRole.ASSISTANT, msg.role());
+                            assertTrue(msg.text().contains("without executor"));
+                        })
+                .verifyComplete();
+
+        assertEquals(2, callCount.get());
     }
 
     // ===== 12. Token budget guard =====
@@ -604,6 +769,134 @@ class ReActLoopTest {
     }
 
     // ===== 14. History management =====
+
+    @Test
+    void testOnToolResultHookFiresWhenToolIsSkipped() {
+        class SkipToolHook {
+            @PreActing
+            public HookResult<PreActingEvent> pre(PreActingEvent event) {
+                return HookResult.skip(event, "skip for policy");
+            }
+        }
+        AtomicReference<ToolResultEvent> captured = new AtomicReference<>();
+        class ToolResultCaptureHook {
+            @OnToolResult
+            public ToolResultEvent onResult(ToolResultEvent event) {
+                captured.set(event);
+                return event;
+            }
+        }
+        hookChain.register(new SkipToolHook());
+        hookChain.register(new ToolResultCaptureHook());
+
+        AtomicInteger callCount = new AtomicInteger(0);
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(
+                                        toolCallResponse("tc-1", "search", Map.of("q", "hello")));
+                            }
+                            return Mono.just(textResponse("done"));
+                        });
+
+        ReActLoop loop = createDefaultLoop();
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "search hello")));
+
+        StepVerifier.create(loop.runLoop())
+                .assertNext(msg -> assertEquals(MsgRole.ASSISTANT, msg.role()))
+                .verifyComplete();
+
+        verifyNoInteractions(toolExecutor);
+        assertNotNull(captured.get());
+        assertEquals("search", captured.get().toolName());
+        assertFalse(captured.get().result().isError());
+        assertTrue(Boolean.TRUE.equals(captured.get().result().metadata().get("skipped_by_hook")));
+        assertTrue(captured.get().success());
+    }
+
+    @Test
+    void testPreActingModifiedInputFlowsIntoToolExecutor() {
+        class ModifyInputHook {
+            @PreActing
+            public HookResult<PreActingEvent> pre(PreActingEvent event) {
+                return HookResult.modify(event, Map.of("q", "patched"));
+            }
+        }
+        hookChain.register(new ModifyInputHook());
+
+        AtomicInteger callCount = new AtomicInteger(0);
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(
+                                        toolCallResponse("tc-1", "search", Map.of("q", "origin")));
+                            }
+                            return Mono.just(textResponse("done"));
+                        });
+
+        when(toolExecutor.execute(eq("search"), any()))
+                .thenAnswer(
+                        inv -> {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> input = inv.getArgument(1);
+                            assertEquals("patched", input.get("q"));
+                            return Mono.just(new ToolResult("tc-1", "ok", false, Map.of()));
+                        });
+
+        ReActLoop loop = createDefaultLoop();
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "search hello")));
+
+        StepVerifier.create(loop.runLoop())
+                .assertNext(msg -> assertEquals(MsgRole.ASSISTANT, msg.role()))
+                .verifyComplete();
+
+        verify(toolExecutor).execute(eq("search"), any());
+    }
+
+    @Test
+    void testPreActingInjectedContextAppearsOnceInHistory() {
+        class InjectContextHook {
+            @PreActing
+            public HookResult<PreActingEvent> pre(PreActingEvent event) {
+                return HookResult.withContext(event, "tool context");
+            }
+        }
+        hookChain.register(new InjectContextHook());
+
+        AtomicInteger callCount = new AtomicInteger(0);
+        when(modelProvider.call(anyList(), any(ModelConfig.class)))
+                .thenAnswer(
+                        inv -> {
+                            int n = callCount.incrementAndGet();
+                            if (n == 1) {
+                                return Mono.just(toolCallResponse("tc-1", "search", Map.of()));
+                            }
+                            return Mono.just(textResponse("done"));
+                        });
+        when(toolExecutor.execute(eq("search"), any()))
+                .thenReturn(Mono.just(new ToolResult("tc-1", "ok", false, Map.of())));
+
+        ReActLoop loop = createDefaultLoop();
+        loop.injectMessages(List.of(Msg.of(MsgRole.USER, "search hello")));
+
+        StepVerifier.create(loop.runLoop())
+                .assertNext(msg -> assertEquals(MsgRole.ASSISTANT, msg.role()))
+                .verifyComplete();
+
+        long contextMsgCount =
+                loop.getHistory().stream()
+                        .filter(m -> m.role() == MsgRole.SYSTEM)
+                        .filter(
+                                m ->
+                                        m.text() != null
+                                                && m.text().contains("[Hook Context] tool context"))
+                        .count();
+        assertEquals(1, contextMsgCount);
+    }
 
     @Test
     void testHistoryManagement() {

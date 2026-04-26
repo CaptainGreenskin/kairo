@@ -34,6 +34,11 @@ public class McpToolGroup {
     private final Map<String, ToolDefinition> toolDefinitions = new ConcurrentHashMap<>();
 
     public McpToolGroup(String serverName) {
+        if (serverName == null || serverName.isBlank()) {
+            throw new IllegalArgumentException(
+                    "MCP server name must not be null or blank; "
+                            + "it is required for the 'mcp.server' guardrail metadata key");
+        }
         this.serverName = serverName;
     }
 

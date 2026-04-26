@@ -30,6 +30,7 @@ import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
 import io.kairo.api.tool.*;
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.core.agent.DefaultReActAgent;
 import io.kairo.core.context.compaction.CompactionPipeline;
 import io.kairo.core.hook.DefaultHookChain;
@@ -37,7 +38,6 @@ import io.kairo.core.message.MsgBuilder;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
 import io.kairo.core.tool.DefaultToolRegistry;
-import io.kairo.core.tool.ToolHandler;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
@@ -91,12 +91,13 @@ class AgentPerformanceIT {
                 AgentConfig.builder()
                         .name("perf-agent")
                         .modelProvider(provider)
+                        .modelName("mock-model")
                         .toolRegistry(registry)
                         .maxIterations(maxIterations)
                         .timeout(Duration.ofSeconds(30))
                         .tokenBudget(1_000_000)
                         .build();
-        return new DefaultReActAgent(config, executor, hookChain, null);
+        return new DefaultReActAgent(config, executor, hookChain, null, null);
     }
 
     /**

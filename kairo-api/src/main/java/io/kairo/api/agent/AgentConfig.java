@@ -15,8 +15,12 @@
  */
 package io.kairo.api.agent;
 
+import io.kairo.api.Stable;
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.evolution.EvolutionConfig;
+import io.kairo.api.execution.ResourceConstraint;
 import io.kairo.api.memory.MemoryStore;
+import io.kairo.api.middleware.Middleware;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.api.tracing.Tracer;
@@ -24,6 +28,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import javax.annotation.Nullable;
 
 /**
  * Configuration for creating an agent.
@@ -39,6 +44,9 @@ import java.util.Objects;
  *     .build();
  * }</pre>
  */
+@Stable(
+        value = "Agent configuration record; MCP fields removed in v0.10.2; shape clean for v1.0",
+        since = "1.0.0")
 public record AgentConfig(
         String name,
         String systemPrompt,
@@ -49,11 +57,38 @@ public record AgentConfig(
         int tokenBudget,
         String modelName,
         List<Object> hooks,
+        List<Middleware> middlewares,
         ContextManager contextManager,
         MemoryStore memoryStore,
         String sessionId,
         Tracer tracer,
-        List<Object> mcpServerConfigs) {
+        McpCapabilityConfig mcpCapability,
+        int loopHashWarnThreshold,
+        int loopHashHardLimit,
+        int loopFreqWarnThreshold,
+        int loopFreqHardLimit,
+        Duration loopFreqWindow,
+        @Nullable List<ResourceConstraint> resourceConstraints,
+        @Nullable EvolutionConfig evolutionConfig,
+        @Nullable List<SystemPromptContributor> systemPromptContributors) {
+
+    public AgentConfig {
+        mcpCapability = mcpCapability != null ? mcpCapability : McpCapabilityConfig.EMPTY;
+    }
+
+    /**
+     * Derived view of loop-detection thresholds as a {@link LoopDetectionConfig}. Prefer this
+     * accessor in v0.10+ consumers so the individual loop-detection fields can eventually be
+     * removed.
+     */
+    public LoopDetectionConfig loopDetection() {
+        return new LoopDetectionConfig(
+                loopHashWarnThreshold,
+                loopHashHardLimit,
+                loopFreqWarnThreshold,
+                loopFreqHardLimit,
+                loopFreqWindow);
+    }
 
     /**
      * Create a new {@link Builder} for constructing an {@link AgentConfig}.
@@ -78,11 +113,20 @@ public record AgentConfig(
         private int tokenBudget = 200_000;
         private String modelName;
         private final List<Object> hooks = new ArrayList<>();
+        private final List<Middleware> middlewares = new ArrayList<>();
         private ContextManager contextManager;
         private MemoryStore memoryStore;
         private String sessionId;
         private Tracer tracer;
-        private final List<Object> mcpServerConfigs = new ArrayList<>();
+        private McpCapabilityConfig mcpCapability = McpCapabilityConfig.EMPTY;
+        private int loopHashWarnThreshold = 3;
+        private int loopHashHardLimit = 5;
+        private int loopFreqWarnThreshold = 50;
+        private int loopFreqHardLimit = 100;
+        private Duration loopFreqWindow = Duration.ofMinutes(10);
+        @Nullable private List<ResourceConstraint> resourceConstraints;
+        @Nullable private EvolutionConfig evolutionConfig;
+        @Nullable private List<SystemPromptContributor> systemPromptContributors;
 
         private Builder() {}
 
@@ -190,6 +234,17 @@ public record AgentConfig(
         }
 
         /**
+         * Add a {@link Middleware} to the pipeline that runs before the agent loop.
+         *
+         * @param middleware the middleware to register
+         * @return this builder
+         */
+        public Builder addMiddleware(Middleware middleware) {
+            this.middlewares.add(middleware);
+            return this;
+        }
+
+        /**
          * Set the {@link ContextManager} for conversation history and compaction.
          *
          * @param contextManager the context manager
@@ -234,13 +289,89 @@ public record AgentConfig(
         }
 
         /**
-         * Add an MCP (Model Context Protocol) server configuration for dynamic tool discovery.
+         * Configure loop detection thresholds.
          *
-         * @param config the MCP server configuration object
+         * @param hashWarn consecutive identical hash count to trigger WARN (default 3)
+         * @param hashStop consecutive identical hash count to trigger HARD_STOP (default 5)
+         * @param freqWarn per-tool call count within window to trigger WARN (default 50)
+         * @param freqStop per-tool call count within window to trigger HARD_STOP (default 100)
+         * @param freqWindow the sliding time window for frequency detection (default 10 min)
          * @return this builder
          */
-        public Builder addMcpServerConfig(Object config) {
-            this.mcpServerConfigs.add(config);
+        public Builder loopDetection(
+                int hashWarn, int hashStop, int freqWarn, int freqStop, Duration freqWindow) {
+            this.loopHashWarnThreshold = hashWarn;
+            this.loopHashHardLimit = hashStop;
+            this.loopFreqWarnThreshold = freqWarn;
+            this.loopFreqHardLimit = freqStop;
+            this.loopFreqWindow = freqWindow;
+            return this;
+        }
+
+        /**
+         * Configure loop detection thresholds via the new {@link LoopDetectionConfig} capability
+         * record. Null clears any prior configuration and restores defaults.
+         *
+         * @param config the loop detection configuration
+         * @return this builder
+         * @since v0.10
+         */
+        public Builder loopDetectionConfig(LoopDetectionConfig config) {
+            LoopDetectionConfig effective = config != null ? config : LoopDetectionConfig.DEFAULTS;
+            this.loopHashWarnThreshold = effective.hashWarnThreshold();
+            this.loopHashHardLimit = effective.hashHardLimit();
+            this.loopFreqWarnThreshold = effective.freqWarnThreshold();
+            this.loopFreqHardLimit = effective.freqHardLimit();
+            this.loopFreqWindow = effective.freqWindow();
+            return this;
+        }
+
+        /**
+         * Configure MCP integration via the {@link McpCapabilityConfig} capability record. Null
+         * clears any prior configuration.
+         *
+         * @param capability the MCP capability config
+         * @return this builder
+         * @since v0.10
+         */
+        public Builder mcpCapability(McpCapabilityConfig capability) {
+            this.mcpCapability = capability != null ? capability : McpCapabilityConfig.EMPTY;
+            return this;
+        }
+
+        /**
+         * Set custom {@link ResourceConstraint}s for the agent.
+         *
+         * <p>When set, these constraints replace the default iteration/token/timeout checks. Pass
+         * an empty list to explicitly opt out of all resource constraints.
+         *
+         * @param constraints the resource constraints
+         * @return this builder
+         */
+        public Builder resourceConstraints(List<ResourceConstraint> constraints) {
+            this.resourceConstraints = constraints != null ? List.copyOf(constraints) : null;
+            return this;
+        }
+
+        /**
+         * Set the {@link EvolutionConfig} for the self-evolution subsystem.
+         *
+         * @param evolutionConfig the evolution configuration
+         * @return this builder
+         */
+        public Builder evolutionConfig(EvolutionConfig evolutionConfig) {
+            this.evolutionConfig = evolutionConfig;
+            return this;
+        }
+
+        /**
+         * Set the {@link SystemPromptContributor}s for dynamic prompt injection.
+         *
+         * @param contributors the system prompt contributors
+         * @return this builder
+         */
+        public Builder systemPromptContributors(List<SystemPromptContributor> contributors) {
+            this.systemPromptContributors = contributors != null ? List.copyOf(contributors) : null;
             return this;
         }
 
@@ -263,11 +394,20 @@ public record AgentConfig(
                     tokenBudget,
                     modelName,
                     List.copyOf(hooks),
+                    List.copyOf(middlewares),
                     contextManager,
                     memoryStore,
                     sessionId,
                     tracer,
-                    List.copyOf(mcpServerConfigs));
+                    mcpCapability,
+                    loopHashWarnThreshold,
+                    loopHashHardLimit,
+                    loopFreqWarnThreshold,
+                    loopFreqHardLimit,
+                    loopFreqWindow,
+                    resourceConstraints,
+                    evolutionConfig,
+                    systemPromptContributors);
         }
     }
 }

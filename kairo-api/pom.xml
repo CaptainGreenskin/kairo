@@ -16,19 +16,22 @@
 
     <dependencies>
         <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-        </dependency>
-        <dependency>
             <groupId>io.projectreactor</groupId>
             <artifactId>reactor-core</artifactId>
+            <optional>true</optional>
         </dependency>
         <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
+            <groupId>com.google.code.findbugs</groupId>
+            <artifactId>jsr305</artifactId>
+            <version>3.0.2</version>
         </dependency>
 
         <!-- Test -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -40,4 +43,82 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <!--
+      API-compatibility gate (ADR-023).
+
+      Activate with `-Papi-compat` to check the current build against a baseline artifact.
+      The baseline version is taken from property `api.baseline.version` (default: latest
+      released v1.x — set empty to disable entirely).
+
+      The gate is scoped to @Stable-annotated types only. @Experimental / @Internal / unannotated
+      surfaces pass through silently — intentionally, since those carry no stability commitment.
+
+      Baseline lifecycle (per docs/governance/japicmp-policy.md):
+        - v1.0.0-RC1: empty (bootstrap, no prior baseline).
+        - v1.0.0-RC2 / v1.0.0 GA: enforced against the prior tag.
+        - v1.1.0 (current): defaults to `1.0.0` — the v1.0 GA frozen surface. New v1.1 SPIs
+          (sandbox/, workspace/, tenant/, bridge/) are pure additions, so japicmp produces
+          no break diffs against this baseline; the gate exists to catch silent regressions
+          on the existing v1.0 surface.
+    -->
+    <profiles>
+        <profile>
+            <id>api-compat</id>
+            <properties>
+                <api.baseline.version>1.0.0</api.baseline.version>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.github.siom79.japicmp</groupId>
+                        <artifactId>japicmp-maven-plugin</artifactId>
+                        <version>0.23.1</version>
+                        <executions>
+                            <execution>
+                                <id>check-api-compat</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>cmp</goal>
+                                </goals>
+                                <configuration>
+                                    <oldVersion>
+                                        <dependency>
+                                            <groupId>${project.groupId}</groupId>
+                                            <artifactId>${project.artifactId}</artifactId>
+                                            <version>${api.baseline.version}</version>
+                                            <type>jar</type>
+                                        </dependency>
+                                    </oldVersion>
+                                    <newVersion>
+                                        <file>
+                                            <path>${project.build.directory}/${project.artifactId}-${project.version}.jar</path>
+                                        </file>
+                                    </newVersion>
+                                    <parameter>
+                                        <!-- Only report breaks on @Stable-annotated surfaces. -->
+                                        <includeAnnotations>
+                                            <includeAnnotation>@io.kairo.api.Stable</includeAnnotation>
+                                        </includeAnnotations>
+                                        <excludes>
+                                            <!-- Exclude test / internal implementation packages; kairo-api has none. -->
+                                        </excludes>
+                                        <onlyModified>true</onlyModified>
+                                        <onlyBinaryIncompatibleModifications>true</onlyBinaryIncompatibleModifications>
+                                        <breakBuildOnBinaryIncompatibleModifications>true</breakBuildOnBinaryIncompatibleModifications>
+                                        <breakBuildOnSourceIncompatibleModifications>true</breakBuildOnSourceIncompatibleModifications>
+                                        <skipPomModules>true</skipPomModules>
+                                        <!-- Skip the whole execution if no baseline is configured (RC1 bootstrap case). -->
+                                        <skipXmlReport>false</skipXmlReport>
+                                        <skipHtmlReport>false</skipHtmlReport>
+                                    </parameter>
+                                    <skip>${japicmp.skip}</skip>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

@@ -15,10 +15,13 @@
  */
 package io.kairo.api.context;
 
+import io.kairo.api.Stable;
+
 /**
  * Scope for prompt caching. Determines how long a system prompt segment is eligible for caching by
  * the model provider.
  */
+@Stable(value = "Prompt cache scope enum; values frozen since v0.1", since = "1.0.0")
 public enum CacheScope {
     /** Cached across all requests (rules, style, identity). */
     GLOBAL,

@@ -15,7 +15,10 @@
  */
 package io.kairo.api.exception;
 
+import io.kairo.api.Stable;
+
 /** Base exception for model provider errors such as rate limiting, timeouts, and API failures. */
+@Stable(value = "Model subsystem base exception; shape frozen since v0.7", since = "1.0.0")
 public class ModelException extends KairoException {
 
     /**
@@ -24,7 +27,7 @@ public class ModelException extends KairoException {
      * @param message the detail message
      */
     public ModelException(String message) {
-        super(message);
+        this(message, null, null, false, null);
     }
 
     /**
@@ -34,6 +37,24 @@ public class ModelException extends KairoException {
      * @param cause the underlying cause
      */
     public ModelException(String message, Throwable cause) {
-        super(message, cause);
+        this(message, cause, null, false, null);
+    }
+
+    /**
+     * Create a new ModelException with all structured error fields.
+     *
+     * @param message the detail message
+     * @param cause the underlying cause (may be null)
+     * @param errorCode machine-readable error code
+     * @param retryable whether the operation is retryable
+     * @param retryAfterMs suggested retry delay in milliseconds
+     */
+    protected ModelException(
+            String message,
+            Throwable cause,
+            String errorCode,
+            boolean retryable,
+            Long retryAfterMs) {
+        super(message, cause, errorCode, ErrorCategory.MODEL, retryable, retryAfterMs);
     }
 }

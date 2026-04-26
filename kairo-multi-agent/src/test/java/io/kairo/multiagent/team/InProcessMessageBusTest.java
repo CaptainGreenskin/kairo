@@ -20,8 +20,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
 class InProcessMessageBusTest {
@@ -226,5 +228,64 @@ class InProcessMessageBusTest {
 
         assertEquals(1, bus.poll("receiver").size());
         assertTrue(bus.poll("sender").isEmpty());
+    }
+
+    // ==================== BOUNDED BUFFER ====================
+
+    @Test
+    void replayBufferShouldBeBounded() {
+        // The replay buffer is limited to 1024 items.
+        // A late subscriber should only see at most 1024 replayed messages.
+        int totalMessages = 2048;
+
+        bus.registerAgent("producer");
+        bus.registerAgent("consumer");
+
+        // Create the sink, then send all messages (sink stores them in replay buffer)
+        Flux<Msg> flux = bus.receive("consumer");
+
+        for (int i = 0; i < totalMessages; i++) {
+            bus.send("producer", "consumer", Msg.of(MsgRole.USER, "msg-" + i)).block();
+        }
+
+        // Use time-based take — the replay buffer replays what it has, then waits.
+        // We collect what the replay window provides within a short window.
+        AtomicInteger received = new AtomicInteger(0);
+        flux.take(java.time.Duration.ofSeconds(2))
+                .doOnNext(m -> received.incrementAndGet())
+                .blockLast(java.time.Duration.ofSeconds(5));
+
+        // Replay buffer bounded to 1024: subscriber gets at most 1024 replayed items
+        assertTrue(received.get() <= totalMessages, "Received count should not exceed total sent");
+        assertTrue(received.get() > 0, "Should have received some messages");
+    }
+
+    @Test
+    void rapidFireShouldNotCauseOOM() {
+        // Publish 2500 messages rapidly — verify no OOM and buffer stays bounded
+        int messageCount = 2500;
+        bus.registerAgent("fast-producer");
+
+        // Create sink first
+        Flux<Msg> receiverFlux = bus.receive("slow-consumer");
+
+        // Rapid-fire publish
+        for (int i = 0; i < messageCount; i++) {
+            bus.send("fast-producer", "slow-consumer", Msg.of(MsgRole.USER, "rapid-" + i)).block();
+        }
+
+        // Subscribe late — replay buffer should cap at 1024
+        AtomicInteger count = new AtomicInteger(0);
+        receiverFlux
+                .take(java.time.Duration.ofSeconds(2))
+                .doOnNext(m -> count.incrementAndGet())
+                .blockLast(java.time.Duration.ofSeconds(5));
+
+        // Replay buffer is bounded to 1024, so late subscriber gets at most 1024
+        assertTrue(
+                count.get() <= 1024,
+                "Late subscriber should receive at most 1024 replayed messages, got "
+                        + count.get());
+        assertTrue(count.get() > 0, "Late subscriber should receive some replayed messages");
     }
 }

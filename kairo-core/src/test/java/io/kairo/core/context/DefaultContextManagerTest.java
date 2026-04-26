@@ -188,6 +188,33 @@ class DefaultContextManagerTest {
     }
 
     @Test
+    @DisplayName("custom compaction threshold delays compaction trigger")
+    void testCustomCompactionThreshold() {
+        TokenBudgetManager budget = new TokenBudgetManager(100_000, 8_000);
+        CompactionPipeline pipeline =
+                new CompactionPipeline((io.kairo.api.model.ModelProvider) null);
+        DefaultContextManager cm = new DefaultContextManager(budget, pipeline, 0.90f);
+
+        cm.addMessage(userMsg("m1", "x".repeat(50_000), 85_000));
+        assertFalse(cm.needsCompaction(cm.getMessages()));
+
+        cm.addMessage(userMsg("m2", "y".repeat(20_000), 10_000));
+        assertTrue(cm.needsCompaction(cm.getMessages()));
+    }
+
+    @Test
+    @DisplayName("invalid threshold falls back to default")
+    void testInvalidThresholdFallsBackToDefault() {
+        TokenBudgetManager budget = new TokenBudgetManager(100_000, 8_000);
+        CompactionPipeline pipeline =
+                new CompactionPipeline((io.kairo.api.model.ModelProvider) null);
+        DefaultContextManager cm = new DefaultContextManager(budget, pipeline, -1.0f);
+
+        cm.addMessage(userMsg("m1", "x".repeat(56_000), 81_000));
+        assertTrue(cm.needsCompaction(cm.getMessages()));
+    }
+
+    @Test
     @DisplayName("BoundaryMarkerManager tracks compaction history")
     void testBoundaryMarkerManager() {
         BoundaryMarkerManager bmm = manager.getBoundaryMarkerManager();

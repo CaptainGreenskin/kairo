@@ -20,96 +20,59 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.kairo.api.memory.MemoryEntry;
 import io.kairo.api.memory.MemoryScope;
 import java.time.Instant;
-import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 class MemoryEntryConfidenceTest {
 
-    @Test
-    @DisplayName("6-arg constructor sets confidence to null")
-    void sixArgConstructorSetsConfidenceNull() {
-        MemoryEntry entry =
-                new MemoryEntry(
-                        "id1", "content", MemoryScope.SESSION, Instant.now(), List.of(), true);
-        assertNull(entry.confidence());
+    private MemoryEntry entry(double importance) {
+        return new MemoryEntry(
+                "id1",
+                null,
+                "content",
+                null,
+                MemoryScope.SESSION,
+                importance,
+                null,
+                null,
+                Instant.now(),
+                null);
     }
 
     @Test
-    @DisplayName("7-arg constructor with valid confidence (0.5)")
-    void sevenArgConstructorWithValidConfidence() {
-        MemoryEntry entry =
-                new MemoryEntry(
-                        "id1", "content", MemoryScope.SESSION, Instant.now(), List.of(), true, 0.5);
-        assertEquals(0.5, entry.confidence());
+    @DisplayName("Valid importance 0.5")
+    void validImportance() {
+        MemoryEntry e = entry(0.5);
+        assertEquals(0.5, e.importance());
     }
 
     @Test
-    @DisplayName("7-arg constructor with boundary value 0.0")
-    void sevenArgConstructorWithBoundaryZero() {
-        MemoryEntry entry =
-                new MemoryEntry(
-                        "id1", "content", MemoryScope.SESSION, Instant.now(), List.of(), true, 0.0);
-        assertEquals(0.0, entry.confidence());
+    @DisplayName("Boundary value 0.0")
+    void boundaryZero() {
+        MemoryEntry e = entry(0.0);
+        assertEquals(0.0, e.importance());
     }
 
     @Test
-    @DisplayName("7-arg constructor with boundary value 1.0")
-    void sevenArgConstructorWithBoundaryOne() {
-        MemoryEntry entry =
-                new MemoryEntry(
-                        "id1", "content", MemoryScope.SESSION, Instant.now(), List.of(), true, 1.0);
-        assertEquals(1.0, entry.confidence());
+    @DisplayName("Boundary value 1.0")
+    void boundaryOne() {
+        MemoryEntry e = entry(1.0);
+        assertEquals(1.0, e.importance());
     }
 
     @Test
-    @DisplayName("Confidence below 0.0 throws IllegalArgumentException")
-    void confidenceBelowZeroThrows() {
+    @DisplayName("Importance below 0.0 throws IllegalArgumentException")
+    void importanceBelowZeroThrows() {
         IllegalArgumentException ex =
-                assertThrows(
-                        IllegalArgumentException.class,
-                        () ->
-                                new MemoryEntry(
-                                        "id1",
-                                        "content",
-                                        MemoryScope.SESSION,
-                                        Instant.now(),
-                                        List.of(),
-                                        true,
-                                        -0.1));
+                assertThrows(IllegalArgumentException.class, () -> entry(-0.1));
         assertTrue(ex.getMessage().contains("-0.1"));
     }
 
     @Test
-    @DisplayName("Confidence above 1.0 throws IllegalArgumentException")
-    void confidenceAboveOneThrows() {
+    @DisplayName("Importance above 1.0 throws IllegalArgumentException")
+    void importanceAboveOneThrows() {
         IllegalArgumentException ex =
-                assertThrows(
-                        IllegalArgumentException.class,
-                        () ->
-                                new MemoryEntry(
-                                        "id1",
-                                        "content",
-                                        MemoryScope.SESSION,
-                                        Instant.now(),
-                                        List.of(),
-                                        true,
-                                        1.1));
+                assertThrows(IllegalArgumentException.class, () -> entry(1.1));
         assertTrue(ex.getMessage().contains("1.1"));
-    }
-
-    @Test
-    @DisplayName("Null confidence does not throw")
-    void nullConfidenceDoesNotThrow() {
-        assertDoesNotThrow(
-                () ->
-                        new MemoryEntry(
-                                "id1",
-                                "content",
-                                MemoryScope.SESSION,
-                                Instant.now(),
-                                List.of(),
-                                true,
-                                null));
     }
 }

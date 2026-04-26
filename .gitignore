@@ -58,7 +58,17 @@ Desktop.ini
 # Internal docs (not for public release)
 docs/ROADMAP.md
 docs/KV-CACHE-PROPOSAL.md
+.plans/
+
+# Local scripts (not for public release)
+scripts/
 
 # Kairo runtime
 /tmp/kairo-sessions/
 .kairo/
+
+# VitePress docs
+docs/node_modules/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+dependency-tree.txt
