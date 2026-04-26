@@ -18,10 +18,10 @@ package io.kairo.core.integration;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.tool.*;
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
 import io.kairo.core.tool.DefaultToolRegistry;
-import io.kairo.core.tool.ToolHandler;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;

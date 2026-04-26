@@ -15,7 +15,10 @@
  */
 package io.kairo.api.model;
 
+import io.kairo.api.Stable;
+
 /** Classification of API errors for retry and recovery decisions. */
+@Stable(value = "API error type enum; values frozen since v0.2", since = "1.0.0")
 public enum ApiErrorType {
 
     /** The prompt exceeds the model's context window. */

@@ -15,15 +15,23 @@
  */
 package io.kairo.mcp;
 
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.modelcontextprotocol.client.McpAsyncClient;
 import io.modelcontextprotocol.spec.McpSchema;
+import java.io.IOException;
+import java.net.ConnectException;
+import java.net.SocketException;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
+import reactor.util.retry.RetryBackoffSpec;
 
 /**
  * Executes an MCP tool call via the MCP async client and converts the result to a Kairo {@link
@@ -32,14 +40,19 @@ import reactor.core.publisher.Mono;
  * <p>This class bridges Kairo's tool execution model with the MCP protocol. It supports preset
  * arguments that are merged with each invocation's input (input takes precedence).
  */
-public class McpToolExecutor {
+public class McpToolExecutor implements ToolHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(McpToolExecutor.class);
+    private static final Duration DEFAULT_EXECUTION_TIMEOUT = Duration.ofSeconds(30);
+    private static final int EXECUTION_RETRY_ATTEMPTS = 2;
+    private static final Duration EXECUTION_RETRY_MIN_BACKOFF = Duration.ofMillis(150);
+    private static final Duration EXECUTION_RETRY_MAX_BACKOFF = Duration.ofSeconds(1);
 
     private final McpAsyncClient mcpClient;
     private final String mcpToolName;
     private final String kairoToolName;
     private final Map<String, Object> presetArgs;
+    private final Duration executionTimeout;
 
     /**
      * Creates a new executor.
@@ -54,10 +67,34 @@ public class McpToolExecutor {
             String mcpToolName,
             String kairoToolName,
             Map<String, Object> presetArgs) {
+        this(mcpClient, mcpToolName, kairoToolName, presetArgs, DEFAULT_EXECUTION_TIMEOUT);
+    }
+
+    /**
+     * Creates a new executor with explicit execution timeout.
+     *
+     * @param mcpClient the MCP async client
+     * @param mcpToolName the original MCP tool name (without server prefix)
+     * @param kairoToolName the Kairo-registered tool name (with server prefix)
+     * @param presetArgs preset arguments to merge with each call (may be null)
+     * @param executionTimeout timeout applied to each MCP tool invocation
+     */
+    public McpToolExecutor(
+            McpAsyncClient mcpClient,
+            String mcpToolName,
+            String kairoToolName,
+            Map<String, Object> presetArgs,
+            Duration executionTimeout) {
         this.mcpClient = mcpClient;
         this.mcpToolName = mcpToolName;
         this.kairoToolName = kairoToolName;
         this.presetArgs = presetArgs != null ? new HashMap<>(presetArgs) : null;
+        this.executionTimeout =
+                executionTimeout != null
+                                && !executionTimeout.isNegative()
+                                && !executionTimeout.isZero()
+                        ? executionTimeout
+                        : DEFAULT_EXECUTION_TIMEOUT;
     }
 
     /**
@@ -77,6 +114,17 @@ public class McpToolExecutor {
 
         return mcpClient
                 .callTool(new McpSchema.CallToolRequest(mcpToolName, mergedArgs))
+                .timeout(executionTimeout)
+                .onErrorResume(
+                        this::isTransientConnectionError,
+                        error ->
+                                mcpClient
+                                        .initialize()
+                                        .then(
+                                                mcpClient.callTool(
+                                                        new McpSchema.CallToolRequest(
+                                                                mcpToolName, mergedArgs))))
+                .retryWhen(executionRetrySpec())
                 .map(result -> McpContentConverter.convert(result, toolUseId))
                 .doOnSuccess(r -> logger.debug("MCP tool '{}' completed", mcpToolName))
                 .onErrorResume(
@@ -102,8 +150,13 @@ public class McpToolExecutor {
      * @param input the input parameters
      * @return the tool result
      */
+    @Override
+    public ToolResult execute(Map<String, Object> input) {
+        return executeSync(input);
+    }
+
     public ToolResult executeSync(Map<String, Object> input) {
-        return execute(input, "").block();
+        return execute(input, "").block(executionTimeout.plusSeconds(1));
     }
 
     /** Returns the original MCP tool name. */
@@ -125,5 +178,36 @@ public class McpToolExecutor {
             merged.putAll(input);
         }
         return merged;
+    }
+
+    private RetryBackoffSpec executionRetrySpec() {
+        return Retry.backoff(EXECUTION_RETRY_ATTEMPTS, EXECUTION_RETRY_MIN_BACKOFF)
+                .maxBackoff(EXECUTION_RETRY_MAX_BACKOFF)
+                .filter(this::isTransientConnectionError)
+                .doBeforeRetry(
+                        signal ->
+                                logger.warn(
+                                        "Retrying MCP tool '{}' (attempt {}): {}",
+                                        mcpToolName,
+                                        signal.totalRetries() + 1,
+                                        signal.failure() == null
+                                                ? "unknown"
+                                                : signal.failure().getMessage()));
+    }
+
+    private boolean isTransientConnectionError(Throwable t) {
+        if (t == null) {
+            return false;
+        }
+        if (t instanceof TimeoutException
+                || t instanceof ConnectException
+                || t instanceof SocketException
+                || t instanceof IOException) {
+            return true;
+        }
+        String simpleName = t.getClass().getSimpleName().toLowerCase();
+        return simpleName.contains("timeout")
+                || simpleName.contains("connect")
+                || simpleName.contains("temporar");
     }
 }

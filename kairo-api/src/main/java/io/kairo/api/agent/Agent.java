@@ -15,6 +15,7 @@
  */
 package io.kairo.api.agent;
 
+import io.kairo.api.Stable;
 import io.kairo.api.message.Msg;
 import reactor.core.publisher.Mono;
 
@@ -40,6 +41,7 @@ import reactor.core.publisher.Mono;
  * @see AgentConfig
  * @see AgentState
  */
+@Stable(value = "Core ReAct contract; shipped since v0.1 and unchanged", since = "1.0.0")
 public interface Agent {
 
     /**

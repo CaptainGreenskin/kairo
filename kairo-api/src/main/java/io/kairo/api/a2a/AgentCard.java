@@ -15,6 +15,7 @@
  */
 package io.kairo.api.a2a;
 
+import io.kairo.api.Experimental;
 import java.util.List;
 import java.util.Map;
 
@@ -41,6 +42,7 @@ import java.util.Map;
  * @see AgentSkill
  * @see AgentCardResolver
  */
+@Experimental("A2A agent card; introduced in v0.10, targeting stabilization in v1.1")
 public record AgentCard(
         String id,
         String name,

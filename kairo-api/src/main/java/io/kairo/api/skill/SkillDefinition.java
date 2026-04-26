@@ -15,6 +15,7 @@
  */
 package io.kairo.api.skill;
 
+import io.kairo.api.Stable;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,6 +45,9 @@ import java.util.List;
  *     whitelist)
  * @param bundleRoot the bundle directory root (null = traditional single-file skill)
  */
+@Stable(
+        value = "Skill definition record; progressive-disclosure shape frozen since v0.5",
+        since = "1.0.0")
 public record SkillDefinition(
         String name,
         String version,

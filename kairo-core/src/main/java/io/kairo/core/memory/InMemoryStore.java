@@ -172,6 +172,10 @@ public class InMemoryStore implements MemoryStore {
         if (entry.content() != null && entry.content().toLowerCase().contains(lowerQuery)) {
             return true;
         }
+        // Match against rawContent (pre-compaction original text)
+        if (entry.rawContent() != null && entry.rawContent().toLowerCase().contains(lowerQuery)) {
+            return true;
+        }
         // Match against tags
         return entry.tags().stream().anyMatch(tag -> tag.toLowerCase().contains(lowerQuery));
     }

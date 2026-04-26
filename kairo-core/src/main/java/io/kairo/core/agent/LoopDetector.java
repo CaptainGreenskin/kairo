@@ -18,6 +18,7 @@ package io.kairo.core.agent;
 import io.kairo.api.message.Content;
 import java.time.Duration;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Dual-layer loop detector that identifies repetitive tool call patterns in the ReAct loop.
@@ -37,12 +38,23 @@ class LoopDetector {
     private final int freqWarnThreshold;
     private final int freqHardLimit;
     private final Duration freqWindow;
+    private final int toolRepeatHardLimit;
 
     // Layer 1: Hash-based detection — ordered list of call-set hashes
     private final List<Integer> callHashes = new ArrayList<>();
 
     // Layer 2: Frequency-based detection — sliding time window per tool
     private final Map<String, LinkedList<Long>> recentCalls = new HashMap<>();
+
+    // Layer 3: Tool repetition — per-response (tool, args) key sets for sliding window check
+    private final Deque<Set<String>> responseKeyHistory = new ArrayDeque<>();
+
+    private record ToolCallKey(String toolName, String canonicalArgs) {
+        @Override
+        public String toString() {
+            return toolName + ":" + canonicalArgs;
+        }
+    }
 
     /**
      * Result of a loop detection check.
@@ -67,17 +79,19 @@ class LoopDetector {
             int hashHardLimit,
             int freqWarnThreshold,
             int freqHardLimit,
-            Duration freqWindow) {
+            Duration freqWindow,
+            int toolRepeatHardLimit) {
         this.hashWarnThreshold = hashWarnThreshold;
         this.hashHardLimit = hashHardLimit;
         this.freqWarnThreshold = freqWarnThreshold;
         this.freqHardLimit = freqHardLimit;
         this.freqWindow = freqWindow;
+        this.toolRepeatHardLimit = toolRepeatHardLimit;
     }
 
     /** Create a LoopDetector with sensible defaults. */
     static LoopDetector withDefaults() {
-        return new LoopDetector(3, 5, 50, 100, Duration.ofMinutes(10));
+        return new LoopDetector(3, 5, 50, 100, Duration.ofMinutes(10), 4);
     }
 
     /**
@@ -89,18 +103,23 @@ class LoopDetector {
     DetectionResult check(List<Content.ToolUseContent> toolCalls) {
         DetectionResult hashResult = checkHash(toolCalls);
         DetectionResult freqResult = checkFrequency(toolCalls);
+        DetectionResult repeatResult = checkToolRepetition(toolCalls);
 
         // Return highest severity: HARD_STOP > WARN > NONE
-        if (hashResult.level().ordinal() >= freqResult.level().ordinal()) {
-            return hashResult.level() == DetectionResult.Level.NONE ? freqResult : hashResult;
-        }
-        return freqResult;
+        DetectionResult best =
+                hashResult.level().ordinal() >= freqResult.level().ordinal()
+                        ? (hashResult.level() == DetectionResult.Level.NONE
+                                ? freqResult
+                                : hashResult)
+                        : freqResult;
+        return repeatResult.level().ordinal() > best.level().ordinal() ? repeatResult : best;
     }
 
     /** Reset all detection state. */
     void reset() {
         callHashes.clear();
         recentCalls.clear();
+        responseKeyHistory.clear();
     }
 
     // ---- Layer 1: Hash-based detection ----
@@ -237,5 +256,50 @@ class LoopDetector {
             long cutoff = System.currentTimeMillis() - freqWindow.toMillis();
             calls.removeIf(t -> t < cutoff);
         }
+    }
+
+    // ---- Layer 3: Tool repetition (same tool+args in N consecutive responses) ----
+
+    private DetectionResult checkToolRepetition(List<Content.ToolUseContent> toolCalls) {
+        if (toolRepeatHardLimit <= 0) {
+            return DetectionResult.none();
+        }
+        Set<String> currentKeys =
+                toolCalls.stream()
+                        .map(
+                                tc ->
+                                        new ToolCallKey(tc.toolName(), canonicalizeArgs(tc.input()))
+                                                .toString())
+                        .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        responseKeyHistory.addLast(currentKeys);
+        while (responseKeyHistory.size() > toolRepeatHardLimit) {
+            responseKeyHistory.removeFirst();
+        }
+        if (responseKeyHistory.size() < toolRepeatHardLimit) {
+            return DetectionResult.none();
+        }
+
+        // Find any key that appears in every response in the sliding window
+        for (String key : currentKeys) {
+            boolean allContain = true;
+            for (Set<String> responseKeys : responseKeyHistory) {
+                if (!responseKeys.contains(key)) {
+                    allContain = false;
+                    break;
+                }
+            }
+            if (allContain) {
+                String toolName = key.substring(0, key.indexOf(':'));
+                return new DetectionResult(
+                        DetectionResult.Level.HARD_STOP,
+                        "Loop detected: tool '"
+                                + toolName
+                                + "' called with identical arguments in "
+                                + toolRepeatHardLimit
+                                + " consecutive responses");
+            }
+        }
+        return DetectionResult.none();
     }
 }

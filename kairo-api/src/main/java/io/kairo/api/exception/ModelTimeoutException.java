@@ -15,8 +15,13 @@
  */
 package io.kairo.api.exception;
 
+import io.kairo.api.Stable;
+
 /** Thrown when a model provider call times out. */
+@Stable(value = "Model timeout exception; shape frozen since v0.7", since = "1.0.0")
 public class ModelTimeoutException extends ModelException {
+
+    private static final String DEFAULT_ERROR_CODE = "MODEL_TIMEOUT";
 
     /**
      * Create a new ModelTimeoutException with the given message.
@@ -24,7 +29,7 @@ public class ModelTimeoutException extends ModelException {
      * @param message the detail message
      */
     public ModelTimeoutException(String message) {
-        super(message);
+        super(message, null, DEFAULT_ERROR_CODE, true, null);
     }
 
     /**
@@ -34,6 +39,6 @@ public class ModelTimeoutException extends ModelException {
      * @param cause the underlying cause
      */
     public ModelTimeoutException(String message, Throwable cause) {
-        super(message, cause);
+        super(message, cause, DEFAULT_ERROR_CODE, true, null);
     }
 }

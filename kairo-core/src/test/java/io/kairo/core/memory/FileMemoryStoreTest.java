@@ -17,6 +17,7 @@ package io.kairo.core.memory;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.exception.MemoryStoreException;
 import io.kairo.api.memory.MemoryEntry;
 import io.kairo.api.memory.MemoryScope;
 import java.nio.file.Files;
@@ -220,5 +221,53 @@ class FileMemoryStoreTest {
         StepVerifier.create(store.get("e1"))
                 .assertNext(found -> assertEquals("in agent", found.content()))
                 .verifyComplete();
+    }
+
+    @Test
+    @DisplayName("Delete on read-only path throws MemoryStoreException not RuntimeException")
+    void testDeleteIOExceptionProducesMemoryStoreException() throws Exception {
+        FileMemoryStore store = new FileMemoryStore(tempDir);
+        store.save(entry("e1", "data", MemoryScope.SESSION, Set.of())).block();
+
+        // Make the scope directory read-only so deleteIfExists throws IOException
+        Path sessionDir = tempDir.resolve("session");
+        Path file = sessionDir.resolve("e1.json");
+        assertTrue(Files.exists(file));
+        file.toFile().setReadOnly();
+        sessionDir.toFile().setReadOnly();
+
+        StepVerifier.create(store.delete("e1"))
+                .expectErrorSatisfies(
+                        err -> {
+                            assertInstanceOf(MemoryStoreException.class, err);
+                            assertTrue(err.getMessage().contains("e1"));
+                        })
+                .verify();
+
+        // Restore permissions for cleanup
+        sessionDir.toFile().setWritable(true);
+        file.toFile().setWritable(true);
+    }
+
+    @Test
+    @DisplayName("saveRaw on read-only path throws MemoryStoreException not RuntimeException")
+    void testSaveRawIOExceptionProducesMemoryStoreException() throws Exception {
+        // Create the scope dir first, then make it read-only
+        FileMemoryStore store = new FileMemoryStore(tempDir);
+        store.saveRaw("setup", "init", MemoryScope.SESSION).block();
+
+        Path sessionDir = tempDir.resolve("session");
+        sessionDir.toFile().setReadOnly();
+
+        StepVerifier.create(store.saveRaw("fail-key", "value", MemoryScope.SESSION))
+                .expectErrorSatisfies(
+                        err -> {
+                            assertInstanceOf(MemoryStoreException.class, err);
+                            assertTrue(err.getMessage().contains("fail-key"));
+                        })
+                .verify();
+
+        // Restore permissions for cleanup
+        sessionDir.toFile().setWritable(true);
     }
 }

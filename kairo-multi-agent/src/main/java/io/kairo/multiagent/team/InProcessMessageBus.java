@@ -42,6 +42,12 @@ public class InProcessMessageBus implements MessageBus {
 
     private static final Logger log = LoggerFactory.getLogger(InProcessMessageBus.class);
 
+    /**
+     * Multicast sinks keep per-subscriber demand; for slow subscribers we prefer bounded-loss over
+     * unbounded in-memory growth.
+     */
+    private static final int MAX_DIRECT_DELIVERY_QUEUE = 1024;
+
     private final ConcurrentHashMap<String, Queue<Msg>> inboxes = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Sinks.Many<Msg>> sinks = new ConcurrentHashMap<>();
 
@@ -56,7 +62,14 @@ public class InProcessMessageBus implements MessageBus {
                     // Notify reactive sink if one exists
                     Sinks.Many<Msg> sink = sinks.get(toAgentId);
                     if (sink != null) {
-                        sink.tryEmitNext(message);
+                        Sinks.EmitResult result = sink.tryEmitNext(message);
+                        if (result.isFailure()) {
+                            log.warn(
+                                    "MessageBus overflow: failed to emit message to '{}' "
+                                            + "(result={}, buffer may be full)",
+                                    toAgentId,
+                                    result);
+                        }
                     }
                     log.debug("Message sent from agent '{}' to agent '{}'", fromAgentId, toAgentId);
                 });
@@ -66,7 +79,7 @@ public class InProcessMessageBus implements MessageBus {
     public Flux<Msg> receive(String agentId) {
         Sinks.Many<Msg> sink =
                 sinks.computeIfAbsent(
-                        agentId, k -> Sinks.many().multicast().onBackpressureBuffer());
+                        agentId, k -> Sinks.many().replay().limit(MAX_DIRECT_DELIVERY_QUEUE));
         return sink.asFlux();
     }
 

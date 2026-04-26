@@ -15,6 +15,7 @@
  */
 package io.kairo.api.context;
 
+import io.kairo.api.Stable;
 import io.kairo.api.message.Msg;
 import java.util.List;
 import reactor.core.publisher.Mono;
@@ -38,6 +39,7 @@ import reactor.core.publisher.Mono;
  * @see TokenBudget
  * @see CompactionResult
  */
+@Stable(value = "Context manager SPI; shape frozen since v0.1", since = "1.0.0")
 public interface ContextManager {
 
     /**

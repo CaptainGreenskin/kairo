@@ -15,9 +15,21 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
 import reactor.core.publisher.Mono;
 
-/** Handler for requesting user approval before executing tools with significant side effects. */
+/**
+ * Handler for requesting user approval before executing tools with significant side effects.
+ *
+ * @apiNote Stable SPI — backward compatible across minor versions. Breaking changes only in major
+ *     versions with 2-minor-version deprecation notice.
+ * @implSpec Implementations may block waiting for user input (e.g., CLI prompt, UI dialog). The
+ *     returned {@link reactor.core.publisher.Mono} should complete when the user responds.
+ *     Implementations must handle timeout scenarios gracefully — returning {@link
+ *     ApprovalResult#denied()} is preferred over hanging indefinitely.
+ * @since 0.4.0
+ */
+@Stable(value = "User approval handler SPI; shape frozen since v0.4", since = "1.0.0")
 public interface UserApprovalHandler {
 
     /**

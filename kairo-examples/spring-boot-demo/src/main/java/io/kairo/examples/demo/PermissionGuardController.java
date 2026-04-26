@@ -19,7 +19,6 @@ import io.kairo.api.agent.Agent;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelProvider;
-import io.kairo.api.tool.PermissionGuard;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolExecutor;
@@ -28,10 +27,10 @@ import io.kairo.api.tool.ToolSideEffect;
 import io.kairo.core.agent.AgentBuilder;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import java.util.EnumMap;
-import org.springframework.beans.factory.annotation.Value;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -43,11 +42,12 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * REST controller demonstrating Kairo's permission and security model for tool execution.
  *
- * <p>Showcases the {@link DefaultPermissionGuard} and side-effect classification system
- * that controls which tools an agent is allowed to execute. The controller maintains a
- * configurable policy map from {@link ToolSideEffect} to ALLOW/DENY.
+ * <p>Showcases the {@link DefaultPermissionGuard} and side-effect classification system that
+ * controls which tools an agent is allowed to execute. The controller maintains a configurable
+ * policy map from {@link ToolSideEffect} to ALLOW/DENY.
  *
  * <p>Usage:
+ *
  * <pre>{@code
  * # Chat with the secure agent (permission guard applied)
  * curl -X POST http://localhost:8080/secure/chat \
@@ -107,25 +107,27 @@ public class PermissionGuardController {
     /**
      * Chat endpoint with the permission-guarded agent.
      *
-     * <p>Builds a fresh agent with the current permission guard and policy applied.
-     * Tools that violate the policy will be blocked at execution time.
+     * <p>Builds a fresh agent with the current permission guard and policy applied. Tools that
+     * violate the policy will be blocked at execution time.
      *
      * @param request the chat request containing the user message
      * @return the agent's reply along with the active policy
      */
     @PostMapping("/chat")
     public ResponseEntity<Map<String, Object>> chat(@RequestBody ChatRequest request) {
-        Agent agent = AgentBuilder.create()
-                .name("secure-agent")
-                .model(modelProvider)
-                .modelName(modelName)
-                .tools(toolRegistry)
-                .toolExecutor(toolExecutor)
-                .systemPrompt("You are a secure assistant with restricted tool permissions. "
-                        + "Some tools may be blocked by the permission guard.")
-                .maxIterations(10)
-                .tokenBudget(50_000)
-                .build();
+        Agent agent =
+                AgentBuilder.create()
+                        .name("secure-agent")
+                        .model(modelProvider)
+                        .modelName(modelName)
+                        .tools(toolRegistry)
+                        .toolExecutor(toolExecutor)
+                        .systemPrompt(
+                                "You are a secure assistant with restricted tool permissions. "
+                                        + "Some tools may be blocked by the permission guard.")
+                        .maxIterations(10)
+                        .tokenBudget(50_000)
+                        .build();
 
         Msg input = Msg.of(MsgRole.USER, request.message());
         Msg response = agent.call(input).block();
@@ -146,18 +148,20 @@ public class PermissionGuardController {
     public ResponseEntity<Map<String, Object>> getPolicy() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("policy", policyToMap());
-        result.put("description", Map.of(
-                "READ_ONLY", "Safe read operations (grep, list, read)",
-                "WRITE", "File write/edit operations",
-                "SYSTEM_CHANGE", "Shell execution, system-level changes"));
+        result.put(
+                "description",
+                Map.of(
+                        "READ_ONLY", "Safe read operations (grep, list, read)",
+                        "WRITE", "File write/edit operations",
+                        "SYSTEM_CHANGE", "Shell execution, system-level changes"));
         return ResponseEntity.ok(result);
     }
 
     /**
      * Update the permission policy.
      *
-     * <p>Accepts a map of {@link ToolSideEffect} names to {@code ALLOW} or {@code DENY}.
-     * Only the provided entries are updated; unmentioned levels keep their current value.
+     * <p>Accepts a map of {@link ToolSideEffect} names to {@code ALLOW} or {@code DENY}. Only the
+     * provided entries are updated; unmentioned levels keep their current value.
      *
      * @param policyUpdate the policy entries to update
      * @return the updated policy
@@ -183,8 +187,8 @@ public class PermissionGuardController {
     /**
      * Test whether a specific tool would be permitted under the current policy.
      *
-     * <p>This endpoint does not execute the tool — it only checks the permission guard
-     * and the side-effect policy to determine if execution would be allowed.
+     * <p>This endpoint does not execute the tool — it only checks the permission guard and the
+     * side-effect policy to determine if execution would be allowed.
      *
      * @param request the test request with tool name and category
      * @return the permission check result
@@ -208,9 +212,10 @@ public class PermissionGuardController {
             result.put("permitted", decision == PolicyDecision.ALLOW);
 
             // Also check the permission guard (dangerous pattern / sensitive path check)
-            Boolean guardResult = permissionGuard
-                    .checkPermission(request.toolName(), def.category(), Map.of())
-                    .block();
+            Boolean guardResult =
+                    permissionGuard
+                            .checkPermission(request.toolName(), def.category(), Map.of())
+                            .block();
             result.put("guardPermitted", Boolean.TRUE.equals(guardResult));
         } else {
             // Tool not in registry — test with the provided category
@@ -233,9 +238,8 @@ public class PermissionGuardController {
             result.put("policyDecision", decision.name());
             result.put("permitted", decision == PolicyDecision.ALLOW);
 
-            Boolean guardResult = permissionGuard
-                    .checkPermission(request.toolName(), Map.of())
-                    .block();
+            Boolean guardResult =
+                    permissionGuard.checkPermission(request.toolName(), Map.of()).block();
             result.put("guardPermitted", Boolean.TRUE.equals(guardResult));
         }
 

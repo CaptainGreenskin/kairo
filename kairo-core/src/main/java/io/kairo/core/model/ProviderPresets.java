@@ -15,6 +15,9 @@
  */
 package io.kairo.core.model;
 
+import io.kairo.core.model.anthropic.AnthropicProvider;
+import io.kairo.core.model.openai.OpenAIProvider;
+
 /**
  * Convenience factory for commonly used model providers with sensible defaults.
  *

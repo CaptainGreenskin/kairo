@@ -15,6 +15,7 @@
  */
 package io.kairo.api.agent;
 
+import io.kairo.api.Stable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -27,6 +28,7 @@ import reactor.core.publisher.Mono;
  *
  * @see AgentSnapshot
  */
+@Stable(value = "Snapshot persistence SPI; shape frozen since v0.4", since = "1.0.0")
 public interface SnapshotStore {
 
     /**
