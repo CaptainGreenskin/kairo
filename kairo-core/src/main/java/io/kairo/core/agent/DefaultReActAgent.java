@@ -615,7 +615,9 @@ public class DefaultReActAgent implements Agent {
                 currentIteration.get(),
                 totalTokensUsed.get(),
                 reactLoop.getHistory(),
-                Map.of("modelName", config.modelName()),
+                Map.of(
+                        "modelName", config.modelName(),
+                        "totalToolCalls", reactLoop.getTotalToolCalls()),
                 Instant.now());
     }
 

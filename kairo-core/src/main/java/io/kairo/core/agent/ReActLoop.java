@@ -171,6 +171,11 @@ class ReActLoop {
         this.toolPhase.setCompactionTrigger(compactionTrigger);
     }
 
+    /** Returns the total number of tool calls executed in this loop. */
+    int getTotalToolCalls() {
+        return toolPhase.getTotalToolCalls();
+    }
+
     void setStreamingEnabled(boolean enabled) {
         this.streamingEnabled = enabled;
     }

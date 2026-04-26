@@ -50,6 +50,7 @@ class ToolPhase {
     private static final Logger log = LoggerFactory.getLogger(ToolPhase.class);
 
     private final ReActLoopContext ctx;
+    private final AtomicInteger totalToolCallsCounter = new AtomicInteger(0);
     private final IterationGuards guards;
     private final HookDecisionApplier hookDecisions;
     private final List<Msg> conversationHistory;
@@ -87,6 +88,11 @@ class ToolPhase {
 
     void setCompactionTrigger(CompactionTrigger compactionTrigger) {
         this.compactionTrigger = compactionTrigger;
+    }
+
+    /** Returns the total number of tool calls executed since this agent was created. */
+    int getTotalToolCalls() {
+        return totalToolCallsCounter.get();
     }
 
     /**
@@ -224,6 +230,7 @@ class ToolPhase {
 
     /** Execute a single tool call with PreActing and PostActing hooks. */
     private Mono<ToolResult> executeSingleToolWithHooks(Content.ToolUseContent toolCall) {
+        totalToolCallsCounter.incrementAndGet();
         Instant toolStart = Instant.now();
         return firePreActing(toolCall)
                 .map(hookResult -> planToolExecution(toolCall, hookResult))
