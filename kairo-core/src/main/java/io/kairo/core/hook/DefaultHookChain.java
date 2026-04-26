@@ -62,14 +62,6 @@ public class DefaultHookChain implements HookChain {
         return Collections.unmodifiableList(new ArrayList<>(handlers));
     }
 
-    /**
-     * Fire all {@link OnError}-annotated methods with the given error event. Best-effort: errors
-     * thrown by handlers are logged and swallowed so hook failures never mask the original error.
-     */
-    public Mono<Void> fireOnError(AgentErrorEvent event) {
-        return fireEvent(event, OnError.class).then();
-    }
-
     @Override
     public <T> Mono<T> firePreReasoning(T event) {
         return fireEvent(event, PreReasoning.class);
@@ -149,6 +141,14 @@ public class DefaultHookChain implements HookChain {
     @Override
     public <T> Mono<T> fireOnToolResult(T event) {
         return fireEvent(event, OnToolResult.class);
+    }
+
+    /**
+     * Fire all {@link OnError}-annotated methods with the given error event. Best-effort: errors
+     * thrown by handlers are logged and swallowed so hook failures never mask the original error.
+     */
+    public Mono<Void> fireOnError(AgentErrorEvent event) {
+        return fireEvent(event, OnError.class).then();
     }
 
     /**
