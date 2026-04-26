@@ -15,6 +15,7 @@
  */
 package io.kairo.api.message;
 
+import io.kairo.api.Stable;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -39,6 +40,7 @@ import java.util.UUID;
  *     .build();
  * }</pre>
  */
+@Stable(value = "Core message type; shape frozen since v0.1", since = "1.0.0")
 public class Msg {
 
     private final String id;

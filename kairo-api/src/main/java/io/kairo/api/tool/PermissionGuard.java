@@ -15,6 +15,7 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
 import java.util.Map;
 import reactor.core.publisher.Mono;
 
@@ -25,6 +26,7 @@ import reactor.core.publisher.Mono;
  * allowing a tool to run. Inspired by claude-code-best's multi-layer permission model, guards
  * should check not just shell commands but also file write paths and other sensitive operations.
  */
+@Stable(value = "Permission guard SPI; shape frozen since v0.7", since = "1.0.0")
 public interface PermissionGuard {
 
     /**

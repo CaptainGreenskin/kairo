@@ -15,10 +15,10 @@
  */
 package io.kairo.core.model;
 
-/** Thrown when a model call is rejected because the circuit breaker is in OPEN state. */
-public class CircuitBreakerOpenException extends RuntimeException {
+import io.kairo.api.model.ModelUnavailableException;
 
-    private final String modelId;
+/** Thrown when a model call is rejected because the circuit breaker is in OPEN state. */
+public class CircuitBreakerOpenException extends ModelUnavailableException {
 
     /**
      * Create a new circuit breaker open exception.
@@ -26,16 +26,6 @@ public class CircuitBreakerOpenException extends RuntimeException {
      * @param modelId the model whose circuit breaker is open
      */
     public CircuitBreakerOpenException(String modelId) {
-        super("Circuit breaker is open for model: " + modelId);
-        this.modelId = modelId;
-    }
-
-    /**
-     * Get the model identifier.
-     *
-     * @return the model ID
-     */
-    public String getModelId() {
-        return modelId;
+        super(modelId, "circuit_open", "Circuit breaker is open for model: " + modelId);
     }
 }

@@ -15,7 +15,10 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
+
 /** Callback interface for streaming tool results incrementally. */
+@Stable(value = "Streaming tool result callback; shape frozen since v0.1", since = "1.0.0")
 public interface StreamingToolResultCallback {
 
     /**

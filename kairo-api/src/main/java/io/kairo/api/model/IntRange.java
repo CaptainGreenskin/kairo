@@ -15,12 +15,15 @@
  */
 package io.kairo.api.model;
 
+import io.kairo.api.Stable;
+
 /**
  * An inclusive integer range with clamping and interpolation utilities.
  *
  * @param min the minimum value (inclusive)
  * @param max the maximum value (inclusive)
  */
+@Stable(value = "Integer range record; shape frozen since v0.2", since = "1.0.0")
 public record IntRange(int min, int max) {
 
     public IntRange {

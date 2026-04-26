@@ -15,6 +15,8 @@
  */
 package io.kairo.api.model;
 
+import io.kairo.api.Stable;
+import io.kairo.api.agent.CancellationSignal;
 import io.kairo.api.message.Msg;
 import java.util.List;
 import reactor.core.publisher.Flux;
@@ -34,13 +36,31 @@ import reactor.core.publisher.Mono;
  * <p><strong>Thread safety:</strong> Implementations must be safe for concurrent use; the same
  * provider instance may serve multiple agents simultaneously.
  *
+ * <p><strong>Cooperative cancellation:</strong> implementations should observe {@link
+ * CancellationSignal} from Reactor Context (key: {@link CancellationSignal#CONTEXT_KEY}) and stop
+ * network/work execution quickly when cancelled.
+ *
+ * @apiNote Stable SPI — backward compatible across minor versions. Breaking changes only in major
+ *     versions with 2-minor-version deprecation notice.
+ * @implSpec Implementations must be thread-safe for concurrent use from multiple agents. Blocking
+ *     I/O (e.g., HTTP calls) should be offloaded with {@code
+ *     subscribeOn(Schedulers.boundedElastic())} or use a non-blocking HTTP client. Observe {@link
+ *     CancellationSignal} from Reactor Context and terminate in-flight requests promptly when
+ *     cancelled.
  * @see ModelConfig
  * @see ModelResponse
+ * @since 0.1.0
  */
+@Stable(value = "Core model invocation contract; unchanged since v0.1", since = "1.0.0")
 public interface ModelProvider {
 
     /**
      * Invoke the model and return a complete response.
+     *
+     * <p>Implementations <b>SHOULD</b> respect upstream subscription cancellation (dispose
+     * propagation). The framework wraps calls with cooperative cancellation signals via {@link
+     * CancellationSignal} in the Reactor Context (key: {@link CancellationSignal#CONTEXT_KEY}).
+     * When the signal fires, in-flight HTTP requests should be abandoned promptly.
      *
      * @param messages the conversation history
      * @param config model configuration (model name, tokens, tools, etc.)
@@ -52,6 +72,11 @@ public interface ModelProvider {
      * Invoke the model in streaming mode.
      *
      * <p>Emits partial {@link ModelResponse} objects as they arrive from the provider.
+     *
+     * <p>Implementations <b>SHOULD</b> respect upstream subscription cancellation (dispose
+     * propagation). The framework wraps calls with cooperative cancellation signals via {@link
+     * CancellationSignal} in the Reactor Context (key: {@link CancellationSignal#CONTEXT_KEY}).
+     * When the signal fires, the streaming connection should be closed promptly.
      *
      * @param messages the conversation history
      * @param config model configuration

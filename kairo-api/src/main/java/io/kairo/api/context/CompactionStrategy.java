@@ -15,6 +15,7 @@
  */
 package io.kairo.api.context;
 
+import io.kairo.api.Stable;
 import io.kairo.api.message.Msg;
 import java.util.List;
 import reactor.core.publisher.Mono;
@@ -25,6 +26,7 @@ import reactor.core.publisher.Mono;
  * <p>Multiple strategies can be registered; they are tried in priority order (lower value = tried
  * first). A strategy decides when compaction should trigger and how to compact the message list.
  */
+@Stable(value = "Compaction strategy SPI; shape frozen since v0.1", since = "1.0.0")
 public interface CompactionStrategy {
 
     /**

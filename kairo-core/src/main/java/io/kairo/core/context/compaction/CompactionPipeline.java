@@ -24,15 +24,16 @@ import io.kairo.api.hook.PostCompactEvent;
 import io.kairo.api.hook.PreCompactEvent;
 import io.kairo.api.message.Msg;
 import io.kairo.api.model.ModelProvider;
+import io.kairo.core.context.CompactionThresholds;
 import io.kairo.core.model.ModelRegistry;
+import io.kairo.core.resilience.CircuitBreakerPrimitive;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
@@ -58,7 +59,7 @@ public class CompactionPipeline {
     private static final Logger log = LoggerFactory.getLogger(CompactionPipeline.class);
 
     private final List<CompactionStrategy> stages;
-    private final CircuitBreaker circuitBreaker;
+    private final CircuitBreakerPrimitive circuitBreaker;
     private final String modelId;
     private final HookChain hookChain;
 
@@ -68,7 +69,7 @@ public class CompactionPipeline {
      * @param modelProvider the model provider for AutoCompaction (may be null)
      */
     public CompactionPipeline(ModelProvider modelProvider) {
-        this(modelProvider, null, null);
+        this(modelProvider, null, null, CompactionThresholds.DEFAULTS);
     }
 
     /**
@@ -79,16 +80,29 @@ public class CompactionPipeline {
      * @param hookChain the hook chain for pre/post compact events (may be null)
      */
     public CompactionPipeline(ModelProvider modelProvider, String modelId, HookChain hookChain) {
+        this(modelProvider, modelId, hookChain, CompactionThresholds.DEFAULTS);
+    }
+
+    /**
+     * Create a pipeline with default stages, model ID, hook chain, and custom thresholds.
+     *
+     * @param modelProvider the model provider for AutoCompaction (may be null)
+     * @param modelId the model ID for resolving context window (may be null)
+     * @param hookChain the hook chain for pre/post compact events (may be null)
+     * @param thresholds compaction thresholds (uses sensible defaults if null)
+     */
+    public CompactionPipeline(
+            ModelProvider modelProvider,
+            String modelId,
+            HookChain hookChain,
+            CompactionThresholds thresholds) {
         this(
-                List.of(
-                        new TimeBasedMicrocompact(),
-                        new SnipCompaction(),
-                        new MicroCompaction(),
-                        new CollapseCompaction(),
-                        new AutoCompaction(modelProvider),
-                        new PartialCompaction()),
+                buildDefaultStages(
+                        modelProvider,
+                        thresholds != null ? thresholds : CompactionThresholds.DEFAULTS),
                 modelId,
-                hookChain);
+                hookChain,
+                thresholds != null ? thresholds : CompactionThresholds.DEFAULTS);
     }
 
     /**
@@ -97,7 +111,7 @@ public class CompactionPipeline {
      * @param stages the compaction strategies to use, in priority order
      */
     public CompactionPipeline(List<CompactionStrategy> stages) {
-        this(stages, null, null);
+        this(stages, null, null, CompactionThresholds.DEFAULTS);
     }
 
     /**
@@ -109,13 +123,43 @@ public class CompactionPipeline {
      */
     public CompactionPipeline(
             List<CompactionStrategy> stages, String modelId, HookChain hookChain) {
+        this(stages, modelId, hookChain, CompactionThresholds.DEFAULTS);
+    }
+
+    /**
+     * Create a pipeline with custom stages, model ID, hook chain, and custom thresholds.
+     *
+     * @param stages the compaction strategies to use, in priority order
+     * @param modelId the model ID for resolving context window (may be null)
+     * @param hookChain the hook chain for pre/post compact events (may be null)
+     * @param thresholds compaction thresholds for circuit breaker configuration
+     */
+    public CompactionPipeline(
+            List<CompactionStrategy> stages,
+            String modelId,
+            HookChain hookChain,
+            CompactionThresholds thresholds) {
+        CompactionThresholds t = thresholds != null ? thresholds : CompactionThresholds.DEFAULTS;
         this.stages =
                 stages.stream()
                         .sorted(Comparator.comparingInt(CompactionStrategy::priority))
                         .toList();
-        this.circuitBreaker = new CircuitBreaker(3);
+        this.circuitBreaker =
+                new CircuitBreakerPrimitive(
+                        t.cbFailureLimit(), Duration.ofSeconds(t.cbCooldownSeconds()));
         this.modelId = modelId;
         this.hookChain = hookChain;
+    }
+
+    private static List<CompactionStrategy> buildDefaultStages(
+            ModelProvider modelProvider, CompactionThresholds t) {
+        return List.of(
+                new TimeBasedMicrocompact(),
+                new SnipCompaction(t.snipPressure()),
+                new MicroCompaction(t.microPressure()),
+                new CollapseCompaction(t.collapsePressure()),
+                new AutoCompaction(modelProvider, t.autoPressure()),
+                new PartialCompaction(t.partialPressure()));
     }
 
     /**
@@ -136,7 +180,7 @@ public class CompactionPipeline {
             Set<String> verbatimIds,
             float currentPressure,
             CompactionConfig config) {
-        if (circuitBreaker.isOpen()) {
+        if (!circuitBreaker.allowCall()) {
             log.warn("CompactionPipeline circuit breaker is OPEN — skipping compaction");
             return Mono.empty();
         }
@@ -181,17 +225,44 @@ public class CompactionPipeline {
                         return Mono.empty();
                     }
 
-                    return Flux.fromIterable(stages)
-                            .filter(stage -> stage.shouldTrigger(state))
-                            .concatMap(
-                                    stage -> {
-                                        log.info(
-                                                "Executing compaction stage: {} (priority={})",
-                                                stage.name(),
-                                                stage.priority());
-                                        return stage.compact(compressible, config);
-                                    })
-                            .reduce(this::mergeResults)
+                    // Progressive fold: each stage operates on the output of the previous
+                    // stage so lighter compactions compose with heavier ones instead of each
+                    // stage seeing the raw input and the final merge silently discarding
+                    // upstream work.
+                    Mono<CompactionResult> acc =
+                            Mono.just(new CompactionResult(compressible, 0, null));
+                    for (CompactionStrategy stage : stages) {
+                        if (!stage.shouldTrigger(state)) {
+                            continue;
+                        }
+                        final CompactionStrategy current = stage;
+                        final Mono<CompactionResult> prev = acc;
+                        acc =
+                                prev.flatMap(
+                                        pr -> {
+                                            log.info(
+                                                    "Executing compaction stage: {} (priority={})",
+                                                    current.name(),
+                                                    current.priority());
+                                            return current.compact(pr.compactedMessages(), config)
+                                                    .map(
+                                                            sr ->
+                                                                    new CompactionResult(
+                                                                            sr.compactedMessages(),
+                                                                            pr.tokensSaved()
+                                                                                    + sr
+                                                                                            .tokensSaved(),
+                                                                            sr.marker() != null
+                                                                                    ? sr.marker()
+                                                                                    : pr.marker()));
+                                        });
+                    }
+
+                    return acc.flatMap(
+                                    r ->
+                                            r.marker() == null
+                                                    ? Mono.<CompactionResult>empty()
+                                                    : Mono.just(r))
                             .flatMap(
                                     result -> {
                                         // Fire PostCompact hook if available
@@ -254,12 +325,6 @@ public class CompactionPipeline {
                 });
     }
 
-    private CompactionResult mergeResults(CompactionResult a, CompactionResult b) {
-        // Use the latest compacted messages, accumulate tokens saved
-        return new CompactionResult(
-                b.compactedMessages(), a.tokensSaved() + b.tokensSaved(), b.marker());
-    }
-
     /**
      * Check if the circuit breaker is open (too many consecutive failures).
      *
@@ -272,32 +337,5 @@ public class CompactionPipeline {
     /** Reset the circuit breaker. */
     public void resetCircuitBreaker() {
         circuitBreaker.reset();
-    }
-
-    /** Internal circuit breaker to prevent runaway compaction attempts. */
-    static class CircuitBreaker {
-
-        private final int threshold;
-        private final AtomicInteger consecutiveFailures = new AtomicInteger(0);
-
-        CircuitBreaker(int threshold) {
-            this.threshold = threshold;
-        }
-
-        boolean isOpen() {
-            return consecutiveFailures.get() >= threshold;
-        }
-
-        void recordSuccess() {
-            consecutiveFailures.set(0);
-        }
-
-        void recordFailure() {
-            consecutiveFailures.incrementAndGet();
-        }
-
-        void reset() {
-            consecutiveFailures.set(0);
-        }
     }
 }

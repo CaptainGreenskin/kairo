@@ -15,6 +15,8 @@
  */
 package io.kairo.api.context;
 
+import io.kairo.api.Stable;
+
 /**
  * Configuration for context assembly behavior.
  *
@@ -30,6 +32,7 @@ package io.kairo.api.context;
  *     .build();
  * }</pre>
  */
+@Stable(value = "Context builder config; shape frozen since v0.1", since = "1.0.0")
 public class ContextBuilderConfig {
 
     /** Default delimiter between context sections. */

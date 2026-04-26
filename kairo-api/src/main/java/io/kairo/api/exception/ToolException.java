@@ -15,7 +15,10 @@
  */
 package io.kairo.api.exception;
 
+import io.kairo.api.Stable;
+
 /** Base exception for tool execution errors such as permission denials and plan mode violations. */
+@Stable(value = "Tool subsystem base exception; shape frozen since v0.7", since = "1.0.0")
 public class ToolException extends KairoException {
 
     /**
@@ -24,7 +27,7 @@ public class ToolException extends KairoException {
      * @param message the detail message
      */
     public ToolException(String message) {
-        super(message);
+        this(message, null, null);
     }
 
     /**
@@ -34,6 +37,17 @@ public class ToolException extends KairoException {
      * @param cause the underlying cause
      */
     public ToolException(String message, Throwable cause) {
-        super(message, cause);
+        this(message, cause, null);
+    }
+
+    /**
+     * Create a new ToolException with all structured error fields.
+     *
+     * @param message the detail message
+     * @param cause the underlying cause (may be null)
+     * @param errorCode machine-readable error code
+     */
+    protected ToolException(String message, Throwable cause, String errorCode) {
+        super(message, cause, errorCode, ErrorCategory.TOOL, false, null);
     }
 }

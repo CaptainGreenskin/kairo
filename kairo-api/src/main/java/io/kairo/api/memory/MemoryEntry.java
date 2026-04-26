@@ -15,6 +15,7 @@
  */
 package io.kairo.api.memory;
 
+import io.kairo.api.Stable;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Map;
@@ -35,6 +36,7 @@ import java.util.Set;
  * @param timestamp when this entry was created
  * @param metadata extensible key-value pairs
  */
+@Stable(value = "Memory entry record; shape frozen since v0.1", since = "1.0.0")
 public record MemoryEntry(
         String id,
         String agentId,

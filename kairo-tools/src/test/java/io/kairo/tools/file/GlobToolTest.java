@@ -17,7 +17,11 @@ package io.kairo.tools.file;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.api.workspace.Workspace;
+import io.kairo.api.workspace.WorkspaceRequest;
+import io.kairo.core.workspace.LocalDirectoryWorkspaceProvider;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -94,5 +98,22 @@ class GlobToolTest {
         ToolResult result = tool.execute(Map.of("pattern", "*.java"));
         assertTrue(result.isError());
         assertTrue(result.content().contains("'path' is required"));
+    }
+
+    @Test
+    void relativePathResolvesAgainstWorkspaceRoot(@TempDir Path otherRoot) throws IOException {
+        Path sub = otherRoot.resolve("src");
+        Files.createDirectories(sub);
+        Files.writeString(sub.resolve("Hit.java"), "class Hit {}");
+        Workspace ws =
+                new LocalDirectoryWorkspaceProvider(otherRoot)
+                        .acquire(WorkspaceRequest.writable(null));
+        ToolContext ctx = new ToolContext("a", "s", Map.of(), null, null, ws);
+
+        // "src" is relative — must resolve against workspace root, not JVM cwd.
+        ToolResult result = tool.execute(Map.of("pattern", "*.java", "path", "src"), ctx);
+
+        assertFalse(result.isError(), result.content());
+        assertTrue(result.content().contains("Hit.java"));
     }
 }

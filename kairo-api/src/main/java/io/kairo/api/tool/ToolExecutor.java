@@ -15,6 +15,8 @@
  */
 package io.kairo.api.tool;
 
+import io.kairo.api.Stable;
+import io.kairo.api.agent.CancellationSignal;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -33,10 +35,23 @@ import reactor.core.publisher.Mono;
  * <p>Implementations should be thread-safe: parallel tool execution via {@link
  * #executeParallel(List)} may invoke multiple handlers concurrently.
  *
+ * <p><strong>Cooperative cancellation:</strong> implementations should observe {@link
+ * CancellationSignal} from Reactor Context (key: {@link CancellationSignal#CONTEXT_KEY}) and
+ * terminate long-running tool work promptly when cancelled.
+ *
+ * @apiNote Stable SPI — backward compatible across minor versions. Breaking changes only in major
+ *     versions with 2-minor-version deprecation notice.
+ * @implSpec Implementations must be thread-safe: parallel tool execution via {@link
+ *     #executeParallel(List)} may invoke multiple handlers concurrently. Observe {@link
+ *     CancellationSignal} from Reactor Context and terminate long-running tool work promptly when
+ *     cancelled. New {@code default} methods may be added in minor versions to preserve backward
+ *     compatibility.
  * @see ToolResult
  * @see ToolInvocation
  * @see ToolSideEffect
+ * @since 0.1.0
  */
+@Stable(value = "Tool executor SPI; shape frozen since v0.1", since = "1.0.0")
 public interface ToolExecutor {
 
     /**
@@ -90,6 +105,14 @@ public interface ToolExecutor {
      * @param instance the tool handler instance
      */
     default void registerToolInstance(String toolName, Object instance) {}
+
+    /**
+     * Set metadata for a tool. Metadata is passed to guardrail policies via the guardrail context.
+     *
+     * @param toolName the tool name
+     * @param metadata the metadata key-value pairs
+     */
+    default void setToolMetadata(String toolName, java.util.Map<String, Object> metadata) {}
 
     /**
      * Whether this executor supports streaming tool execution.

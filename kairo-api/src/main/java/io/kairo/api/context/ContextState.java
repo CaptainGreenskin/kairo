@@ -15,6 +15,8 @@
  */
 package io.kairo.api.context;
 
+import io.kairo.api.Stable;
+
 /**
  * Snapshot of the current context state, used to decide compaction triggers.
  *
@@ -24,6 +26,7 @@ package io.kairo.api.context;
  * @param messageCount the number of messages in context
  * @param contextWindow the resolved context window size from the model registry (0 if unknown)
  */
+@Stable(value = "Context state snapshot record; shape frozen since v0.1", since = "1.0.0")
 public record ContextState(
         int totalTokens, int usedTokens, float pressure, int messageCount, int contextWindow) {
 

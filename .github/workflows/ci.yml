@@ -46,7 +46,7 @@ jobs:
           cache: maven
 
       - name: Build and test
-        run: mvn clean verify -Dspotless.check.skip=true -B -V
+        run: mvn clean verify -T 1C -Dspotless.check.skip=true -Dsurefire.useSystemClassLoader=false -B -V
 
       - name: Upload test reports
         if: failure()

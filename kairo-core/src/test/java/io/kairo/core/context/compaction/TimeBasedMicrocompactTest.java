@@ -193,16 +193,23 @@ class TimeBasedMicrocompactTest {
     }
 
     @Test
-    @DisplayName("shouldTrigger returns true when messageCount > 0")
-    void testShouldTriggerWithMessages() {
-        ContextState state = new ContextState(100_000, 50_000, 0.5f, 10);
+    @DisplayName("shouldTrigger returns true when pressure >= 80% and messageCount > 0")
+    void testShouldTriggerWithHighPressure() {
+        ContextState state = new ContextState(100_000, 85_000, 0.85f, 10);
         assertTrue(strategy.shouldTrigger(state));
+    }
+
+    @Test
+    @DisplayName("shouldTrigger returns false when pressure is low")
+    void testShouldTriggerLowPressure() {
+        ContextState state = new ContextState(100_000, 50_000, 0.5f, 10);
+        assertFalse(strategy.shouldTrigger(state));
     }
 
     @Test
     @DisplayName("shouldTrigger returns false when messageCount is 0")
     void testShouldTriggerNoMessages() {
-        ContextState state = new ContextState(100_000, 0, 0.0f, 0);
+        ContextState state = new ContextState(100_000, 90_000, 0.9f, 0);
         assertFalse(strategy.shouldTrigger(state));
     }
 

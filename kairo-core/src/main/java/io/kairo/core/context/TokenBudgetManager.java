@@ -37,15 +37,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class TokenBudgetManager {
 
     /** Buffer reserved beyond model output tokens for overhead (tool schemas, framing, etc.). */
-    private static final int BUFFER = 13_000;
+    private static final int DEFAULT_BUFFER = CompactionThresholds.DEFAULT_BUFFER_TOKENS;
 
     private final int totalBudget;
     private final int reservedForResponse;
+    private final int buffer;
     private final AtomicInteger usedTokens = new AtomicInteger(0);
+    private final TokenEstimator tokenEstimator;
 
     private final ModelRegistry.ModelSpec modelSpec;
     private volatile ModelResponse.Usage lastApiUsage;
     private volatile int lastApiUsageTurn = -1;
+    private volatile int lastAccountedUsageTurn = -1;
     private volatile int currentTurn = 0;
 
     /**
@@ -55,9 +58,39 @@ public class TokenBudgetManager {
      * @param reservedForResponse tokens reserved for the model's response
      */
     public TokenBudgetManager(int totalBudget, int reservedForResponse) {
+        this(totalBudget, reservedForResponse, new HeuristicTokenEstimator());
+    }
+
+    /**
+     * Create a new TokenBudgetManager with a custom fallback token estimator.
+     *
+     * @param totalBudget the total token capacity of the model's context window
+     * @param reservedForResponse tokens reserved for the model's response
+     * @param tokenEstimator fallback estimator used when fresh API usage is unavailable
+     */
+    public TokenBudgetManager(
+            int totalBudget, int reservedForResponse, TokenEstimator tokenEstimator) {
+        this(totalBudget, reservedForResponse, tokenEstimator, DEFAULT_BUFFER);
+    }
+
+    /**
+     * Create a new TokenBudgetManager with a custom buffer.
+     *
+     * @param totalBudget the total token capacity of the model's context window
+     * @param reservedForResponse tokens reserved for the model's response
+     * @param tokenEstimator fallback estimator used when fresh API usage is unavailable
+     * @param bufferTokens overhead buffer reserved for tool schemas, framing, etc.
+     */
+    public TokenBudgetManager(
+            int totalBudget,
+            int reservedForResponse,
+            TokenEstimator tokenEstimator,
+            int bufferTokens) {
         this.totalBudget = totalBudget;
         this.reservedForResponse = reservedForResponse;
+        this.buffer = bufferTokens >= 0 ? bufferTokens : DEFAULT_BUFFER;
         this.modelSpec = new ModelRegistry.ModelSpec(totalBudget, reservedForResponse);
+        this.tokenEstimator = tokenEstimator;
     }
 
     /**
@@ -66,9 +99,32 @@ public class TokenBudgetManager {
      * @param modelId the model identifier (e.g. "claude-sonnet-4-20250514")
      */
     public TokenBudgetManager(String modelId) {
+        this(modelId, new HeuristicTokenEstimator(), DEFAULT_BUFFER);
+    }
+
+    /**
+     * Create a TokenBudgetManager derived from a model ID with a custom fallback estimator.
+     *
+     * @param modelId the model identifier (e.g. "claude-sonnet-4-20250514")
+     * @param tokenEstimator fallback estimator used when fresh API usage is unavailable
+     */
+    public TokenBudgetManager(String modelId, TokenEstimator tokenEstimator) {
+        this(modelId, tokenEstimator, DEFAULT_BUFFER);
+    }
+
+    /**
+     * Create a TokenBudgetManager derived from a model ID with custom estimator and buffer.
+     *
+     * @param modelId the model identifier (e.g. "claude-sonnet-4-20250514")
+     * @param tokenEstimator fallback estimator used when fresh API usage is unavailable
+     * @param bufferTokens overhead buffer reserved for tool schemas, framing, etc.
+     */
+    public TokenBudgetManager(String modelId, TokenEstimator tokenEstimator, int bufferTokens) {
         this.modelSpec = ModelRegistry.getSpec(modelId);
         this.totalBudget = modelSpec.contextWindow();
         this.reservedForResponse = modelSpec.maxOutputTokens();
+        this.buffer = bufferTokens >= 0 ? bufferTokens : DEFAULT_BUFFER;
+        this.tokenEstimator = tokenEstimator;
     }
 
     /**
@@ -178,6 +234,25 @@ public class TokenBudgetManager {
     }
 
     /**
+     * Record model usage and account it into the unified token ledger.
+     *
+     * <p>This method is idempotent within the same turn and should be called once after each model
+     * invocation response is received.
+     *
+     * @param usage usage from the model response
+     */
+    public void recordModelUsage(ModelResponse.Usage usage) {
+        if (usage == null) {
+            return;
+        }
+        updateFromApiUsage(usage);
+        if (lastAccountedUsageTurn != currentTurn) {
+            usedTokens.addAndGet(usage.inputTokens() + usage.outputTokens());
+            lastAccountedUsageTurn = currentTurn;
+        }
+    }
+
+    /**
      * Estimate token count for a list of messages.
      *
      * <p>If the last API usage is fresh (same turn), returns the API-reported {@code inputTokens}.
@@ -190,12 +265,7 @@ public class TokenBudgetManager {
         if (lastApiUsage != null && lastApiUsageTurn == currentTurn) {
             return lastApiUsage.inputTokens();
         }
-        // Conservative fallback: chars * 4/3
-        int totalChars = 0;
-        for (Msg msg : messages) {
-            totalChars += msg.text().length();
-        }
-        return totalChars * 4 / 3;
+        return tokenEstimator.estimate(messages);
     }
 
     /**
@@ -204,7 +274,7 @@ public class TokenBudgetManager {
      * @return the effective budget in tokens
      */
     public int getEffectiveBudget() {
-        return modelSpec.contextWindow() - modelSpec.maxOutputTokens() - BUFFER;
+        return modelSpec.contextWindow() - modelSpec.maxOutputTokens() - buffer;
     }
 
     /**
@@ -236,6 +306,15 @@ public class TokenBudgetManager {
     /** Advance the turn counter (call after each model invocation). */
     public void advanceTurn() {
         currentTurn++;
+    }
+
+    /**
+     * Return total accounted tokens in the unified ledger.
+     *
+     * @return total accounted token usage
+     */
+    public long totalAccountedTokens() {
+        return usedTokens.get();
     }
 
     /**

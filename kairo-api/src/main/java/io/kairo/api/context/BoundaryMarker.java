@@ -15,6 +15,7 @@
  */
 package io.kairo.api.context;
 
+import io.kairo.api.Stable;
 import java.time.Instant;
 
 /**
@@ -26,6 +27,7 @@ import java.time.Instant;
  * @param compactedMessageCount number of messages after compaction
  * @param tokensSaved tokens reclaimed by the compaction
  */
+@Stable(value = "Compaction boundary marker record; shape frozen since v0.1", since = "1.0.0")
 public record BoundaryMarker(
         Instant timestamp,
         String strategyName,
