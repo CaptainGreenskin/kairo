@@ -17,6 +17,7 @@ package io.kairo.tools.info;
 
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
@@ -28,6 +29,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -92,6 +94,16 @@ public class HttpTool implements ToolHandler {
 
     @Override
     public ToolResult execute(Map<String, Object> input) {
+        return doExecute(input);
+    }
+
+    @Override
+    public ToolResult execute(Map<String, Object> input, ToolContext context) {
+        return doExecute(input);
+    }
+
+    @SuppressWarnings("unchecked")
+    private ToolResult doExecute(Map<String, Object> input) {
         String rawUrl = (String) input.get("url");
         if (rawUrl == null || rawUrl.isBlank()) {
             return error("Parameter 'url' is required");
@@ -132,7 +144,6 @@ public class HttpTool implements ToolHandler {
                             .timeout(Duration.ofSeconds(timeout))
                             .header("User-Agent", USER_AGENT);
 
-            @SuppressWarnings("unchecked")
             Map<String, Object> extraHeaders = (Map<String, Object>) input.get("headers");
             if (extraHeaders != null) {
                 for (Map.Entry<String, Object> entry : extraHeaders.entrySet()) {
@@ -168,8 +179,7 @@ public class HttpTool implements ToolHandler {
             byte[] slice = truncated ? Arrays.copyOf(bodyBytes, MAX_BYTES) : bodyBytes;
             String responseBody = new String(slice, StandardCharsets.UTF_8);
 
-            Map<String, List<String>> responseHeaders =
-                    new java.util.HashMap<>(response.headers().map());
+            Map<String, List<String>> responseHeaders = new HashMap<>(response.headers().map());
             // Remove status-line pseudo-header if present
             responseHeaders.remove(null);
 
