@@ -20,15 +20,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-/**
- * Process-global registry of live agent health suppliers.
- *
- * <p>Agents register a {@link Supplier} that returns their current {@link AgentHealthInfo} on
- * demand, so callers always get a fresh snapshot without polling.
- */
+/** Global registry of live agent health suppliers. Thread-safe, singleton. */
 public final class AgentHealthRegistry {
 
+    private static final Logger log = LoggerFactory.getLogger(AgentHealthRegistry.class);
     private static final AgentHealthRegistry INSTANCE = new AgentHealthRegistry();
 
     private final ConcurrentHashMap<String, Supplier<AgentHealthInfo>> suppliers =
@@ -40,43 +38,47 @@ public final class AgentHealthRegistry {
         return INSTANCE;
     }
 
+    /** Register a live supplier for {@code agentId}. Idempotent — replaces any existing entry. */
     public void register(String agentId, Supplier<AgentHealthInfo> infoSupplier) {
         suppliers.put(agentId, infoSupplier);
     }
 
+    /** Remove the registration for {@code agentId}. Idempotent — no-op if not registered. */
     public void deregister(String agentId) {
         suppliers.remove(agentId);
     }
 
+    /** Remove all registrations. Useful for testing and Spring context shutdown. */
     public void deregisterAll() {
         suppliers.clear();
     }
 
     /**
-     * Returns a snapshot of all currently active agents, auto-evicting entries whose suppliers
-     * throw or whose state is terminal (COMPLETED / FAILED).
+     * Snapshot all currently registered agents. Suppliers that throw or return terminal states
+     * (COMPLETED/FAILED) are silently evicted from the registry.
      */
     public List<AgentHealthInfo> snapshot() {
-        List<AgentHealthInfo> result = new ArrayList<>();
-        List<String> toEvict = new ArrayList<>();
-
+        List<AgentHealthInfo> results = new ArrayList<>(suppliers.size());
         suppliers.forEach(
                 (agentId, supplier) -> {
                     try {
                         AgentHealthInfo info = supplier.get();
-                        if (info == null
-                                || info.state() == AgentState.COMPLETED
-                                || info.state() == AgentState.FAILED) {
-                            toEvict.add(agentId);
-                        } else {
-                            result.add(info);
+                        if (info != null) {
+                            if (info.state() == AgentState.COMPLETED
+                                    || info.state() == AgentState.FAILED) {
+                                suppliers.remove(agentId);
+                            } else {
+                                results.add(info);
+                            }
                         }
                     } catch (Exception e) {
-                        toEvict.add(agentId);
+                        log.warn(
+                                "Health supplier for agent '{}' threw: {}",
+                                agentId,
+                                e.getMessage());
+                        suppliers.remove(agentId);
                     }
                 });
-
-        toEvict.forEach(suppliers::remove);
-        return result;
+        return results;
     }
 }

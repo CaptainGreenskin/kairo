@@ -447,6 +447,11 @@ public class DefaultReActAgent implements Agent {
                                                                                         state =
                                                                                                 AgentState
                                                                                                         .COMPLETED;
+                                                                                        AgentHealthRegistry
+                                                                                                .global()
+                                                                                                .deregister(
+                                                                                                        this
+                                                                                                                .id);
                                                                                         log.info(
                                                                                                 "Agent '{}' completed after {}"
                                                                                                         + " iterations, {} tokens"
@@ -481,6 +486,11 @@ public class DefaultReActAgent implements Agent {
                                                                                         state =
                                                                                                 AgentState
                                                                                                         .FAILED;
+                                                                                        AgentHealthRegistry
+                                                                                                .global()
+                                                                                                .deregister(
+                                                                                                        this
+                                                                                                                .id);
                                                                                         log.error(
                                                                                                 "Agent"
                                                                                                         + " '{}'"
@@ -608,6 +618,10 @@ public class DefaultReActAgent implements Agent {
         state = AgentState.SUSPENDED;
         AgentHealthRegistry.global().deregister(this.id);
         log.info("Agent '{}' interrupted", name);
+    }
+
+    public void destroy() {
+        AgentHealthRegistry.global().deregister(this.id);
     }
 
     /**
