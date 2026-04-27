@@ -290,7 +290,8 @@ class OTelSpanTest {
         span.setStatus(true, "all good");
         SpanData data = endAndGetSpan(span);
         assertEquals(StatusCode.OK, data.getStatus().getStatusCode());
-        assertEquals("all good", data.getStatus().getDescription());
+        // OTel spec: description is only stored for ERROR status; OK ignores it
+        assertEquals("", data.getStatus().getDescription());
     }
 
     @Test
