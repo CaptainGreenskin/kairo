@@ -28,7 +28,6 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Fetches content from a URL via HTTP GET using the built-in {@link HttpClient}.
@@ -47,15 +46,6 @@ public class WebFetchTool implements ToolHandler {
     static final int DEFAULT_MAX_BYTES = 512_000;
 
     private static final String USER_AGENT = "Kairo-Agent/1.x";
-
-    private static final Set<String> BLOCKED_HOST_PREFIXES =
-            Set.of("localhost", "127.", "192.168.", "10.", "::1");
-
-    private static final Set<String> BLOCKED_HOST_RANGES_172 =
-            Set.of(
-                    "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.", "172.22.",
-                    "172.23.", "172.24.", "172.25.", "172.26.", "172.27.", "172.28.", "172.29.",
-                    "172.30.", "172.31.");
 
     private final boolean allowLocalhost;
     private final HttpClient httpClient;
@@ -162,19 +152,7 @@ public class WebFetchTool implements ToolHandler {
     }
 
     private static boolean isPrivateHost(String host) {
-        if (host == null) return true;
-        String h = host.toLowerCase();
-        for (String prefix : BLOCKED_HOST_PREFIXES) {
-            if (h.equals(prefix) || h.startsWith(prefix)) {
-                return true;
-            }
-        }
-        for (String prefix : BLOCKED_HOST_RANGES_172) {
-            if (h.startsWith(prefix)) {
-                return true;
-            }
-        }
-        return false;
+        return SsrfGuard.isPrivateHost(host);
     }
 
     private static int parseIntOrDefault(Object value, int defaultValue) {
