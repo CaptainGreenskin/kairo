@@ -35,7 +35,11 @@ public enum PiiPattern {
     API_KEY("(?i)\\b(?:sk|ak|pk|rk)-[A-Za-z0-9_-]{16,}\\b", "<redacted:api-key>"),
     JWT("\\beyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\b", "<redacted:jwt>"),
     CHINESE_ID("\\b\\d{17}[\\dXx]\\b", "<redacted:cn-id>"),
-    CHINESE_PHONE("\\b1[3-9]\\d{9}\\b", "<redacted:cn-phone>");
+    CHINESE_PHONE("\\b1[3-9]\\d{9}\\b", "<redacted:cn-phone>"),
+    IPV4(
+            "\\b(?:(?:25[0-5]|2[0-4]\\d|[01]?\\d?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|[01]?\\d?\\d)\\b",
+            "<redacted:ipv4>"),
+    IBAN("\\b[A-Z]{2}\\d{2}[A-Z0-9]{11,30}\\b", "<redacted:iban>");
 
     private final Pattern pattern;
     private final String replacement;
