@@ -195,4 +195,58 @@ class CompactionMetricsHookTest {
         // Compaction should still return true even when hook throws
         StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
     }
+
+    @Test
+    @DisplayName("Hook is invoked once per compaction across multiple compaction rounds")
+    void hookInvokedOncePerCompaction() {
+        when(contextManager.needsCompaction(anyList())).thenReturn(true);
+        when(contextManager.compactMessages(anyList()))
+                .thenReturn(Mono.just(List.of(msg("summary1"))))
+                .thenReturn(Mono.just(List.of(msg("summary2"))));
+
+        AtomicInteger invokeCount = new AtomicInteger(0);
+        hookChain.register(
+                new Object() {
+                    @PostCompact
+                    public PostCompactEvent onPostCompact(PostCompactEvent event) {
+                        invokeCount.incrementAndGet();
+                        return event;
+                    }
+                });
+
+        CompactionTrigger trigger =
+                new CompactionTrigger(contextManager, reactLoop, null, null, hookChain);
+
+        List<Msg> history1 = List.of(msg("a"), msg("b"), msg("c"));
+        StepVerifier.create(trigger.checkAndCompact(history1)).expectNext(true).verifyComplete();
+
+        List<Msg> history2 = List.of(msg("x"), msg("y"), msg("z"), msg("w"));
+        StepVerifier.create(trigger.checkAndCompact(history2)).expectNext(true).verifyComplete();
+
+        assertThat(invokeCount.get()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName(
+            "Hook returning event (CONTINUE) does not prevent compacted messages from being used")
+    void hookReturningEventAllowsCompactionToComplete() {
+        List<Msg> compacted = List.of(msg("compact-result"));
+        when(contextManager.needsCompaction(anyList())).thenReturn(true);
+        when(contextManager.compactMessages(anyList())).thenReturn(Mono.just(compacted));
+
+        hookChain.register(
+                new Object() {
+                    @PostCompact
+                    public PostCompactEvent onPostCompact(PostCompactEvent event) {
+                        // returning the event is the CONTINUE decision
+                        return event;
+                    }
+                });
+
+        List<Msg> history = List.of(msg("m1"), msg("m2"), msg("m3"));
+        CompactionTrigger trigger =
+                new CompactionTrigger(contextManager, reactLoop, null, null, hookChain);
+
+        StepVerifier.create(trigger.checkAndCompact(history)).expectNext(true).verifyComplete();
+    }
 }
