@@ -44,6 +44,12 @@ public class AgentActuatorAutoConfiguration {
         return new AgentEndpoint(agent, toolRegistry);
     }
 
+    @Bean
+    @ConditionalOnMissingBean
+    public KairoAgentsEndpoint kairoAgentsEndpoint() {
+        return new KairoAgentsEndpoint();
+    }
+
     /** Actuator endpoint exposing agent runtime information at {@code /actuator/agent}. */
     @Endpoint(id = "agent")
     public static class AgentEndpoint {
