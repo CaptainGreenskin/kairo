@@ -18,6 +18,7 @@ package io.kairo.spring;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolRegistry;
+import io.kairo.core.health.AgentHealthRegistry;
 import java.util.Map;
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
@@ -42,6 +43,13 @@ public class AgentActuatorAutoConfiguration {
     @ConditionalOnMissingBean
     public AgentEndpoint agentEndpoint(Agent agent, ToolRegistry toolRegistry) {
         return new AgentEndpoint(agent, toolRegistry);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnClass(AgentHealthRegistry.class)
+    public KairoAgentsEndpoint kairoAgentsEndpoint() {
+        return new KairoAgentsEndpoint();
     }
 
     /** Actuator endpoint exposing agent runtime information at {@code /actuator/agent}. */
