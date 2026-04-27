@@ -18,7 +18,7 @@ package io.kairo.core.health;
 import io.kairo.api.agent.AgentState;
 import java.time.Instant;
 
-/** Snapshot of an agent's runtime health at a point in time. */
+/** Live snapshot of a single agent's health status. */
 public record AgentHealthInfo(
         String agentId,
         String name,
