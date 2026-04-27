@@ -54,6 +54,10 @@ else
 fi
 
 echo ""
+# 队列看板（dashboard.sh 输出）
+[[ -x "$REPO/tasks/dashboard.sh" ]] && bash "$REPO/tasks/dashboard.sh"
+
+echo ""
 echo "## 待处理事项"
 
 # BLOCKED 任务（带卡点摘要）

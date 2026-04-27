@@ -57,11 +57,15 @@ bash tasks/path-review.sh
 
 ### Step 5：生成新任务（队列耗尽时）
 优先级：
-1. GitHub Issues `gh issue list --label bug` → 转任务
+1. `bash tasks/issue-sync.sh` —— gh open issues 自动转任务（去重、按 label 定优先级）
 2. `tasks/STRATEGY.md` 当前里程碑剩余 gap
-3. 测试覆盖率 < 70% 的模块（运行 `mvn jacoco:report`）
+3. `bash tasks/coverage-gap.sh` —— jacoco < 70% 的模块自动补测任务（慢，cron 跑更合适）
 
 每次生成 5-10 个，独立任务额外写入 `tasks/parallel/`。
+
+### Step 7：周报（每周一第一次执行时）
+- `bash tasks/weekly-digest.sh > tasks/digests/$(date +%Y-%m-%d).md`
+- `bash tasks/perf-baseline.sh` 跑构建时间基线（每周一次足够，回归 +20% 写 AUTO_DECIDE_LOG）
 
 ### Step 6：里程碑闭环
 每完成 5 个任务运行一次 `bash tasks/release.sh --check`：
