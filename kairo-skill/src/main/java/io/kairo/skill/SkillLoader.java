@@ -364,4 +364,14 @@ public class SkillLoader {
                 parsed.allowedTools(),
                 bundleRoot);
     }
+
+    /**
+     * Reloads a single skill file into the registry. Intended for hot-reload use.
+     *
+     * @param path path to the .md file that was created or modified
+     * @return Flux emitting the reloaded skill definition
+     */
+    Flux<SkillDefinition> reloadFile(Path path) {
+        return loadMetadata(path);
+    }
 }
