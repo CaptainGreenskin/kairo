@@ -98,6 +98,11 @@
         <swagger-parser.version>2.1.40</swagger-parser.version>
         <spring-boot.version>3.5.3</spring-boot.version>
         <mockito.version>5.11.0</mockito.version>
+        <!-- Security overrides: pin vulnerable transitive deps to patched versions.
+             These override the Spring Boot BOM defaults. -->
+        <tomcat.version>10.1.54</tomcat.version>
+        <spring-framework.version>6.2.18</spring-framework.version>
+        <netty.version>4.1.132.Final</netty.version>
         <mockwebserver.version>5.3.2</mockwebserver.version>
         <assertj.version>3.27.7</assertj.version>
         <jacoco.line.threshold>0</jacoco.line.threshold>
