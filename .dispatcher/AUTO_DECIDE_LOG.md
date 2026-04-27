@@ -27,3 +27,13 @@
 状态：FAILURE,SUCCESS
 fix(kairo-security-pii): add IPV4 and IBAN enum constants to PiiPattern
 https://github.com/CaptainGreenskin/kairo/pull/221
+
+## 2026-04-27 19:18 — task 250 silent merge (score 98)
+
+**Task**: 250-kairo-security-pii-restore-ipv4-iban-patterns (P0, blocker for 20 open PRs)
+**Executor**: qodercli (qwork-ultimate)
+**Diff**: 7 lines added, 3 lines changed across PiiPattern.java + PiiPatternTest.java
+**Verify**: `mvn -pl kairo-security-pii -am verify` → BUILD SUCCESS, 93 tests pass
+**Score breakdown**: correctness 10 / scope 10 / brief-align 10 / size 10 / coverage 9 / style 10 / risk 10
+**Decision**: silent merge (≥ 80 floor); root-cause fix unblocks all 20 open PRs after rebase.
+**Commit**: d618eb8 → main e51f79f
