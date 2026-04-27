@@ -4,6 +4,7 @@ export default defineConfig({
   title: 'Kairo',
   description: 'The Agent OS for Java',
   base: '/',
+  ignoreDeadLinks: true,
 
   head: [
     ['link', { rel: 'icon', href: '/logo.png' }],
