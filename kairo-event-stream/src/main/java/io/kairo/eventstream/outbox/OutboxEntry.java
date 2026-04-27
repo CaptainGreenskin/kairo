@@ -15,21 +15,18 @@
  */
 package io.kairo.eventstream.outbox;
 
+import io.kairo.api.event.KairoEvent;
 import java.time.Instant;
 import java.util.UUID;
 
 /**
- * A durable record of a {@link io.kairo.api.event.KairoEvent} pending delivery.
+ * Durable outbox record wrapping a {@link KairoEvent}.
  *
- * <p>The payload is a raw byte array so the outbox layer stays codec-agnostic.
+ * <p>Immutable — use {@link #withStatus(Status)} / {@link #incrementRetries()} to produce updated
+ * copies.
  */
 public record OutboxEntry(
-        UUID id,
-        String eventType,
-        byte[] payload,
-        Instant createdAt,
-        OutboxEntry.Status status,
-        int retries) {
+        UUID id, KairoEvent event, Status status, int retries, Instant createdAt) {
 
     public enum Status {
         PENDING,
@@ -37,16 +34,15 @@ public record OutboxEntry(
         FAILED
     }
 
-    public static OutboxEntry pending(String eventType, byte[] payload) {
-        return new OutboxEntry(
-                UUID.randomUUID(), eventType, payload, Instant.now(), Status.PENDING, 0);
+    public static OutboxEntry pending(KairoEvent event) {
+        return new OutboxEntry(UUID.randomUUID(), event, Status.PENDING, 0, Instant.now());
     }
 
     public OutboxEntry withStatus(Status newStatus) {
-        return new OutboxEntry(id, eventType, payload, createdAt, newStatus, retries);
+        return new OutboxEntry(id, event, newStatus, retries, createdAt);
     }
 
     public OutboxEntry incrementRetries() {
-        return new OutboxEntry(id, eventType, payload, createdAt, status, retries + 1);
+        return new OutboxEntry(id, event, status, retries + 1, createdAt);
     }
 }
