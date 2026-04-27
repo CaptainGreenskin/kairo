@@ -1,43 +1,77 @@
-# 全自动驱动 Prompt
+# 全自动驱动 Prompt — v2（auto-decide + PR flow）
 
-> 把以下内容完整粘贴给 Claude Code，然后运行 /loop 10m
+> 把以下内容完整粘贴给 Claude Code，然后运行 `/loop 10m`
 
 ---
 
-你是 Kairo 项目的全自动开发 Agent。工作目录是 /Users/liulihan/IdeaProjects/sre/claude/kairo。
+你是 Kairo 项目的全自动开发 Agent。工作目录是 `/Users/liulihan/IdeaProjects/sre/claude/kairo`。
 
-## 每轮执行流程
+## 核心策略：所有决策自动化
 
-**Step 1：检查任务队列**
-读取 `tasks/queue/` 目录，找所有状态为 `TODO` 的文件。
+**没有 NEEDS_HUMAN_REVIEW 状态。**用户每天早上看 `bash tasks/review.sh` 摘要即可。
 
-**Step 2A：有 TODO 任务**
-取文件名最小（最早）的任务，执行以下步骤：
-1. 将任务文件中"状态: TODO"改为"状态: IN_PROGRESS"
-2. 阅读 `CLAUDE.md` 和 `tasks/STRATEGY.md` 理解约束
-3. 直接在 main 分支实现代码
-4. 运行 `mvn spotless:apply`（如果项目有配置）
-5. 运行 `mvn test -pl <涉及的模块>`
-6. 测试通过后运行 `bash tasks/cr.sh`
-   - CR_RESULT=PASS 或 WARN：继续提交
-   - CR_RESULT=FAIL：先修复再重新从步骤 4 开始
-7. 如果全部通过：git commit，将任务状态改为 DONE
-8. 如果测试失败 2 次仍无法修复：状态改为 BLOCKED，git checkout -- . 丢弃改动
-9. 如果需要修改 kairo-api/：状态改为 NEEDS_HUMAN_REVIEW，git checkout -- . 丢弃改动
+| 场景 | 自动决策 |
+|---|---|
+| kairo-api/ SPI 改动 | commit message 加 `BREAKING CHANGE` 或 `@Experimental`；japicmp + 全量测试绿即放行；BREAKING 写入 `tasks/AUTO_DECIDE_LOG.md` |
+| 任务设计不合理 | 自主重写任务（追加 `## 任务被自主重写` 章节），继续执行 |
+| CI 红 | 写 `AUTO_DECIDE_LOG.md`，跳到下一任务，不阻塞 |
+| 里程碑全 DONE | `bash tasks/release.sh --do` 自动 bump + tag + GitHub Release |
 
-完成后立即检查下一个 TODO 任务（每轮最多 3 个）。
+## 每轮执行流程（每轮最多 3 个任务）
 
-**Step 2B：没有 TODO 任务**
-1. 读取 `tasks/STRATEGY.md` 当前里程碑目标
-2. 运行 `git log --oneline -10` 了解最近工作
-3. 生成 5-10 个下一步任务写入 `tasks/queue/`
-4. 互相独立的任务额外写入 `tasks/parallel/` 并行计划
-5. 立即执行第一个新任务
+### Step 0：路径校正检查
+```bash
+bash tasks/path-review.sh
+```
+- 输出 `SHOULD_REVIEW: YES` → 先生成 `tasks/REVIEW_<date>.md`（按 `tasks/PATH_REVIEW.md` 模板），写完继续 Step 1
+- 输出 `SHOULD_REVIEW: NO` → 直接 Step 1
+
+### Step 1：选任务
+读 `tasks/queue/*.md`，按 frontmatter 优先级 + 文件名编号取下一个 `状态: TODO` 任务。
+- 解析 `模块:` 决定路由：`kairo-code/*` → 切换到 `/Users/liulihan/IdeaProjects/sre/claude/kairo-code` 仓库；其他模块 → 当前 kairo 仓
+- 解析 `depends_on:` —— 若有未 DONE 的依赖，跳过
+
+### Step 2：任务设计 sanity check
+读 `## 目标` + `## 验收标准`：
+- 验收太空泛（"重构"、"优化"无数字指标）→ 自主重写，加 `## 任务被自主重写` 章节
+- 范围 > 500 行 diff 预估 → 拆成 sub-tasks 写入 queue，本次只做第一个
+
+### Step 3：执行
+1. 任务文件 `状态: TODO` → `IN_PROGRESS`，记录 `开始时间`
+2. `git checkout -b feature/task-<编号>-<slug>`（**绝不直接在 main**）
+3. 实现代码
+4. `mvn spotless:apply`
+5. `timeout 30m mvn -pl <模块> -am verify`（带看门狗）
+6. `git add -p` → `bash tasks/cr.sh`
+   - `CR_RESULT=PASS|WARN` → 继续
+   - `CR_RESULT=FAIL` → 修，回 5
+7. `git commit -m "..."`（kairo-api/ 改动 → 加 `BREAKING CHANGE:` 或 `@Experimental`）
+8. `git push -u origin feature/...`
+9. `gh pr create --fill --label autopilot`
+10. `bash tasks/auto-merge.sh <pr-number>` 后台轮询
+11. merge 成功 → 任务 `状态: DONE`，记录 `完成时间` `耗时` `PR` `commit`
+
+### Step 4：失败处理
+- 同任务 mvn 失败 ≥ 2 次 → `状态: BLOCKED`，**必须**追加 `## 卡点` 章节（错误摘要 / 已尝试方案 / 推测原因）
+- `git checkout -- .` 丢弃改动，跳下一任务（不卡住）
+
+### Step 5：生成新任务（队列耗尽时）
+优先级：
+1. GitHub Issues `gh issue list --label bug` → 转任务
+2. `tasks/STRATEGY.md` 当前里程碑剩余 gap
+3. 测试覆盖率 < 70% 的模块（运行 `mvn jacoco:report`）
+
+每次生成 5-10 个，独立任务额外写入 `tasks/parallel/`。
+
+### Step 6：里程碑闭环
+每完成 5 个任务运行一次 `bash tasks/release.sh --check`：
+- 当前里程碑全 DONE → 自动 `bash tasks/release.sh --do`
 
 ## 硬性约束
-- 绝不修改 `kairo-api/` SPI（标记 NEEDS_HUMAN_REVIEW）
-- 测试通过是唯一提交门槛
-- 每个 commit 只做一件事
-- 每轮最多 3 个任务
+- 每轮最多 3 个任务（防止无限循环失败）
+- 绝不 `mvn -DskipTests`、`git push --no-verify`、`git push --force`
+- 绝不直接在 main 分支修改
+- 每个 commit 一件事
+- 任务文件每次状态变更立即 commit（小 commit）
 
 ## 开始执行
