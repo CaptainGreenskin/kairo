@@ -140,4 +140,33 @@ class ReadToolTest {
         // Lines should have line numbers with │ separator
         assertTrue(result.content().contains("│"));
     }
+
+    @Test
+    void readBinaryFileDoesNotCrash() throws IOException {
+        Path binFile = tempDir.resolve("data.bin");
+        // Write bytes that are not valid UTF-8
+        Files.write(binFile, new byte[] {(byte) 0xFF, (byte) 0xFE, (byte) 0x00, (byte) 0x01});
+
+        ToolResult result = tool.execute(Map.of("path", binFile.toString()));
+        // Must not throw; may succeed or return error, but cannot crash
+        assertNotNull(result);
+    }
+
+    @Test
+    void largeFileTruncatedWithMessage() throws IOException {
+        Path bigFile = tempDir.resolve("big.txt");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 1; i <= 2500; i++) {
+            sb.append("line ").append(i).append('\n');
+        }
+        Files.writeString(bigFile, sb.toString());
+
+        ToolResult result = tool.execute(Map.of("path", bigFile.toString()));
+        assertFalse(result.isError());
+        assertTrue(result.content().contains("2500") || result.content().contains("2000"));
+        assertTrue(
+                result.content().contains("large")
+                        || result.content().contains("startLine")
+                        || result.content().contains("lines"));
+    }
 }

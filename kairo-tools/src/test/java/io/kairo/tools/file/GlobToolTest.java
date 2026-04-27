@@ -116,4 +116,39 @@ class GlobToolTest {
         assertFalse(result.isError(), result.content());
         assertTrue(result.content().contains("Hit.java"));
     }
+
+    @Test
+    void deepRecursiveMatchAcrossMultipleLevels() throws IOException {
+        Path a = tempDir.resolve("a/b/c");
+        Files.createDirectories(a);
+        Files.writeString(a.resolve("deep.java"), "deep");
+        Path b = tempDir.resolve("sub");
+        Files.createDirectories(b);
+        Files.writeString(b.resolve("mid.java"), "mid");
+
+        ToolResult result =
+                tool.execute(Map.of("pattern", "**/*.java", "path", tempDir.toString()));
+        assertFalse(result.isError());
+        assertTrue(result.content().contains("deep.java"));
+        assertTrue(result.content().contains("mid.java"));
+        assertTrue((int) result.metadata().get("count") >= 2);
+    }
+
+    @Test
+    void patternThatDoesNotMatchAnyFileReturnsEmptyWithZeroCount() throws IOException {
+        Files.writeString(tempDir.resolve("a.java"), "x");
+        Files.writeString(tempDir.resolve("b.java"), "y");
+
+        ToolResult result = tool.execute(Map.of("pattern", "*.rb", "path", tempDir.toString()));
+        assertFalse(result.isError());
+        assertEquals(0, result.metadata().get("count"));
+        assertTrue(result.content().contains("No files matched"));
+    }
+
+    @Test
+    void emptyPatternReturnsError() {
+        ToolResult result = tool.execute(Map.of("pattern", "   ", "path", tempDir.toString()));
+        assertTrue(result.isError());
+        assertTrue(result.content().contains("'pattern' is required"));
+    }
 }

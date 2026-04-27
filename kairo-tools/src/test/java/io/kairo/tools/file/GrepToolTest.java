@@ -143,4 +143,45 @@ class GrepToolTest {
         // Format: filepath:lineNumber:lineContent
         assertTrue(result.content().contains(":2:find me"));
     }
+
+    @Test
+    void multipleMatchingLinesAcrossMultipleFiles() throws IOException {
+        Files.writeString(tempDir.resolve("a.txt"), "match here\nno match\nmatch again\n");
+        Files.writeString(tempDir.resolve("b.txt"), "another match\n");
+
+        ToolResult result = tool.execute(Map.of("pattern", "match", "path", tempDir.toString()));
+        assertFalse(result.isError());
+        assertTrue((int) result.metadata().get("count") >= 3);
+        assertTrue(result.content().contains("a.txt"));
+        assertTrue(result.content().contains("b.txt"));
+    }
+
+    @Test
+    void nestedQuantifierPatternIsRejected() {
+        ToolResult result = tool.execute(Map.of("pattern", "(a+)+", "path", tempDir.toString()));
+        assertTrue(result.isError());
+        assertTrue(result.content().contains("nested quantifiers"));
+    }
+
+    @Test
+    void patternLongerThan500CharsIsRejected() {
+        String longPattern = "a".repeat(501);
+        ToolResult result =
+                tool.execute(Map.of("pattern", longPattern, "path", tempDir.toString()));
+        assertTrue(result.isError());
+        assertTrue(result.content().contains("too long"));
+    }
+
+    @Test
+    void searchInSubdirectoryMatchesNestedFiles() throws IOException {
+        Path sub = tempDir.resolve("subdir");
+        Files.createDirectories(sub);
+        Files.writeString(sub.resolve("nested.txt"), "find-nested\n");
+        Files.writeString(tempDir.resolve("top.txt"), "not-here\n");
+
+        ToolResult result =
+                tool.execute(Map.of("pattern", "find-nested", "path", tempDir.toString()));
+        assertFalse(result.isError());
+        assertTrue(result.content().contains("nested.txt"));
+    }
 }
