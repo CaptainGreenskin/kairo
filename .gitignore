@@ -72,3 +72,8 @@ docs/node_modules/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
 dependency-tree.txt
+
+# cli-dispatcher (transient)
+.dispatcher/worktrees/
+.dispatcher/logs/
+.dispatcher/.path_review_state
