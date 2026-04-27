@@ -25,8 +25,8 @@ import org.junit.jupiter.params.provider.EnumSource;
 class PiiPatternTest {
 
     @Test
-    void sixPatternsDefined() {
-        assertThat(PiiPattern.values()).hasSize(6);
+    void tenPatternsDefined() {
+        assertThat(PiiPattern.values()).hasSize(10);
     }
 
     @ParameterizedTest
