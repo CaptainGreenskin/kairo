@@ -15,22 +15,53 @@
  */
 package io.kairo.spring;
 
+import io.kairo.api.team.MessageBus;
+import io.kairo.api.team.TeamManager;
+import io.kairo.multiagent.team.DefaultTaskDispatchCoordinator;
 import io.kairo.multiagent.team.DefaultTeamManager;
+import io.kairo.multiagent.team.InProcessMessageBus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Bean;
 
 /**
  * Auto-configuration for Kairo multi-agent coordination support.
  *
- * <p>Only activates when {@code kairo-multi-agent} is on the classpath. Future versions will
- * auto-wire {@link io.kairo.api.team.TeamManager} and scheduling beans; for now this serves as the
- * extension point and classpath marker for the starter-multi-agent module.
+ * <p>Only activates when {@code kairo-multi-agent} is on the classpath. Creates an {@link
+ * InProcessMessageBus}, {@link DefaultTeamManager}, and {@link DefaultTaskDispatchCoordinator}
+ * unless the user provides their own beans or sets {@code kairo.multi-agent.enabled=false}.
  */
 @AutoConfiguration
 @ConditionalOnClass(DefaultTeamManager.class)
+@ConditionalOnProperty(
+        prefix = "kairo.multi-agent",
+        name = "enabled",
+        havingValue = "true",
+        matchIfMissing = true)
 public class MultiAgentAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(MultiAgentAutoConfiguration.class);
+
+    @Bean
+    @ConditionalOnMissingBean(MessageBus.class)
+    public InProcessMessageBus inProcessMessageBus() {
+        log.debug("Creating InProcessMessageBus bean");
+        return new InProcessMessageBus();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(TeamManager.class)
+    public DefaultTeamManager defaultTeamManager() {
+        return new DefaultTeamManager();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DefaultTaskDispatchCoordinator.class)
+    public DefaultTaskDispatchCoordinator defaultTaskDispatchCoordinator() {
+        return new DefaultTaskDispatchCoordinator();
+    }
 }
