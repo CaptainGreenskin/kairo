@@ -19,6 +19,8 @@ import io.kairo.api.agent.Agent;
 import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.core.agent.AgentMetricsCollector;
+import io.kairo.core.agent.DefaultReActAgent;
+import io.kairo.core.agent.ProgressSnapshot;
 import io.kairo.core.health.AgentHealthRegistry;
 import java.util.List;
 import java.util.Map;
@@ -64,6 +66,12 @@ public class AgentActuatorAutoConfiguration {
     @ConditionalOnMissingBean
     public AgentMetricsEndpoint agentMetricsEndpoint(AgentMetricsCollector metricsCollector) {
         return new AgentMetricsEndpoint(metricsCollector);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public AgentProgressEndpoint agentProgressEndpoint(Agent agent) {
+        return new AgentProgressEndpoint(agent);
     }
 
     /** Actuator endpoint exposing agent runtime information at {@code /actuator/agent}. */
@@ -127,6 +135,33 @@ public class AgentActuatorAutoConfiguration {
                             "successRate", summary.successRate()),
                     "recentSessions",
                     recent);
+        }
+    }
+
+    /** Actuator endpoint exposing agent execution progress at {@code /actuator/agent-progress}. */
+    @Endpoint(id = "agent-progress")
+    public static class AgentProgressEndpoint {
+
+        private final Agent agent;
+
+        public AgentProgressEndpoint(Agent agent) {
+            this.agent = agent;
+        }
+
+        @ReadOperation
+        public Map<String, Object> progress() {
+            if (agent instanceof DefaultReActAgent dra) {
+                ProgressSnapshot snap = dra.getProgress();
+                return Map.of(
+                        "currentIteration", snap.currentIteration(),
+                        "maxIterations", snap.maxIterations(),
+                        "percentage", snap.percentage(),
+                        "currentActivity", snap.currentActivity(),
+                        "elapsedMs", snap.elapsedMs(),
+                        "toolCallsCount", snap.toolCallsCount(),
+                        "tokensUsed", snap.tokensUsed());
+            }
+            return Map.of("status", "unavailable");
         }
     }
 }
