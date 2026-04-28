@@ -15,53 +15,26 @@
  */
 package io.kairo.core.tenant;
 
-import io.kairo.api.tenant.TenantContext;
-import java.util.Map;
-import java.util.Objects;
-
 /**
- * Resolves {@link TierBulkheadLimits} for a given {@link TenantContext}.
+ * Immutable configuration snapshot for a {@link TenantBulkhead}.
  *
- * <p>Resolution order:
- *
- * <ol>
- *   <li>Per-tenant override from {@link #tenantOverrides} map
- *   <li>{@code plan-tier} attribute on the context (free / pro / enterprise / unlimited)
- *   <li>{@link #defaultLimits}
- * </ol>
+ * @param maxConcurrency maximum simultaneous in-flight agent calls per tenant
+ * @param requestsPerSecond token-bucket refill rate
+ * @param burstCapacity maximum tokens that can accumulate
  */
-public final class TenantBulkheadConfig {
+public record TenantBulkheadConfig(
+        int maxConcurrency, double requestsPerSecond, long burstCapacity) {
 
-    private final TierBulkheadLimits defaultLimits;
-    private final Map<String, TierBulkheadLimits> tenantOverrides;
+    public static final TenantBulkheadConfig DEFAULT = new TenantBulkheadConfig(10, 100.0, 200);
 
-    public TenantBulkheadConfig(
-            TierBulkheadLimits defaultLimits, Map<String, TierBulkheadLimits> tenantOverrides) {
-        this.defaultLimits = Objects.requireNonNull(defaultLimits);
-        this.tenantOverrides = Map.copyOf(tenantOverrides);
+    public TenantBulkheadConfig {
+        if (maxConcurrency < 1) throw new IllegalArgumentException("maxConcurrency must be >= 1");
+        if (requestsPerSecond <= 0)
+            throw new IllegalArgumentException("requestsPerSecond must be > 0");
+        if (burstCapacity < 1) throw new IllegalArgumentException("burstCapacity must be >= 1");
     }
 
-    /** Default config: FREE limits for all tenants, no per-tenant overrides. */
-    public static TenantBulkheadConfig defaults() {
-        return new TenantBulkheadConfig(TierBulkheadLimits.FREE, Map.of());
-    }
-
-    /** Unlimited config: no bulkhead enforced. Use for single-tenant / dev environments. */
-    public static TenantBulkheadConfig unlimited() {
-        return new TenantBulkheadConfig(TierBulkheadLimits.UNLIMITED, Map.of());
-    }
-
-    /** Resolve the effective limits for the given tenant. */
-    public TierBulkheadLimits limitsFor(TenantContext tenant) {
-        // 1. per-tenant override
-        TierBulkheadLimits override = tenantOverrides.get(tenant.tenantId());
-        if (override != null) return override;
-
-        // 2. plan-tier attribute
-        String tier = tenant.attributes().get("plan-tier");
-        if (tier != null) return TierBulkheadLimits.forTierName(tier);
-
-        // 3. default
-        return defaultLimits;
+    public TenantBulkhead newBulkhead() {
+        return new TenantBulkhead(maxConcurrency, requestsPerSecond, burstCapacity);
     }
 }

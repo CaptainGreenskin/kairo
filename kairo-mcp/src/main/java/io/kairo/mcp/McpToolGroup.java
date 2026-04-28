@@ -16,11 +16,11 @@
 package io.kairo.mcp;
 
 import io.kairo.api.tool.ToolDefinition;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Tracks the tools registered from a single MCP server, enabling bulk operations like
@@ -29,7 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class McpToolGroup {
 
     private final String serverName;
-    private final List<String> registeredToolNames = new ArrayList<>();
+    private final List<String> registeredToolNames = new CopyOnWriteArrayList<>();
     private final Map<String, McpToolExecutor> executors = new ConcurrentHashMap<>();
     private final Map<String, ToolDefinition> toolDefinitions = new ConcurrentHashMap<>();
 
@@ -72,7 +72,7 @@ public class McpToolGroup {
 
     /** Returns all tool definitions in this group. */
     public List<ToolDefinition> getAllToolDefinitions() {
-        return new ArrayList<>(toolDefinitions.values());
+        return new java.util.ArrayList<>(toolDefinitions.values());
     }
 
     /** Returns the number of tools in this group. */

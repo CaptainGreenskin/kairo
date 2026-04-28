@@ -15,47 +15,48 @@
  */
 package io.kairo.eventstream.outbox;
 
-import io.kairo.api.event.KairoEvent;
 import io.kairo.api.event.KairoEventBus;
-import java.time.Instant;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Background poller that retries PENDING outbox entries every 100 ms.
+ * Polls {@link InMemoryOutboxStore} at a fixed rate and re-delivers PENDING entries.
  *
- * <p>Each entry is attempted up to {@code maxRetries} times (default 3). After all retries are
- * exhausted the entry is marked {@link OutboxEntry.Status#FAILED} and abandoned.
- *
- * <p>Lifecycle: call {@link #start()} once to activate, {@link #stop()} to shut down. Implements
- * {@link AutoCloseable} so it can be used in try-with-resources.
+ * <p>Lifecycle: call {@link #start()} to begin polling; call {@link #stop()} (or use
+ * try-with-resources) to shut down. The poller is idempotent — calling {@code start()} twice is
+ * safe.
  */
 public final class OutboxPoller implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxPoller.class);
-    private static final int DEFAULT_POLL_BATCH = 50;
-    private static final int DEFAULT_MAX_RETRIES = 3;
-    private static final long POLL_INTERVAL_MS = 100;
+
+    private static final int DEFAULT_BATCH_SIZE = 50;
+    private static final long POLL_INTERVAL_MS = 100L;
 
     private final InMemoryOutboxStore store;
     private final KairoEventBus bus;
     private final int maxRetries;
+    private final int batchSize;
+
     private final ScheduledExecutorService scheduler;
+    private volatile ScheduledFuture<?> task;
+    private volatile boolean started;
 
     public OutboxPoller(InMemoryOutboxStore store, KairoEventBus bus) {
-        this(store, bus, DEFAULT_MAX_RETRIES);
+        this(store, bus, 3, DEFAULT_BATCH_SIZE);
     }
 
-    public OutboxPoller(InMemoryOutboxStore store, KairoEventBus bus, int maxRetries) {
-        this.store = Objects.requireNonNull(store, "store");
-        this.bus = Objects.requireNonNull(bus, "bus");
+    public OutboxPoller(
+            InMemoryOutboxStore store, KairoEventBus bus, int maxRetries, int batchSize) {
+        this.store = store;
+        this.bus = bus;
         this.maxRetries = maxRetries;
+        this.batchSize = batchSize;
         this.scheduler =
                 Executors.newSingleThreadScheduledExecutor(
                         r -> {
@@ -65,25 +66,24 @@ public final class OutboxPoller implements AutoCloseable {
                         });
     }
 
-    public void start() {
-        scheduler.scheduleWithFixedDelay(
-                this::poll, POLL_INTERVAL_MS, POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    public synchronized void start() {
+        if (started) return;
+        started = true;
+        task =
+                scheduler.scheduleWithFixedDelay(
+                        this::pollNow, POLL_INTERVAL_MS, POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
         log.info(
-                "OutboxPoller started (interval={}ms, maxRetries={})",
+                "OutboxPoller started (pollInterval={}ms, batchSize={})",
                 POLL_INTERVAL_MS,
-                maxRetries);
+                batchSize);
     }
 
-    public void stop() {
+    public synchronized void stop() {
+        if (!started) return;
+        started = false;
+        ScheduledFuture<?> t = task;
+        if (t != null) t.cancel(false);
         scheduler.shutdown();
-        try {
-            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                scheduler.shutdownNow();
-            }
-        } catch (InterruptedException ex) {
-            scheduler.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
         log.info("OutboxPoller stopped");
     }
 
@@ -92,41 +92,31 @@ public final class OutboxPoller implements AutoCloseable {
         stop();
     }
 
-    private void poll() {
-        List<OutboxEntry> pending = store.pollPending(DEFAULT_POLL_BATCH);
+    /** Exposed for testing — runs one poll cycle synchronously. */
+    public void pollNow() {
+        List<OutboxEntry> pending = store.pollPending(batchSize);
         for (OutboxEntry entry : pending) {
             try {
-                KairoEvent event =
-                        KairoEvent.of(
-                                "outbox",
-                                entry.eventType(),
-                                Map.of("outboxId", entry.id().toString(), "redelivery", true));
-                bus.publish(event);
+                bus.publish(entry.event());
                 store.markDelivered(entry.id());
             } catch (Exception ex) {
-                int newRetries = entry.retries() + 1;
-                if (newRetries >= maxRetries) {
-                    store.markFailed(entry.id(), ex.getMessage());
+                store.incrementRetries(entry.id());
+                int retries = store.retries(entry.id());
+                if (retries >= maxRetries) {
                     log.error(
-                            "Outbox entry {} permanently failed after {} retries",
-                            entry.id(),
+                            "Outbox: max retries ({}) exceeded for event {}; marking FAILED",
                             maxRetries,
+                            entry.id(),
                             ex);
+                    store.markFailed(entry.id());
                 } else {
-                    store.update(entry.incrementRetries());
-                    log.warn("Outbox entry {} retry {}/{}", entry.id(), newRetries, maxRetries);
+                    log.warn(
+                            "Outbox: delivery attempt {} failed for event {}; will retry",
+                            retries,
+                            entry.id(),
+                            ex);
                 }
             }
         }
-    }
-
-    /** Exposed for testing: synchronously run one poll cycle. */
-    public void pollNow() {
-        poll();
-    }
-
-    /** Approximate timestamp visible for health checks. */
-    public Instant startedAt() {
-        return Instant.now();
     }
 }
