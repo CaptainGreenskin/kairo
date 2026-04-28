@@ -124,6 +124,9 @@ public class DefaultReActAgent implements Agent {
     /** The extracted ReAct loop — owns the conversation history. */
     private final ReActLoop reactLoop;
 
+    /** Tracks real-time iteration progress for external monitoring. */
+    private final AgentProgressTracker progressTracker;
+
     /** Collaborators extracted in Step 1B. */
     private final SessionResumption sessionResumption;
 
@@ -275,13 +278,17 @@ public class DefaultReActAgent implements Agent {
         this.recoveryHandler = recoveryHandler;
         this.recoveryOnStartup = recoveryOnStartup;
 
+        this.progressTracker =
+                new AgentProgressTracker(config != null ? config.maxIterations() : 0);
         this.reactLoop =
                 new ReActLoop(
                         loopContext,
                         this.interrupted,
                         this.currentIteration,
                         this.totalTokensUsed,
-                        this::buildModelConfig);
+                        this::buildModelConfig,
+                        null,
+                        this.progressTracker);
 
         // Step 1B collaborators
         this.sessionResumption = new SessionResumption(config, this.reactLoop);
@@ -376,6 +383,11 @@ public class DefaultReActAgent implements Agent {
      */
     ContextManager getContextManager() {
         return contextManager;
+    }
+
+    /** Returns the current execution progress snapshot. */
+    public ProgressSnapshot getProgress() {
+        return progressTracker.getSnapshot();
     }
 
     @Override

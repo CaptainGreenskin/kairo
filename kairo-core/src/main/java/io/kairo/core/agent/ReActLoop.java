@@ -60,6 +60,7 @@ class ReActLoop {
     private final AtomicBoolean danglingRecoveryDone = new AtomicBoolean(false);
 
     @Nullable private final ExecutionEventEmitter eventEmitter;
+    @Nullable private final AgentProgressTracker progressTracker;
 
     // Decomposed phase collaborators
     private final IterationGuards guards;
@@ -105,11 +106,30 @@ class ReActLoop {
             AtomicLong totalTokensUsed,
             Supplier<ModelConfig> modelConfigSupplier,
             @Nullable ExecutionEventEmitter eventEmitter) {
+        this(
+                ctx,
+                interrupted,
+                currentIteration,
+                totalTokensUsed,
+                modelConfigSupplier,
+                eventEmitter,
+                null);
+    }
+
+    ReActLoop(
+            ReActLoopContext ctx,
+            AtomicBoolean interrupted,
+            AtomicInteger currentIteration,
+            AtomicLong totalTokensUsed,
+            Supplier<ModelConfig> modelConfigSupplier,
+            @Nullable ExecutionEventEmitter eventEmitter,
+            @Nullable AgentProgressTracker progressTracker) {
         this.ctx = ctx;
         this.conversationHistory = new CopyOnWriteArrayList<>();
         this.currentIteration = currentIteration;
         this.modelConfigSupplier = modelConfigSupplier;
         this.eventEmitter = eventEmitter;
+        this.progressTracker = progressTracker;
 
         // Initialize loop detector from config thresholds
         var loopDetector =
@@ -179,6 +199,11 @@ class ReActLoop {
         return toolPhase.getTotalToolCalls();
     }
 
+    @Nullable
+    AgentProgressTracker getProgressTracker() {
+        return progressTracker;
+    }
+
     void setStreamingEnabled(boolean enabled) {
         this.streamingEnabled = enabled;
     }
@@ -212,8 +237,21 @@ class ReActLoop {
                                             reasoningPhase.execute(
                                                     modelConfigSupplier.get(), this::runLoop);
 
-                                    // Emit ITERATION_COMPLETE after the iteration finishes
-                                    // (best-effort)
+                                    // Update progress tracker and emit ITERATION_COMPLETE
+                                    // (both best-effort — must not break the loop)
+                                    execution =
+                                            execution.doOnNext(
+                                                    msg -> {
+                                                        if (progressTracker != null) {
+                                                            progressTracker.update(
+                                                                    currentIteration.get(),
+                                                                    "Iteration "
+                                                                            + currentIteration.get()
+                                                                            + " complete",
+                                                                    toolPhase.getTotalToolCalls(),
+                                                                    0);
+                                                        }
+                                                    });
                                     if (eventEmitter != null) {
                                         execution =
                                                 execution.flatMap(
