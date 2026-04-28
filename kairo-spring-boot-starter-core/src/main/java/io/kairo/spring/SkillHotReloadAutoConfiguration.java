@@ -16,10 +16,8 @@
 package io.kairo.spring;
 
 import io.kairo.api.skill.SkillRegistry;
-import io.kairo.skill.SkillHotReloadWatcher;
 import io.kairo.skill.SkillLoader;
 import io.kairo.spring.config.SkillProperties;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -27,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -34,13 +33,14 @@ import org.springframework.context.SmartLifecycle;
 import org.springframework.context.annotation.Bean;
 
 /**
- * Spring Boot auto-configuration for {@link SkillHotReloadWatcher}.
+ * Spring Boot auto-configuration for {@code SkillHotReloadWatcher}.
  *
  * <p>Activated only when {@code kairo.skill.hot-reload.enabled=true} is set — off by default to
  * avoid accidentally watching files in production. Implements {@link SmartLifecycle} so the watcher
  * starts and stops with the Spring context.
  */
 @AutoConfiguration(after = {AgentRuntimeAutoConfiguration.class})
+@ConditionalOnClass(name = "io.kairo.skill.SkillHotReloadWatcher")
 @ConditionalOnProperty(
         name = "kairo.skill.hot-reload.enabled",
         havingValue = "true",
@@ -77,9 +77,19 @@ public class SkillHotReloadAutoConfiguration {
         }
 
         log.info("SkillHotReload will watch: {}", watchDir);
-        SkillHotReloadWatcher watcher =
-                new SkillHotReloadWatcher(watchDir, skillLoader, skillRegistry);
+        Object watcher = createWatcher(watchDir, skillLoader, skillRegistry);
         return new SkillHotReloadLifecycle(watcher);
+    }
+
+    private static Object createWatcher(
+            Path watchDir, SkillLoader skillLoader, SkillRegistry skillRegistry) {
+        try {
+            Class<?> clazz = Class.forName("io.kairo.skill.SkillHotReloadWatcher");
+            return clazz.getConstructor(Path.class, SkillLoader.class, SkillRegistry.class)
+                    .newInstance(watchDir, skillLoader, skillRegistry);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("SkillHotReloadWatcher not available", e);
+        }
     }
 
     private Path resolveWatchDirectory(String directoryOverride, List<String> searchPaths) {
@@ -101,13 +111,13 @@ public class SkillHotReloadAutoConfiguration {
         return Path.of(path);
     }
 
-    /** Wraps {@link SkillHotReloadWatcher} as a {@link SmartLifecycle} bean. */
+    /** Wraps {@code SkillHotReloadWatcher} as a {@link SmartLifecycle} bean. */
     public static final class SkillHotReloadLifecycle implements SmartLifecycle {
 
-        private final SkillHotReloadWatcher watcher;
+        private final Object watcher;
         private volatile boolean running;
 
-        SkillHotReloadLifecycle(SkillHotReloadWatcher watcher) {
+        SkillHotReloadLifecycle(Object watcher) {
             this.watcher = watcher;
         }
 
@@ -115,9 +125,9 @@ public class SkillHotReloadAutoConfiguration {
         public void start() {
             if (watcher == null) return;
             try {
-                watcher.start();
+                watcher.getClass().getMethod("start").invoke(watcher);
                 running = true;
-            } catch (IOException e) {
+            } catch (ReflectiveOperationException e) {
                 log.error("Failed to start SkillHotReloadWatcher", e);
             }
         }
@@ -125,7 +135,11 @@ public class SkillHotReloadAutoConfiguration {
         @Override
         public void stop() {
             if (watcher != null) {
-                watcher.stop();
+                try {
+                    watcher.getClass().getMethod("stop").invoke(watcher);
+                } catch (ReflectiveOperationException e) {
+                    log.error("Failed to stop SkillHotReloadWatcher", e);
+                }
             }
             running = false;
         }
