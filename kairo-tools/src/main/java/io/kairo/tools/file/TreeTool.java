@@ -58,10 +58,13 @@ public class TreeTool implements ToolHandler {
     }
 
     private ToolResult doExecute(Map<String, Object> input, Path workspaceRoot) {
-        String pathStr = input.getOrDefault("path", ".").toString();
+        if (!input.containsKey("path")) {
+            return error("Missing required parameter: 'path'");
+        }
+        String pathStr = input.get("path").toString();
         int maxDepth = parseIntOrDefault(input.get("maxDepth"), 3, 0);
         boolean includeFiles =
-                !"false".equalsIgnoreCase(input.getOrDefault("includeFiles", "true").toString());
+                !"false".equalsIgnoreCase(input.getOrDefault("showFiles", "true").toString());
 
         String patternStr = input.containsKey("pattern") ? input.get("pattern").toString() : null;
         String excludeStr =
@@ -77,7 +80,7 @@ public class TreeTool implements ToolHandler {
 
         Path target = resolvePath(pathStr, workspaceRoot);
         if (!Files.exists(target)) {
-            return error("Path does not exist: " + pathStr);
+            return error("Path not found: " + pathStr);
         }
         if (!Files.isDirectory(target)) {
             return error("Path is not a directory: " + pathStr);
