@@ -40,6 +40,7 @@ import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
 import io.kairo.core.context.TokenBudgetManager;
 import io.kairo.core.execution.RecoveryHandler;
+import io.kairo.core.health.AgentCallObserver;
 import io.kairo.core.health.AgentHealthInfo;
 import io.kairo.core.health.AgentHealthRegistry;
 import io.kairo.core.hook.AgentErrorEvent;
@@ -424,6 +425,7 @@ public class DefaultReActAgent implements Agent {
                                                             Math.min(80, input.text().length())));
 
                                     sessionStartTime = Instant.now();
+                                    AgentCallObserver.global().onCallStart(id, name);
 
                                     // Attempt crash recovery if durable execution is configured
                                     Mono<Void> recoveryStep = attemptRecovery(config.sessionId());
@@ -560,6 +562,19 @@ public class DefaultReActAgent implements Agent {
                                                         skillToolManager.closeMcpRegistry();
                                                         AgentHealthRegistry.global()
                                                                 .deregister(this.id);
+                                                        AgentCallObserver.global()
+                                                                .onCallEnd(
+                                                                        id,
+                                                                        name,
+                                                                        sessionStartTime != null
+                                                                                ? Duration.between(
+                                                                                        sessionStartTime,
+                                                                                        Instant
+                                                                                                .now())
+                                                                                : Duration.ZERO,
+                                                                        state
+                                                                                == AgentState
+                                                                                        .COMPLETED);
                                                     });
                                 }))
                 .onErrorResume(
