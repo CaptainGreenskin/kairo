@@ -18,7 +18,9 @@ package io.kairo.spring;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolRegistry;
+import io.kairo.core.agent.AgentMetricsCollector;
 import io.kairo.core.health.AgentHealthRegistry;
+import java.util.List;
 import java.util.Map;
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
@@ -52,6 +54,18 @@ public class AgentActuatorAutoConfiguration {
         return new KairoAgentsEndpoint();
     }
 
+    @Bean
+    @ConditionalOnMissingBean
+    public AgentMetricsCollector agentMetricsCollector() {
+        return new AgentMetricsCollector();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public AgentMetricsEndpoint agentMetricsEndpoint(AgentMetricsCollector metricsCollector) {
+        return new AgentMetricsEndpoint(metricsCollector);
+    }
+
     /** Actuator endpoint exposing agent runtime information at {@code /actuator/agent}. */
     @Endpoint(id = "agent")
     public static class AgentEndpoint {
@@ -71,6 +85,48 @@ public class AgentActuatorAutoConfiguration {
                     "state", agent.state().name(),
                     "tools", toolRegistry.getAll().stream().map(ToolDefinition::name).toList(),
                     "toolCount", toolRegistry.getAll().size());
+        }
+    }
+
+    /** Actuator endpoint exposing agent execution metrics at {@code /actuator/agent-metrics}. */
+    @Endpoint(id = "agent-metrics")
+    public static class AgentMetricsEndpoint {
+
+        private static final int RECENT_SESSIONS_LIMIT = 20;
+
+        private final AgentMetricsCollector collector;
+
+        public AgentMetricsEndpoint(AgentMetricsCollector collector) {
+            this.collector = collector;
+        }
+
+        @ReadOperation
+        public Map<String, Object> metrics() {
+            AgentMetricsCollector.AgentMetricsSummary summary = collector.getSummary();
+            List<Map<String, Object>> recent =
+                    collector.getRecent(RECENT_SESSIONS_LIMIT).stream()
+                            .map(
+                                    m ->
+                                            Map.<String, Object>of(
+                                                    "agentId", m.agentId(),
+                                                    "agentName", m.agentName(),
+                                                    "startTime", m.startTime().toString(),
+                                                    "durationMs", m.durationMs(),
+                                                    "totalTokensUsed", m.totalTokensUsed(),
+                                                    "totalIterations", m.totalIterations(),
+                                                    "totalToolCalls", m.totalToolCalls(),
+                                                    "succeeded", m.succeeded()))
+                            .toList();
+            return Map.of(
+                    "summary",
+                    Map.of(
+                            "totalInvocations", summary.totalInvocations(),
+                            "successCount", summary.successCount(),
+                            "avgTokensUsed", summary.avgTokensUsed(),
+                            "avgIterations", summary.avgIterations(),
+                            "successRate", summary.successRate()),
+                    "recentSessions",
+                    recent);
         }
     }
 }
