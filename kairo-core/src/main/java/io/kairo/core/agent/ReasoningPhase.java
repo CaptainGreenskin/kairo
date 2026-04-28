@@ -60,6 +60,7 @@ class ReasoningPhase {
     private final AtomicLong totalTokensUsed;
     private final AtomicInteger currentIteration;
     private final Supplier<Boolean> streamingEnabledSupplier;
+    private final Supplier<java.util.function.Consumer<String>> textDeltaConsumerSupplier;
     private final ToolPhase toolPhase;
     @Nullable private final ExecutionEventEmitter eventEmitter;
 
@@ -80,6 +81,7 @@ class ReasoningPhase {
                 totalTokensUsed,
                 currentIteration,
                 streamingEnabledSupplier,
+                () -> null,
                 toolPhase,
                 null);
     }
@@ -92,6 +94,7 @@ class ReasoningPhase {
             AtomicLong totalTokensUsed,
             AtomicInteger currentIteration,
             Supplier<Boolean> streamingEnabledSupplier,
+            Supplier<java.util.function.Consumer<String>> textDeltaConsumerSupplier,
             ToolPhase toolPhase,
             @Nullable ExecutionEventEmitter eventEmitter) {
         this.ctx = ctx;
@@ -101,6 +104,8 @@ class ReasoningPhase {
         this.totalTokensUsed = totalTokensUsed;
         this.currentIteration = currentIteration;
         this.streamingEnabledSupplier = streamingEnabledSupplier;
+        this.textDeltaConsumerSupplier =
+                textDeltaConsumerSupplier != null ? textDeltaConsumerSupplier : () -> null;
         this.toolPhase = toolPhase;
         this.eventEmitter = eventEmitter;
     }
@@ -427,15 +432,32 @@ class ReasoningPhase {
                         guards.withCancellationSignal(
                                 rawProvider.streamRaw(messages, modelConfig)));
 
+        // Tap TEXT chunks to fire per-token output consumer (if registered).
+        // Accumulated text is also used to build a ModelResponse for text-only responses,
+        // avoiding a second fallback model call.
+        var textAccumulator = new StringBuilder();
+        java.util.function.Consumer<String> deltaConsumer = textDeltaConsumerSupplier.get();
+        Flux<StreamChunk> tappedStream =
+                rawStream.doOnNext(
+                        chunk -> {
+                            if (chunk.type() == io.kairo.api.model.StreamChunkType.TEXT
+                                    && chunk.content() != null) {
+                                textAccumulator.append(chunk.content());
+                                if (deltaConsumer != null) {
+                                    deltaConsumer.accept(chunk.content());
+                                }
+                            }
+                        });
+
         // Detect tool calls incrementally
         var detector = new StreamingToolDetector();
-        Flux<DetectedToolCall> detectedTools = detector.detect(rawStream);
+        Flux<DetectedToolCall> detectedTools = detector.detect(tappedStream);
 
         // If the tool executor supports streaming dispatch
         if (!ctx.toolExecutor().supportsStreaming()) {
             return fallbackModelCall(messages, modelConfig);
         }
-        return executeStreamingTools(messages, modelConfig, detectedTools);
+        return executeStreamingTools(messages, modelConfig, detectedTools, textAccumulator);
     }
 
     private Mono<ModelResponse> fallbackModelCall(List<Msg> messages, ModelConfig modelConfig) {
@@ -444,7 +466,10 @@ class ReasoningPhase {
     }
 
     private Mono<ModelResponse> executeStreamingTools(
-            List<Msg> messages, ModelConfig modelConfig, Flux<DetectedToolCall> detectedTools) {
+            List<Msg> messages,
+            ModelConfig modelConfig,
+            Flux<DetectedToolCall> detectedTools,
+            StringBuilder textAccumulator) {
         var streamingExecutor = new StreamingToolExecutor(ctx.toolExecutor());
         // Track tool call ID → tool name mapping for building the synthetic response
         var toolNameMap = new java.util.concurrent.ConcurrentHashMap<String, String>();
@@ -461,8 +486,19 @@ class ReasoningPhase {
                 .flatMap(
                         toolResults -> {
                             if (toolResults.isEmpty()) {
-                                // No tools detected — stream was text-only
-                                // Fall back to non-streaming to get a proper ModelResponse
+                                // Text-only response: build from accumulated stream text.
+                                // Avoids a redundant fallback model call; per-token output
+                                // was already fired via textDeltaConsumer during streaming.
+                                String accumulated = textAccumulator.toString();
+                                if (!accumulated.isEmpty()) {
+                                    log.debug(
+                                            "Streaming text-only response ({} chars)",
+                                            accumulated.length());
+                                    return Mono.just(
+                                            buildTextOnlyResponse(
+                                                    accumulated, modelConfig.model()));
+                                }
+                                // Empty stream — fall back (rare edge case)
                                 return fallbackModelCall(messages, modelConfig);
                             }
                             log.debug(
@@ -473,6 +509,15 @@ class ReasoningPhase {
                                             toolResults, toolNameMap, modelConfig.model()));
                         })
                 .transform(guards::withCooperativeCancellation);
+    }
+
+    private ModelResponse buildTextOnlyResponse(String text, String modelName) {
+        return new ModelResponse(
+                "streaming",
+                List.of(new Content.TextContent(text)),
+                new ModelResponse.Usage(0, 0, 0, 0),
+                ModelResponse.StopReason.END_TURN,
+                modelName);
     }
 
     private ModelResponse buildSyntheticStreamingResponse(

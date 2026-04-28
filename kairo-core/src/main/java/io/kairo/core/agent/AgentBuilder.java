@@ -104,6 +104,7 @@ public class AgentBuilder {
     @javax.annotation.Nullable private EvolutionConfig evolutionConfig;
     private final List<AgentBuilderCustomizer> customizers = new ArrayList<>();
     private final List<SystemPromptContributor> systemPromptContributors = new ArrayList<>();
+    @javax.annotation.Nullable private java.util.function.Consumer<String> textDeltaConsumer;
 
     private AgentBuilder() {}
 
@@ -308,6 +309,19 @@ public class AgentBuilder {
      */
     public AgentBuilder streaming(boolean enabled) {
         this.streamingEnabled = enabled;
+        return this;
+    }
+
+    /**
+     * Register a consumer that receives each text token as it arrives from the model during
+     * streaming. Only fires when {@link #streaming(boolean)} is enabled and the provider supports
+     * raw streaming. No-op when streaming is disabled or the provider falls back.
+     *
+     * @param consumer receives each text delta string; called on a Reactor scheduler thread
+     * @return this builder
+     */
+    public AgentBuilder textDeltaConsumer(java.util.function.Consumer<String> consumer) {
+        this.textDeltaConsumer = consumer;
         return this;
     }
 
@@ -605,6 +619,9 @@ public class AgentBuilder {
 
         if (streamingEnabled) {
             agent.setStreamingEnabled(true);
+        }
+        if (textDeltaConsumer != null) {
+            agent.setTextDeltaConsumer(textDeltaConsumer);
         }
         return agent;
     }

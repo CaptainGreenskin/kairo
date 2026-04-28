@@ -56,6 +56,7 @@ class ReActLoop {
     private final AtomicInteger currentIteration;
     private final Supplier<ModelConfig> modelConfigSupplier;
     private volatile boolean streamingEnabled = false;
+    private volatile java.util.function.Consumer<String> textDeltaConsumer = null;
     private final AtomicBoolean danglingRecoveryDone = new AtomicBoolean(false);
 
     @Nullable private final ExecutionEventEmitter eventEmitter;
@@ -142,6 +143,7 @@ class ReActLoop {
                         totalTokensUsed,
                         currentIteration,
                         () -> streamingEnabled,
+                        () -> textDeltaConsumer,
                         toolPhase,
                         eventEmitter);
     }
@@ -183,6 +185,10 @@ class ReActLoop {
 
     boolean isStreamingEnabled() {
         return streamingEnabled;
+    }
+
+    void setTextDeltaConsumer(java.util.function.Consumer<String> consumer) {
+        this.textDeltaConsumer = consumer;
     }
 
     // ---- Core loop ----

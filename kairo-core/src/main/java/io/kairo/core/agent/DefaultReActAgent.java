@@ -624,6 +624,10 @@ public class DefaultReActAgent implements Agent {
         reactLoop.setStreamingEnabled(enabled);
     }
 
+    public void setTextDeltaConsumer(java.util.function.Consumer<String> consumer) {
+        reactLoop.setTextDeltaConsumer(consumer);
+    }
+
     /**
      * Check whether streaming tool execution is enabled.
      *
