@@ -31,6 +31,7 @@ import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 /**
@@ -228,6 +229,16 @@ public class SkillLoader {
         return registry.listByCategory(category).stream()
                 .map(SkillDefinition::metadataOnly)
                 .toList();
+    }
+
+    /**
+     * Reload a single skill file into the registry.
+     *
+     * @param path path to the {@code .md} skill file
+     * @return a Mono emitting the reloaded skill definition
+     */
+    public Mono<SkillDefinition> reloadFile(Path path) {
+        return loadMetadata(path).next();
     }
 
     /**

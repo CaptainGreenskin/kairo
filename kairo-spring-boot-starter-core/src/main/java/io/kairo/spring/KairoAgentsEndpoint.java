@@ -17,6 +17,7 @@ package io.kairo.spring;
 
 import io.kairo.core.health.AgentHealthInfo;
 import io.kairo.core.health.AgentHealthRegistry;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -38,20 +39,19 @@ public class KairoAgentsEndpoint {
         List<Map<String, Object>> agentViews =
                 infos.stream()
                         .map(
-                                info ->
-                                        Map.<String, Object>of(
-                                                "agentId",
-                                                info.agentId(),
-                                                "name",
-                                                info.name(),
-                                                "state",
-                                                info.state().name(),
-                                                "iterationCount",
-                                                info.iterationCount(),
-                                                "lastActivityAt",
-                                                info.lastActivityAt() != null
-                                                        ? info.lastActivityAt().toString()
-                                                        : null))
+                                info -> {
+                                    Map<String, Object> view = new HashMap<>();
+                                    view.put("agentId", info.agentId());
+                                    view.put("name", info.name());
+                                    view.put("state", info.state().name());
+                                    view.put("iterationCount", info.iterationCount());
+                                    view.put(
+                                            "lastActivityAt",
+                                            info.lastActivityAt() != null
+                                                    ? info.lastActivityAt().toString()
+                                                    : null);
+                                    return view;
+                                })
                         .collect(Collectors.toList());
 
         return Map.of("agents", agentViews, "count", agentViews.size());
