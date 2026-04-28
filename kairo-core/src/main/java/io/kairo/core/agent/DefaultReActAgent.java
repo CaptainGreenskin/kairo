@@ -40,6 +40,8 @@ import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
 import io.kairo.core.context.TokenBudgetManager;
 import io.kairo.core.execution.RecoveryHandler;
+import io.kairo.core.health.AgentHealthInfo;
+import io.kairo.core.health.AgentHealthRegistry;
 import io.kairo.core.hook.AgentErrorEvent;
 import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.middleware.DefaultMiddlewarePipeline;
@@ -288,6 +290,18 @@ public class DefaultReActAgent implements Agent {
                 new CompactionTrigger(
                         this.contextManager, this.reactLoop, config.memoryStore(), null, hookChain);
         this.reactLoop.setCompactionTrigger(this.compactionTrigger);
+
+        // Register with AgentHealthRegistry so /actuator/kairo-agents returns live state
+        AgentHealthRegistry.global()
+                .register(
+                        this.id,
+                        () ->
+                                new AgentHealthInfo(
+                                        this.id,
+                                        this.name,
+                                        this.state,
+                                        this.currentIteration.get(),
+                                        Instant.now()));
     }
 
     /**
@@ -522,6 +536,8 @@ public class DefaultReActAgent implements Agent {
                                                         shutdownManager.unregisterAgent(this);
                                                         skillToolManager.clearSkillRestrictions();
                                                         skillToolManager.closeMcpRegistry();
+                                                        AgentHealthRegistry.global()
+                                                                .deregister(this.id);
                                                     });
                                 }))
                 .onErrorResume(
@@ -590,6 +606,7 @@ public class DefaultReActAgent implements Agent {
     public void interrupt() {
         interrupted.set(true);
         state = AgentState.SUSPENDED;
+        AgentHealthRegistry.global().deregister(this.id);
         log.info("Agent '{}' interrupted", name);
     }
 
