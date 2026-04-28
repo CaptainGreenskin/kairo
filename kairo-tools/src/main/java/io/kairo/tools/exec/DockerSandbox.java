@@ -22,11 +22,12 @@ import io.kairo.api.sandbox.SandboxOutputChunk;
 import io.kairo.api.sandbox.SandboxRequest;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -39,21 +40,14 @@ import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 
 /**
- * {@link ExecutionSandbox} implementation that runs commands inside a Docker container via the
- * {@code docker} CLI (ProcessBuilder — no Docker Java SDK).
+ * {@link ExecutionSandbox} that runs commands inside a Docker container via {@link ProcessBuilder}.
  *
- * <p>Behaviour contract (same as {@link LocalProcessSandbox}):
+ * <p>No Docker Java SDK dependency — the {@code docker} CLI must be on the PATH. Probes
+ * availability at construction time and throws {@link UnsupportedOperationException} if Docker is
+ * not found.
  *
- * <ul>
- *   <li>stderr merged into stdout; all output delivered as {@link SandboxOutputChunk.Stdout}
- *   <li>workspace mounted as {@code /workspace} (read-only if {@link SandboxRequest#readOnly()})
- *   <li>timeout enforced by a watchdog; {@link SandboxExit#timedOut()} when triggered
- *   <li>output capped at {@link SandboxRequest#maxOutputBytes()}; {@link SandboxExit#truncated()}
- *       when exceeded
- * </ul>
- *
- * <p>If the {@code docker} binary is not on {@code PATH} at start time, {@link #start} throws
- * {@link UnsupportedOperationException}.
+ * <p>The workspace root is mounted read-only as {@code /workspace} inside the container. Commands
+ * are executed via {@code /bin/sh -c}.
  *
  * @since v1.2
  */
@@ -66,24 +60,19 @@ public final class DockerSandbox implements ExecutionSandbox {
 
     public DockerSandbox(DockerSandboxConfig config) {
         this.config = Objects.requireNonNull(config, "config");
+        ensureDockerAvailable();
     }
 
     @Override
     public SandboxHandle start(SandboxRequest request) {
-        Objects.requireNonNull(request, "request");
-        if (!Files.isDirectory(request.workspaceRoot())) {
-            throw new IllegalArgumentException(
-                    "workspaceRoot is not a directory: " + request.workspaceRoot());
-        }
-        ensureDockerAvailable();
-
         List<String> cmd = buildDockerCommand(request);
+        log.debug("DockerSandbox starting: {}", cmd);
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.redirectErrorStream(true);
+        if (request.workspaceRoot() != null) {
+            pb.directory(request.workspaceRoot().toFile());
+        }
         try {
-            ProcessBuilder pb = new ProcessBuilder(cmd);
-            pb.redirectErrorStream(true);
-            if (!request.env().isEmpty()) {
-                pb.environment().putAll(request.env());
-            }
             Process process = pb.start();
             return new DockerHandle(process, request);
         } catch (IOException e) {
@@ -96,23 +85,28 @@ public final class DockerSandbox implements ExecutionSandbox {
         cmd.add("docker");
         cmd.add("run");
         cmd.add("--rm");
+        cmd.add("--name");
+        cmd.add("kairo-sandbox-" + UUID.randomUUID().toString().substring(0, 8));
         cmd.add("--cpus");
         cmd.add(config.cpuLimit());
-        cmd.add("-m");
+        cmd.add("--memory");
         cmd.add(config.memoryLimit());
         cmd.add("--network");
         cmd.add(config.networkMode());
 
-        String mountFlag = request.readOnly() ? ":ro" : "";
-        cmd.add("-v");
-        cmd.add(request.workspaceRoot().toAbsolutePath() + ":/workspace" + mountFlag);
-        cmd.add("-w");
-        cmd.add("/workspace");
+        Path workspaceRoot = request.workspaceRoot();
+        if (workspaceRoot != null) {
+            cmd.add("-v");
+            cmd.add(workspaceRoot.toAbsolutePath() + ":/workspace:ro");
+            cmd.add("-w");
+            cmd.add("/workspace");
+        }
 
-        // Pass env vars as -e KEY=VALUE
-        for (Map.Entry<String, String> entry : request.env().entrySet()) {
-            cmd.add("-e");
-            cmd.add(entry.getKey() + "=" + entry.getValue());
+        if (request.env() != null) {
+            for (Map.Entry<String, String> entry : request.env().entrySet()) {
+                cmd.add("-e");
+                cmd.add(entry.getKey() + "=" + entry.getValue());
+            }
         }
 
         cmd.add(config.image());
@@ -122,23 +116,18 @@ public final class DockerSandbox implements ExecutionSandbox {
         return cmd;
     }
 
-    private static void ensureDockerAvailable() {
+    private void ensureDockerAvailable() {
         try {
-            Process probe =
-                    new ProcessBuilder("docker", "version", "--format", "{{.Client.Version}}")
-                            .redirectErrorStream(true)
-                            .start();
+            Process probe = new ProcessBuilder("docker", "version").start();
             probe.waitFor(5, TimeUnit.SECONDS);
             if (probe.exitValue() != 0) {
                 throw new UnsupportedOperationException(
-                        "docker CLI returned non-zero exit; is Docker running?");
+                        "Docker is not available or not running. Ensure the Docker daemon is started.");
             }
-        } catch (InterruptedException e) {
+        } catch (IOException | InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new UnsupportedOperationException("docker availability check interrupted");
-        } catch (IOException e) {
             throw new UnsupportedOperationException(
-                    "docker CLI not found on PATH: " + e.getMessage());
+                    "Docker CLI not found on PATH. Install Docker to use DockerSandbox.", e);
         }
     }
 
@@ -195,9 +184,7 @@ public final class DockerSandbox implements ExecutionSandbox {
 
         @Override
         public void close() {
-            if (!closed.compareAndSet(false, true)) {
-                return;
-            }
+            if (!closed.compareAndSet(false, true)) return;
             cancel();
             watchdog.cancel(true);
             scheduler.shutdownNow();
@@ -222,16 +209,14 @@ public final class DockerSandbox implements ExecutionSandbox {
                         continue;
                     }
                     int slice = (int) Math.min(n, remaining);
-                    if (slice < n) {
-                        truncated.set(true);
-                    }
+                    if (slice < n) truncated.set(true);
                     byte[] chunk = new byte[slice];
                     System.arraycopy(buf, 0, chunk, 0, slice);
                     outputSink.tryEmitNext(new SandboxOutputChunk.Stdout(chunk));
                     emitted += slice;
                 }
             } catch (IOException e) {
-                log.debug("Docker sandbox stream read interrupted: {}", e.getMessage());
+                log.debug("Docker stream read interrupted: {}", e.getMessage());
             } finally {
                 completeExit();
             }

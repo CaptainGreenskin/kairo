@@ -15,56 +15,39 @@
  */
 package io.kairo.core.tenant;
 
-import io.kairo.api.tenant.TenantContext;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Central registry that maps each tenant to its {@link TenantBulkhead}.
+ * Registry that lazily creates and caches a {@link TenantBulkhead} per tenant ID.
  *
- * <p>Bulkheads are created lazily on first access and cached for the lifetime of the registry. The
- * registry is thread-safe; concurrent calls for the same tenantId are safe.
- *
- * <p>Usage:
- *
- * <pre>{@code
- * registry.get(tenantContext).execute(() -> callExpensiveService());
- * }</pre>
+ * <p>All tenants not explicitly configured fall back to the {@link #defaultConfig}.
  */
 public final class TenantBulkheadRegistry {
 
-    private final TenantBulkheadConfig config;
+    private final TenantBulkheadConfig defaultConfig;
     private final ConcurrentHashMap<String, TenantBulkhead> bulkheads = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, TenantBulkheadConfig> configs =
+            new ConcurrentHashMap<>();
 
-    public TenantBulkheadRegistry(TenantBulkheadConfig config) {
-        this.config = Objects.requireNonNull(config, "config");
+    public TenantBulkheadRegistry(TenantBulkheadConfig defaultConfig) {
+        this.defaultConfig = defaultConfig;
     }
 
-    /** Convenience constructor with default configuration (FREE limits for all tenants). */
     public TenantBulkheadRegistry() {
-        this(TenantBulkheadConfig.defaults());
+        this(TenantBulkheadConfig.DEFAULT);
     }
 
-    /**
-     * Returns (or creates) the bulkhead for the given tenant. The bulkhead limits are resolved from
-     * {@link TenantBulkheadConfig} on first creation and then cached.
-     */
-    public TenantBulkhead get(TenantContext tenant) {
-        Objects.requireNonNull(tenant, "tenant");
-        return bulkheads.computeIfAbsent(
-                tenant.tenantId(), id -> new TenantBulkhead(id, config.limitsFor(tenant)));
+    /** Register a per-tenant override config (must be done before first {@link #get(String)}). */
+    public void configure(String tenantId, TenantBulkheadConfig config) {
+        configs.put(tenantId, config);
     }
 
-    /** Returns the number of tenant bulkheads currently registered. */
-    public int size() {
-        return bulkheads.size();
+    /** Return the bulkhead for the given tenant, creating it on first access. */
+    public TenantBulkhead get(String tenantId) {
+        return bulkheads.computeIfAbsent(tenantId, id -> configFor(id).newBulkhead());
     }
 
-    /**
-     * Removes all cached bulkhead instances. Useful for testing or dynamic reconfiguration.
-     * In-flight operations on removed bulkheads are not interrupted.
-     */
-    public void clear() {
-        bulkheads.clear();
+    private TenantBulkheadConfig configFor(String tenantId) {
+        return configs.getOrDefault(tenantId, defaultConfig);
     }
 }

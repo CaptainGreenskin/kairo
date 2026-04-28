@@ -16,61 +16,74 @@
 package io.kairo.eventstream.outbox;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
- * In-memory {@link OutboxStore} backed by a {@link ConcurrentLinkedDeque} for ordering and a {@link
- * ConcurrentHashMap} for O(1) status updates.
+ * In-memory {@link OutboxEntry} store backed by a {@link ConcurrentLinkedDeque} (FIFO order) plus a
+ * {@link ConcurrentHashMap} for O(1) status updates.
  *
- * <p>Thread-safe: concurrent producers and the poller can operate without external locking. State
- * transitions (PENDING → DELIVERED/FAILED) are atomic within the map.
+ * <p>Suitable for single-JVM deployments and testing. A multi-node deployment should replace this
+ * with a JDBC or Redis-backed store.
  */
-public final class InMemoryOutboxStore implements OutboxStore {
+public final class InMemoryOutboxStore {
 
     private final ConcurrentLinkedDeque<UUID> queue = new ConcurrentLinkedDeque<>();
     private final ConcurrentHashMap<UUID, OutboxEntry> store = new ConcurrentHashMap<>();
 
-    @Override
+    /** Persist a new entry. The entry must be in {@code PENDING} status. */
     public void save(OutboxEntry entry) {
         store.put(entry.id(), entry);
         queue.addLast(entry.id());
     }
 
-    @Override
+    /**
+     * Return up to {@code limit} PENDING entries in insertion order without removing them from the
+     * store.
+     */
     public List<OutboxEntry> pollPending(int limit) {
         List<OutboxEntry> result = new ArrayList<>(limit);
-        for (UUID id : queue) {
-            if (result.size() >= limit) break;
-            OutboxEntry e = store.get(id);
-            if (e != null && e.status() == OutboxEntry.Status.PENDING) {
-                result.add(e);
+        Iterator<UUID> it = queue.iterator();
+        while (it.hasNext() && result.size() < limit) {
+            UUID id = it.next();
+            OutboxEntry entry = store.get(id);
+            if (entry != null && entry.status() == OutboxEntry.Status.PENDING) {
+                result.add(entry);
             }
         }
         return result;
     }
 
-    @Override
+    /** Mark an entry as DELIVERED and remove it from the pending queue. */
     public void markDelivered(UUID id) {
-        store.computeIfPresent(id, (k, e) -> e.withStatus(OutboxEntry.Status.DELIVERED));
+        store.compute(id, (k, e) -> e == null ? null : e.withStatus(OutboxEntry.Status.DELIVERED));
         queue.remove(id);
     }
 
-    @Override
-    public void markFailed(UUID id, String reason) {
-        store.computeIfPresent(id, (k, e) -> e.withStatus(OutboxEntry.Status.FAILED));
+    /** Mark an entry as FAILED and remove it from the pending queue. */
+    public void markFailed(UUID id) {
+        store.compute(id, (k, e) -> e == null ? null : e.withStatus(OutboxEntry.Status.FAILED));
         queue.remove(id);
     }
 
-    /** Updates the entry in-place (e.g., to increment retry count). */
-    void update(OutboxEntry entry) {
-        store.put(entry.id(), entry);
+    /** Update retry count for an entry (keeps it PENDING). */
+    public void incrementRetries(UUID id) {
+        store.compute(id, (k, e) -> e == null ? null : e.incrementRetries());
     }
 
-    /** Returns the number of entries currently in the store (any status). */
-    public int size() {
-        return store.size();
+    public int retries(UUID id) {
+        OutboxEntry entry = store.get(id);
+        return entry == null ? 0 : entry.retries();
+    }
+
+    public int pendingCount() {
+        return (int)
+                queue.stream()
+                        .map(store::get)
+                        .filter(e -> e != null && e.status() == OutboxEntry.Status.PENDING)
+                        .count();
     }
 }

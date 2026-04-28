@@ -17,72 +17,44 @@ package io.kairo.core.tenant;
 
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Supplier;
 
 /**
- * Per-tenant isolation unit: a concurrency semaphore paired with a token-bucket rate limiter.
+ * Per-tenant bulkhead: concurrency slot limiter + token-bucket rate limiter.
  *
- * <p>Calling {@link #execute} enforces both limits atomically:
- *
- * <ol>
- *   <li>Rate check (token bucket) — rejects immediately if the rate window is full.
- *   <li>Concurrency acquire (semaphore) — rejects immediately if all slots are taken.
- * </ol>
+ * <p>Call {@link #tryAcquireConcurrency()} before the operation; on completion (success or error)
+ * call {@link #releaseConcurrency()}. Call {@link #tryAcquireRate()} to check the rate bucket
+ * first.
  */
 public final class TenantBulkhead {
 
-    private final String tenantId;
-    private final Semaphore semaphore;
-
-    // Token-bucket state
-    private final double ratePerSecond;
+    private final Semaphore concurrencySlots;
+    private final double requestsPerSecond;
     private final long burstCapacity;
+
     private final AtomicLong availableTokens;
     private volatile long lastRefillNanos;
 
-    public TenantBulkhead(String tenantId, TierBulkheadLimits limits) {
-        this.tenantId = tenantId;
-        this.semaphore =
-                limits.maxConcurrent() == Integer.MAX_VALUE
-                        ? null
-                        : new Semaphore(limits.maxConcurrent(), true);
-        this.ratePerSecond = limits.ratePerSecond();
-        this.burstCapacity = limits.burstCapacity();
-        this.availableTokens = new AtomicLong(limits.burstCapacity());
+    public TenantBulkhead(int maxConcurrency, double requestsPerSecond, long burstCapacity) {
+        if (maxConcurrency < 1) throw new IllegalArgumentException("maxConcurrency must be >= 1");
+        if (requestsPerSecond <= 0)
+            throw new IllegalArgumentException("requestsPerSecond must be > 0");
+        if (burstCapacity < 1) throw new IllegalArgumentException("burstCapacity must be >= 1");
+        this.concurrencySlots = new Semaphore(maxConcurrency);
+        this.requestsPerSecond = requestsPerSecond;
+        this.burstCapacity = burstCapacity;
+        this.availableTokens = new AtomicLong(burstCapacity);
         this.lastRefillNanos = System.nanoTime();
     }
 
-    /**
-     * Executes the supplier under the bulkhead constraints. Rejects immediately if rate or
-     * concurrency limits are exceeded.
-     *
-     * @throws BulkheadRejectedException if rate or concurrency is exceeded
-     */
-    public <T> T execute(Supplier<T> action) {
-        if (!tryAcquireRate()) {
-            throw new BulkheadRejectedException(tenantId, "rate limit exceeded");
-        }
-        if (semaphore != null && !semaphore.tryAcquire()) {
-            throw new BulkheadRejectedException(tenantId, "concurrency limit exceeded");
-        }
-        try {
-            return action.get();
-        } finally {
-            if (semaphore != null) semaphore.release();
-        }
+    public boolean tryAcquireConcurrency() {
+        return concurrencySlots.tryAcquire();
     }
 
-    /** Run a Runnable under bulkhead constraints. */
-    public void run(Runnable action) {
-        execute(
-                () -> {
-                    action.run();
-                    return null;
-                });
+    public void releaseConcurrency() {
+        concurrencySlots.release();
     }
 
     public boolean tryAcquireRate() {
-        if (ratePerSecond >= Double.MAX_VALUE) return true; // unlimited
         refillTokens();
         while (true) {
             long current = availableTokens.get();
@@ -92,44 +64,13 @@ public final class TenantBulkhead {
     }
 
     private synchronized void refillTokens() {
-        long nowNanos = System.nanoTime();
-        long elapsedNanos = nowNanos - lastRefillNanos;
-        long toAdd = (long) (elapsedNanos * ratePerSecond / 1_000_000_000.0);
-        if (toAdd > 0) {
-            long updated = Math.min(burstCapacity, availableTokens.get() + toAdd);
-            availableTokens.set(updated);
-            lastRefillNanos = nowNanos;
-        }
-    }
-
-    /**
-     * Try to acquire a concurrency slot without blocking. Returns {@code true} if the slot was
-     * acquired and must be released via {@link #releaseConcurrency()}.
-     */
-    public boolean tryAcquireConcurrency() {
-        return semaphore == null || semaphore.tryAcquire();
-    }
-
-    /** Release a concurrency slot previously acquired by {@link #tryAcquireConcurrency()}. */
-    public void releaseConcurrency() {
-        if (semaphore != null) semaphore.release();
-    }
-
-    /**
-     * Returns the number of available concurrency slots (or {@link Integer#MAX_VALUE} if
-     * unlimited).
-     */
-    public int availableConcurrency() {
-        return semaphore == null ? Integer.MAX_VALUE : semaphore.availablePermits();
-    }
-
-    /** Returns the number of available rate tokens. */
-    public long availableRateTokens() {
-        refillTokens();
-        return availableTokens.get();
-    }
-
-    public String tenantId() {
-        return tenantId;
+        long now = System.nanoTime();
+        long elapsed = now - lastRefillNanos;
+        if (elapsed <= 0) return;
+        long tokensToAdd = (long) (elapsed * requestsPerSecond / 1_000_000_000.0);
+        if (tokensToAdd <= 0) return;
+        lastRefillNanos = now;
+        long current = availableTokens.get();
+        availableTokens.set(Math.min(burstCapacity, current + tokensToAdd));
     }
 }

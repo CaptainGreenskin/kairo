@@ -17,19 +17,17 @@ package io.kairo.eventstream.outbox;
 
 import io.kairo.api.event.KairoEvent;
 import io.kairo.api.event.KairoEventBus;
-import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Wraps a {@link KairoEventBus} to guarantee at-least-once delivery via the outbox pattern.
+ * Write-ahead publisher: persists every {@link KairoEvent} to the {@link InMemoryOutboxStore}
+ * before attempting delivery to the {@link KairoEventBus}.
  *
- * <p>Every call to {@link #publish} first persists the event in the {@link OutboxStore} as PENDING,
- * then attempts an immediate in-process publish. If the immediate publish succeeds, the entry is
- * marked DELIVERED. If it throws, the entry stays PENDING for the {@link OutboxPoller} to retry
- * later.
+ * <p>If the bus call succeeds synchronously the entry is immediately marked DELIVERED. If the call
+ * throws the entry remains PENDING for the {@link OutboxPoller} to retry.
  */
-public final class TransactionalOutboxPublisher implements KairoEventBus {
+public final class TransactionalOutboxPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(TransactionalOutboxPublisher.class);
 
@@ -37,42 +35,26 @@ public final class TransactionalOutboxPublisher implements KairoEventBus {
     private final InMemoryOutboxStore store;
 
     public TransactionalOutboxPublisher(KairoEventBus delegate, InMemoryOutboxStore store) {
-        this.delegate = Objects.requireNonNull(delegate, "delegate");
-        this.store = Objects.requireNonNull(store, "store");
+        this.delegate = delegate;
+        this.store = store;
     }
 
-    @Override
+    /**
+     * Persist the event to the outbox store, then attempt immediate delivery.
+     *
+     * <p>Never throws — bus failures are swallowed and the entry remains for poller retry.
+     */
     public void publish(KairoEvent event) {
-        OutboxEntry entry = OutboxEntry.pending(event.eventType(), new byte[0]);
+        OutboxEntry entry = OutboxEntry.pending(event);
         store.save(entry);
         try {
             delegate.publish(event);
             store.markDelivered(entry.id());
         } catch (Exception ex) {
             log.warn(
-                    "Immediate publish failed for outbox entry {}; will retry via poller",
+                    "Outbox: immediate delivery failed for event {}; will retry via poller",
                     entry.id(),
                     ex);
         }
-    }
-
-    @Override
-    public reactor.core.publisher.Flux<KairoEvent> subscribe() {
-        return delegate.subscribe();
-    }
-
-    @Override
-    public reactor.core.publisher.Flux<KairoEvent> subscribe(String domain) {
-        return delegate.subscribe(domain);
-    }
-
-    /** Visible for {@link OutboxPoller} to re-publish a pending entry. */
-    KairoEventBus delegate() {
-        return delegate;
-    }
-
-    /** Visible for {@link OutboxPoller} to access the store. */
-    InMemoryOutboxStore store() {
-        return store;
     }
 }

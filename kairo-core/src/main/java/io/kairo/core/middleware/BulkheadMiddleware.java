@@ -23,34 +23,25 @@ import io.kairo.api.tenant.TenantContext;
 import io.kairo.api.tenant.TenantContextHolder;
 import io.kairo.core.tenant.TenantBulkhead;
 import io.kairo.core.tenant.TenantBulkheadRegistry;
-import java.util.Objects;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.SignalType;
 
 /**
  * Middleware that enforces per-tenant concurrency and rate limits via {@link
  * TenantBulkheadRegistry}.
  *
- * <p>The tenant is resolved in priority order:
- *
- * <ol>
- *   <li>{@code "tenant"} attribute in the {@link MiddlewareContext} (set by auth middleware)
- *   <li>{@link TenantContextHolder#current()} on the injected holder (current thread)
- *   <li>{@link TenantContext#SINGLE} (fallback — returned by holder when no binding exists)
- * </ol>
- *
- * <p>When a limit is exceeded, the chain is terminated with a {@link MiddlewareRejectException}.
- * The concurrency slot is released in a {@code doFinally} handler, so it is always freed regardless
- * of success, error, or cancellation.
+ * <p>Rate check is performed first (cheap), then concurrency slot acquisition. Slots are always
+ * released in {@code doFinally} regardless of whether the downstream chain succeeded or failed.
  */
-public class BulkheadMiddleware implements Middleware {
+public final class BulkheadMiddleware implements Middleware {
 
     private final TenantBulkheadRegistry registry;
     private final TenantContextHolder tenantContextHolder;
 
     public BulkheadMiddleware(
             TenantBulkheadRegistry registry, TenantContextHolder tenantContextHolder) {
-        this.registry = Objects.requireNonNull(registry);
-        this.tenantContextHolder = Objects.requireNonNull(tenantContextHolder);
+        this.registry = registry;
+        this.tenantContextHolder = tenantContextHolder;
     }
 
     @Override
@@ -63,30 +54,30 @@ public class BulkheadMiddleware implements Middleware {
         return Mono.defer(
                 () -> {
                     TenantContext tenant = resolveTenant(ctx);
-                    TenantBulkhead bulkhead = registry.get(tenant);
+                    TenantBulkhead bulkhead = registry.get(tenant.tenantId());
 
-                    // 1. Rate limit check
                     if (!bulkhead.tryAcquireRate()) {
                         return Mono.error(
                                 new MiddlewareRejectException(
                                         name(),
-                                        "Rate limit exceeded for tenant '"
-                                                + tenant.tenantId()
-                                                + "'"));
+                                        "Rate limit exceeded for tenant: " + tenant.tenantId()));
                     }
-
-                    // 2. Concurrency limit check
                     if (!bulkhead.tryAcquireConcurrency()) {
                         return Mono.error(
                                 new MiddlewareRejectException(
                                         name(),
-                                        "Concurrency limit exceeded for tenant '"
-                                                + tenant.tenantId()
-                                                + "'"));
+                                        "Concurrency limit exceeded for tenant: "
+                                                + tenant.tenantId()));
                     }
-
-                    // 3. Pass through; release concurrency slot on any terminal signal
-                    return chain.next(ctx).doFinally(signal -> bulkhead.releaseConcurrency());
+                    return chain.next(ctx)
+                            .doFinally(
+                                    signal -> {
+                                        if (signal != SignalType.CANCEL) {
+                                            bulkhead.releaseConcurrency();
+                                        } else {
+                                            bulkhead.releaseConcurrency();
+                                        }
+                                    });
                 });
     }
 
