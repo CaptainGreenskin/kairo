@@ -412,8 +412,7 @@ public class DefaultReActAgent implements Agent {
                                                             Math.min(80, input.text().length())));
 
                                     sessionStartTime = Instant.now();
-                                    AgentCallObserver obs = AgentCallObserver.global();
-                                    if (obs != null) obs.onCallStart(this.id, this.name);
+                                    AgentCallObserver.global().onCallStart(id, name);
 
                                     // Attempt crash recovery if durable execution is configured
                                     Mono<Void> recoveryStep = attemptRecovery(config.sessionId());
@@ -550,21 +549,19 @@ public class DefaultReActAgent implements Agent {
                                                         skillToolManager.closeMcpRegistry();
                                                         AgentHealthRegistry.global()
                                                                 .deregister(this.id);
-                                                        AgentCallObserver callObs =
-                                                                AgentCallObserver.global();
-                                                        if (callObs != null) {
-                                                            Duration d =
-                                                                    sessionStartTime != null
-                                                                            ? Duration.between(
-                                                                                    sessionStartTime,
-                                                                                    Instant.now())
-                                                                            : Duration.ZERO;
-                                                            callObs.onCallEnd(
-                                                                    this.id,
-                                                                    this.name,
-                                                                    d,
-                                                                    state == AgentState.COMPLETED);
-                                                        }
+                                                        AgentCallObserver.global()
+                                                                .onCallEnd(
+                                                                        id,
+                                                                        name,
+                                                                        sessionStartTime != null
+                                                                                ? Duration.between(
+                                                                                        sessionStartTime,
+                                                                                        Instant
+                                                                                                .now())
+                                                                                : Duration.ZERO,
+                                                                        state
+                                                                                == AgentState
+                                                                                        .COMPLETED);
                                                     });
                                 }))
                 .onErrorResume(

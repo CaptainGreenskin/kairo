@@ -19,16 +19,21 @@ import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Callback interface for observing agent call lifecycle events.
+ * Pluggable callback for agent call lifecycle events.
  *
- * <p>Implementations (e.g. Micrometer-based AgentMetrics) can be registered via {@link
- * #setGlobal(AgentCallObserver)} to receive call start/end notifications without creating a compile
- * dependency from kairo-core on any metrics library.
+ * <p>Allows kairo-observability and other modules to collect metrics without introducing Micrometer
+ * as a kairo-core dependency. Register via {@link #setGlobal(AgentCallObserver)}.
  */
 public interface AgentCallObserver {
 
+    /** Called immediately after the agent transitions to RUNNING state. */
     void onCallStart(String agentId, String agentName);
 
+    /**
+     * Called in the agent's {@code doFinally} signal handler after the call completes or fails.
+     *
+     * @param success {@code true} if the agent completed normally ({@code AgentState.COMPLETED})
+     */
     void onCallEnd(String agentId, String agentName, Duration duration, boolean success);
 
     static void setGlobal(AgentCallObserver observer) {
@@ -40,7 +45,8 @@ public interface AgentCallObserver {
     }
 
     final class Holder {
-        private static final AtomicReference<AgentCallObserver> INSTANCE = new AtomicReference<>();
+        static final AtomicReference<AgentCallObserver> INSTANCE =
+                new AtomicReference<>(NoopAgentCallObserver.INSTANCE);
 
         private Holder() {}
     }
