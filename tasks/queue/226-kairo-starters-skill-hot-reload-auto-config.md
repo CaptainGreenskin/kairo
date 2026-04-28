@@ -1,4 +1,4 @@
-状态: IN_PROGRESS
+状态: DONE
 模块: kairo-spring-boot-starter-core
 标题: SkillHotReloadAutoConfiguration — 技能热更新 Spring 自动配置
 
