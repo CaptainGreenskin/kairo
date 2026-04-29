@@ -104,18 +104,54 @@ public final class ModelProviderUtils {
                 "(?i)(bearer|api[_-]?key|authorization)[\"':\\s]*[\"']?[\\w\\-\\.]+", "$1: ***");
     }
 
+    /** Maximum retry-after delay allowed (5 minutes). */
+    private static final long MAX_RETRY_AFTER_SECONDS = 300;
+
+    /**
+     * Parse retry delay from HTTP response headers.
+     *
+     * <p>Checks {@code retry-after} (RFC 7231: integer seconds or HTTP-date) and {@code
+     * x-ratelimit-reset-after} (Anthropic/OpenAI extension, decimal seconds).
+     *
+     * @param retryAfter the raw {@code retry-after} header value, or null
+     * @param rateLimitResetAfter the raw {@code x-ratelimit-reset-after} header value, or null
+     * @return the parsed delay in milliseconds, or null if neither header is present or parseable
+     */
+    public static Long parseRetryAfter(String retryAfter, String rateLimitResetAfter) {
+        // Try "retry-after" first (integer seconds)
+        if (retryAfter != null && !retryAfter.isBlank()) {
+            try {
+                long seconds = Long.parseLong(retryAfter.trim());
+                seconds = Math.min(seconds, MAX_RETRY_AFTER_SECONDS);
+                return seconds * 1000;
+            } catch (NumberFormatException ignored) {
+                // HTTP-date format — skip (rare in practice)
+            }
+        }
+
+        // Fall back to "x-ratelimit-reset-after" (decimal seconds)
+        if (rateLimitResetAfter != null && !rateLimitResetAfter.isBlank()) {
+            try {
+                double seconds = Double.parseDouble(rateLimitResetAfter.trim());
+                long millis = (long) Math.min(seconds * 1000, MAX_RETRY_AFTER_SECONDS * 1000);
+                return millis;
+            } catch (NumberFormatException ignored) {
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Parse the Retry-After header value to seconds.
      *
      * @param retryAfter the raw Retry-After header value
      * @return the parsed seconds, or null if the value is absent or unparseable
+     * @deprecated Use {@link #parseRetryAfter(String, String)} to also capture {@code
+     *     x-ratelimit-reset-after}
      */
+    @Deprecated
     public static Long parseRetryAfter(String retryAfter) {
-        if (retryAfter == null || retryAfter.isBlank()) return null;
-        try {
-            return Long.parseLong(retryAfter.trim());
-        } catch (NumberFormatException e) {
-            return null;
-        }
+        return parseRetryAfter(retryAfter, null);
     }
 }

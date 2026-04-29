@@ -95,12 +95,19 @@ public final class ReactiveRetryPolicy {
      * <p>The timeout is applied <em>after</em> the retry spec so that each individual attempt
      * (including retries) is bound by the total timeout.
      *
+     * <p>Rate limit errors carrying a server-specified retry delay are delayed before re-emission
+     * so that the subsequent retry doesn't fire immediately. The standard exponential backoff from
+     * {@link #buildRetrySpec} is applied on top.
+     *
      * @param source the source Mono
      * @param timeout the overall timeout duration
      * @return the source with retry and timeout applied
      */
     public <T> Mono<T> applyMono(Mono<T> source, Duration timeout) {
-        return source.retryWhen(buildRetrySpec()).timeout(timeout);
+        return source.onErrorResume(
+                        ModelProviderException.RateLimitException.class, this::delayRateLimitError)
+                .retryWhen(buildRetrySpec())
+                .timeout(timeout);
     }
 
     /**
@@ -109,22 +116,47 @@ public final class ReactiveRetryPolicy {
      * <p>For streams, the idle timeout is applied <em>before</em> the retry spec so that idle
      * timeouts trigger retries (reconnection).
      *
+     * <p>Rate limit errors carrying a server-specified retry delay are delayed before re-emission
+     * so that the subsequent retry doesn't fire immediately.
+     *
      * @param source the source Flux
      * @param idleTimeout the idle timeout duration (time between elements)
      * @return the source with timeout and retry applied
      */
     public <T> Flux<T> applyFlux(Flux<T> source, Duration idleTimeout) {
-        return source.timeout(idleTimeout).retryWhen(buildRetrySpec());
+        return source.onErrorResume(
+                        ModelProviderException.RateLimitException.class,
+                        this::delayRateLimitErrorFlux)
+                .timeout(idleTimeout)
+                .retryWhen(buildRetrySpec());
+    }
+
+    private <T> Mono<T> delayRateLimitError(ModelProviderException.RateLimitException e) {
+        if (e.getRetryAfterSeconds() != null) {
+            Duration delay = computeRetryDelay(0, e);
+            return Mono.delay(delay).then(Mono.error(e));
+        }
+        return Mono.error(e);
+    }
+
+    private <T> Flux<T> delayRateLimitErrorFlux(ModelProviderException.RateLimitException e) {
+        if (e.getRetryAfterSeconds() != null) {
+            Duration delay = computeRetryDelay(0, e);
+            return Mono.delay(delay).thenMany(Flux.error(e));
+        }
+        return Flux.error(e);
     }
 
     /**
      * Build the Reactor {@link RetryBackoffSpec} from the {@link RetryConfig}.
      *
+     * <p>For rate limit errors that have already been delayed by {@link #delayRateLimitError}, the
+     * exponential backoff adds a small additional wait. For other transient errors, the standard
+     * exponential strategy applies.
+     *
      * @return the configured retry spec
      */
     RetryBackoffSpec buildRetrySpec() {
-        // maxAttempts in RetryConfig = total attempts (including initial).
-        // Reactor's Retry.backoff wants max *retries* (excluding initial try).
         long maxRetries = Math.max(0, retryConfig.maxAttempts() - 1);
         return Retry.backoff(maxRetries, retryConfig.initialBackoff())
                 .maxBackoff(retryConfig.maxBackoff())
@@ -134,25 +166,62 @@ public final class ReactiveRetryPolicy {
                         signal -> {
                             Throwable failure = signal.failure();
                             long attempt = signal.totalRetries() + 1;
-                            if (failure
-                                            instanceof
-                                            io.kairo.core.model.ModelProviderException
-                                                            .RateLimitException
-                                                    rle
-                                    && rle.getRetryAfterSeconds() != null) {
-                                log.warn(
-                                        "[{}] Rate limited, retry {} (server suggests {}s wait)",
-                                        providerName,
-                                        attempt,
-                                        rle.getRetryAfterSeconds());
-                            } else {
-                                log.warn(
-                                        "[{}] Retrying API call, attempt {}: {}",
-                                        providerName,
-                                        attempt,
-                                        failure.getMessage());
-                            }
+                            logBeforeRetry(attempt, failure);
                         });
+    }
+
+    private void logBeforeRetry(long attempt, Throwable failure) {
+        if (failure instanceof ModelProviderException.RateLimitException rle
+                && rle.getRetryAfterSeconds() != null) {
+            log.warn(
+                    "[{}] Rate limited, retry {} (server suggests {}ms wait)",
+                    providerName,
+                    attempt,
+                    rle.getRetryAfterSeconds());
+        } else {
+            log.warn(
+                    "[{}] Retrying API call, attempt {}: {}",
+                    providerName,
+                    attempt,
+                    failure.getMessage());
+        }
+    }
+
+    /**
+     * Compute the delay for a retry attempt.
+     *
+     * <p>If the failure is a {@link ModelProviderException.RateLimitException} with a
+     * server-specified retry delay, that value is used as the base (with 10% jitter to avoid
+     * thundering herd). Otherwise, standard exponential backoff is applied.
+     *
+     * @param attempt the 1-based retry attempt number
+     * @param failure the failure that triggered the retry
+     * @return the computed delay
+     */
+    Duration computeRetryDelay(long attempt, Throwable failure) {
+        // Check for server-specified retry delay
+        if (failure instanceof ModelProviderException.RateLimitException rle
+                && rle.getRetryAfterSeconds() != null) {
+            long millis = rle.getRetryAfterSeconds();
+            // Add 10% jitter to avoid thundering herd
+            long jitter = (long) (millis * 0.10 * Math.random());
+            return Duration.ofMillis(millis + jitter);
+        }
+
+        // Standard exponential backoff
+        long baseMillis = retryConfig.initialBackoff().toMillis();
+        long maxMillis = retryConfig.maxBackoff().toMillis();
+        double jitterFactor = retryConfig.jitter();
+        long computed = (long) (baseMillis * Math.pow(2, attempt - 1));
+        computed = Math.min(computed, maxMillis);
+        if (jitterFactor > 0) {
+            long jitterRange = (long) (computed * jitterFactor);
+            long jitter = (long) (jitterRange * Math.random());
+            // Apply jitter that can shift the delay ±jitterRange
+            computed = computed - jitterRange / 2 + jitter;
+            computed = Math.max(computed, 1); // never less than 1ms
+        }
+        return Duration.ofMillis(computed);
     }
 
     /** Returns the effective retry predicate (config + provider-specific combined). */

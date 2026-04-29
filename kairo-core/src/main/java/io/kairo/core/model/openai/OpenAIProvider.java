@@ -232,10 +232,15 @@ public class OpenAIProvider implements RawStreamingModelProvider, ProviderPipeli
                             if (response.statusCode() == 429) {
                                 String retryAfter =
                                         response.headers().firstValue("retry-after").orElse(null);
+                                String rateLimitResetAfter =
+                                        response.headers()
+                                                .firstValue("x-ratelimit-reset-after")
+                                                .orElse(null);
                                 return Mono.error(
                                         new ModelProviderException.RateLimitException(
                                                 "OpenAI API rate limited (429)",
-                                                ModelProviderUtils.parseRetryAfter(retryAfter)));
+                                                ModelProviderUtils.parseRetryAfter(
+                                                        retryAfter, rateLimitResetAfter)));
                             }
                             if (response.statusCode() != 200) {
                                 return Mono.error(
