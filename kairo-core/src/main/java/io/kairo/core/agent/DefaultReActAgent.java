@@ -19,6 +19,7 @@ import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.agent.AgentSnapshot;
 import io.kairo.api.agent.AgentState;
+import io.kairo.api.agent.IterationCheckpoint;
 import io.kairo.api.agent.SystemPromptContributor;
 import io.kairo.api.context.ContextManager;
 import io.kairo.api.exception.AgentInterruptedException;
@@ -38,6 +39,7 @@ import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tracing.NoopTracer;
 import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
+import io.kairo.core.agent.checkpoint.IterationCheckpointManager;
 import io.kairo.core.context.TokenBudgetManager;
 import io.kairo.core.execution.RecoveryHandler;
 import io.kairo.core.health.AgentCallObserver;
@@ -135,6 +137,9 @@ public class DefaultReActAgent implements Agent {
 
     private final SkillToolManager skillToolManager;
     private final CompactionTrigger compactionTrigger;
+
+    /** Optional iteration-level checkpoint manager for crash recovery (null when disabled). */
+    @javax.annotation.Nullable private IterationCheckpointManager checkpointManager;
 
     /**
      * Create a new ReAct agent with the given configuration.
@@ -432,7 +437,12 @@ public class DefaultReActAgent implements Agent {
                                     // Attempt crash recovery if durable execution is configured
                                     Mono<Void> recoveryStep = attemptRecovery(config.sessionId());
 
+                                    // Attempt iteration checkpoint restore if checkpoint manager
+                                    // is configured and resume is enabled
+                                    Mono<Void> checkpointRestoreStep = attemptCheckpointRestore();
+
                                     return recoveryStep
+                                            .then(checkpointRestoreStep)
                                             .then(sessionResumption.loadSessionIfConfigured())
                                             .then(skillToolManager.initMcpIfConfigured())
                                             .then(fireSessionStartBestEffort(input))
@@ -673,6 +683,19 @@ public class DefaultReActAgent implements Agent {
     }
 
     /**
+     * Set the iteration-level checkpoint manager for crash recovery.
+     *
+     * <p>Must be called before {@link #call(Msg)} to enable per-iteration checkpointing.
+     *
+     * @param checkpointManager the checkpoint manager, or null to disable
+     */
+    public void setCheckpointManager(
+            @javax.annotation.Nullable IterationCheckpointManager checkpointManager) {
+        this.checkpointManager = checkpointManager;
+        reactLoop.setCheckpointManager(checkpointManager);
+    }
+
+    /**
      * Check whether streaming tool execution is enabled.
      *
      * @return true if streaming is enabled
@@ -755,6 +778,43 @@ public class DefaultReActAgent implements Agent {
                             return Mono.empty();
                         })
                 .then();
+    }
+
+    /**
+     * Attempt to restore from the last iteration checkpoint.
+     *
+     * <p>Only runs when a checkpoint manager is configured. If a checkpoint is found, the
+     * conversation history is replaced and the iteration counter is set to continue from where it
+     * left off.
+     */
+    private Mono<Void> attemptCheckpointRestore() {
+        if (checkpointManager == null) {
+            return Mono.empty();
+        }
+        return checkpointManager
+                .loadLast()
+                .flatMap(
+                        restored -> {
+                            if (restored.isPresent()) {
+                                IterationCheckpoint cp = restored.get();
+                                reactLoop.replaceHistory(new ArrayList<>(cp.messages()));
+                                currentIteration.set(cp.iteration() + 1);
+                                log.info(
+                                        "Agent '{}' resumed from iteration checkpoint {} ({} messages)",
+                                        name,
+                                        cp.iteration(),
+                                        cp.messages().size());
+                            }
+                            return Mono.<Void>empty();
+                        })
+                .onErrorResume(
+                        e -> {
+                            log.warn(
+                                    "Agent '{}' checkpoint restore failed, starting fresh: {}",
+                                    name,
+                                    e.getMessage());
+                            return Mono.empty();
+                        });
     }
 
     /** Persist a new durable execution before the ReAct loop starts (if store is configured). */

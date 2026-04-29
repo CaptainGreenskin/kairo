@@ -23,6 +23,7 @@ import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.tool.ToolInvocation;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.core.agent.checkpoint.IterationCheckpointManager;
 import io.kairo.core.execution.ExecutionEventEmitter;
 import java.time.Duration;
 import java.time.Instant;
@@ -31,6 +32,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -52,6 +54,16 @@ class ToolPhase {
 
     private static final Logger log = LoggerFactory.getLogger(ToolPhase.class);
 
+    /** Environment flag to disable loop rescue (default: enabled). */
+    private static final String LOOP_RESCUE_ENV = "KAIRO_LOOP_DETECT_RESCUE";
+
+    /** Rescue prompt injected as a USER message on first loop detection. */
+    private static final String RESCUE_PROMPT =
+            "It looks like you're repeating the same approach. "
+                    + "Please stop and think about what's not working. "
+                    + "Try a completely different approach or ask yourself: "
+                    + "what assumption might be wrong?";
+
     private final ReActLoopContext ctx;
     private final AtomicInteger totalToolCallsCounter = new AtomicInteger(0);
     private final IterationGuards guards;
@@ -60,7 +72,11 @@ class ToolPhase {
     private final LoopDetector loopDetector;
     private final AtomicInteger currentIteration;
     @Nullable private final ExecutionEventEmitter eventEmitter;
+    @Nullable private volatile IterationCheckpointManager checkpointManager;
     private CompactionTrigger compactionTrigger;
+
+    /** Tracks whether a rescue prompt has already been injected for the current loop. */
+    private final AtomicBoolean loopRescueAttempted = new AtomicBoolean(false);
 
     ToolPhase(
             ReActLoopContext ctx,
@@ -91,6 +107,13 @@ class ToolPhase {
 
     void setCompactionTrigger(CompactionTrigger compactionTrigger) {
         this.compactionTrigger = compactionTrigger;
+    }
+
+    void setCheckpointManager(@Nullable IterationCheckpointManager checkpointManager) {
+        // This setter allows the checkpoint manager to be configured after construction.
+        // The field is non-final to support this late binding pattern.
+        // Note: This intentionally replaces the constructor-injected value.
+        this.checkpointManager = checkpointManager;
     }
 
     /** Returns the total number of tool calls executed since this agent was created. */
@@ -130,13 +153,26 @@ class ToolPhase {
             List<Content.ToolUseContent> toolCalls, Supplier<Mono<Msg>> loopContinuation) {
         var detection = loopDetector.check(toolCalls);
         if (detection.level() == LoopDetector.DetectionResult.Level.HARD_STOP) {
-            return Mono.error(new LoopDetectionException(detection.message()));
+            if (!isRescueEnabled() || loopRescueAttempted.getAndSet(true)) {
+                // Rescue disabled or already attempted — truly stuck
+                return Mono.error(new LoopDetectionException(detection.message()));
+            }
+            // First detection with rescue enabled — inject rescue prompt and continue
+            conversationHistory.add(Msg.of(MsgRole.USER, "[Loop Rescue] " + RESCUE_PROMPT));
+            log.warn("Loop detected — injecting rescue prompt (attempt 1/1)");
+            return loopContinuation.get();
         }
         if (detection.level() == LoopDetector.DetectionResult.Level.WARN) {
             conversationHistory.add(Msg.of(MsgRole.USER, "[Loop Warning] " + detection.message()));
             return loopContinuation.get();
         }
         return null;
+    }
+
+    /** Check whether loop rescue is enabled via environment flag. */
+    private static boolean isRescueEnabled() {
+        String env = System.getenv(LOOP_RESCUE_ENV);
+        return env == null || !env.equalsIgnoreCase("false");
     }
 
     private Mono<Msg> runToolExecutionPipeline(
@@ -157,7 +193,26 @@ class ToolPhase {
         conversationHistory.add(hookDecisions.buildToolResultMsg(toolResults, conversationHistory));
         currentIteration.incrementAndGet();
 
-        return proceedWithCompactionIfNeeded(loopContinuation);
+        // Save iteration checkpoint for crash recovery (best-effort).
+        Mono<Msg> loopDecision = proceedWithCompactionIfNeeded(loopContinuation);
+        if (checkpointManager != null) {
+            int iteration = currentIteration.get();
+            List<Msg> historySnapshot = List.copyOf(conversationHistory);
+            loopDecision =
+                    checkpointManager
+                            .save(iteration, historySnapshot)
+                            .onErrorResume(
+                                    e -> {
+                                        log.warn(
+                                                "Failed to save iteration checkpoint {}: {}",
+                                                iteration,
+                                                e.getMessage());
+                                        return Mono.empty();
+                                    })
+                            .then(loopDecision);
+        }
+
+        return loopDecision;
     }
 
     private Mono<Msg> proceedWithCompactionIfNeeded(Supplier<Mono<Msg>> loopContinuation) {
