@@ -227,9 +227,16 @@ class CoreAutoConfiguration {
             DefaultToolRegistry toolRegistry,
             PermissionGuard permissionGuard,
             GracefulShutdownManager gracefulShutdownManager,
-            GuardrailChain guardrailChain) {
+            GuardrailChain guardrailChain,
+            KairoEventBus kairoEventBus) {
         return new DefaultToolExecutor(
-                toolRegistry, permissionGuard, null, gracefulShutdownManager, 3, guardrailChain);
+                toolRegistry,
+                permissionGuard,
+                null,
+                gracefulShutdownManager,
+                3,
+                guardrailChain,
+                kairoEventBus);
     }
 
     // ---- Agent Factory ----
@@ -327,13 +334,15 @@ class CoreAutoConfiguration {
             name = "kairo.model.circuit-breaker.enabled",
             havingValue = "true",
             matchIfMissing = true)
-    ModelCircuitBreaker modelCircuitBreaker(AgentRuntimeProperties properties) {
+    ModelCircuitBreaker modelCircuitBreaker(
+            AgentRuntimeProperties properties, KairoEventBus kairoEventBus) {
         var cbProps = properties.getModel().getCircuitBreaker();
         ModelCircuitBreaker breaker =
                 new ModelCircuitBreaker(
                         properties.getModel().getModelName(),
                         cbProps.getFailureThreshold(),
-                        cbProps.getResetTimeout());
+                        cbProps.getResetTimeout(),
+                        kairoEventBus);
         log.info(
                 "Configured model circuit breaker (threshold={}, resetTimeout={})",
                 cbProps.getFailureThreshold(),

@@ -15,9 +15,12 @@
  */
 package io.kairo.core.tool;
 
+import io.kairo.api.event.CircuitBreakerEvent;
+import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.tool.ToolResult;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,6 +40,7 @@ public final class ToolCircuitBreakerTracker {
     private final ConcurrentHashMap<String, AtomicInteger> consecutiveFailures =
             new ConcurrentHashMap<>();
     private final int threshold;
+    @Nullable private final KairoEventBus eventBus;
 
     /**
      * Create a new tracker with the given threshold.
@@ -44,7 +48,18 @@ public final class ToolCircuitBreakerTracker {
      * @param threshold consecutive failures before a tool is circuit-broken
      */
     public ToolCircuitBreakerTracker(int threshold) {
+        this(threshold, null);
+    }
+
+    /**
+     * Create a new tracker with the given threshold and an event bus for observability.
+     *
+     * @param threshold consecutive failures before a tool is circuit-broken
+     * @param eventBus optional event bus to publish state transition events
+     */
+    public ToolCircuitBreakerTracker(int threshold, @Nullable KairoEventBus eventBus) {
         this.threshold = threshold > 0 ? threshold : 3;
+        this.eventBus = eventBus;
     }
 
     /**
@@ -77,9 +92,30 @@ public final class ToolCircuitBreakerTracker {
      */
     public void track(String cbKey, ToolResult result) {
         if (result.isError()) {
-            consecutiveFailures.computeIfAbsent(cbKey, k -> new AtomicInteger()).incrementAndGet();
+            AtomicInteger counter =
+                    consecutiveFailures.computeIfAbsent(cbKey, k -> new AtomicInteger());
+            int count = counter.incrementAndGet();
+            if (count == threshold) {
+                log.warn(
+                        "Circuit breaker for tool '{}' tripped OPEN"
+                                + " (consecutive failures >= threshold {})",
+                        cbKey,
+                        threshold);
+                publish(cbKey, CircuitBreakerEvent.State.CLOSED, CircuitBreakerEvent.State.OPEN);
+            }
         } else {
-            consecutiveFailures.remove(cbKey);
+            AtomicInteger prev = consecutiveFailures.remove(cbKey);
+            if (prev != null) {
+                log.info("Circuit breaker for tool '{}' reset to CLOSED", cbKey);
+                publish(cbKey, CircuitBreakerEvent.State.OPEN, CircuitBreakerEvent.State.CLOSED);
+            }
+        }
+    }
+
+    private void publish(
+            String cbKey, CircuitBreakerEvent.State from, CircuitBreakerEvent.State to) {
+        if (eventBus != null) {
+            eventBus.publish(new CircuitBreakerEvent(cbKey, from, to).toKairoEvent());
         }
     }
 

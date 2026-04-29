@@ -15,6 +15,7 @@
  */
 package io.kairo.core.tool;
 
+import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.exception.PlanModeViolationException;
 import io.kairo.api.guardrail.*;
 import io.kairo.api.tool.*;
@@ -27,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -86,6 +88,7 @@ public class DefaultToolExecutor implements ToolExecutor {
     private final ToolInvocationRunner invocationRunner;
     private final ToolApprovalFlow approvalFlow;
     private final GuardrailChain guardrailChain; // nullable — backward compatible
+    @Nullable private final KairoEventBus eventBus;
 
     /** Reactor Context key used to propagate {@link ToolContext} through the reactive pipeline. */
     public static final Class<ToolContext> CONTEXT_KEY = ToolContext.class;
@@ -170,16 +173,47 @@ public class DefaultToolExecutor implements ToolExecutor {
             GracefulShutdownManager shutdownManager,
             int circuitBreakerThreshold,
             GuardrailChain guardrailChain) {
+        this(
+                registry,
+                permissionGuard,
+                tracer,
+                shutdownManager,
+                circuitBreakerThreshold,
+                guardrailChain,
+                null);
+    }
+
+    /**
+     * Create a new executor with all options including event bus for observability.
+     *
+     * @param registry the tool registry
+     * @param permissionGuard the permission guard
+     * @param tracer the tracer (null defaults to NoopTracer)
+     * @param shutdownManager the shutdown manager (null creates a new instance)
+     * @param circuitBreakerThreshold consecutive failures before a tool is circuit-broken
+     * @param guardrailChain the guardrail chain (null skips guardrail evaluation)
+     * @param eventBus optional event bus to publish circuit breaker state transition events
+     */
+    public DefaultToolExecutor(
+            DefaultToolRegistry registry,
+            PermissionGuard permissionGuard,
+            Tracer tracer,
+            GracefulShutdownManager shutdownManager,
+            int circuitBreakerThreshold,
+            GuardrailChain guardrailChain,
+            @Nullable KairoEventBus eventBus) {
         this.registry = registry;
         this.tracer = tracer != null ? tracer : new io.kairo.api.tracing.NoopTracer();
         GracefulShutdownManager sm =
                 shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
 
         this.permissionResolver = new ToolPermissionResolver(permissionGuard, registry);
-        this.circuitBreakerTracker = new ToolCircuitBreakerTracker(circuitBreakerThreshold);
+        this.circuitBreakerTracker =
+                new ToolCircuitBreakerTracker(circuitBreakerThreshold, eventBus);
         this.invocationRunner = new ToolInvocationRunner(this.tracer, sm);
         this.approvalFlow = new ToolApprovalFlow(permissionResolver, this);
         this.guardrailChain = guardrailChain;
+        this.eventBus = eventBus;
     }
 
     // ==================== ToolExecutor interface delegation ====================

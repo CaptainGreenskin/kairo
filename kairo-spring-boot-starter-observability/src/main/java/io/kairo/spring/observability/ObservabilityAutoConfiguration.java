@@ -15,8 +15,11 @@
  */
 package io.kairo.spring.observability;
 
+import io.kairo.api.event.CircuitBreakerEvent;
 import io.kairo.api.event.KairoEventBus;
+import io.kairo.observability.CircuitBreakerMetricsExporter;
 import io.kairo.observability.event.KairoEventOTelExporter;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.opentelemetry.api.logs.LoggerProvider;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -77,6 +80,25 @@ public class ObservabilityAutoConfiguration {
             log.info(
                     "Kairo event→OTel exporter wired but not started (kairo.observability.event-otel.auto-start=false)");
         }
+        return exporter;
+    }
+
+    /**
+     * Auto-wire circuit breaker metrics when Micrometer is on the classpath. Subscribes to {@link
+     * CircuitBreakerEvent} on the event bus and exports {@code kairo.circuit_breaker.*} metrics.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnBean({KairoEventBus.class, MeterRegistry.class})
+    @ConditionalOnClass(MeterRegistry.class)
+    public CircuitBreakerMetricsExporter circuitBreakerMetricsExporter(
+            KairoEventBus bus, MeterRegistry registry) {
+        CircuitBreakerMetricsExporter exporter = new CircuitBreakerMetricsExporter(registry);
+        bus.subscribe(CircuitBreakerEvent.DOMAIN_RESILIENCE)
+                .filter(event -> event.payload() instanceof CircuitBreakerEvent)
+                .map(event -> (CircuitBreakerEvent) event.payload())
+                .subscribe(exporter::onEvent);
+        log.info("Circuit breaker metrics exporter wired");
         return exporter;
     }
 

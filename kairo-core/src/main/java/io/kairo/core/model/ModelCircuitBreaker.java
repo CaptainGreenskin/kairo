@@ -15,8 +15,11 @@
  */
 package io.kairo.core.model;
 
+import io.kairo.api.event.CircuitBreakerEvent;
+import io.kairo.api.event.KairoEventBus;
 import io.kairo.core.resilience.CircuitBreakerPrimitive;
 import java.time.Duration;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,6 +50,7 @@ public class ModelCircuitBreaker {
 
     private final String modelId;
     private final CircuitBreakerPrimitive delegate;
+    @Nullable private final KairoEventBus eventBus;
 
     /**
      * Create a circuit breaker with default settings (threshold=5, timeout=60s).
@@ -65,8 +69,25 @@ public class ModelCircuitBreaker {
      * @param resetTimeout duration to wait before transitioning from OPEN to HALF_OPEN
      */
     public ModelCircuitBreaker(String modelId, int failureThreshold, Duration resetTimeout) {
+        this(modelId, failureThreshold, resetTimeout, null);
+    }
+
+    /**
+     * Create a circuit breaker with custom settings and an event bus for observability.
+     *
+     * @param modelId identifier for the model this breaker protects
+     * @param failureThreshold number of consecutive failures before opening
+     * @param resetTimeout duration to wait before transitioning from OPEN to HALF_OPEN
+     * @param eventBus optional event bus to publish state transition events
+     */
+    public ModelCircuitBreaker(
+            String modelId,
+            int failureThreshold,
+            Duration resetTimeout,
+            @Nullable KairoEventBus eventBus) {
         this.modelId = modelId;
         this.delegate = new CircuitBreakerPrimitive(failureThreshold, resetTimeout);
+        this.eventBus = eventBus;
     }
 
     /**
@@ -80,6 +101,7 @@ public class ModelCircuitBreaker {
         State after = getState();
         if (before == State.OPEN && after == State.HALF_OPEN && allowed) {
             log.info("Circuit breaker for model '{}' transitioning OPEN → HALF_OPEN", modelId);
+            publish(CircuitBreakerEvent.State.OPEN, CircuitBreakerEvent.State.HALF_OPEN);
         }
         return allowed;
     }
@@ -88,6 +110,7 @@ public class ModelCircuitBreaker {
     public void recordSuccess() {
         if (getState() == State.HALF_OPEN) {
             log.info("Circuit breaker for model '{}' transitioning HALF_OPEN → CLOSED", modelId);
+            publish(CircuitBreakerEvent.State.HALF_OPEN, CircuitBreakerEvent.State.CLOSED);
         }
         delegate.recordSuccess();
     }
@@ -102,6 +125,7 @@ public class ModelCircuitBreaker {
                     "Circuit breaker for model '{}' transitioning HALF_OPEN → OPEN"
                             + " (probe call failed)",
                     modelId);
+            publish(CircuitBreakerEvent.State.HALF_OPEN, CircuitBreakerEvent.State.OPEN);
             return;
         }
         if (before == State.CLOSED && after == State.OPEN) {
@@ -110,6 +134,13 @@ public class ModelCircuitBreaker {
                             + " (consecutive failures >= threshold {})",
                     modelId,
                     delegate.failureThreshold());
+            publish(CircuitBreakerEvent.State.CLOSED, CircuitBreakerEvent.State.OPEN);
+        }
+    }
+
+    private void publish(CircuitBreakerEvent.State from, CircuitBreakerEvent.State to) {
+        if (eventBus != null) {
+            eventBus.publish(new CircuitBreakerEvent("model:" + modelId, from, to).toKairoEvent());
         }
     }
 
