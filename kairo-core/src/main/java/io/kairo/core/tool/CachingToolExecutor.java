@@ -23,11 +23,16 @@ import io.kairo.api.tool.ToolInvocation;
 import io.kairo.api.tool.ToolResult;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -43,8 +48,12 @@ import reactor.core.publisher.Mono;
  */
 public class CachingToolExecutor implements ToolExecutor {
 
+    private static final Logger log = LoggerFactory.getLogger(CachingToolExecutor.class);
+
     private static final ObjectMapper SORTED_MAPPER =
             new ObjectMapper().configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
+
+    private static final int LOG_INTERVAL = 100;
 
     private final ToolExecutor delegate;
     private final Duration ttl;
@@ -52,6 +61,8 @@ public class CachingToolExecutor implements ToolExecutor {
     private final Set<String> cachedTools;
 
     private final Map<String, CacheEntry> cache;
+    private final ConcurrentHashMap<String, CacheStats> statsMap = new ConcurrentHashMap<>();
+    private final AtomicLong totalRequests = new AtomicLong(0);
 
     /**
      * @param delegate the underlying executor
@@ -81,13 +92,19 @@ public class CachingToolExecutor implements ToolExecutor {
         String key = cacheKey(toolName, input);
         CacheEntry cached = cache.get(key);
         if (cached != null && !cached.isExpired()) {
+            statsFor(toolName)
+                    .recordHit(
+                            cached.result.content() != null ? cached.result.content().length() : 0);
+            logStatsIfInterval();
             return Mono.just(cached.result);
         }
+        statsFor(toolName).recordMiss();
+        logStatsIfInterval();
         return delegate.execute(toolName, input)
                 .doOnNext(
                         result -> {
                             if (!result.isError()) {
-                                evictIfFull();
+                                evictIfFull(toolName);
                                 cache.put(key, new CacheEntry(result, Instant.now().plus(ttl)));
                             }
                         });
@@ -101,13 +118,19 @@ public class CachingToolExecutor implements ToolExecutor {
         String key = cacheKey(toolName, input);
         CacheEntry cached = cache.get(key);
         if (cached != null && !cached.isExpired()) {
+            statsFor(toolName)
+                    .recordHit(
+                            cached.result.content() != null ? cached.result.content().length() : 0);
+            logStatsIfInterval();
             return Mono.just(cached.result);
         }
+        statsFor(toolName).recordMiss();
+        logStatsIfInterval();
         return delegate.execute(toolName, input, timeout)
                 .doOnNext(
                         result -> {
                             if (!result.isError()) {
-                                evictIfFull();
+                                evictIfFull(toolName);
                                 cache.put(key, new CacheEntry(result, Instant.now().plus(ttl)));
                             }
                         });
@@ -133,6 +156,26 @@ public class CachingToolExecutor implements ToolExecutor {
         return cache.size();
     }
 
+    private CacheStats statsFor(String toolName) {
+        return statsMap.computeIfAbsent(toolName, k -> new CacheStats());
+    }
+
+    /** Returns a snapshot of cache statistics per tool name. */
+    public Map<String, CacheStats> getCacheStats() {
+        return Collections.unmodifiableMap(new HashMap<>(statsMap));
+    }
+
+    /** Returns stats for a specific tool, or empty stats if no data yet. */
+    public CacheStats getCacheStats(String toolName) {
+        return statsMap.getOrDefault(toolName, new CacheStats());
+    }
+
+    private void logStatsIfInterval() {
+        if (totalRequests.incrementAndGet() % LOG_INTERVAL == 0) {
+            statsMap.forEach((tool, stats) -> log.debug("Cache stats [{}]: {}", tool, stats));
+        }
+    }
+
     private boolean shouldCache(String toolName) {
         return cachedTools.isEmpty() || cachedTools.contains(toolName);
     }
@@ -145,9 +188,15 @@ public class CachingToolExecutor implements ToolExecutor {
         }
     }
 
-    private void evictIfFull() {
+    private void evictIfFull(String toolName) {
         if (cache.size() >= maxEntries) {
-            cache.entrySet().stream().findFirst().ifPresent(e -> cache.remove(e.getKey()));
+            cache.entrySet().stream()
+                    .findFirst()
+                    .ifPresent(
+                            e -> {
+                                statsFor(toolName).recordEviction();
+                                cache.remove(e.getKey());
+                            });
         }
     }
 
