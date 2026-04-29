@@ -60,8 +60,20 @@ public class AnthropicProvider
         implements RawStreamingModelProvider, ProviderPipeline<String, String> {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicProvider.class);
-    private static final Duration STREAM_IDLE_TIMEOUT = Duration.ofMinutes(5);
+    private static final Duration STREAM_IDLE_TIMEOUT = resolveStreamIdleTimeout();
     private static final Duration CALL_TIMEOUT = resolveCallTimeout();
+
+    private static Duration resolveStreamIdleTimeout() {
+        String env = System.getenv("KAIRO_STREAM_IDLE_TIMEOUT_MIN");
+        if (env != null && !env.isBlank()) {
+            try {
+                return Duration.ofMinutes(Long.parseLong(env.trim()));
+            } catch (NumberFormatException ignored) {
+                // fall through to default
+            }
+        }
+        return Duration.ofMinutes(5);
+    }
 
     private static Duration resolveCallTimeout() {
         String env = System.getenv("KAIRO_API_TIMEOUT_MS");
