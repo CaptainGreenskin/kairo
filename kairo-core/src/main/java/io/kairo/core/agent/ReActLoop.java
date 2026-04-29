@@ -16,6 +16,8 @@
 package io.kairo.core.agent;
 
 import io.kairo.api.agent.AgentConfig;
+import io.kairo.api.event.AgentProgressEvent;
+import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.execution.ExecutionEventType;
 import io.kairo.api.execution.ResourceConstraint;
 import io.kairo.api.message.Content;
@@ -63,6 +65,7 @@ class ReActLoop {
     @Nullable private final ExecutionEventEmitter eventEmitter;
     @Nullable private final AgentProgressTracker progressTracker;
     @Nullable private volatile IterationCheckpointManager checkpointManager;
+    @Nullable private volatile KairoEventBus eventBus;
 
     // Decomposed phase collaborators
     private final IterationGuards guards;
@@ -223,6 +226,10 @@ class ReActLoop {
         this.textDeltaConsumer = consumer;
     }
 
+    void setEventBus(@Nullable KairoEventBus eventBus) {
+        this.eventBus = eventBus;
+    }
+
     // ---- Core loop ----
 
     /** The core ReAct loop. Uses {@code Mono.defer()} for stack-safe recursion. */
@@ -236,6 +243,9 @@ class ReActLoop {
     }
 
     private Mono<Msg> runSingleIteration() {
+        // Publish ITERATION_START event (best-effort, must not break the loop)
+        publishIterationStart();
+
         return guards.evaluate()
                 .switchIfEmpty(
                         Mono.defer(
@@ -259,6 +269,10 @@ class ReActLoop {
                                                                     0);
                                                         }
                                                     });
+
+                                    // Publish ITERATION_END event
+                                    execution = execution.doOnNext(msg -> publishIterationEnd(msg));
+
                                     if (eventEmitter != null) {
                                         execution =
                                                 execution.flatMap(
@@ -294,6 +308,40 @@ class ReActLoop {
                                     e.getMessage());
                             return Mono.empty();
                         });
+    }
+
+    // ---- Progress event publishing (best-effort) ----
+
+    private void publishIterationStart() {
+        if (eventBus == null) return;
+        eventBus.publish(
+                new AgentProgressEvent(
+                                ctx.agentName(),
+                                AgentProgressEvent.Phase.ITERATION_START,
+                                currentIteration.get() + 1,
+                                null,
+                                0,
+                                0,
+                                0)
+                        .toKairoEvent());
+    }
+
+    private void publishIterationEnd(Msg result) {
+        if (eventBus == null) return;
+        String summary =
+                result.text() != null && !result.text().isEmpty()
+                        ? result.text().substring(0, Math.min(200, result.text().length()))
+                        : "iteration complete";
+        eventBus.publish(
+                new AgentProgressEvent(
+                                ctx.agentName(),
+                                AgentProgressEvent.Phase.ITERATION_END,
+                                currentIteration.get(),
+                                summary,
+                                0,
+                                0,
+                                0)
+                        .toKairoEvent());
     }
 
     // ---- Dangling Tool Call Recovery ----

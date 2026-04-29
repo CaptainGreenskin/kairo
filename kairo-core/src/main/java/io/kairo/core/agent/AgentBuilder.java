@@ -21,6 +21,7 @@ import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.agent.AgentSnapshot;
 import io.kairo.api.agent.SystemPromptContributor;
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.evolution.EvolutionConfig;
 import io.kairo.api.execution.DurableExecutionStore;
 import io.kairo.api.execution.ResourceConstraint;
@@ -105,6 +106,7 @@ public class AgentBuilder {
     private final List<AgentBuilderCustomizer> customizers = new ArrayList<>();
     private final List<SystemPromptContributor> systemPromptContributors = new ArrayList<>();
     @javax.annotation.Nullable private java.util.function.Consumer<String> textDeltaConsumer;
+    @javax.annotation.Nullable private KairoEventBus eventBus;
 
     private AgentBuilder() {}
 
@@ -322,6 +324,20 @@ public class AgentBuilder {
      */
     public AgentBuilder textDeltaConsumer(java.util.function.Consumer<String> consumer) {
         this.textDeltaConsumer = consumer;
+        return this;
+    }
+
+    /**
+     * Set the event bus for publishing structured agent progress events.
+     *
+     * <p>When configured, the agent publishes {@link io.kairo.api.event.AgentProgressEvent} at key
+     * ReAct loop milestones (ITERATION_START, ITERATION_END, AGENT_DONE).
+     *
+     * @param eventBus the event bus, or null to disable progress events
+     * @return this builder
+     */
+    public AgentBuilder eventBus(KairoEventBus eventBus) {
+        this.eventBus = eventBus;
         return this;
     }
 
@@ -608,6 +624,11 @@ public class AgentBuilder {
                         durableExecutionStore,
                         recoveryHandler,
                         recoveryOnStartup);
+
+        // Wire event bus for progress events
+        if (eventBus != null) {
+            agent.withEventBus(eventBus);
+        }
 
         // Restore from snapshot if provided
         if (restoreFrom != null) {

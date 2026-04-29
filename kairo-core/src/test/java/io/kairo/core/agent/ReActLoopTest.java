@@ -118,7 +118,8 @@ class ReActLoopTest {
                         tokenBudgetManager,
                         shutdownManager,
                         null, // contextManager
-                        null); // guardrailChain
+                        null, // guardrailChain
+                        null); // eventBus
 
         ModelConfig modelConfig =
                 ModelConfig.builder()
@@ -525,6 +526,7 @@ class ReActLoopTest {
                         tokenBudgetManager,
                         shutdownManager,
                         null,
+                        null,
                         null);
 
         ModelConfig modelConfig =
@@ -574,6 +576,7 @@ class ReActLoopTest {
                         errorRecovery,
                         tokenBudgetManager,
                         shutdownManager,
+                        null,
                         null,
                         null);
 
@@ -628,6 +631,7 @@ class ReActLoopTest {
                         errorRecovery,
                         tokenBudgetManager,
                         shutdownManager,
+                        null,
                         null,
                         null);
 
@@ -691,6 +695,7 @@ class ReActLoopTest {
                         errorRecovery,
                         tokenBudgetManager,
                         shutdownManager,
+                        null,
                         null,
                         null);
 

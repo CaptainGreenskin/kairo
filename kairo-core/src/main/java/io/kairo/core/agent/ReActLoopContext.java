@@ -17,6 +17,7 @@ package io.kairo.core.agent;
 
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.hook.HookChain;
 import io.kairo.api.tool.ToolExecutor;
@@ -40,4 +41,5 @@ record ReActLoopContext(
         TokenBudgetManager tokenBudgetManager,
         GracefulShutdownManager shutdownManager,
         ContextManager contextManager,
-        GuardrailChain guardrailChain) {}
+        GuardrailChain guardrailChain,
+        @javax.annotation.Nullable KairoEventBus eventBus) {}

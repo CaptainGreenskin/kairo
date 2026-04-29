@@ -22,6 +22,8 @@ import io.kairo.api.agent.AgentState;
 import io.kairo.api.agent.IterationCheckpoint;
 import io.kairo.api.agent.SystemPromptContributor;
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.event.AgentProgressEvent;
+import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.execution.DurableExecution;
 import io.kairo.api.execution.DurableExecutionStore;
@@ -131,6 +133,12 @@ public class DefaultReActAgent implements Agent {
 
     /** Tracks real-time iteration progress for external monitoring. */
     private final AgentProgressTracker progressTracker;
+
+    /** Optional event bus for publishing structured progress events (nullable, best-effort). */
+    @javax.annotation.Nullable private KairoEventBus eventBus;
+
+    /** Wall-clock start time of the current agent.run() invocation. */
+    private volatile long runStartMs;
 
     /** Collaborators extracted in Step 1B. */
     private final SessionResumption sessionResumption;
@@ -281,7 +289,8 @@ public class DefaultReActAgent implements Agent {
                         this.tokenBudgetManager,
                         this.shutdownManager,
                         this.contextManager,
-                        guardrailChain);
+                        guardrailChain,
+                        null); // eventBus set later via withEventBus()
         // Durable execution support
         this.durableExecutionStore = durableExecutionStore;
         this.recoveryHandler = recoveryHandler;
@@ -411,6 +420,7 @@ public class DefaultReActAgent implements Agent {
                                     state = AgentState.RUNNING;
                                     interrupted.set(false);
                                     currentIteration.set(0);
+                                    runStartMs = System.currentTimeMillis();
 
                                     // Register with shutdown manager
                                     if (!shutdownManager.registerAgent(this)) {
@@ -487,6 +497,8 @@ public class DefaultReActAgent implements Agent {
                                                                                                         .get(),
                                                                                                 totalTokensUsed
                                                                                                         .get());
+                                                                                        publishAgentDone(
+                                                                                                "completed");
                                                                                         return fireSessionEndBestEffort(
                                                                                                         AgentState
                                                                                                                 .COMPLETED,
@@ -530,6 +542,10 @@ public class DefaultReActAgent implements Agent {
                                                                                                         .get(),
                                                                                                 e
                                                                                                         .getMessage());
+                                                                                        publishAgentDone(
+                                                                                                "failed: "
+                                                                                                        + e
+                                                                                                                .getMessage());
                                                                                         Mono<Void>
                                                                                                 onErrorHook =
                                                                                                         hookChain
@@ -696,6 +712,21 @@ public class DefaultReActAgent implements Agent {
     }
 
     /**
+     * Set the event bus for publishing structured progress events.
+     *
+     * <p>Must be called before {@link #call(Msg)} to enable progress event publishing. When set,
+     * the agent publishes {@link AgentProgressEvent} at key ReAct loop milestones.
+     *
+     * @param eventBus the event bus, or null to disable progress events
+     * @return this for chaining
+     */
+    public DefaultReActAgent withEventBus(@javax.annotation.Nullable KairoEventBus eventBus) {
+        this.eventBus = eventBus;
+        reactLoop.setEventBus(eventBus);
+        return this;
+    }
+
+    /**
      * Check whether streaming tool execution is enabled.
      *
      * @return true if streaming is enabled
@@ -744,6 +775,26 @@ public class DefaultReActAgent implements Agent {
      */
     public void injectMessages(List<Msg> messages) {
         reactLoop.injectMessages(messages);
+    }
+
+    // ---- Private: progress events ----
+
+    private void publishAgentDone(String summary) {
+        if (eventBus == null) return;
+        eventBus.publish(
+                new AgentProgressEvent(
+                                name,
+                                AgentProgressEvent.Phase.AGENT_DONE,
+                                currentIteration.get(),
+                                summary,
+                                elapsed(),
+                                0,
+                                0)
+                        .toKairoEvent());
+    }
+
+    private long elapsed() {
+        return runStartMs > 0 ? System.currentTimeMillis() - runStartMs : 0;
     }
 
     // ---- Private: System prompt and model config ----

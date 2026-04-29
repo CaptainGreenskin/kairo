@@ -77,6 +77,7 @@ class IterationGuardsTest {
                 tokenBudgetManager,
                 shutdownManager,
                 null,
+                null,
                 null);
     }
 

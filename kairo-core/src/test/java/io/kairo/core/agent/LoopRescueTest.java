@@ -83,6 +83,7 @@ class LoopRescueTest {
                 tokenBudgetManager,
                 shutdownManager,
                 null,
+                null,
                 null);
     }
 

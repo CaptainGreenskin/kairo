@@ -90,6 +90,7 @@ class IterationGuardsConstraintTest {
                 tokenBudgetManager,
                 shutdownManager,
                 null,
+                null,
                 null);
     }
 
