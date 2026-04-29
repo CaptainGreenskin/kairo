@@ -63,6 +63,16 @@ class MultiAgentAutoConfigurationTest {
     }
 
     @Test
+    void defaultConfigurationCreatesMultiAgentProperties() {
+        runner.run(
+                context -> {
+                    assertThat(context).hasSingleBean(MultiAgentProperties.class);
+                    MultiAgentProperties props = context.getBean(MultiAgentProperties.class);
+                    assertThat(props.isEnabled()).isTrue();
+                });
+    }
+
+    @Test
     void whenDisabledByProperty_noBeansCreated() {
         runner.withPropertyValues("kairo.multi-agent.enabled=false")
                 .run(
@@ -70,6 +80,8 @@ class MultiAgentAutoConfigurationTest {
                             assertThat(context).doesNotHaveBean(MultiAgentAutoConfiguration.class);
                             assertThat(context).doesNotHaveBean(InProcessMessageBus.class);
                             assertThat(context).doesNotHaveBean(DefaultTeamManager.class);
+                            assertThat(context)
+                                    .doesNotHaveBean(DefaultTaskDispatchCoordinator.class);
                         });
     }
 
@@ -137,6 +149,22 @@ class MultiAgentAutoConfigurationTest {
     }
 
     @Test
+    void whenCustomTaskDispatchCoordinatorPresent_autoConfigBacksOff() {
+        DefaultTaskDispatchCoordinator custom = new DefaultTaskDispatchCoordinator();
+
+        runner.withBean("customCoordinator", DefaultTaskDispatchCoordinator.class, () -> custom)
+                .run(
+                        context -> {
+                            assertThat(
+                                            context.getBeanNamesForType(
+                                                    DefaultTaskDispatchCoordinator.class))
+                                    .hasSize(1);
+                            assertThat(context.getBean(DefaultTaskDispatchCoordinator.class))
+                                    .isSameAs(custom);
+                        });
+    }
+
+    @Test
     void whenDefaultTeamManagerAbsentFromClasspath_configurationDoesNotLoad() {
         runner.withClassLoader(new FilteredClassLoader(DefaultTeamManager.class))
                 .run(
@@ -151,6 +179,49 @@ class MultiAgentAutoConfigurationTest {
                 .run(
                         context -> {
                             assertThat(context).hasSingleBean(InProcessMessageBus.class);
+                            assertThat(context).hasSingleBean(DefaultTeamManager.class);
+                            assertThat(context).hasSingleBean(DefaultTaskDispatchCoordinator.class);
+                            assertThat(context).hasSingleBean(MultiAgentProperties.class);
+                        });
+    }
+
+    @Test
+    void defaultConfigurationCreatesExactlyThreeBeans() {
+        runner.run(
+                context -> {
+                    assertThat(context.getBeanNamesForType(InProcessMessageBus.class)).hasSize(1);
+                    assertThat(context.getBeanNamesForType(DefaultTeamManager.class)).hasSize(1);
+                    assertThat(context.getBeanNamesForType(DefaultTaskDispatchCoordinator.class))
+                            .hasSize(1);
+                });
+    }
+
+    @Test
+    void whenCustomMessageBusPresent_teamManagerAndCoordinatorStillCreated() {
+        MessageBus customBus =
+                new MessageBus() {
+                    @Override
+                    public reactor.core.publisher.Mono<Void> send(
+                            String from, String to, io.kairo.api.message.Msg msg) {
+                        return reactor.core.publisher.Mono.empty();
+                    }
+
+                    @Override
+                    public reactor.core.publisher.Flux<io.kairo.api.message.Msg> receive(
+                            String agentId) {
+                        return reactor.core.publisher.Flux.empty();
+                    }
+
+                    @Override
+                    public reactor.core.publisher.Mono<Void> broadcast(
+                            String fromAgentId, io.kairo.api.message.Msg message) {
+                        return reactor.core.publisher.Mono.empty();
+                    }
+                };
+
+        runner.withBean("customBus", MessageBus.class, () -> customBus)
+                .run(
+                        context -> {
                             assertThat(context).hasSingleBean(DefaultTeamManager.class);
                             assertThat(context).hasSingleBean(DefaultTaskDispatchCoordinator.class);
                         });
