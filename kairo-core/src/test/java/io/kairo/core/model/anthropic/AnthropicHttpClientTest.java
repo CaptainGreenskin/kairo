@@ -92,7 +92,8 @@ class AnthropicHttpClientTest {
                             assertInstanceOf(ModelProviderException.RateLimitException.class, e);
                             ModelProviderException.RateLimitException rle =
                                     (ModelProviderException.RateLimitException) e;
-                            assertEquals(30L, rle.getRetryAfterSeconds());
+                            // parseRetryAfter now returns milliseconds
+                            assertEquals(30_000L, rle.getRetryAfterSeconds());
                             return true;
                         })
                 .verify();

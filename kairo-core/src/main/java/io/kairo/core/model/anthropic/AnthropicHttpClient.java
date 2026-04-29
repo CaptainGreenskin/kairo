@@ -111,10 +111,12 @@ public class AnthropicHttpClient {
     private Mono<String> dispatchResponse(HttpResponse<String> response) {
         if (response.statusCode() == 429) {
             String retryAfter = response.headers().firstValue("retry-after").orElse(null);
+            String rateLimitResetAfter =
+                    response.headers().firstValue("x-ratelimit-reset-after").orElse(null);
             return Mono.error(
                     new ModelProviderException.RateLimitException(
                             "Anthropic API rate limited (429)",
-                            ModelProviderUtils.parseRetryAfter(retryAfter)));
+                            ModelProviderUtils.parseRetryAfter(retryAfter, rateLimitResetAfter)));
         }
         if (response.statusCode() >= 500) {
             return Mono.error(
