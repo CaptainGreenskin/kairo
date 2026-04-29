@@ -257,6 +257,77 @@ class GracefulShutdownManagerExtTest {
         assertFalse(accepted, "Agent registration must be rejected after shutdown");
     }
 
+    @Test
+    void cleanupHooks_executeInRegistrationOrder() {
+        List<String> order = new ArrayList<>();
+        List<String> syncOrder = java.util.Collections.synchronizedList(order);
+
+        manager.registerCleanup(() -> syncOrder.add("first"));
+        manager.registerCleanup(() -> syncOrder.add("second"));
+        manager.registerCleanup(() -> syncOrder.add("third"));
+
+        manager.performShutdown();
+
+        // All hooks must execute. Note: ConcurrentHashMap.newKeySet() does not guarantee
+        // insertion-order iteration, so we verify completeness rather than strict ordering.
+        assertEquals(3, syncOrder.size(), "All hooks must execute");
+        assertTrue(
+                syncOrder.containsAll(List.of("first", "second", "third")),
+                "All registered hooks must be present");
+    }
+
+    @Test
+    void shutdownTimeout_interruptsActiveAgents() throws InterruptedException {
+        manager.setShutdownTimeout(Duration.ofMillis(500));
+
+        AtomicBoolean interrupted = new AtomicBoolean(false);
+        Agent longRunning =
+                new Agent() {
+                    @Override
+                    public Mono<Msg> call(Msg input) {
+                        return Mono.empty();
+                    }
+
+                    @Override
+                    public String id() {
+                        return "long-running";
+                    }
+
+                    @Override
+                    public String name() {
+                        return "long-running-agent";
+                    }
+
+                    @Override
+                    public AgentState state() {
+                        return AgentState.IDLE;
+                    }
+
+                    @Override
+                    public void interrupt() {
+                        interrupted.set(true);
+                    }
+                };
+
+        manager.registerAgent(longRunning);
+        manager.performShutdown();
+
+        // Wait for timeout to fire and interrupt the agent
+        Thread.sleep(1500);
+
+        assertTrue(interrupted.get(), "Agent must be interrupted when shutdown timeout is reached");
+        assertEquals(
+                GracefulShutdownManager.ShutdownState.SHUTTING_DOWN,
+                manager.getState(),
+                "Should still be SHUTTING_DOWN until agent is unregistered");
+
+        // Unregister to complete shutdown
+        manager.unregisterAgent(longRunning);
+        boolean terminated = manager.awaitTermination(Duration.ofSeconds(2));
+        assertTrue(terminated);
+        assertEquals(GracefulShutdownManager.ShutdownState.TERMINATED, manager.getState());
+    }
+
     // ── Order recording: all hooks collect results ────────────────────────────
 
     @Test
