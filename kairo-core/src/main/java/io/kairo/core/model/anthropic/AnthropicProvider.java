@@ -17,6 +17,7 @@ package io.kairo.core.model.anthropic;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.kairo.api.agent.CancellationSignal;
 import io.kairo.api.message.Msg;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
@@ -178,8 +179,8 @@ public class AnthropicProvider
 
     @Override
     public Flux<ModelResponse> stream(List<Msg> messages, ModelConfig config) {
-        return Flux.defer(
-                        () -> {
+        return Flux.deferContextual(
+                        ctx -> {
                             try {
                                 String body =
                                         requestBuilder.buildRequestBody(messages, config, true);
@@ -202,7 +203,21 @@ public class AnthropicProvider
                                                     }
                                                 });
 
-                                return sink.asFlux();
+                                Flux<ModelResponse> flux = sink.asFlux();
+
+                                // Observe CancellationSignal from Reactor Context — poll every
+                                // 200ms and abort the stream when cancelled
+                                CancellationSignal cancellation =
+                                        ctx.getOrDefault(CancellationSignal.CONTEXT_KEY, null);
+                                if (cancellation != null) {
+                                    flux =
+                                            flux.takeUntilOther(
+                                                    Flux.interval(Duration.ofMillis(200))
+                                                            .filter(t -> cancellation.isCancelled())
+                                                            .next());
+                                }
+
+                                return flux;
                             } catch (Exception e) {
                                 return Flux.error(
                                         new ModelProviderException.ApiException(
@@ -234,8 +249,8 @@ public class AnthropicProvider
      */
     @Override
     public Flux<StreamChunk> streamRaw(List<Msg> messages, ModelConfig config) {
-        return Flux.defer(
-                        () -> {
+        return Flux.deferContextual(
+                        ctx -> {
                             try {
                                 String body =
                                         requestBuilder.buildRequestBody(messages, config, true);
@@ -259,7 +274,21 @@ public class AnthropicProvider
                                                     }
                                                 });
 
-                                return sink.asFlux();
+                                Flux<StreamChunk> flux = sink.asFlux();
+
+                                // Observe CancellationSignal from Reactor Context — poll every
+                                // 200ms and abort the stream when cancelled
+                                CancellationSignal cancellation =
+                                        ctx.getOrDefault(CancellationSignal.CONTEXT_KEY, null);
+                                if (cancellation != null) {
+                                    flux =
+                                            flux.takeUntilOther(
+                                                    Flux.interval(Duration.ofMillis(200))
+                                                            .filter(t -> cancellation.isCancelled())
+                                                            .next());
+                                }
+
+                                return flux;
                             } catch (Exception e) {
                                 return Flux.error(
                                         new ModelProviderException.ApiException(

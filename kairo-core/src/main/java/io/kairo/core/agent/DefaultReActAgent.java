@@ -51,6 +51,7 @@ import io.kairo.core.prompt.SystemPromptBuilder;
 import io.kairo.core.prompt.SystemPromptResult;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import io.kairo.core.tool.DefaultToolExecutor;
+import io.kairo.core.util.CancellationToken;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
@@ -94,6 +95,7 @@ public class DefaultReActAgent implements Agent {
     private final ToolExecutor toolExecutor;
     private final HookChain hookChain;
     private final AtomicBoolean interrupted;
+    private final CancellationToken cancellationToken;
     private final AtomicInteger currentIteration;
     private final AtomicLong totalTokensUsed;
     private final TokenBudgetManager tokenBudgetManager;
@@ -217,6 +219,7 @@ public class DefaultReActAgent implements Agent {
         this.toolExecutor = toolExecutor;
         this.hookChain = hookChain;
         this.interrupted = new AtomicBoolean(false);
+        this.cancellationToken = new CancellationToken();
         this.currentIteration = new AtomicInteger(0);
         this.totalTokensUsed = new AtomicLong(0);
 
@@ -641,6 +644,7 @@ public class DefaultReActAgent implements Agent {
     @Override
     public void interrupt() {
         interrupted.set(true);
+        cancellationToken.cancel();
         state = AgentState.SUSPENDED;
         AgentHealthRegistry.global().deregister(this.id);
         log.info("Agent '{}' interrupted", name);
