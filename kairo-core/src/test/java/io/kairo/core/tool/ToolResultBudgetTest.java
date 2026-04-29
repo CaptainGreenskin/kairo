@@ -48,34 +48,31 @@ class ToolResultBudgetTest {
         assertEquals(20_000, budgeted.content().length());
     }
 
-    // ===== Above Budget: truncation =====
+    // ===== Above Budget: compression =====
 
     @Test
-    void applyResultBudget_contentExceedsLimit_truncatedWithSuffix() {
+    void applyResultBudget_contentExceedsLimit_compressedWithTailExtract() {
         String content = "x".repeat(30_000);
         ToolResult result = new ToolResult("tool1", content, false, Map.of());
 
         ToolResult budgeted = DefaultToolExecutor.applyResultBudget(result);
 
         assertNotSame(result, budgeted);
-        assertTrue(budgeted.content().startsWith("x".repeat(20_000)));
-        assertTrue(budgeted.content().contains("[truncated:"));
-        assertTrue(budgeted.content().contains("10000 chars omitted"));
+        assertTrue(budgeted.content().startsWith("x".repeat(2_000)));
+        assertTrue(budgeted.content().contains("chars omitted (middle)"));
+        assertTrue(budgeted.content().endsWith("x".repeat(3_000)));
         assertFalse(budgeted.isError());
     }
 
     @Test
-    void applyResultBudget_truncatedContentLength_withinBudget() {
+    void applyResultBudget_compressedContentLength_withinBudgetPlusMarker() {
         String content = "a".repeat(50_000);
         ToolResult result = new ToolResult("tool1", content, false, Map.of());
 
         ToolResult budgeted = DefaultToolExecutor.applyResultBudget(result);
 
-        // Truncated length = 20_000 + suffix length
-        int suffixLength =
-                "\n[truncated: 30000 chars omitted. Set KAIRO_TOOL_RESULT_MAX_CHARS to increase limit]"
-                        .length();
-        assertEquals(20_000 + suffixLength, budgeted.content().length());
+        // Compressed length should be well under max + small marker overhead
+        assertTrue(budgeted.content().length() < 20_000 + 100);
     }
 
     // ===== Null and edge cases =====
@@ -108,7 +105,7 @@ class ToolResultBudgetTest {
     // ===== Error results =====
 
     @Test
-    void applyResultBudget_errorResult_truncatedSameAsNormal() {
+    void applyResultBudget_errorResult_compressedSameAsNormal() {
         String content = "e".repeat(40_000);
         ToolResult result = new ToolResult("tool1", content, true, Map.of());
 
@@ -116,8 +113,7 @@ class ToolResultBudgetTest {
 
         assertNotSame(result, budgeted);
         assertTrue(budgeted.isError());
-        assertTrue(budgeted.content().contains("[truncated:"));
-        assertTrue(budgeted.content().contains("20000 chars omitted"));
+        assertTrue(budgeted.content().contains("chars omitted (middle)"));
     }
 
     // ===== Metadata preservation =====
