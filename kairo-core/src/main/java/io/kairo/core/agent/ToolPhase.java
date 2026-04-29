@@ -70,6 +70,7 @@ class ToolPhase {
     private final HookDecisionApplier hookDecisions;
     private final List<Msg> conversationHistory;
     private final LoopDetector loopDetector;
+    private final ToolCallHistory toolCallHistory;
     private final AtomicInteger currentIteration;
     @Nullable private final ExecutionEventEmitter eventEmitter;
     @Nullable private volatile IterationCheckpointManager checkpointManager;
@@ -85,7 +86,33 @@ class ToolPhase {
             List<Msg> conversationHistory,
             LoopDetector loopDetector,
             AtomicInteger currentIteration) {
-        this(ctx, guards, hookDecisions, conversationHistory, loopDetector, currentIteration, null);
+        this(
+                ctx,
+                guards,
+                hookDecisions,
+                conversationHistory,
+                loopDetector,
+                new ToolCallHistory(),
+                currentIteration);
+    }
+
+    ToolPhase(
+            ReActLoopContext ctx,
+            IterationGuards guards,
+            HookDecisionApplier hookDecisions,
+            List<Msg> conversationHistory,
+            LoopDetector loopDetector,
+            ToolCallHistory toolCallHistory,
+            AtomicInteger currentIteration) {
+        this(
+                ctx,
+                guards,
+                hookDecisions,
+                conversationHistory,
+                loopDetector,
+                toolCallHistory,
+                currentIteration,
+                null);
     }
 
     ToolPhase(
@@ -96,11 +123,32 @@ class ToolPhase {
             LoopDetector loopDetector,
             AtomicInteger currentIteration,
             @Nullable ExecutionEventEmitter eventEmitter) {
+        this(
+                ctx,
+                guards,
+                hookDecisions,
+                conversationHistory,
+                loopDetector,
+                new ToolCallHistory(),
+                currentIteration,
+                eventEmitter);
+    }
+
+    ToolPhase(
+            ReActLoopContext ctx,
+            IterationGuards guards,
+            HookDecisionApplier hookDecisions,
+            List<Msg> conversationHistory,
+            LoopDetector loopDetector,
+            ToolCallHistory toolCallHistory,
+            AtomicInteger currentIteration,
+            @Nullable ExecutionEventEmitter eventEmitter) {
         this.ctx = ctx;
         this.guards = guards;
         this.hookDecisions = hookDecisions;
         this.conversationHistory = conversationHistory;
         this.loopDetector = loopDetector;
+        this.toolCallHistory = toolCallHistory;
         this.currentIteration = currentIteration;
         this.eventEmitter = eventEmitter;
     }
@@ -151,6 +199,51 @@ class ToolPhase {
 
     private Mono<Msg> evaluateLoopDetection(
             List<Content.ToolUseContent> toolCalls, Supplier<Mono<Msg>> loopContinuation) {
+        // Layer 0: per-call repetition check (ToolCallHistory)
+        LoopDetector.DetectionResult.Level worstPerCall = LoopDetector.DetectionResult.Level.NONE;
+        String perCallMessage = null;
+        for (Content.ToolUseContent tc : toolCalls) {
+            String argsJson = tc.input() != null ? tc.input().toString() : "";
+            ToolCallHistory.Status status = toolCallHistory.record(tc.toolName(), argsJson);
+            if (status == ToolCallHistory.Status.ABORT) {
+                worstPerCall = LoopDetector.DetectionResult.Level.HARD_STOP;
+                perCallMessage =
+                        "Tool call loop detected: '"
+                                + tc.toolName()
+                                + "' called "
+                                + toolCallHistory.abortAt()
+                                + " consecutive times with same arguments — aborting";
+                break;
+            }
+            if (status == ToolCallHistory.Status.WARN
+                    && worstPerCall != LoopDetector.DetectionResult.Level.HARD_STOP) {
+                worstPerCall = LoopDetector.DetectionResult.Level.WARN;
+                perCallMessage =
+                        "Potential tool call loop: '"
+                                + tc.toolName()
+                                + "' called "
+                                + toolCallHistory.warnAt()
+                                + " consecutive times with same arguments";
+            }
+        }
+
+        if (worstPerCall == LoopDetector.DetectionResult.Level.HARD_STOP) {
+            if (!isRescueEnabled() || loopRescueAttempted.getAndSet(true)) {
+                return Mono.error(new LoopDetectionException(perCallMessage));
+            }
+            conversationHistory.add(Msg.of(MsgRole.USER, "[Loop Rescue] " + RESCUE_PROMPT));
+            log.warn("Tool call loop detected — injecting rescue prompt (attempt 1/1)");
+            return loopContinuation.get();
+        }
+        if (worstPerCall == LoopDetector.DetectionResult.Level.WARN) {
+            conversationHistory.add(
+                    Msg.of(
+                            MsgRole.USER,
+                            "[Loop Warning] " + (perCallMessage != null ? perCallMessage : "")));
+            return loopContinuation.get();
+        }
+
+        // Layer 1-3: set-level hash/frequency/repetition check (LoopDetector)
         var detection = loopDetector.check(toolCalls);
         if (detection.level() == LoopDetector.DetectionResult.Level.HARD_STOP) {
             if (!isRescueEnabled() || loopRescueAttempted.getAndSet(true)) {
