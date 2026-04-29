@@ -162,7 +162,7 @@ class PiiRedactionPolicyTest {
         var contents =
                 List.<Content>of(
                         new Content.TextContent("reach me: bob@example.com"),
-                        new Content.ThinkingContent("debug ssn 123-45-6789", 100),
+                        new Content.ThinkingContent("debug ssn 123-45-6789", 100, null),
                         new Content.ToolUseContent("t1", "echo", Map.of()));
         var response =
                 new ModelResponse(
