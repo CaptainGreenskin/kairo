@@ -81,8 +81,8 @@ class CoreAutoConfiguration {
         ModelProperties model = properties.getModel();
         String apiKey = resolveApiKey(model.getApiKey(), "ANTHROPIC_API_KEY");
         if (apiKey == null) {
-            throw new IllegalStateException(
-                    "Anthropic API key not configured. Set 'kairo.model.api-key' or ANTHROPIC_API_KEY env var");
+            throw new IllegalArgumentException(
+                    "apiKey cannot be null or blank. Set 'kairo.model.api-key' or ANTHROPIC_API_KEY env var");
         }
         String baseUrl = model.getBaseUrl();
         AnthropicProvider provider =
@@ -100,8 +100,8 @@ class CoreAutoConfiguration {
         ModelProperties model = properties.getModel();
         String apiKey = resolveApiKey(model.getApiKey(), "OPENAI_API_KEY");
         if (apiKey == null) {
-            throw new IllegalStateException(
-                    "OpenAI API key not configured. Set 'kairo.model.api-key' or OPENAI_API_KEY env var");
+            throw new IllegalArgumentException(
+                    "apiKey cannot be null or blank. Set 'kairo.model.api-key' or OPENAI_API_KEY env var");
         }
         String baseUrl = model.getBaseUrl();
         OpenAIProvider provider =
