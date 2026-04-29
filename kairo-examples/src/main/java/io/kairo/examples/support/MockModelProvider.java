@@ -105,7 +105,7 @@ public class MockModelProvider implements ModelProvider {
             String toolName, Map<String, Object> input, String thinkingText) {
         List<Content> contents = new ArrayList<>();
         // Add thinking content to show the reasoning step
-        contents.add(new Content.ThinkingContent(thinkingText, 0));
+        contents.add(new Content.ThinkingContent(thinkingText, 0, null));
         // Add tool use content
         String toolId = "toolu_" + UUID.randomUUID().toString().substring(0, 12);
         contents.add(new Content.ToolUseContent(toolId, toolName, input));

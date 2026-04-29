@@ -116,7 +116,8 @@ public final class PiiRedactionPolicy implements GuardrailPolicy {
                 rewritten.add(
                         red.matchCount() == 0
                                 ? tc
-                                : new Content.ThinkingContent(red.text(), tc.budgetTokens()));
+                                : new Content.ThinkingContent(
+                                        red.text(), tc.budgetTokens(), tc.signature()));
             } else {
                 rewritten.add(c);
             }

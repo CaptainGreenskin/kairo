@@ -110,7 +110,7 @@ class CompactionStrategiesTest {
         return Msg.builder()
                 .id(id)
                 .role(MsgRole.ASSISTANT)
-                .addContent(new Content.ThinkingContent(thinkingText, 1024))
+                .addContent(new Content.ThinkingContent(thinkingText, 1024, null))
                 .addContent(new Content.TextContent("Result after thinking"))
                 .tokenCount(tokens)
                 .build();

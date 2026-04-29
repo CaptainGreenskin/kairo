@@ -224,7 +224,8 @@ class CompactionPipelineV2Test {
                             .id("msg-" + i)
                             .role(MsgRole.ASSISTANT)
                             .addContent(new Content.TextContent("Response " + i))
-                            .addContent(new Content.ThinkingContent("thinking about " + i, 1000))
+                            .addContent(
+                                    new Content.ThinkingContent("thinking about " + i, 1000, null))
                             .tokenCount(500);
             messages.add(builder.build());
         }

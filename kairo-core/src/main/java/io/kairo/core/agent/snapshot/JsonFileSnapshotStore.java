@@ -342,7 +342,9 @@ public final class JsonFileSnapshotStore implements SnapshotStore {
                     (Boolean) raw.get("isError"));
         } else if ("thinking".equals(type)) {
             return new Content.ThinkingContent(
-                    (String) raw.get("thinking"), ((Number) raw.get("budgetTokens")).intValue());
+                    (String) raw.get("thinking"),
+                    ((Number) raw.get("budgetTokens")).intValue(),
+                    (String) raw.get("signature"));
         }
         return null;
     }
