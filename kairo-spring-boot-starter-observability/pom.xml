@@ -26,6 +26,13 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- Micrometer for circuit breaker metrics (optional — auto-config only activates when present). -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- OTel API is enough to wire the exporter; apps bring the SDK + exporters themselves. -->
         <dependency>
             <groupId>io.opentelemetry</groupId>
