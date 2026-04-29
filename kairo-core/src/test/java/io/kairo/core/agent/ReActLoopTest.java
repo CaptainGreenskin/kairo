@@ -48,6 +48,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
@@ -73,6 +74,18 @@ class ReActLoopTest {
     void setUp() {
         modelProvider = mock(ModelProvider.class);
         toolExecutor = mock(ToolExecutor.class);
+        // Mock executeParallel to delegate to individual execute calls
+        when(toolExecutor.executeParallel(anyList()))
+                .thenAnswer(
+                        invocation -> {
+                            List<io.kairo.api.tool.ToolInvocation> invocations =
+                                    invocation.getArgument(0);
+                            return Flux.fromIterable(invocations)
+                                    .flatMap(
+                                            inv ->
+                                                    toolExecutor.execute(
+                                                            inv.toolName(), inv.input()));
+                        });
         hookChain = new DefaultHookChain();
         shutdownManager = new GracefulShutdownManager();
         tokenBudgetManager = new TokenBudgetManager(200_000, 8_096);

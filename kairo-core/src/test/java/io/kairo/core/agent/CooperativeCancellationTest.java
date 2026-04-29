@@ -48,6 +48,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
@@ -73,6 +74,30 @@ class CooperativeCancellationTest {
     void setUp() {
         modelProvider = mock(ModelProvider.class);
         toolExecutor = mock(ToolExecutor.class);
+        // Mock executeParallel: sequential dispatch + interrupt check between tools.
+        // concatMap ensures ordering and allows the interrupt check to prevent subsequent tools.
+        when(toolExecutor.executeParallel(anyList()))
+                .thenAnswer(
+                        invocation -> {
+                            List<io.kairo.api.tool.ToolInvocation> invocations =
+                                    invocation.getArgument(0);
+                            return Flux.fromIterable(invocations)
+                                    .concatMap(
+                                            inv -> {
+                                                if (interrupted.get()) {
+                                                    return Flux.error(
+                                                            new AgentInterruptedException(
+                                                                    "Agent 'cancel-agent'"
+                                                                            + " interrupted at"
+                                                                            + " iteration 0"
+                                                                            + " (cooperative"
+                                                                            + " signal)"));
+                                                }
+                                                return toolExecutor
+                                                        .execute(inv.toolName(), inv.input())
+                                                        .flux();
+                                            });
+                        });
         hookChain = new DefaultHookChain();
         shutdownManager = new GracefulShutdownManager();
         tokenBudgetManager = new TokenBudgetManager(200_000, 8_096);

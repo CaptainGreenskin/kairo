@@ -287,7 +287,9 @@ class ToolPhase {
     private Mono<List<ToolResult>> executeToolCallsInParallel(
             List<Content.ToolUseContent> toolCalls) {
         // Step 1: Fire PreActing hooks and plan execution for each tool call.
+        // Step 2: Check cancellation — a hook may have set interrupted=true.
         return firePreActingForAll(toolCalls)
+                .flatMap(plans -> guards.checkCancelled().thenReturn(plans))
                 .flatMap(plans -> executePlannedBatch(plans, toolCalls));
     }
 
@@ -333,9 +335,8 @@ class ToolPhase {
                         .map(p -> new ToolInvocation(p.plan().toolName(), p.plan().input()))
                         .toList();
 
-        // Use executeParallel (which internally partitions reads vs writes).
-        return ctx.toolExecutor()
-                .executeParallel(invocations)
+        // Use executeParallel with cooperative cancellation so interrupt signals terminate tools.
+        return guards.withCooperativeCancellation(ctx.toolExecutor().executeParallel(invocations))
                 .collectList()
                 .flatMap(
                         execResults -> {
@@ -364,6 +365,9 @@ class ToolPhase {
                         })
                 .onErrorResume(
                         e -> {
+                            if (isCancellationException(e)) {
+                                return Mono.error(e);
+                            }
                             // Fallback: if parallel execution fails, return error results for
                             // executable plans and terminal results for the rest.
                             List<ToolResult> errorResults = new ArrayList<>(toolCalls.size());
