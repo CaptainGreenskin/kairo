@@ -23,6 +23,7 @@ import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.core.agent.checkpoint.IterationCheckpointManager;
 import io.kairo.core.execution.DefaultResourceConstraint;
 import io.kairo.core.execution.ExecutionEventEmitter;
 import java.util.*;
@@ -61,6 +62,7 @@ class ReActLoop {
 
     @Nullable private final ExecutionEventEmitter eventEmitter;
     @Nullable private final AgentProgressTracker progressTracker;
+    @Nullable private volatile IterationCheckpointManager checkpointManager;
 
     // Decomposed phase collaborators
     private final IterationGuards guards;
@@ -192,6 +194,11 @@ class ReActLoop {
 
     void setCompactionTrigger(CompactionTrigger compactionTrigger) {
         this.toolPhase.setCompactionTrigger(compactionTrigger);
+    }
+
+    void setCheckpointManager(@Nullable IterationCheckpointManager checkpointManager) {
+        this.checkpointManager = checkpointManager;
+        this.toolPhase.setCheckpointManager(checkpointManager);
     }
 
     /** Returns the total number of tool calls executed in this loop. */
