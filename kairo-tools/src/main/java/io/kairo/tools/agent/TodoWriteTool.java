@@ -43,7 +43,9 @@ import java.util.Map;
         description =
                 "Create or replace the todo list. Replaces the entire list with the provided todos."
                         + " Each todo must have id, content, status (pending|in_progress|completed),"
-                        + " and priority (high|medium|low).",
+                        + " and priority (high|medium|low)."
+                        + " Use this to track your work plan. After creating todos, immediately start executing"
+                        + " them with tools — never use todo_write as a substitute for doing the actual work.",
         category = ToolCategory.AGENT_AND_TASK,
         sideEffect = ToolSideEffect.WRITE)
 public class TodoWriteTool implements ToolHandler {

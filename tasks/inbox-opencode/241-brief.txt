@@ -1,0 +1,43 @@
+在 /Users/liulihan/IdeaProjects/sre/claude/kairo/.kairo-code/worktrees/opencode-241 (这是个 git worktree, 已切到分支 feature/opencode-241-http-tool, 基于 main) 完成以下任务:
+
+新建 kairo-tools/src/main/java/io/kairo/tools/info/HttpTool.java, 实现 Java 11+ HttpClient 的 HTTP 客户端工具.
+
+要求:
+- 类签名: @Tool(name="http_request", category=ToolCategory.INFORMATION, sideEffect=ToolSideEffect.WRITE) public class HttpTool implements ToolHandler
+- @ToolParam 参数:
+  - url (required): 请求 URL
+  - method (optional, 默认 GET): GET/POST/PUT/DELETE/PATCH/HEAD
+  - headers (optional, JSON 对象): 额外请求头
+  - body (optional): 请求体字符串
+  - timeoutSeconds (optional, 默认 30)
+  - followRedirects (optional, 默认 true)
+- 用 java.net.http.HttpClient (JDK 标准库), 禁止引入 OkHttp / Apache HttpClient
+- 响应体最大 100KB, 超过截断, metadata 标 truncated=true
+- 非 2xx 返回 ToolResult.error, 但 body 仍要带回, isError=true
+- ToolResult metadata 必须含: statusCode, method, url, headers (响应头), truncated, readOnly=false
+- SSRF 防护: 拦截 localhost / 127.* / 192.168.* / 10.* / 172.16-31.* / ::1
+- 参考已有实现: kairo-tools/src/main/java/io/kairo/tools/info/WebFetchTool.java (同包同风格, 抄它的结构)
+
+测试 kairo-tools/src/test/java/io/kairo/tools/info/HttpToolTest.java 必须覆盖:
+- GET 200 正常路径
+- POST 带 body
+- 自定义 headers 透传
+- 超时
+- 非 2xx 返回 isError=true 带 body
+- 100KB 截断
+- SSRF 拦截
+
+不能真实发外网请求, 用 JDK 自带 HttpServer 或 WireMock (看 WebFetchToolTest 用了什么).
+
+完成后必须执行:
+cd /Users/liulihan/IdeaProjects/sre/claude/kairo/.kairo-code/worktrees/opencode-241
+mvn spotless:apply -pl kairo-tools
+mvn verify -pl kairo-tools -am
+
+两个命令都必须 0 错误才能 commit.
+
+最后:
+git add kairo-tools/
+git commit -m "feat(kairo-tools): add HttpTool for arbitrary HTTP requests"
+
+不要修改 kairo-api/, 不要 --no-verify, 不要 -DskipTests.

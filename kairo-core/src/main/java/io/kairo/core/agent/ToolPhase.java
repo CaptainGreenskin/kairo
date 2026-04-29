@@ -21,10 +21,13 @@ import io.kairo.api.hook.*;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
+import io.kairo.api.tool.ToolInvocation;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.core.execution.ExecutionEventEmitter;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -207,7 +210,7 @@ class ToolPhase {
         if (ctx.toolExecutor() == null) {
             return Mono.just(noToolExecutorResults(toolCalls));
         }
-        return executeToolCallsSequentially(toolCalls);
+        return executeToolCallsInParallel(toolCalls);
     }
 
     private List<ToolResult> noToolExecutorResults(List<Content.ToolUseContent> toolCalls) {
@@ -218,6 +221,160 @@ class ToolPhase {
                                         tc.toolId(), "No tool executor configured", true, Map.of()))
                 .toList();
     }
+
+    /**
+     * Execute tool calls with parallel dispatch for read-only tools.
+     *
+     * <p>PreActing hooks fire sequentially (to preserve ordering and allow hooks to block/modify),
+     * then the actual tool execution uses {@link ToolExecutor#executeParallel(List)} so read-only
+     * tools run concurrently while write tools run serially. PostActing hooks fire per-result.
+     */
+    private Mono<List<ToolResult>> executeToolCallsInParallel(
+            List<Content.ToolUseContent> toolCalls) {
+        // Step 1: Fire PreActing hooks and plan execution for each tool call.
+        return firePreActingForAll(toolCalls)
+                .flatMap(plans -> executePlannedBatch(plans, toolCalls));
+    }
+
+    /** Fire PreActing hooks for all tool calls sequentially, returning execution plans. */
+    private Mono<List<IndexedPlan>> firePreActingForAll(List<Content.ToolUseContent> toolCalls) {
+        List<IndexedPlan> plans = new ArrayList<>(toolCalls.size());
+        Mono<Void> chain = Mono.empty();
+        for (int i = 0; i < toolCalls.size(); i++) {
+            final int idx = i;
+            final Content.ToolUseContent toolCall = toolCalls.get(i);
+            chain =
+                    chain.then(guards.checkCancelled())
+                            .then(firePreActing(toolCall))
+                            .doOnNext(
+                                    hookResult -> {
+                                        totalToolCallsCounter.incrementAndGet();
+                                        ToolExecutionPlan plan =
+                                                planToolExecution(toolCall, hookResult);
+                                        plans.add(new IndexedPlan(idx, toolCall, plan));
+                                    })
+                            .then();
+        }
+        return chain.thenReturn(plans);
+    }
+
+    /** Execute a batch of planned tool calls via executeParallel, then fire PostActing hooks. */
+    private Mono<List<ToolResult>> executePlannedBatch(
+            List<IndexedPlan> plans, List<Content.ToolUseContent> toolCalls) {
+        // Separate terminal plans (blocked/skipped by hooks) from executable ones.
+        List<IndexedPlan> terminalPlans =
+                plans.stream().filter(p -> !p.plan().shouldExecute()).toList();
+        List<IndexedPlan> executablePlans =
+                plans.stream().filter(p -> p.plan().shouldExecute()).toList();
+
+        if (executablePlans.isEmpty()) {
+            // All tools were blocked/skipped by hooks — no execution needed.
+            return finishTerminalPlans(terminalPlans, toolCalls);
+        }
+
+        // Build invocations for parallel dispatch.
+        List<ToolInvocation> invocations =
+                executablePlans.stream()
+                        .map(p -> new ToolInvocation(p.plan().toolName(), p.plan().input()))
+                        .toList();
+
+        // Use executeParallel (which internally partitions reads vs writes).
+        return ctx.toolExecutor()
+                .executeParallel(invocations)
+                .collectList()
+                .flatMap(
+                        execResults -> {
+                            // Map execution results back to their indexed plans.
+                            List<ToolResult> results = new ArrayList<>(toolCalls.size());
+                            int execIdx = 0;
+                            for (int i = 0; i < toolCalls.size(); i++) {
+                                IndexedPlan ip = plans.get(i);
+                                ToolResult result;
+                                if (ip.plan().shouldExecute()) {
+                                    result = execResults.get(execIdx++);
+                                    // Replace toolUseId with the original tool call's ID.
+                                    result =
+                                            new ToolResult(
+                                                    ip.toolCall().toolId(),
+                                                    result.content(),
+                                                    result.isError(),
+                                                    result.metadata());
+                                } else {
+                                    result = ip.plan().terminalResult();
+                                }
+                                results.add(result);
+                            }
+                            // Fire PostActing hooks for all results.
+                            return firePostActingForAll(results, toolCalls);
+                        })
+                .onErrorResume(
+                        e -> {
+                            // Fallback: if parallel execution fails, return error results for
+                            // executable plans and terminal results for the rest.
+                            List<ToolResult> errorResults = new ArrayList<>(toolCalls.size());
+                            for (int i = 0; i < toolCalls.size(); i++) {
+                                IndexedPlan ip = plans.get(i);
+                                if (ip.plan().shouldExecute()) {
+                                    errorResults.add(
+                                            new ToolResult(
+                                                    ip.toolCall().toolId(),
+                                                    "Error executing tool: " + e.getMessage(),
+                                                    true,
+                                                    Map.of(
+                                                            "error_code", "tool_execution_failed",
+                                                            "error_type",
+                                                                    e.getClass().getSimpleName(),
+                                                            "tool_name", ip.plan().toolName())));
+                                } else {
+                                    errorResults.add(ip.plan().terminalResult());
+                                }
+                            }
+                            return Mono.just(errorResults);
+                        });
+    }
+
+    /** Finish execution for plans that were blocked/skipped by hooks (no tool dispatch needed). */
+    private Mono<List<ToolResult>> finishTerminalPlans(
+            List<IndexedPlan> terminalPlans, List<Content.ToolUseContent> toolCalls) {
+        // Build results in original order.
+        List<ToolResult> results = new ArrayList<>(toolCalls.size());
+        for (IndexedPlan ip : terminalPlans) {
+            while (results.size() < ip.index()) {
+                results.add(null);
+            }
+            results.add(ip.plan().terminalResult());
+        }
+        // Fire PostActing hooks for terminal results too.
+        return firePostActingForAll(results, toolCalls);
+    }
+
+    /** Fire PostActing hooks for all results sequentially. */
+    private Mono<List<ToolResult>> firePostActingForAll(
+            List<ToolResult> results, List<Content.ToolUseContent> toolCalls) {
+        List<ToolResult> finalResults = new ArrayList<>(Collections.nCopies(results.size(), null));
+        Mono<Void> chain = Mono.empty();
+        for (int i = 0; i < results.size(); i++) {
+            final int idx = i;
+            final ToolResult result = results.get(i);
+            final Content.ToolUseContent toolCall = toolCalls.get(i);
+            final Instant toolStart = Instant.now();
+            chain =
+                    chain.then(guards.checkCancelled())
+                            .then(
+                                    emitToolCallResponse(
+                                            toolCall.toolId(), toolCall.toolName(), result))
+                            .then(
+                                    finishToolExecutionPipeline(
+                                            toolCall.toolName(), result, toolStart))
+                            .doOnNext(r -> finalResults.set(idx, r))
+                            .then();
+        }
+        return chain.thenReturn(finalResults);
+    }
+
+    /** Indexed plan: associates a tool call with its execution plan and original position. */
+    private record IndexedPlan(
+            int index, Content.ToolUseContent toolCall, ToolExecutionPlan plan) {}
 
     private Mono<List<ToolResult>> executeToolCallsSequentially(
             List<Content.ToolUseContent> toolCalls) {
