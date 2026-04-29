@@ -55,11 +55,8 @@ public class DefaultToolExecutor implements ToolExecutor {
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(120);
     private static final int DEFAULT_CIRCUIT_BREAKER_THRESHOLD = 3;
 
-    // ==================== Tool result output budget ====================
-
     private static final int DEFAULT_MAX_TOOL_RESULT_CHARS = 20_000;
-
-    private static final int MAX_TOOL_RESULT_CHARS = resolveMaxToolResultChars();
+    static final int MAX_TOOL_RESULT_CHARS = resolveMaxToolResultChars();
 
     private static int resolveMaxToolResultChars() {
         String env = System.getenv("KAIRO_TOOL_RESULT_MAX_CHARS");
@@ -67,36 +64,22 @@ public class DefaultToolExecutor implements ToolExecutor {
             try {
                 return Integer.parseInt(env.trim());
             } catch (NumberFormatException ignored) {
-                // fall through to default
             }
         }
         return DEFAULT_MAX_TOOL_RESULT_CHARS;
     }
 
-    /**
-     * Apply output Budget: truncate content if it exceeds the configured character limit.
-     *
-     * <p>Mirrors Claude Code's applyToolResultBudget() pattern to prevent a single large tool
-     * output (e.g., 100KB bash logs) from consuming the entire context window.
-     *
-     * @param result the tool result, possibly null
-     * @return a truncated result if over Budget, otherwise the original
-     */
+    /** Truncate tool output exceeding {@link #MAX_TOOL_RESULT_CHARS}. */
     static ToolResult applyResultBudget(ToolResult result) {
-        if (result == null || result.content() == null) {
-            return result;
-        }
+        if (result == null || result.content() == null) return result;
         String content = result.content();
-        if (content.length() <= MAX_TOOL_RESULT_CHARS) {
-            return result;
-        }
+        if (content.length() <= MAX_TOOL_RESULT_CHARS) return result;
         int omitted = content.length() - MAX_TOOL_RESULT_CHARS;
         String truncated =
                 content.substring(0, MAX_TOOL_RESULT_CHARS)
                         + "\n[truncated: "
                         + omitted
-                        + " chars omitted. "
-                        + "Set KAIRO_TOOL_RESULT_MAX_CHARS to increase limit]";
+                        + " chars omitted. Set KAIRO_TOOL_RESULT_MAX_CHARS to increase limit]";
         return new ToolResult(result.toolUseId(), truncated, result.isError(), result.metadata());
     }
 
