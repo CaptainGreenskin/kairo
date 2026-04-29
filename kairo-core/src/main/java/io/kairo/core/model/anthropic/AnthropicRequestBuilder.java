@@ -204,7 +204,8 @@ public class AnthropicRequestBuilder implements ProviderPipeline.RequestBuilder<
                 budget = capability.thinkingBudgetRange().clamp(explicitBudget);
             } else {
                 int complexity = complexityEstimator.estimateComplexity(messages);
-                budget = complexityEstimator.thinkingBudget(capability, complexity);
+                budget = ThinkingBudgetResolver.resolve(complexity);
+                budget = capability.thinkingBudgetRange().clamp(budget);
             }
             // Anthropic requires: max_tokens > budget_tokens (strictly greater)
             int maxTokens = config.maxTokens();
