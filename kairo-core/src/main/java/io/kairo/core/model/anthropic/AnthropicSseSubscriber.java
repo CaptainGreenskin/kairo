@@ -151,6 +151,10 @@ public class AnthropicSseSubscriber
                             acc.textBuilder.append(thinking);
                             emitPartial(thinking, "thinking");
                         }
+                        case "signature_delta" -> {
+                            String sig = delta.path("signature").asText("");
+                            acc.signature = sig;
+                        }
                         case "input_json_delta" -> {
                             String partial = delta.path("partial_json").asText("");
                             acc.textBuilder.append(partial);
@@ -209,7 +213,7 @@ public class AnthropicSseSubscriber
     private void emitPartial(String text, String contentType) {
         Content partialContent =
                 "thinking".equals(contentType)
-                        ? new Content.ThinkingContent(text, 0)
+                        ? new Content.ThinkingContent(text, 0, null)
                         : new Content.TextContent(text);
         ModelResponse partial =
                 new ModelResponse(
@@ -227,12 +231,14 @@ public class AnthropicSseSubscriber
         StringBuilder textBuilder = new StringBuilder();
         String toolId;
         String toolName;
+        String signature;
 
         @SuppressWarnings("unchecked")
         Content toContent(ObjectMapper objectMapper) {
             return switch (type) {
                 case "text" -> new Content.TextContent(textBuilder.toString());
-                case "thinking" -> new Content.ThinkingContent(textBuilder.toString(), 0);
+                case "thinking" ->
+                        new Content.ThinkingContent(textBuilder.toString(), 0, signature);
                 case "tool_use" -> {
                     Map<String, Object> input;
                     try {

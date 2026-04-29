@@ -34,7 +34,7 @@ import io.kairo.api.tool.ToolHandler;
 import io.kairo.core.agent.DefaultReActAgent;
 import io.kairo.core.context.compaction.CompactionPipeline;
 import io.kairo.core.hook.DefaultHookChain;
-import io.kairo.core.message.MsgBuilder;
+import io.kairo.core.message.MsgTokens;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
 import io.kairo.core.tool.DefaultToolRegistry;
@@ -315,7 +315,7 @@ class AgentPerformanceIT {
         long totalTokens = 0;
         for (int round = 0; round < 34; round++) { // 34 rounds * 300 messages ≈ 10,200
             for (Msg msg : testMessages) {
-                totalTokens += MsgBuilder.estimateTokens(msg);
+                totalTokens += MsgTokens.estimate(msg);
                 totalEstimations++;
             }
         }
@@ -418,7 +418,7 @@ class AgentPerformanceIT {
         long startNanos = System.nanoTime();
         long totalTokens = 0;
         for (Msg msg : history) {
-            totalTokens += MsgBuilder.estimateTokens(msg);
+            totalTokens += MsgTokens.estimate(msg);
         }
         long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
 

@@ -21,7 +21,6 @@ import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.tool.ToolResult;
-import io.kairo.core.message.MsgBuilder;
 import java.util.List;
 import java.util.Map;
 
@@ -112,10 +111,12 @@ class HookDecisionApplier {
     Msg buildToolResultMsg(List<ToolResult> results, List<Msg> history) {
         ToolResultBudget.AppliedResult budgeted =
                 ToolResultBudget.apply(results, history, ctx.tokenBudgetManager());
-        MsgBuilder builder = MsgBuilder.create().role(MsgRole.TOOL).sourceAgentId(ctx.agentId());
+        Msg.Builder builder = Msg.builder().role(MsgRole.TOOL).sourceAgentId(ctx.agentId());
 
         for (ToolResult result : budgeted.results()) {
-            builder.addToolResult(result.toolUseId(), result.content(), result.isError());
+            builder.addContent(
+                    new Content.ToolResultContent(
+                            result.toolUseId(), result.content(), result.isError()));
         }
 
         builder.metadata("tool_result_budget_applied", true)

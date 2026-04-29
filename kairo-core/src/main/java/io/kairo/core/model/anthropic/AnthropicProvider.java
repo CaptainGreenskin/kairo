@@ -61,7 +61,18 @@ public class AnthropicProvider
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicProvider.class);
     private static final Duration STREAM_IDLE_TIMEOUT = Duration.ofMinutes(5);
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration CALL_TIMEOUT = resolveCallTimeout();
+
+    private static Duration resolveCallTimeout() {
+        String env = System.getenv("KAIRO_API_TIMEOUT_MS");
+        if (env != null && !env.isBlank()) {
+            try {
+                return Duration.ofMillis(Long.parseLong(env.trim()));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return Duration.ofSeconds(30);
+    }
 
     private final ObjectMapper objectMapper;
     private final AnthropicHttpClient anthropicHttpClient;

@@ -27,7 +27,6 @@ import io.kairo.api.model.ModelProvider;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.core.context.TokenBudgetManager;
 import io.kairo.core.hook.DefaultHookChain;
-import io.kairo.core.message.MsgBuilder;
 import io.kairo.core.model.ModelFallbackManager;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import java.util.List;
@@ -108,9 +107,11 @@ class DanglingToolCallRecoveryTest {
         // Inject: USER message, then ASSISTANT with tool_use, but NO TOOL result
         Msg userMsg = Msg.of(MsgRole.USER, "do something");
         Msg assistantMsg =
-                MsgBuilder.create()
+                Msg.builder()
                         .role(MsgRole.ASSISTANT)
-                        .toolUse("tc-dangling", "search", Map.of("q", "test"))
+                        .addContent(
+                                new Content.ToolUseContent(
+                                        "tc-dangling", "search", Map.of("q", "test")))
                         .build();
 
         loop.injectMessages(List.of(userMsg, assistantMsg));
@@ -140,14 +141,15 @@ class DanglingToolCallRecoveryTest {
 
         Msg userMsg = Msg.of(MsgRole.USER, "do something");
         Msg assistantMsg =
-                MsgBuilder.create()
+                Msg.builder()
                         .role(MsgRole.ASSISTANT)
-                        .toolUse("tc-1", "search", Map.of("q", "hello"))
+                        .addContent(
+                                new Content.ToolUseContent("tc-1", "search", Map.of("q", "hello")))
                         .build();
         Msg toolMsg =
-                MsgBuilder.create()
+                Msg.builder()
                         .role(MsgRole.TOOL)
-                        .addToolResult("tc-1", "found 3 results", false)
+                        .addContent(new Content.ToolResultContent("tc-1", "found 3 results", false))
                         .build();
 
         loop.injectMessages(List.of(userMsg, assistantMsg, toolMsg));
@@ -166,10 +168,14 @@ class DanglingToolCallRecoveryTest {
 
         Msg userMsg = Msg.of(MsgRole.USER, "do two things");
         Msg assistantMsg =
-                MsgBuilder.create()
+                Msg.builder()
                         .role(MsgRole.ASSISTANT)
-                        .toolUse("tc-a", "read_file", Map.of("path", "a.txt"))
-                        .toolUse("tc-b", "read_file", Map.of("path", "b.txt"))
+                        .addContent(
+                                new Content.ToolUseContent(
+                                        "tc-a", "read_file", Map.of("path", "a.txt")))
+                        .addContent(
+                                new Content.ToolUseContent(
+                                        "tc-b", "read_file", Map.of("path", "b.txt")))
                         .build();
 
         loop.injectMessages(List.of(userMsg, assistantMsg));
@@ -210,15 +216,17 @@ class DanglingToolCallRecoveryTest {
         // USER → ASSISTANT(tool_use tc-1, tc-2) → TOOL(tc-1 only) — tc-2 is dangling
         Msg userMsg = Msg.of(MsgRole.USER, "multi-tool task");
         Msg assistantMsg =
-                MsgBuilder.create()
+                Msg.builder()
                         .role(MsgRole.ASSISTANT)
-                        .toolUse("tc-1", "search", Map.of("q", "a"))
-                        .toolUse("tc-2", "write_file", Map.of("path", "out.txt"))
+                        .addContent(new Content.ToolUseContent("tc-1", "search", Map.of("q", "a")))
+                        .addContent(
+                                new Content.ToolUseContent(
+                                        "tc-2", "write_file", Map.of("path", "out.txt")))
                         .build();
         Msg partialTool =
-                MsgBuilder.create()
+                Msg.builder()
                         .role(MsgRole.TOOL)
-                        .addToolResult("tc-1", "search results", false)
+                        .addContent(new Content.ToolResultContent("tc-1", "search results", false))
                         .build();
 
         loop.injectMessages(List.of(userMsg, assistantMsg, partialTool));
@@ -273,9 +281,11 @@ class DanglingToolCallRecoveryTest {
 
         Msg userMsg = Msg.of(MsgRole.USER, "do something");
         Msg assistantMsg =
-                MsgBuilder.create()
+                Msg.builder()
                         .role(MsgRole.ASSISTANT)
-                        .toolUse("tc-check", "read_file", Map.of("path", "test.txt"))
+                        .addContent(
+                                new Content.ToolUseContent(
+                                        "tc-check", "read_file", Map.of("path", "test.txt")))
                         .build();
 
         loop.injectMessages(List.of(userMsg, assistantMsg));
@@ -299,17 +309,21 @@ class DanglingToolCallRecoveryTest {
 
         Msg userMsg = Msg.of(MsgRole.USER, "do three things");
         Msg assistantMsg =
-                MsgBuilder.create()
+                Msg.builder()
                         .role(MsgRole.ASSISTANT)
-                        .toolUse("tc-x", "search", Map.of("q", "x"))
-                        .toolUse("tc-y", "read_file", Map.of("path", "y.txt"))
-                        .toolUse("tc-z", "write_file", Map.of("path", "z.txt"))
+                        .addContent(new Content.ToolUseContent("tc-x", "search", Map.of("q", "x")))
+                        .addContent(
+                                new Content.ToolUseContent(
+                                        "tc-y", "read_file", Map.of("path", "y.txt")))
+                        .addContent(
+                                new Content.ToolUseContent(
+                                        "tc-z", "write_file", Map.of("path", "z.txt")))
                         .build();
         // Only tc-x has a result; tc-y and tc-z are dangling
         Msg partialTool =
-                MsgBuilder.create()
+                Msg.builder()
                         .role(MsgRole.TOOL)
-                        .addToolResult("tc-x", "x results", false)
+                        .addContent(new Content.ToolResultContent("tc-x", "x results", false))
                         .build();
 
         loop.injectMessages(List.of(userMsg, assistantMsg, partialTool));
@@ -342,14 +356,15 @@ class DanglingToolCallRecoveryTest {
 
         Msg userMsg1 = Msg.of(MsgRole.USER, "first turn");
         Msg assistantMsg =
-                MsgBuilder.create()
+                Msg.builder()
                         .role(MsgRole.ASSISTANT)
-                        .toolUse("tc-done", "search", Map.of("q", "ok"))
+                        .addContent(
+                                new Content.ToolUseContent("tc-done", "search", Map.of("q", "ok")))
                         .build();
         Msg toolMsg =
-                MsgBuilder.create()
+                Msg.builder()
                         .role(MsgRole.TOOL)
-                        .addToolResult("tc-done", "ok", false)
+                        .addContent(new Content.ToolResultContent("tc-done", "ok", false))
                         .build();
         Msg userMsg2 = Msg.of(MsgRole.USER, "second turn");
 
@@ -367,9 +382,11 @@ class DanglingToolCallRecoveryTest {
         String danglingId = "tc-unique-12345";
         Msg userMsg = Msg.of(MsgRole.USER, "run task");
         Msg assistantMsg =
-                MsgBuilder.create()
+                Msg.builder()
                         .role(MsgRole.ASSISTANT)
-                        .toolUse(danglingId, "execute", Map.of("cmd", "ls"))
+                        .addContent(
+                                new Content.ToolUseContent(
+                                        danglingId, "execute", Map.of("cmd", "ls")))
                         .build();
 
         loop.injectMessages(List.of(userMsg, assistantMsg));

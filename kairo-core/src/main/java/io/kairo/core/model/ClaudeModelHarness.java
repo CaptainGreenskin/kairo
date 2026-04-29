@@ -19,7 +19,7 @@ import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelConfig;
-import io.kairo.core.message.MsgBuilder;
+import io.kairo.core.message.MsgTokens;
 import io.kairo.core.prompt.SystemPromptResult;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -124,8 +124,7 @@ public class ClaudeModelHarness implements ModelHarness {
         // Mark large messages with cache hints via metadata
         for (int i = 0; i < optimized.size(); i++) {
             Msg msg = optimized.get(i);
-            int estimatedTokens =
-                    msg.tokenCount() > 0 ? msg.tokenCount() : MsgBuilder.estimateTokens(msg);
+            int estimatedTokens = msg.tokenCount() > 0 ? msg.tokenCount() : MsgTokens.estimate(msg);
             if (estimatedTokens > CACHE_CONTROL_TOKEN_THRESHOLD && i < optimized.size() - 2) {
                 // Add cache hint metadata for large non-recent messages
                 // Preserve any existing metadata
@@ -214,11 +213,7 @@ public class ClaudeModelHarness implements ModelHarness {
      */
     public int estimateTokens(List<Msg> messages) {
         return messages.stream()
-                .mapToInt(
-                        msg ->
-                                msg.tokenCount() > 0
-                                        ? msg.tokenCount()
-                                        : MsgBuilder.estimateTokens(msg))
+                .mapToInt(msg -> msg.tokenCount() > 0 ? msg.tokenCount() : MsgTokens.estimate(msg))
                 .sum();
     }
 

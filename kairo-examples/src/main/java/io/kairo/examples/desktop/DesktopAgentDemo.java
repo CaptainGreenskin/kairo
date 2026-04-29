@@ -20,13 +20,13 @@ import io.kairo.api.agent.AgentSnapshot;
 import io.kairo.api.memory.MemoryEntry;
 import io.kairo.api.memory.MemoryQuery;
 import io.kairo.api.message.Msg;
+import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.core.agent.AgentBuilder;
 import io.kairo.core.agent.snapshot.CheckpointManager;
 import io.kairo.core.agent.snapshot.InMemorySnapshotStore;
 import io.kairo.core.memory.ConversationMemory;
 import io.kairo.core.memory.JdbcMemoryStore;
-import io.kairo.core.message.MsgBuilder;
 import io.kairo.core.model.anthropic.AnthropicProvider;
 import io.kairo.core.model.openai.OpenAIProvider;
 import io.kairo.core.tool.DefaultPermissionGuard;
@@ -243,7 +243,7 @@ public class DesktopAgentDemo {
 
             // --- Normal conversation ---
             try {
-                Msg userMsg = MsgBuilder.user(input);
+                Msg userMsg = Msg.of(MsgRole.USER, input);
                 Msg response = agent.call(userMsg).block();
                 if (response != null) {
                     System.out.println("Agent: " + response.text());

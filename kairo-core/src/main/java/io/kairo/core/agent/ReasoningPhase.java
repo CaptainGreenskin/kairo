@@ -28,7 +28,6 @@ import io.kairo.api.model.RawStreamingModelProvider;
 import io.kairo.api.model.StreamChunk;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.core.execution.ExecutionEventEmitter;
-import io.kairo.core.message.MsgBuilder;
 import io.kairo.core.model.DetectedToolCall;
 import io.kairo.core.model.StreamingToolDetector;
 import io.kairo.core.tool.StreamingToolExecutor;
@@ -412,20 +411,10 @@ class ReasoningPhase {
 
     /** Convert a {@link ModelResponse} into an assistant {@link Msg}. */
     private Msg convertResponseToMsg(ModelResponse response) {
-        MsgBuilder builder =
-                MsgBuilder.create().role(MsgRole.ASSISTANT).sourceAgentId(ctx.agentId());
-
+        Msg.Builder builder = Msg.builder().role(MsgRole.ASSISTANT).sourceAgentId(ctx.agentId());
         for (Content content : response.contents()) {
-            if (content instanceof Content.TextContent tc) {
-                builder.text(tc.text());
-            } else if (content instanceof Content.ToolUseContent tu) {
-                builder.toolUse(tu.toolId(), tu.toolName(), tu.input());
-            } else if (content instanceof Content.ThinkingContent th) {
-                builder.thinking(th.thinking(), th.budgetTokens());
-            }
-            // ignore other content types in assistant messages
+            builder.addContent(content);
         }
-
         return builder.build();
     }
 

@@ -17,12 +17,12 @@ package io.kairo.examples.quickstart;
 
 import io.kairo.api.agent.Agent;
 import io.kairo.api.message.Msg;
+import io.kairo.api.message.MsgRole;
 import io.kairo.api.tool.ToolPermission;
 import io.kairo.api.tool.ToolSideEffect;
 import io.kairo.core.agent.AgentBuilder;
 import io.kairo.core.agent.DefaultReActAgent;
 import io.kairo.core.context.DefaultContextManager;
-import io.kairo.core.message.MsgBuilder;
 import io.kairo.core.model.anthropic.AnthropicProvider;
 import io.kairo.core.model.openai.OpenAIProvider;
 import io.kairo.core.tool.DefaultPermissionGuard;
@@ -158,7 +158,7 @@ public class AgentExample {
                         .build();
 
         // 7. Run
-        Msg input = MsgBuilder.user(task);
+        Msg input = Msg.of(MsgRole.USER, task);
         Msg result = agent.call(input).block();
 
         // 7. Print summary
@@ -210,7 +210,7 @@ public class AgentExample {
                         .build();
 
         // 6. Run
-        Msg input = MsgBuilder.user(task);
+        Msg input = Msg.of(MsgRole.USER, task);
         Msg result = agent.call(input).block();
 
         // 7. Print summary
@@ -275,7 +275,7 @@ public class AgentExample {
         System.out.println("\n\uD83D\uDCDD Task: " + E2E_TASK);
 
         // 8. Run
-        Msg input = MsgBuilder.user(E2E_TASK);
+        Msg input = Msg.of(MsgRole.USER, E2E_TASK);
         Msg result = agent.call(input).block();
 
         // 9. Print summary
@@ -342,7 +342,7 @@ public class AgentExample {
         System.out.println("\n\uD83D\uDCDD Task: " + E2E_TASK);
 
         // 8. Run
-        Msg input = MsgBuilder.user(E2E_TASK);
+        Msg input = Msg.of(MsgRole.USER, E2E_TASK);
         Msg result = agent.call(input).block();
 
         // 9. Print summary

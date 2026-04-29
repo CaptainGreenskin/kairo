@@ -206,6 +206,9 @@ public class AnthropicRequestBuilder implements ProviderPipeline.RequestBuilder<
                 int complexity = complexityEstimator.estimateComplexity(messages);
                 budget = complexityEstimator.thinkingBudget(capability, complexity);
             }
+            // Anthropic requires: max_tokens > budget_tokens (strictly greater)
+            int maxTokens = config.maxTokens();
+            budget = Math.min(budget, maxTokens - 1);
             if (budget > 0) {
                 ObjectNode thinkingNode = root.putObject("thinking");
                 thinkingNode.put("type", "enabled");
@@ -324,6 +327,9 @@ public class AnthropicRequestBuilder implements ProviderPipeline.RequestBuilder<
         } else if (content instanceof Content.ThinkingContent tc) {
             node.put("type", "thinking");
             node.put("thinking", tc.thinking());
+            if (tc.signature() != null) {
+                node.put("signature", tc.signature());
+            }
         }
         return node;
     }

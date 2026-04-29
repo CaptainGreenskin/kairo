@@ -68,6 +68,10 @@ public sealed interface Content {
      *
      * @param thinking the thinking text
      * @param budgetTokens the token budget allocated for thinking
+     * @param signature the integrity signature returned by Anthropic; must be round-tripped as-is
+     *     in multi-turn conversations; null when not applicable (non-Anthropic providers or
+     *     synthetic blocks)
      */
-    record ThinkingContent(String thinking, int budgetTokens) implements Content {}
+    record ThinkingContent(String thinking, int budgetTokens, String signature)
+            implements Content {}
 }

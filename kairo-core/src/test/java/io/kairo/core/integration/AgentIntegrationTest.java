@@ -21,6 +21,7 @@ import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentState;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
+import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
@@ -29,7 +30,6 @@ import io.kairo.api.tool.*;
 import io.kairo.api.tool.ToolHandler;
 import io.kairo.core.agent.AgentBuilder;
 import io.kairo.core.agent.DefaultReActAgent;
-import io.kairo.core.message.MsgBuilder;
 import io.kairo.core.model.ModelCapabilityRegistry;
 import io.kairo.core.model.ModelFallbackManager;
 import io.kairo.core.model.ToolDescriptionAdapter;
@@ -277,7 +277,8 @@ class AgentIntegrationTest {
                         .build();
 
         // Act
-        Msg result = agent.call(MsgBuilder.user("Create hello.txt")).block(Duration.ofSeconds(30));
+        Msg result =
+                agent.call(Msg.of(MsgRole.USER, "Create hello.txt")).block(Duration.ofSeconds(30));
 
         // Assert
         assertNotNull(result);
@@ -362,7 +363,7 @@ class AgentIntegrationTest {
 
         // Act
         Msg result =
-                agent.call(MsgBuilder.user("Process a very long input"))
+                agent.call(Msg.of(MsgRole.USER, "Process a very long input"))
                         .block(Duration.ofSeconds(30));
 
         // Assert
@@ -395,7 +396,8 @@ class AgentIntegrationTest {
         // Act
         long start = System.currentTimeMillis();
         Msg result =
-                agent.call(MsgBuilder.user("Rate limited request")).block(Duration.ofSeconds(30));
+                agent.call(Msg.of(MsgRole.USER, "Rate limited request"))
+                        .block(Duration.ofSeconds(30));
         long elapsed = System.currentTimeMillis() - start;
 
         // Assert
@@ -664,7 +666,7 @@ class AgentIntegrationTest {
 
         // Act
         Msg result =
-                agent.call(MsgBuilder.user("Test server error recovery"))
+                agent.call(Msg.of(MsgRole.USER, "Test server error recovery"))
                         .block(Duration.ofSeconds(30));
 
         // Assert
@@ -774,7 +776,8 @@ class AgentIntegrationTest {
 
         // Act
         Msg result =
-                agent.call(MsgBuilder.user("Read and write files")).block(Duration.ofSeconds(30));
+                agent.call(Msg.of(MsgRole.USER, "Read and write files"))
+                        .block(Duration.ofSeconds(30));
 
         // Assert
         assertNotNull(result);
@@ -822,7 +825,8 @@ class AgentIntegrationTest {
 
         // Act
         Msg result =
-                agent.call(MsgBuilder.user("Infinite tool loop")).block(Duration.ofSeconds(30));
+                agent.call(Msg.of(MsgRole.USER, "Infinite tool loop"))
+                        .block(Duration.ofSeconds(30));
 
         // Assert
         assertNotNull(result);

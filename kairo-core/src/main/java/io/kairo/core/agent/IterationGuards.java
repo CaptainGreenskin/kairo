@@ -18,9 +18,9 @@ package io.kairo.core.agent;
 import io.kairo.api.agent.CancellationSignal;
 import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.execution.*;
+import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
-import io.kairo.core.message.MsgBuilder;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -255,10 +255,10 @@ class IterationGuards {
 
     /** Build a final text response message. */
     Msg buildFinalResponse(String text) {
-        return MsgBuilder.create()
+        return Msg.builder()
                 .role(MsgRole.ASSISTANT)
                 .sourceAgentId(ctx.agentId())
-                .text(text)
+                .addContent(new Content.TextContent(text))
                 .build();
     }
 

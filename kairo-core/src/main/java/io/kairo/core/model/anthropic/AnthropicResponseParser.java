@@ -104,7 +104,11 @@ public class AnthropicResponseParser implements ProviderPipeline.ResponseParser<
         String type = block.path("type").asText();
         return switch (type) {
             case "text" -> new Content.TextContent(block.path("text").asText());
-            case "thinking" -> new Content.ThinkingContent(block.path("thinking").asText(), 0);
+            case "thinking" ->
+                    new Content.ThinkingContent(
+                            block.path("thinking").asText(),
+                            0,
+                            block.path("signature").asText(null));
             case "tool_use" -> {
                 Map<String, Object> input =
                         objectMapper.convertValue(

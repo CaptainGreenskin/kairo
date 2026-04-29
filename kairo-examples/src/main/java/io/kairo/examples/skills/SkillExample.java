@@ -17,11 +17,11 @@ package io.kairo.examples.skills;
 
 import io.kairo.api.agent.Agent;
 import io.kairo.api.message.Msg;
+import io.kairo.api.message.MsgRole;
 import io.kairo.api.tool.ToolPermission;
 import io.kairo.api.tool.ToolSideEffect;
 import io.kairo.core.agent.AgentBuilder;
 import io.kairo.core.agent.DefaultReActAgent;
-import io.kairo.core.message.MsgBuilder;
 import io.kairo.core.model.openai.OpenAIProvider;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
@@ -147,7 +147,7 @@ public class SkillExample {
         }
 
         System.out.println("📝 Task: " + TASK);
-        Msg result = agent.call(MsgBuilder.user(TASK)).block();
+        Msg result = agent.call(Msg.of(MsgRole.USER, TASK)).block();
 
         System.out.println("\n========================================");
         System.out.println("  Skill Example complete! " + hook.getIteration() + " iterations");

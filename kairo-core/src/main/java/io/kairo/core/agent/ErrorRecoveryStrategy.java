@@ -16,6 +16,7 @@
 package io.kairo.core.agent;
 
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ApiErrorType;
@@ -24,7 +25,6 @@ import io.kairo.api.model.ClassifiedError;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
-import io.kairo.core.message.MsgBuilder;
 import io.kairo.core.model.ApiErrorClassifierImpl;
 import io.kairo.core.model.CircuitBreakerOpenException;
 import io.kairo.core.model.ModelCircuitBreaker;
@@ -205,11 +205,12 @@ public class ErrorRecoveryStrategy {
             log.info("Truncated {} → {} messages, retrying", messages.size(), truncated.size());
             // Add recovery notice
             truncated.add(
-                    MsgBuilder.create()
+                    Msg.builder()
                             .role(MsgRole.SYSTEM)
-                            .text(
-                                    "[Context was truncated due to length."
-                                            + " Some earlier conversation was removed.]")
+                            .addContent(
+                                    new Content.TextContent(
+                                            "[Context was truncated due to length."
+                                                    + " Some earlier conversation was removed.]"))
                             .build());
             return callModelWithRecovery(truncated, modelConfig, retryCount + 1);
         }
@@ -224,11 +225,12 @@ public class ErrorRecoveryStrategy {
         log.info("Max output tokens hit — adding continuation request");
         var continued = new ArrayList<>(messages);
         continued.add(
-                MsgBuilder.create()
+                Msg.builder()
                         .role(MsgRole.USER)
-                        .text(
-                                "Your previous response was truncated."
-                                        + " Please continue where you left off.")
+                        .addContent(
+                                new Content.TextContent(
+                                        "Your previous response was truncated."
+                                                + " Please continue where you left off."))
                         .build());
         return callModelWithRecovery(continued, modelConfig, retryCount + 1);
     }

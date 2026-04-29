@@ -87,7 +87,7 @@ class ContentTest {
 
     @Test
     void thinkingContentFields() {
-        Content.ThinkingContent tc = new Content.ThinkingContent("Let me think...", 5000);
+        Content.ThinkingContent tc = new Content.ThinkingContent("Let me think...", 5000, null);
         assertEquals("Let me think...", tc.thinking());
         assertEquals(5000, tc.budgetTokens());
     }
@@ -101,7 +101,7 @@ class ContentTest {
         Content tool = new Content.ToolUseContent("id", "name", Map.of());
         assertTrue(tool instanceof Content.ToolUseContent);
 
-        Content thinking = new Content.ThinkingContent("hmm", 100);
+        Content thinking = new Content.ThinkingContent("hmm", 100, null);
         assertTrue(thinking instanceof Content.ThinkingContent);
         assertEquals(100, ((Content.ThinkingContent) thinking).budgetTokens());
     }
@@ -113,7 +113,7 @@ class ContentTest {
             new Content.ImageContent("url", "image/png", null),
             new Content.ToolUseContent("id", "name", Map.of()),
             new Content.ToolResultContent("id", "result", false),
-            new Content.ThinkingContent("think", 1000)
+            new Content.ThinkingContent("think", 1000, null)
         };
 
         for (Content c : variants) {
