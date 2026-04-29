@@ -29,6 +29,7 @@ import io.kairo.core.model.ExceptionMapper;
 import io.kairo.core.model.ModelProviderException;
 import io.kairo.core.model.ModelProviderUtils;
 import io.kairo.core.model.ProviderRetry;
+import io.kairo.core.model.anthropic.StreamIdleWatchdog;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -61,20 +62,9 @@ import reactor.core.publisher.Sinks;
  */
 public class OpenAIProvider implements RawStreamingModelProvider, ProviderPipeline<String, String> {
 
-    private static final Duration STREAM_IDLE_TIMEOUT = resolveStreamIdleTimeout();
+    private static final Duration STREAM_IDLE_TIMEOUT =
+            Duration.ofMillis(StreamIdleWatchdog.IDLE_TIMEOUT_MS);
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(30);
-
-    private static Duration resolveStreamIdleTimeout() {
-        String env = System.getenv("KAIRO_STREAM_IDLE_TIMEOUT_MIN");
-        if (env != null && !env.isBlank()) {
-            try {
-                return Duration.ofMinutes(Long.parseLong(env.trim()));
-            } catch (NumberFormatException ignored) {
-                // fall through to default
-            }
-        }
-        return Duration.ofMinutes(5);
-    }
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
