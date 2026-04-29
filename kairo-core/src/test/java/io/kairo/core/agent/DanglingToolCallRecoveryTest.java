@@ -80,6 +80,7 @@ class DanglingToolCallRecoveryTest {
                         new TokenBudgetManager(200_000, 8_096),
                         new GracefulShutdownManager(),
                         null, // contextManager
+                        null,
                         null); // guardrailChain
 
         ModelConfig modelConfig =

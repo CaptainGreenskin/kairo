@@ -261,6 +261,7 @@ class CoreAutoConfiguration {
             GracefulShutdownManager gracefulShutdownManager,
             GuardrailChain guardrailChain,
             AgentRuntimeProperties properties,
+            KairoEventBus kairoEventBus,
             @org.springframework.beans.factory.annotation.Autowired(required = false)
                     List<Middleware> middlewares,
             @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -288,7 +289,8 @@ class CoreAutoConfiguration {
                         .timeout(Duration.ofSeconds(agentProps.getTimeoutSeconds()))
                         .tokenBudget(agentProps.getTokenBudget())
                         .shutdownManager(gracefulShutdownManager)
-                        .guardrailChain(guardrailChain);
+                        .guardrailChain(guardrailChain)
+                        .eventBus(kairoEventBus);
 
         if (middlewares != null) {
             for (Middleware mw : middlewares) {

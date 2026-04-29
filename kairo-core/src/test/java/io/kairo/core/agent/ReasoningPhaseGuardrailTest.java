@@ -101,7 +101,8 @@ class ReasoningPhaseGuardrailTest {
                         tokenBudgetManager,
                         shutdownManager,
                         null, // contextManager
-                        guardrailChain);
+                        guardrailChain,
+                        null); // eventBus
 
         ModelConfig modelConfig =
                 ModelConfig.builder()

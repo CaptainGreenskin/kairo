@@ -76,6 +76,7 @@ class ToolPhaseTest {
                 tokenBudgetManager,
                 shutdownManager,
                 null,
+                null,
                 null);
     }
 
