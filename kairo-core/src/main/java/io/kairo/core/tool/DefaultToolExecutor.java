@@ -69,18 +69,14 @@ public class DefaultToolExecutor implements ToolExecutor {
         return DEFAULT_MAX_TOOL_RESULT_CHARS;
     }
 
-    /** Truncate tool output exceeding {@link #MAX_TOOL_RESULT_CHARS}. */
+    /** Apply semantic compression to tool output exceeding {@link #MAX_TOOL_RESULT_CHARS}. */
     static ToolResult applyResultBudget(ToolResult result) {
         if (result == null || result.content() == null) return result;
         String content = result.content();
         if (content.length() <= MAX_TOOL_RESULT_CHARS) return result;
-        int omitted = content.length() - MAX_TOOL_RESULT_CHARS;
-        String truncated =
-                content.substring(0, MAX_TOOL_RESULT_CHARS)
-                        + "\n[truncated: "
-                        + omitted
-                        + " chars omitted. Set KAIRO_TOOL_RESULT_MAX_CHARS to increase limit]";
-        return new ToolResult(result.toolUseId(), truncated, result.isError(), result.metadata());
+        // Use semantic compression instead of hard truncation
+        String compressed = ToolOutputCompressor.compress(content, MAX_TOOL_RESULT_CHARS);
+        return new ToolResult(result.toolUseId(), compressed, result.isError(), result.metadata());
     }
 
     private final DefaultToolRegistry registry;
