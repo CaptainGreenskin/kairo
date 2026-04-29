@@ -143,6 +143,17 @@ public class DefaultHookChain implements HookChain {
         return fireEvent(event, OnToolResult.class);
     }
 
+    @Override
+    public <T> Mono<T> firePreComplete(T event) {
+        return fireEvent(event, PreComplete.class);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> Mono<HookResult<T>> firePreCompleteWithResult(T event) {
+        return fireEventWithResult(event, PreComplete.class);
+    }
+
     /**
      * Fire all {@link OnError}-annotated methods with the given error event. Best-effort: errors
      * thrown by handlers are logged and swallowed so hook failures never mask the original error.
@@ -390,6 +401,7 @@ public class DefaultHookChain implements HookChain {
         if (annotationType == OnSessionStart.class) return HookPhase.SESSION_START;
         if (annotationType == OnSessionEnd.class) return HookPhase.SESSION_END;
         if (annotationType == OnToolResult.class) return HookPhase.TOOL_RESULT;
+        if (annotationType == PreComplete.class) return HookPhase.PRE_COMPLETE;
         return null;
     }
 

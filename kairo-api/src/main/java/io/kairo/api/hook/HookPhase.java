@@ -43,5 +43,10 @@ public enum HookPhase {
     /** Fired after context compaction completes. */
     POST_COMPACT,
     /** Fired when a tool produces a result. */
-    TOOL_RESULT
+    TOOL_RESULT,
+    /**
+     * Fired when the model response contains no tool calls (agent about to return a final answer).
+     * Hooks returning INJECT force another iteration; analogous to claude-code preventContinuation.
+     */
+    PRE_COMPLETE
 }

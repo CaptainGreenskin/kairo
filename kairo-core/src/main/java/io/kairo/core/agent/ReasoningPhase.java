@@ -18,6 +18,7 @@ package io.kairo.core.agent;
 import io.kairo.api.execution.ExecutionEventType;
 import io.kairo.api.guardrail.*;
 import io.kairo.api.hook.*;
+import io.kairo.api.hook.PreCompleteEvent;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
@@ -324,8 +325,10 @@ class ReasoningPhase {
             List<Content.ToolUseContent> toolCalls,
             Supplier<Mono<Msg>> loopContinuation) {
         if (toolCalls.isEmpty()) {
-            log.debug("Agent '{}' produced final answer (no tool calls)", ctx.agentName());
-            return Mono.just(assistantMsg);
+            log.debug(
+                    "Agent '{}' final answer candidate — firing PRE_COMPLETE hooks",
+                    ctx.agentName());
+            return firePreComplete(assistantMsg, loopContinuation);
         }
 
         // Emit TOOL_CALL_REQUEST for each tool call (best-effort)
@@ -348,6 +351,36 @@ class ReasoningPhase {
             return toolEmissions.then(handleStreamingPreExecutedTools(toolCalls, loopContinuation));
         }
         return toolEmissions.then(toolPhase.executeAndContinue(toolCalls, loopContinuation));
+    }
+
+    /**
+     * Fire PRE_COMPLETE hooks. If any hook returns INJECT, inject the message and continue the
+     * loop. Otherwise return the final assistant message — analogous to claude-code
+     * preventContinuation.
+     */
+    private Mono<Msg> firePreComplete(Msg assistantMsg, Supplier<Mono<Msg>> loopContinuation) {
+        PreCompleteEvent event =
+                new PreCompleteEvent(
+                        assistantMsg, Collections.unmodifiableList(conversationHistory), false);
+        return ctx.hookChain()
+                .<PreCompleteEvent>firePreCompleteWithResult(event)
+                .flatMap(
+                        result -> {
+                            if (result.decision() == HookResult.Decision.INJECT) {
+                                log.debug(
+                                        "Agent '{}' PRE_COMPLETE hook injected message — continuing"
+                                                + " loop (source: {})",
+                                        ctx.agentName(),
+                                        result.hookSource());
+                                hookDecisions.applyInjections(result, conversationHistory);
+                                currentIteration.incrementAndGet();
+                                return loopContinuation.get();
+                            }
+                            log.debug(
+                                    "Agent '{}' PRE_COMPLETE hooks passed — returning final answer",
+                                    ctx.agentName());
+                            return Mono.just(assistantMsg);
+                        });
     }
 
     private boolean isStreamingPreExecuted(List<Content.ToolUseContent> toolCalls) {

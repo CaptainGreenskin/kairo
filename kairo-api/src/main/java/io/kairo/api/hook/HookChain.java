@@ -220,4 +220,30 @@ public interface HookChain {
     default <T> Mono<T> fireOnToolResult(T event) {
         return Mono.just(event);
     }
+
+    /**
+     * Fire the pre-complete event through all registered handlers.
+     *
+     * <p>Fired when the model response contains no tool calls (agent about to return a final
+     * answer). Hooks may return {@link HookResult.Decision#INJECT} to inject a message and force
+     * another iteration.
+     *
+     * @param event the event to fire
+     * @param <T> the event type
+     * @return a Mono emitting the (possibly modified) event
+     */
+    default <T> Mono<T> firePreComplete(T event) {
+        return Mono.just(event);
+    }
+
+    /**
+     * Fire the pre-complete event and return a structured result with behavioral decisions.
+     *
+     * @param event the event to fire
+     * @param <T> the event type
+     * @return a Mono emitting the structured hook result
+     */
+    default <T> Mono<HookResult<T>> firePreCompleteWithResult(T event) {
+        return firePreComplete(event).map(HookResult::proceed);
+    }
 }
