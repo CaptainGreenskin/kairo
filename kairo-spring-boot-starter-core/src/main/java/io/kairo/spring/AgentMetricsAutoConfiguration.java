@@ -16,6 +16,7 @@
 package io.kairo.spring;
 
 import io.kairo.core.health.AgentCallObserver;
+import io.kairo.observability.AgentCallMetrics;
 import io.kairo.observability.AgentMetrics;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -32,7 +33,13 @@ public class AgentMetricsAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public AgentMetrics agentMetrics(MeterRegistry registry) {
-        AgentMetrics metrics = new AgentMetrics(registry);
+        return new AgentMetrics(registry);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public AgentCallMetrics agentCallMetrics(MeterRegistry registry) {
+        AgentCallMetrics metrics = new AgentCallMetrics(registry);
         AgentCallObserver.setGlobal(metrics);
         return metrics;
     }
