@@ -34,21 +34,23 @@ import java.util.Map;
 /**
  * Writes multiple files in a single tool call, reducing tool call iterations for code generation.
  *
- * <p>Each file entry contains {@code path} and {@code content}. Individual file failures do not
- * abort the batch. Returns per-file results with metadata {@code successCount} and {@code
- * errorCount}.
+ * <p>Each file entry contains {@code path}, {@code content}, and optional {@code createDirs}.
+ * Supports {@code dryRun} mode to validate paths without writing. Uses two-phase execution: Phase 1
+ * validates all paths, Phase 2 writes all files. If any write fails, previously written files are
+ * rolled back. Returns per-file results with metadata {@code successCount} and {@code errorCount}.
  */
 @Tool(
         name = "batch_write",
         description =
-                "Write up to 20 files in a single call. Each file entry has 'path' and 'content'."
-                        + " Individual failures do not abort the batch. Returns per-file results"
-                        + " with successCount and errorCount metadata.",
+                "Write up to 50 files in a single call. Each file entry has 'path', 'content', and"
+                        + " optional 'createDirs' (default true). Supports 'dryRun' to validate"
+                        + " paths without writing. Uses two-phase execution: validates all paths"
+                        + " first, then writes all. On failure, rolls back previously written files.",
         category = ToolCategory.FILE_AND_CODE,
         sideEffect = ToolSideEffect.WRITE)
 public class BatchWriteTool implements ToolHandler {
 
-    private static final int MAX_FILES = 20;
+    private static final int MAX_FILES = 50;
 
     @Override
     public ToolResult execute(Map<String, Object> input) {
@@ -70,17 +72,20 @@ public class BatchWriteTool implements ToolHandler {
             return error("Too many files: maximum is " + MAX_FILES + ", got " + filesList.size());
         }
 
+        boolean dryRun = Boolean.parseBoolean(input.getOrDefault("dryRun", "false").toString());
+
         Path normalRoot = workspaceRoot.toAbsolutePath().normalize();
 
-        List<Map<String, Object>> results = new ArrayList<>();
-        int successCount = 0;
-        int errorCount = 0;
+        // Phase 1: Validate all entries and resolve paths
+        // Store validation results in order
+        List<ValidationResult> validations = new ArrayList<>();
 
         for (int i = 0; i < filesList.size(); i++) {
             Object item = filesList.get(i);
             if (!(item instanceof Map<?, ?> rawMap)) {
-                results.add(fileResult(null, false, "Entry at index " + i + " must be an object"));
-                errorCount++;
+                validations.add(
+                        new ValidationResult(
+                                null, false, "Entry at index " + i + " must be an object"));
                 continue;
             }
             @SuppressWarnings("unchecked")
@@ -95,49 +100,171 @@ public class BatchWriteTool implements ToolHandler {
                                     fileMap.getOrDefault("createDirs", "true").toString());
 
             if (pathStr == null || pathStr.isEmpty()) {
-                results.add(fileResult(pathStr, false, "empty path"));
-                errorCount++;
+                validations.add(new ValidationResult(pathStr, false, "empty path"));
                 continue;
             }
 
             if (content == null) {
-                results.add(fileResult(pathStr, false, "missing required field 'content'"));
-                errorCount++;
+                validations.add(
+                        new ValidationResult(pathStr, false, "missing required field 'content'"));
                 continue;
             }
 
             Path resolved = workspaceRoot.resolve(pathStr).toAbsolutePath().normalize();
             if (!resolved.startsWith(normalRoot)) {
-                results.add(fileResult(pathStr, false, "path traversal: outside workspace"));
-                errorCount++;
+                validations.add(
+                        new ValidationResult(pathStr, false, "path traversal: outside workspace"));
                 continue;
             }
 
+            validations.add(
+                    new ValidationResult(
+                            pathStr,
+                            true,
+                            null,
+                            new FileEntry(pathStr, content, createDirs, resolved)));
+        }
+
+        // Check if any validation errors
+        boolean hasValidationErrors = validations.stream().anyMatch(v -> !v.success());
+        int errorCount = (int) validations.stream().filter(v -> !v.success()).count();
+
+        if (hasValidationErrors) {
+            // Build results in order - mark all as failed
+            List<Map<String, Object>> results = new ArrayList<>();
+            for (ValidationResult v : validations) {
+                if (v.success()) {
+                    results.add(fileResult(v.path(), false, "skipped due to validation errors"));
+                } else {
+                    results.add(fileResult(v.path(), false, v.error()));
+                }
+            }
+            return new ToolResult(
+                    "batch_write",
+                    buildContent(results),
+                    false,
+                    Map.of(
+                            "successCount",
+                            0,
+                            "errorCount",
+                            results.size(),
+                            "dryRun",
+                            dryRun,
+                            "files",
+                            results));
+        }
+
+        // All validations passed
+        List<FileEntry> entries = validations.stream().map(ValidationResult::entry).toList();
+
+        // Dry run: all paths valid, no actual writes
+        if (dryRun) {
+            List<Map<String, Object>> results = new ArrayList<>();
+            for (FileEntry entry : entries) {
+                results.add(fileResult(entry.path(), true, null));
+            }
+            return new ToolResult(
+                    "batch_write",
+                    "All paths validated successfully (dry run)",
+                    false,
+                    Map.of(
+                            "successCount",
+                            entries.size(),
+                            "errorCount",
+                            0,
+                            "dryRun",
+                            true,
+                            "files",
+                            results));
+        }
+
+        // Phase 2: Write all files with rollback on failure
+        List<Path> writtenFiles = new ArrayList<>();
+        boolean hasFailure = false;
+        List<Map<String, Object>> results = new ArrayList<>();
+
+        for (FileEntry entry : entries) {
             try {
-                if (createDirs) {
-                    Path parent = resolved.getParent();
+                if (entry.createDirs()) {
+                    Path parent = entry.resolvedPath().getParent();
                     if (parent != null && !Files.exists(parent)) {
                         Files.createDirectories(parent);
                     }
                 }
 
-                byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
-                Files.write(resolved, bytes);
+                byte[] bytes = entry.content().getBytes(StandardCharsets.UTF_8);
+                Files.write(entry.resolvedPath(), bytes);
+                writtenFiles.add(entry.resolvedPath());
 
-                results.add(fileResult(pathStr, true, null));
-                successCount++;
+                results.add(fileResult(entry.path(), true, null));
 
             } catch (IOException e) {
-                results.add(fileResult(pathStr, false, e.getMessage()));
-                errorCount++;
+                hasFailure = true;
+                results.add(fileResult(entry.path(), false, e.getMessage()));
+                break;
             }
         }
 
+        // Rollback on failure
+        if (hasFailure) {
+            for (Path writtenPath : writtenFiles) {
+                try {
+                    Files.deleteIfExists(writtenPath);
+                } catch (IOException ignored) {
+                    // Best effort rollback
+                }
+            }
+
+            // Update results to mark rolled-back files
+            List<Map<String, Object>> rolledResults = new ArrayList<>();
+            for (Map<String, Object> r : results) {
+                if ((boolean) r.get("success")) {
+                    Map<String, Object> rolled = new HashMap<>(r);
+                    rolled.put("success", false);
+                    rolled.put("error", "rolled back due to subsequent failure");
+                    rolledResults.add(rolled);
+                } else {
+                    rolledResults.add(r);
+                }
+            }
+
+            return new ToolResult(
+                    "batch_write",
+                    buildContent(rolledResults),
+                    false,
+                    Map.of(
+                            "successCount",
+                            0,
+                            "errorCount",
+                            rolledResults.size(),
+                            "rolledBack",
+                            true,
+                            "files",
+                            rolledResults));
+        }
+
+        int successCount = entries.size();
         return new ToolResult(
                 "batch_write",
                 buildContent(results),
                 false,
-                Map.of("successCount", successCount, "errorCount", errorCount, "files", results));
+                Map.of(
+                        "successCount",
+                        successCount,
+                        "errorCount",
+                        0,
+                        "dryRun",
+                        false,
+                        "files",
+                        results));
+    }
+
+    private record FileEntry(String path, String content, boolean createDirs, Path resolvedPath) {}
+
+    private record ValidationResult(String path, boolean success, String error, FileEntry entry) {
+        ValidationResult(String path, boolean success, String error) {
+            this(path, success, error, null);
+        }
     }
 
     private Map<String, Object> fileResult(String path, boolean success, String error) {
