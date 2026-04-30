@@ -133,6 +133,13 @@ class HttpToolTest {
                     }
                 });
 
+        server.createContext(
+                "/redirect",
+                exchange -> {
+                    exchange.getResponseHeaders().set("Location", baseUrl + "/hello");
+                    exchange.sendResponseHeaders(301, -1);
+                });
+
         server.start();
     }
 
@@ -269,5 +276,21 @@ class HttpToolTest {
         ToolResult result = tool().execute(Map.of("url", baseUrl + "/hello"));
         assertThat(result.isError()).isFalse();
         assertThat(result.metadata()).containsEntry("method", "GET");
+    }
+
+    @Test
+    void followRedirectsTrueFollows301() {
+        ToolResult result = tool().execute(Map.of("url", baseUrl + "/redirect"));
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).isEqualTo("Hello, World!");
+        assertThat(result.metadata()).containsEntry("statusCode", 200);
+    }
+
+    @Test
+    void followRedirectsFalseDoesNotFollow301() {
+        ToolResult result =
+                tool().execute(Map.of("url", baseUrl + "/redirect", "followRedirects", false));
+        assertThat(result.isError()).isTrue();
+        assertThat(result.metadata()).containsEntry("statusCode", 301);
     }
 }
