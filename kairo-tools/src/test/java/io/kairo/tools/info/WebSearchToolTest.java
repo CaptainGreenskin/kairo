@@ -25,133 +25,119 @@ import io.kairo.api.tenant.TenantContext;
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
-import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import sun.misc.Unsafe;
 
+/**
+ * Tests for {@link WebSearchTool}.
+ *
+ * <p>Uses the package-private test constructor to inject a local {@link HttpServer} URL and a plain
+ * {@link HttpClient}, avoiding any need for HTTPS or proxy configuration.
+ */
 class WebSearchToolTest {
 
     private static HttpServer server;
-    private static int port;
-    private static String baseUrl;
+    private static String serverUrl;
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final String ORIGINAL_TAVILY_URL = "https://api.tavily.com/search";
+    private static final AtomicReference<String> scenario = new AtomicReference<>("normal");
 
     @BeforeAll
     static void startServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        port = server.getAddress().getPort();
-        baseUrl = "http://127.0.0.1:" + port;
+        int port = server.getAddress().getPort();
+        serverUrl = "http://127.0.0.1:" + port + "/search";
 
-        // Normal search with answer and results
         server.createContext(
                 "/search",
                 exchange -> {
-                    byte[] bodyBytes = exchange.getRequestBody().readAllBytes();
-                    String body = new String(bodyBytes, StandardCharsets.UTF_8);
-
-                    ObjectNode req = (ObjectNode) MAPPER.readTree(body);
-                    int maxResults = req.path("max_results").asInt(5);
-                    boolean includeAnswer = req.path("include_answer").asBoolean(true);
-
-                    ObjectNode resp = MAPPER.createObjectNode();
-                    if (includeAnswer) {
-                        resp.put("answer", "This is the AI-generated answer.");
+                    byte[] requestBytes;
+                    try (InputStream is = exchange.getRequestBody()) {
+                        requestBytes = is.readAllBytes();
                     }
 
-                    ArrayNode results = resp.putArray("results");
-                    for (int i = 0; i < Math.min(maxResults, 3); i++) {
-                        ObjectNode r = results.addObject();
-                        r.put("title", "Result Title " + (i + 1));
-                        r.put("url", "https://example.com/result" + (i + 1));
-                        r.put("content", "Content snippet for result " + (i + 1) + ".");
-                    }
-
-                    byte[] out = MAPPER.writeValueAsBytes(resp);
-                    exchange.getResponseHeaders().set("Content-Type", "application/json");
-                    exchange.sendResponseHeaders(200, out.length);
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(out);
-                    }
-                });
-
-        // Empty results
-        server.createContext(
-                "/empty",
-                exchange -> {
-                    ObjectNode resp = MAPPER.createObjectNode();
-                    resp.put("answer", "");
-                    resp.putArray("results");
-                    byte[] out = MAPPER.writeValueAsBytes(resp);
-                    exchange.getResponseHeaders().set("Content-Type", "application/json");
-                    exchange.sendResponseHeaders(200, out.length);
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(out);
-                    }
-                });
-
-        // 401 Unauthorized
-        server.createContext(
-                "/unauthorized",
-                exchange -> {
-                    byte[] body =
-                            "{\"error\":\"Invalid API key\"}".getBytes(StandardCharsets.UTF_8);
-                    exchange.getResponseHeaders().set("Content-Type", "application/json");
-                    exchange.sendResponseHeaders(401, body.length);
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(body);
-                    }
-                });
-
-        // 429 Rate limit
-        server.createContext(
-                "/ratelimit",
-                exchange -> {
-                    byte[] body =
-                            "{\"error\":\"Rate limit exceeded\"}".getBytes(StandardCharsets.UTF_8);
-                    exchange.getResponseHeaders().set("Content-Type", "application/json");
-                    exchange.sendResponseHeaders(429, body.length);
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(body);
-                    }
-                });
-
-        // Non-JSON response
-        server.createContext(
-                "/nonjson",
-                exchange -> {
-                    byte[] body = "This is not JSON".getBytes(StandardCharsets.UTF_8);
-                    exchange.getResponseHeaders().set("Content-Type", "text/plain");
-                    exchange.sendResponseHeaders(200, body.length);
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(body);
-                    }
-                });
-
-        // Slow endpoint for timeout testing
-        server.createContext(
-                "/slow",
-                exchange -> {
+                    // Parse max_results from the request body so the mock respects it
+                    int requestedMax = 5;
                     try {
-                        Thread.sleep(10_000);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
+                        com.fasterxml.jackson.databind.JsonNode req = MAPPER.readTree(requestBytes);
+                        com.fasterxml.jackson.databind.JsonNode mr = req.get("max_results");
+                        if (mr != null && mr.isInt()) requestedMax = mr.intValue();
+                    } catch (Exception ignored) {
                     }
-                    byte[] body = "late".getBytes(StandardCharsets.UTF_8);
-                    exchange.getResponseHeaders().set("Content-Type", "application/json");
-                    exchange.sendResponseHeaders(200, body.length);
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(body);
+
+                    final int maxForResponse = requestedMax;
+                    String currentScenario = scenario.get();
+
+                    switch (currentScenario) {
+                        case "unauthorized" -> {
+                            byte[] body =
+                                    "{\"error\":\"Invalid API key\"}"
+                                            .getBytes(StandardCharsets.UTF_8);
+                            exchange.getResponseHeaders().set("Content-Type", "application/json");
+                            exchange.sendResponseHeaders(401, body.length);
+                            try (OutputStream os = exchange.getResponseBody()) {
+                                os.write(body);
+                            }
+                        }
+                        case "ratelimit" -> {
+                            byte[] body =
+                                    "{\"error\":\"Rate limit exceeded\"}"
+                                            .getBytes(StandardCharsets.UTF_8);
+                            exchange.getResponseHeaders().set("Content-Type", "application/json");
+                            exchange.sendResponseHeaders(429, body.length);
+                            try (OutputStream os = exchange.getResponseBody()) {
+                                os.write(body);
+                            }
+                        }
+                        case "nonjson" -> {
+                            byte[] body = "This is not JSON".getBytes(StandardCharsets.UTF_8);
+                            exchange.getResponseHeaders().set("Content-Type", "text/plain");
+                            exchange.sendResponseHeaders(200, body.length);
+                            try (OutputStream os = exchange.getResponseBody()) {
+                                os.write(body);
+                            }
+                        }
+                        case "slow" -> {
+                            try {
+                                Thread.sleep(15_000);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                            }
+                            byte[] body = "late".getBytes(StandardCharsets.UTF_8);
+                            exchange.getResponseHeaders().set("Content-Type", "application/json");
+                            exchange.sendResponseHeaders(200, body.length);
+                            try (OutputStream os = exchange.getResponseBody()) {
+                                os.write(body);
+                            }
+                        }
+                        case "empty" -> {
+                            byte[] out = MAPPER.writeValueAsBytes(buildEmptyResponse());
+                            exchange.getResponseHeaders().set("Content-Type", "application/json");
+                            exchange.sendResponseHeaders(200, out.length);
+                            try (OutputStream os = exchange.getResponseBody()) {
+                                os.write(out);
+                            }
+                        }
+                        default -> {
+                            byte[] out =
+                                    MAPPER.writeValueAsBytes(
+                                            buildNormalResponse(maxForResponse, true));
+                            exchange.getResponseHeaders().set("Content-Type", "application/json");
+                            exchange.sendResponseHeaders(200, out.length);
+                            try (OutputStream os = exchange.getResponseBody()) {
+                                os.write(out);
+                            }
+                        }
                     }
                 });
 
@@ -165,15 +151,23 @@ class WebSearchToolTest {
 
     @BeforeEach
     void setUp() {
-        setStaticField(WebSearchTool.class, "TAVILY_URL", baseUrl + "/search");
+        scenario.set("normal");
     }
 
     @AfterEach
     void tearDown() {
-        setStaticField(WebSearchTool.class, "TAVILY_URL", ORIGINAL_TAVILY_URL);
+        scenario.set("normal");
     }
 
-    /** Creates a ToolContext with TAVILY_API_KEY injected. */
+    private WebSearchTool tool() {
+        return new WebSearchTool(serverUrl, HttpClient.newHttpClient());
+    }
+
+    private WebSearchTool toolWithTimeout(Duration timeout) {
+        HttpClient client = HttpClient.newBuilder().connectTimeout(timeout).build();
+        return new WebSearchTool(serverUrl, client);
+    }
+
     private static ToolContext toolContext(String apiKey) {
         return new ToolContext(
                 "test-agent",
@@ -183,42 +177,32 @@ class WebSearchToolTest {
                 TenantContext.SINGLE);
     }
 
-    /** Uses Unsafe to set a static final field for testing. */
-    @SuppressWarnings("deprecation")
-    private static void setStaticField(Class<?> clazz, String fieldName, Object value) {
-        try {
-            Field field = clazz.getDeclaredField(fieldName);
-            field.setAccessible(true);
-            Field unsafeField = Unsafe.class.getDeclaredField("theUnsafe");
-            unsafeField.setAccessible(true);
-            Unsafe unsafe = (Unsafe) unsafeField.get(null);
-            long offset = unsafe.staticFieldOffset(field);
-            unsafe.putObject(clazz, offset, value);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to set static field: " + fieldName, e);
+    private static ObjectNode buildNormalResponse(int maxResults, boolean includeAnswer) {
+        ObjectNode resp = MAPPER.createObjectNode();
+        if (includeAnswer) {
+            resp.put("answer", "This is the AI-generated answer.");
         }
+        ArrayNode results = resp.putArray("results");
+        for (int i = 0; i < maxResults; i++) {
+            ObjectNode r = results.addObject();
+            r.put("title", "Result Title " + (i + 1));
+            r.put("url", "https://example.com/result" + (i + 1));
+            r.put("content", "Content snippet for result " + (i + 1) + ".");
+        }
+        return resp;
     }
 
-    /** Uses reflection to set an instance field for testing. */
-    private static void setInstanceField(Object target, String fieldName, Object value) {
-        try {
-            Field field = target.getClass().getDeclaredField(fieldName);
-            field.setAccessible(true);
-            Field unsafeField = Unsafe.class.getDeclaredField("theUnsafe");
-            unsafeField.setAccessible(true);
-            Unsafe unsafe = (Unsafe) unsafeField.get(null);
-            long offset = unsafe.objectFieldOffset(field);
-            unsafe.putObject(target, offset, value);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to set instance field: " + fieldName, e);
-        }
+    private static ObjectNode buildEmptyResponse() {
+        ObjectNode resp = MAPPER.createObjectNode();
+        resp.put("answer", "");
+        resp.putArray("results");
+        return resp;
     }
 
     @Test
     void normalSearchReturnsResults() {
-        WebSearchTool tool = new WebSearchTool();
         ToolResult result =
-                tool.execute(Map.of("query", "Java 21 features"), toolContext("test-key"));
+                tool().execute(Map.of("query", "Java 21 features"), toolContext("test-key"));
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("Answer");
         assertThat(result.content()).contains("AI-generated answer");
@@ -233,60 +217,54 @@ class WebSearchToolTest {
 
     @Test
     void queryMissingReturnsError() {
-        WebSearchTool tool = new WebSearchTool();
-        ToolResult result = tool.execute(Map.of(), toolContext("test-key"));
+        ToolResult result = tool().execute(Map.of(), toolContext("test-key"));
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("query");
     }
 
     @Test
     void queryBlankReturnsError() {
-        WebSearchTool tool = new WebSearchTool();
-        ToolResult result = tool.execute(Map.of("query", "   "), toolContext("test-key"));
+        ToolResult result = tool().execute(Map.of("query", "   "), toolContext("test-key"));
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("query");
     }
 
     @Test
     void apiKeyNotConfiguredReturnsError() {
-        WebSearchTool tool = new WebSearchTool();
-        ToolResult result = tool.execute(Map.of("query", "test"));
+        WebSearchTool noCtxTool = new WebSearchTool(serverUrl, HttpClient.newHttpClient());
+        ToolResult result = noCtxTool.execute(Map.of("query", "test"));
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("TAVILY_API_KEY");
     }
 
     @Test
     void apiKeyBlankReturnsError() {
-        WebSearchTool tool = new WebSearchTool();
-        ToolContext ctx = toolContext("   ");
-        ToolResult result = tool.execute(Map.of("query", "test"), ctx);
+        ToolResult result = tool().execute(Map.of("query", "test"), toolContext("   "));
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("TAVILY_API_KEY");
     }
 
     @Test
     void unauthorizedReturnsError() {
-        setStaticField(WebSearchTool.class, "TAVILY_URL", baseUrl + "/unauthorized");
-        WebSearchTool tool = new WebSearchTool();
-        ToolResult result = tool.execute(Map.of("query", "test"), toolContext("invalid-key"));
+        scenario.set("unauthorized");
+        ToolResult result = tool().execute(Map.of("query", "test"), toolContext("invalid-key"));
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("401");
     }
 
     @Test
     void rateLimitReturnsErrorWithStatusCode() {
-        setStaticField(WebSearchTool.class, "TAVILY_URL", baseUrl + "/ratelimit");
-        WebSearchTool tool = new WebSearchTool();
-        ToolResult result = tool.execute(Map.of("query", "test"), toolContext("test-key"));
+        scenario.set("ratelimit");
+        ToolResult result = tool().execute(Map.of("query", "test"), toolContext("test-key"));
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("429");
     }
 
     @Test
     void emptyResultsReturnsNotErrorWithNoResults() {
-        setStaticField(WebSearchTool.class, "TAVILY_URL", baseUrl + "/empty");
-        WebSearchTool tool = new WebSearchTool();
-        ToolResult result = tool.execute(Map.of("query", "obscure query"), toolContext("test-key"));
+        scenario.set("empty");
+        ToolResult result =
+                tool().execute(Map.of("query", "obscure query"), toolContext("test-key"));
         assertThat(result.isError()).isFalse();
         @SuppressWarnings("unchecked")
         java.util.List<Map<String, String>> results =
@@ -297,10 +275,10 @@ class WebSearchToolTest {
 
     @Test
     void maxResultsLimitsResultCount() {
-        WebSearchTool tool = new WebSearchTool();
         ToolResult result =
-                tool.execute(
-                        Map.of("query", "test query", "maxResults", 2), toolContext("test-key"));
+                tool().execute(
+                                Map.of("query", "test query", "maxResults", 2),
+                                toolContext("test-key"));
         assertThat(result.isError()).isFalse();
         @SuppressWarnings("unchecked")
         java.util.List<Map<String, String>> results =
@@ -310,8 +288,7 @@ class WebSearchToolTest {
 
     @Test
     void searchResultsCorrectlyParseTitleUrlContent() {
-        WebSearchTool tool = new WebSearchTool();
-        ToolResult result = tool.execute(Map.of("query", "test"), toolContext("test-key"));
+        ToolResult result = tool().execute(Map.of("query", "test"), toolContext("test-key"));
         assertThat(result.isError()).isFalse();
         @SuppressWarnings("unchecked")
         java.util.List<Map<String, String>> results =
@@ -325,30 +302,26 @@ class WebSearchToolTest {
 
     @Test
     void nonJsonResponseReturnsError() {
-        setStaticField(WebSearchTool.class, "TAVILY_URL", baseUrl + "/nonjson");
-        WebSearchTool tool = new WebSearchTool();
-        ToolResult result = tool.execute(Map.of("query", "test"), toolContext("test-key"));
+        scenario.set("nonjson");
+        ToolResult result = tool().execute(Map.of("query", "test"), toolContext("test-key"));
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("failed");
     }
 
     @Test
     void searchUsesToolContextApiKey() {
-        WebSearchTool tool = new WebSearchTool();
         ToolResult result =
-                tool.execute(Map.of("query", "context key test"), toolContext("ctx-api-key"));
+                tool().execute(Map.of("query", "context key test"), toolContext("ctx-api-key"));
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("Answer");
     }
 
     @Test
     void timeoutReturnsError() {
-        setStaticField(WebSearchTool.class, "TAVILY_URL", baseUrl + "/slow");
-        HttpClient shortTimeoutClient =
-                HttpClient.newBuilder().connectTimeout(Duration.ofMillis(500)).build();
-        WebSearchTool tool = new WebSearchTool();
-        setInstanceField(tool, "httpClient", shortTimeoutClient);
-        ToolResult result = tool.execute(Map.of("query", "slow query"), toolContext("test-key"));
+        scenario.set("slow");
+        ToolResult result =
+                toolWithTimeout(Duration.ofMillis(300))
+                        .execute(Map.of("query", "slow query"), toolContext("test-key"));
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("Tavily API call failed");
     }
