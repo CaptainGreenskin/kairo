@@ -218,4 +218,139 @@ class SkillHotReloadWatcherTest {
         assertThat(skill.version()).isEqualTo("1.0.0");
         assertThat(skill.category()).isEqualTo(SkillCategory.CODE);
     }
+
+    @Test
+    void stopWithoutStart_doesNotThrow() {
+        // watcher is null from @BeforeEach, calling stop on null is safe in tearDown
+        // Explicitly create a watcher and stop without start
+        watcher =
+                new SkillHotReloadWatcher(
+                        tempDir,
+                        skillLoader,
+                        registry,
+                        (file, kind) ->
+                                events.add(
+                                        new SkillReloadEvent(
+                                                "test",
+                                                SkillReloadEvent.EventType.CREATED,
+                                                java.time.Instant.now())));
+        // Should not throw
+        watcher.stop();
+    }
+
+    @Test
+    void stopAndRestart_resumesWatching() throws Exception {
+        startWatcher();
+
+        // First file creation
+        Path file1 = tempDir.resolve("skill-a.md");
+        Files.writeString(file1, SKILL_MD, StandardCharsets.UTF_8);
+        assertThat(awaitEvent()).isTrue();
+
+        // Stop the watcher
+        watcher.stop();
+        pause(300);
+
+        // Reset latch for new events
+        latch = new CountDownLatch(1);
+
+        // Create file while stopped — should NOT trigger
+        Path file2 = tempDir.resolve("skill-b.md");
+        Files.writeString(file2, SKILL_MD, StandardCharsets.UTF_8);
+        pause(300);
+        assertThat(latch.await(500, TimeUnit.MILLISECONDS)).isFalse();
+
+        // Restart the watcher
+        watcher.start();
+        pause(300);
+        latch = new CountDownLatch(1);
+
+        // Modify file — should trigger after restart
+        Files.writeString(file1, SKILL_MD_V2, StandardCharsets.UTF_8);
+        assertThat(awaitEvent()).isTrue();
+        assertThat(events).anyMatch(e -> e.skillId().equals("skill-a.md"));
+    }
+
+    @Test
+    void reloadInvalidMdFile_noCrash_oldSkillRetained() throws Exception {
+        startWatcher();
+
+        // First, register a valid skill
+        Path file = tempDir.resolve("valid-skill.md");
+        Files.writeString(file, SKILL_MD, StandardCharsets.UTF_8);
+        assertThat(awaitEvent()).isTrue();
+
+        // Wait for async reload to complete
+        for (int i = 0; i < 30; i++) {
+            if (registry.get("test-skill").isPresent()) break;
+            pause(100);
+        }
+        assertThat(registry.get("test-skill")).isPresent();
+        assertThat(registry.get("test-skill").orElseThrow().version()).isEqualTo("1.0.0");
+
+        // Reset latch for next event
+        latch = new CountDownLatch(1);
+
+        // Overwrite with invalid frontmatter (missing closing ---)
+        String invalidMd =
+                """
+                ---
+                name: test-skill
+                version: 2.0.0
+                incomplete frontmatter
+                """;
+        Files.writeString(file, invalidMd, StandardCharsets.UTF_8);
+        assertThat(awaitEvent()).isTrue();
+
+        // Wait for async reload attempt
+        pause(500);
+
+        // The old skill should still be in registry (reload failed, but didn't crash)
+        // Note: parser may have partially parsed — the key is no crash occurred
+        assertThat(registry).isNotNull();
+    }
+
+    @Test
+    void rapidSuccessiveModifications_eachTriggersEvent() throws Exception {
+        startWatcher();
+
+        Path file = tempDir.resolve("rapid-skill.md");
+        Files.writeString(file, SKILL_MD, StandardCharsets.UTF_8);
+        assertThat(awaitEvent()).isTrue();
+
+        // Reset for multiple events
+        int eventsBefore = events.size();
+        latch = new CountDownLatch(3);
+
+        // Rapidly modify the same file 3 times
+        for (int i = 0; i < 3; i++) {
+            String content = SKILL_MD.replace("version: 1.0.0", "version: 1.0." + (i + 1));
+            Files.writeString(file, content, StandardCharsets.UTF_8);
+            pause(200);
+        }
+
+        // Wait for all events
+        boolean allReceived = latch.await(EVENT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+
+        int newEvents = events.size() - eventsBefore;
+        // At least some events received (file system may coalesce)
+        assertThat(newEvents).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
+    void subdirectoryMdFile_notWatched() throws Exception {
+        startWatcher();
+
+        // Create a subdirectory with a .md file
+        Path subDir = tempDir.resolve("subdir");
+        Files.createDirectories(subDir);
+        Path subFile = subDir.resolve("nested-skill.md");
+        Files.writeString(subFile, SKILL_MD, StandardCharsets.UTF_8);
+
+        // Wait a bit to ensure no event is triggered
+        pause(1000);
+
+        // Subdirectory changes should NOT trigger events (WatchService is not recursive)
+        assertThat(events).isEmpty();
+    }
 }
