@@ -95,6 +95,17 @@ class HttpToolTest {
                 });
 
         server.createContext(
+                "/notfound",
+                exchange -> {
+                    byte[] body = "Not Found".getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
+                    exchange.sendResponseHeaders(404, body.length);
+                    try (OutputStream os = exchange.getResponseBody()) {
+                        os.write(body);
+                    }
+                });
+
+        server.createContext(
                 "/slow",
                 exchange -> {
                     try {
@@ -221,5 +232,42 @@ class HttpToolTest {
                 productionTool.execute(Map.of("url", "http://127.0.0.1:" + port + "/hello"));
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("SSRF protection");
+    }
+
+    @Test
+    void notFoundReturnsError() {
+        ToolResult result = tool().execute(Map.of("url", baseUrl + "/notfound"));
+        assertThat(result.isError()).isTrue();
+        assertThat(result.content()).isEqualTo("Not Found");
+        assertThat(result.metadata()).containsEntry("statusCode", 404);
+    }
+
+    @Test
+    void invalidUrlReturnsError() {
+        ToolResult result = tool().execute(Map.of("url", "ftp://example.com/resource"));
+        assertThat(result.isError()).isTrue();
+        assertThat(result.content()).contains("URL must start with http:// or https://");
+    }
+
+    @Test
+    void missingUrlReturnsError() {
+        ToolResult result = tool().execute(Map.of("method", "GET"));
+        assertThat(result.isError()).isTrue();
+        assertThat(result.content()).contains("'url' is required");
+    }
+
+    @Test
+    void unsupportedMethodDefaultsToGet() {
+        ToolResult result = tool().execute(Map.of("url", baseUrl + "/hello", "method", "OPTIONS"));
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).isEqualTo("Hello, World!");
+        assertThat(result.metadata()).containsEntry("method", "GET");
+    }
+
+    @Test
+    void defaultMethodIsGet() {
+        ToolResult result = tool().execute(Map.of("url", baseUrl + "/hello"));
+        assertThat(result.isError()).isFalse();
+        assertThat(result.metadata()).containsEntry("method", "GET");
     }
 }
