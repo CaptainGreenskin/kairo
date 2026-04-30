@@ -33,19 +33,35 @@ import org.slf4j.LoggerFactory;
  */
 public final class SkillHotReloadWatcher {
 
+    /** Callback invoked when a skill file change is detected. */
+    @FunctionalInterface
+    public interface ChangeListener {
+        void onChanged(Path file, WatchEvent.Kind<Path> kind);
+    }
+
     private static final Logger log = LoggerFactory.getLogger(SkillHotReloadWatcher.class);
 
     private final Path watchDir;
     private final SkillLoader skillLoader;
     private final SkillRegistry skillRegistry;
+    private final ChangeListener changeListener;
     private volatile boolean running;
     private Thread watchThread;
 
     public SkillHotReloadWatcher(
             Path watchDir, SkillLoader skillLoader, SkillRegistry skillRegistry) {
+        this(watchDir, skillLoader, skillRegistry, null);
+    }
+
+    public SkillHotReloadWatcher(
+            Path watchDir,
+            SkillLoader skillLoader,
+            SkillRegistry skillRegistry,
+            ChangeListener changeListener) {
         this.watchDir = watchDir;
         this.skillLoader = skillLoader;
         this.skillRegistry = skillRegistry;
+        this.changeListener = changeListener;
     }
 
     public void start() throws IOException {
@@ -83,6 +99,12 @@ public final class SkillHotReloadWatcher {
                     WatchEvent<Path> ev = (WatchEvent<Path>) event;
                     Path file = watchDir.resolve(ev.context());
                     if (!file.toString().endsWith(".md")) continue;
+
+                    @SuppressWarnings("unchecked")
+                    WatchEvent.Kind<Path> pathKind = (WatchEvent.Kind<Path>) kind;
+                    if (changeListener != null) {
+                        changeListener.onChanged(file, pathKind);
+                    }
 
                     log.debug("Skill file changed: {}", file);
                     try {
