@@ -114,4 +114,31 @@ class WriteToolTest {
         assertFalse(result.isError());
         assertEquals(5, result.metadata().get("bytesWritten"));
     }
+
+    @Test
+    void unicodeContentPreserved() throws IOException {
+        Path file = tempDir.resolve("unicode.txt");
+        String content = "你好世界 🌍 Ελληνικά العربية";
+        ToolResult result = tool.execute(Map.of("path", file.toString(), "content", content));
+        assertFalse(result.isError());
+        assertEquals(content, Files.readString(file));
+    }
+
+    @Test
+    void crlfLineEndingsPreserved() throws IOException {
+        Path file = tempDir.resolve("crlf.txt");
+        String content = "line1\r\nline2\r\nline3\r\n";
+        ToolResult result = tool.execute(Map.of("path", file.toString(), "content", content));
+        assertFalse(result.isError());
+        assertEquals(content, Files.readString(file));
+    }
+
+    @Test
+    void deepNestedDirectoriesCreated() throws IOException {
+        Path file = tempDir.resolve("l1/l2/l3/l4/l5/deep.txt");
+        ToolResult result = tool.execute(Map.of("path", file.toString(), "content", "very deep"));
+        assertFalse(result.isError());
+        assertTrue(Files.exists(file));
+        assertEquals("very deep", Files.readString(file));
+    }
 }
