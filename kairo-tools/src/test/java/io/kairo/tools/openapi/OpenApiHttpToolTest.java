@@ -265,10 +265,108 @@ class OpenApiHttpToolTest {
     }
 
     @Test
-    @DisplayName("DELETE method is dispatched without body")
-    void delete_dispatched() {
-        OpenApiHttpTool tool =
-                new OpenApiHttpTool("https://api.example.com", fixedResponseClient("{}"));
-        assertEquals("{}", tool.execute("DELETE", "/users/1", Map.of(), Set.of(), Set.of()));
+    @DisplayName("POST request body contains non-path/non-query params as JSON")
+    void post_requestBodyContainsNonPathQueryParams() {
+        List<HttpRequest> captured = new ArrayList<>();
+        StubHttpClient client =
+                new StubHttpClient() {
+                    @Override
+                    @SuppressWarnings("unchecked")
+                    public <T> HttpResponse<T> send(
+                            HttpRequest req, HttpResponse.BodyHandler<T> handler) {
+                        captured.add(req);
+                        return (HttpResponse<T>) fakeResponse("{\"id\":1}", req.uri());
+                    }
+                };
+
+        OpenApiHttpTool tool = new OpenApiHttpTool("https://api.example.com", client);
+        tool.execute(
+                "POST",
+                "/users",
+                Map.of("name", "Bob", "email", "bob@example.com"),
+                Set.of(),
+                Set.of());
+
+        assertEquals(1, captured.size());
+        HttpRequest request = captured.get(0);
+        assertEquals("POST", request.method());
+        assertEquals("application/json", request.headers().firstValue("Content-Type").orElse(null));
+    }
+
+    @Test
+    @DisplayName("PUT method is dispatched with body")
+    void put_dispatchedWithBody() {
+        List<HttpRequest> captured = new ArrayList<>();
+        StubHttpClient client =
+                new StubHttpClient() {
+                    @Override
+                    @SuppressWarnings("unchecked")
+                    public <T> HttpResponse<T> send(
+                            HttpRequest req, HttpResponse.BodyHandler<T> handler) {
+                        captured.add(req);
+                        return (HttpResponse<T>) fakeResponse("{\"updated\":true}", req.uri());
+                    }
+                };
+
+        OpenApiHttpTool tool = new OpenApiHttpTool("https://api.example.com", client);
+        String result =
+                tool.execute(
+                        "PUT",
+                        "/users/{id}",
+                        Map.of("id", "10", "name", "Charlie"),
+                        Set.of("id"),
+                        Set.of());
+
+        assertEquals("{\"updated\":true}", result);
+        assertEquals(1, captured.size());
+        assertEquals("PUT", captured.get(0).method());
+        assertEquals(
+                "application/json",
+                captured.get(0).headers().firstValue("Content-Type").orElse(null));
+    }
+
+    @Test
+    @DisplayName("Multiple query parameters are joined with &")
+    void multipleQueryParams_joinedWithAmpersand() {
+        List<URI> captured = new ArrayList<>();
+        StubHttpClient client =
+                new StubHttpClient() {
+                    @Override
+                    @SuppressWarnings("unchecked")
+                    public <T> HttpResponse<T> send(
+                            HttpRequest req, HttpResponse.BodyHandler<T> handler) {
+                        captured.add(req.uri());
+                        return (HttpResponse<T>) fakeResponse("[]", req.uri());
+                    }
+                };
+
+        OpenApiHttpTool tool = new OpenApiHttpTool("https://api.example.com", client);
+        tool.execute(
+                "GET", "/search", Map.of("q", "test", "limit", 10), Set.of(), Set.of("q", "limit"));
+
+        String url = captured.get(0).toString();
+        assertTrue(url.contains("q=test"), "URL should contain q: " + url);
+        assertTrue(url.contains("limit=10"), "URL should contain limit: " + url);
+        assertTrue(url.contains("&"), "URL should contain & between query params: " + url);
+    }
+
+    @Test
+    @DisplayName("InterruptedException returns JSON error string")
+    void interruptedException_returnsErrorJson() {
+        StubHttpClient interruptingClient =
+                new StubHttpClient() {
+                    @Override
+                    public <T> HttpResponse<T> send(
+                            HttpRequest req, HttpResponse.BodyHandler<T> handler)
+                            throws InterruptedException {
+                        throw new InterruptedException("thread interrupted");
+                    }
+                };
+
+        OpenApiHttpTool tool = new OpenApiHttpTool("https://api.example.com", interruptingClient);
+        String result = tool.execute("GET", "/ping", Map.of(), Set.of(), Set.of());
+
+        assertTrue(result.startsWith("{\"error\":"), "Should return error JSON: " + result);
+        assertTrue(result.contains("thread interrupted"));
     }
 }
