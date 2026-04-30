@@ -49,13 +49,25 @@ import java.util.Map;
         sideEffect = ToolSideEffect.READ_ONLY)
 public class WebSearchTool implements ToolHandler {
 
-    private static final String TAVILY_URL = "https://api.tavily.com/search";
+    private static final String DEFAULT_TAVILY_URL = "https://api.tavily.com/search";
     private static final int TIMEOUT_SECONDS = 10;
     private static final int DEFAULT_MAX_RESULTS = 5;
 
     private final ObjectMapper mapper = new ObjectMapper();
-    private final HttpClient httpClient =
-            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS)).build();
+    private final HttpClient httpClient;
+    private final String tavilyUrl;
+
+    public WebSearchTool() {
+        this.tavilyUrl = DEFAULT_TAVILY_URL;
+        this.httpClient =
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS)).build();
+    }
+
+    /** Package-private for testing: inject custom URL and HTTP client. */
+    WebSearchTool(String tavilyUrl, HttpClient httpClient) {
+        this.tavilyUrl = tavilyUrl;
+        this.httpClient = httpClient;
+    }
 
     @Override
     public ToolResult execute(Map<String, Object> input) {
@@ -107,7 +119,7 @@ public class WebSearchTool implements ToolHandler {
 
         HttpRequest request =
                 HttpRequest.newBuilder()
-                        .uri(URI.create(TAVILY_URL))
+                        .uri(URI.create(tavilyUrl))
                         .header("Content-Type", "application/json")
                         .header("Accept", "application/json")
                         .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
