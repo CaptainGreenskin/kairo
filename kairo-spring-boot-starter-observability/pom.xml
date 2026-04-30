@@ -33,6 +33,13 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Spring Boot Actuator (optional — provides @Endpoint for kairo-metrics). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-actuator</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- OTel API is enough to wire the exporter; apps bring the SDK + exporters themselves. -->
         <dependency>
             <groupId>io.opentelemetry</groupId>

@@ -20,7 +20,9 @@ import io.kairo.api.event.KairoEventBus;
 import io.kairo.observability.CircuitBreakerMetricsExporter;
 import io.kairo.observability.event.KairoEventOTelExporter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.logs.LoggerProvider;
+import io.opentelemetry.api.trace.Tracer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -100,6 +102,18 @@ public class ObservabilityAutoConfiguration {
                 .subscribe(exporter::onEvent);
         log.info("Circuit breaker metrics exporter wired");
         return exporter;
+    }
+
+    /**
+     * Exposes the {@code /actuator/kairo-metrics} endpoint when an {@link OpenTelemetry} bean is
+     * present.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnBean(OpenTelemetry.class)
+    public KairoMetricsEndpoint kairoMetricsEndpoint(OpenTelemetry openTelemetry) {
+        Tracer tracer = openTelemetry.getTracer("io.kairo.spring.observability");
+        return new KairoMetricsEndpoint(tracer);
     }
 
     private static Pattern compile(ObservabilityProperties.EventOTel cfg) {
