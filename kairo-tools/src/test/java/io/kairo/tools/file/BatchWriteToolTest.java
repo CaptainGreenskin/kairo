@@ -86,9 +86,9 @@ class BatchWriteToolTest {
     }
 
     @Test
-    void rejectsMoreThan20Files() {
+    void rejectsMoreThan50Files() {
         List<Object> files = new ArrayList<>();
-        for (int i = 0; i < 21; i++) {
+        for (int i = 0; i < 51; i++) {
             files.add(fileEntry("f" + i + ".txt", "x"));
         }
 
@@ -99,7 +99,7 @@ class BatchWriteToolTest {
     }
 
     @Test
-    void emptyPathFailsThatFileOthersSucceed() throws IOException {
+    void emptyPathFailsAllFilesAtomic() throws IOException {
         List<Object> files =
                 List.of(
                         fileEntry("good.txt", "ok"),
@@ -109,12 +109,14 @@ class BatchWriteToolTest {
         ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
 
         assertThat(result.isError()).isFalse();
+        // Atomic behavior: all entries fail when any validation error exists
+        assertThat(result.metadata().get("successCount")).isEqualTo(0);
+        assertThat(result.metadata().get("errorCount")).isEqualTo(3);
         assertThat(result.content()).contains("[ERROR: empty path]");
-        assertThat(result.content()).contains("Successfully written");
-        assertThat(result.metadata().get("successCount")).isEqualTo(2);
-        assertThat(result.metadata().get("errorCount")).isEqualTo(1);
-        assertThat(Files.readString(tempDir.resolve("good.txt"))).isEqualTo("ok");
-        assertThat(Files.readString(tempDir.resolve("also_good.txt"))).isEqualTo("ok2");
+        assertThat(result.content()).contains("skipped due to validation errors");
+        // No files should be written
+        assertThat(Files.exists(tempDir.resolve("good.txt"))).isFalse();
+        assertThat(Files.exists(tempDir.resolve("also_good.txt"))).isFalse();
     }
 
     @Test
@@ -135,12 +137,13 @@ class BatchWriteToolTest {
         ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
 
         assertThat(result.isError()).isFalse();
+        // Atomic behavior: all entries fail when any validation error exists
+        assertThat(result.metadata().get("successCount")).isEqualTo(0);
+        assertThat(result.metadata().get("errorCount")).isEqualTo(2);
         assertThat(result.content()).contains("[ERROR: path traversal");
-        assertThat(result.content()).contains("Successfully written");
-        assertThat(result.metadata().get("successCount")).isEqualTo(1);
-        assertThat(result.metadata().get("errorCount")).isEqualTo(1);
+        assertThat(result.content()).contains("skipped due to validation errors");
         assertThat(Files.exists(tempDir.getParent().resolve("escape.txt"))).isFalse();
-        assertThat(Files.readString(tempDir.resolve("safe.txt"))).isEqualTo("ok");
+        assertThat(Files.exists(tempDir.resolve("safe.txt"))).isFalse();
     }
 
     @Test
@@ -198,7 +201,7 @@ class BatchWriteToolTest {
     }
 
     @Test
-    void perFileResultContainsPathAndSuccessAndError() throws IOException {
+    void perFileResultWithValidationError() throws IOException {
         List<Object> files = List.of(fileEntry("ok.txt", "yes"), fileEntry("", "bad"));
 
         ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
@@ -209,10 +212,11 @@ class BatchWriteToolTest {
                 (List<Map<String, Object>>) result.metadata().get("files");
         assertThat(fileResults).hasSize(2);
 
+        // Atomic behavior: all entries fail
         Map<String, Object> ok = fileResults.get(0);
         assertThat(ok.get("path")).isEqualTo("ok.txt");
-        assertThat(ok.get("success")).isEqualTo(true);
-        assertThat(ok).doesNotContainKey("error");
+        assertThat(ok.get("success")).isEqualTo(false);
+        assertThat(ok.get("error")).isEqualTo("skipped due to validation errors");
 
         Map<String, Object> bad = fileResults.get(1);
         assertThat(bad.get("path")).isEqualTo("");
@@ -221,7 +225,7 @@ class BatchWriteToolTest {
     }
 
     @Test
-    void missingContentFailsThatFile() throws IOException {
+    void missingContentFailsAllFilesAtomic() throws IOException {
         Map<String, Object> noContent = new HashMap<>();
         noContent.put("path", "noContent.txt");
         // no 'content' key
@@ -231,23 +235,133 @@ class BatchWriteToolTest {
         ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
 
         assertThat(result.isError()).isFalse();
-        assertThat(result.metadata().get("successCount")).isEqualTo(1);
-        assertThat(result.metadata().get("errorCount")).isEqualTo(1);
+        // Atomic behavior: all entries fail when any validation error exists
+        assertThat(result.metadata().get("successCount")).isEqualTo(0);
+        assertThat(result.metadata().get("errorCount")).isEqualTo(2);
         assertThat(result.content()).contains("[ERROR: missing required field 'content']");
-        assertThat(Files.readString(tempDir.resolve("good.txt"))).isEqualTo("ok");
+        assertThat(result.content()).contains("skipped due to validation errors");
+        // No files should be written
+        assertThat(Files.exists(tempDir.resolve("good.txt"))).isFalse();
     }
 
     @Test
-    void writesExactly20FilesWithoutError() throws IOException {
+    void writesExactly50FilesWithoutError() throws IOException {
         List<Object> files = new ArrayList<>();
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < 50; i++) {
             files.add(fileEntry("f" + i + ".txt", "content" + i));
         }
 
         ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
 
         assertThat(result.isError()).isFalse();
-        assertThat(result.metadata().get("successCount")).isEqualTo(20);
+        assertThat(result.metadata().get("successCount")).isEqualTo(50);
         assertThat(result.metadata().get("errorCount")).isEqualTo(0);
+    }
+
+    @Test
+    void dryRunValidatesPathsButDoesNotWrite() throws IOException {
+        List<Object> files = List.of(fileEntry("dryrun.txt", "should not exist"));
+
+        ToolResult result = tool.execute(Map.of("files", files, "dryRun", true), ctx(tempDir));
+
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).contains("dry run");
+        assertThat(result.metadata().get("dryRun")).isEqualTo(true);
+        assertThat(result.metadata().get("successCount")).isEqualTo(1);
+        assertThat(Files.exists(tempDir.resolve("dryrun.txt"))).isFalse();
+    }
+
+    @Test
+    void dryRunWithMixedValidAndInvalidPaths() throws IOException {
+        List<Object> files =
+                List.of(
+                        fileEntry("valid.txt", "ok"),
+                        fileEntry("../escape.txt", "evil"),
+                        fileEntry("also_valid.txt", "ok2"));
+
+        ToolResult result = tool.execute(Map.of("files", files, "dryRun", true), ctx(tempDir));
+
+        assertThat(result.isError()).isFalse();
+        assertThat(result.metadata().get("dryRun")).isEqualTo(true);
+        // Atomic behavior: all entries fail when any validation error exists
+        assertThat(result.metadata().get("successCount")).isEqualTo(0);
+        assertThat(result.metadata().get("errorCount")).isEqualTo(3);
+        assertThat(result.content()).contains("[ERROR: path traversal");
+        assertThat(result.content()).contains("skipped due to validation errors");
+        assertThat(Files.exists(tempDir.resolve("valid.txt"))).isFalse();
+        assertThat(Files.exists(tempDir.resolve("also_valid.txt"))).isFalse();
+    }
+
+    @Test
+    void twoPhaseExecutionValidatesAllBeforeWriting() throws IOException {
+        List<Object> files =
+                List.of(
+                        fileEntry("first.txt", "content1"),
+                        fileEntry("", "bad entry"),
+                        fileEntry("second.txt", "content2"));
+
+        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+
+        assertThat(result.isError()).isFalse();
+        // Atomic behavior: all entries fail when any validation error exists
+        assertThat(result.metadata().get("successCount")).isEqualTo(0);
+        assertThat(result.metadata().get("errorCount")).isEqualTo(3);
+        // In two-phase execution, if validation fails, no files are written
+        assertThat(Files.exists(tempDir.resolve("first.txt"))).isFalse();
+        assertThat(Files.exists(tempDir.resolve("second.txt"))).isFalse();
+    }
+
+    @Test
+    void rollbackOnWriteFailure() throws IOException {
+        // Create a file that we'll make fail by writing to a read-only directory
+        Path readOnlyDir = tempDir.resolve("readonly");
+        Files.createDirectories(readOnlyDir);
+        Path readOnlyFile = readOnlyDir.resolve("file.txt");
+        Files.writeString(readOnlyFile, "initial");
+        readOnlyFile.toFile().setWritable(false);
+
+        List<Object> files =
+                List.of(
+                        fileEntry("success1.txt", "will be rolled back"),
+                        fileEntry("readonly/file.txt", "will fail"),
+                        fileEntry("success2.txt", "will also be rolled back"));
+
+        try {
+            ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+
+            assertThat(result.isError()).isFalse();
+            assertThat(result.metadata().get("rolledBack")).isEqualTo(true);
+            assertThat(result.metadata().get("successCount")).isEqualTo(0);
+            assertThat(result.content()).contains("rolled back");
+
+            // Verify rollback: first file should not exist
+            assertThat(Files.exists(tempDir.resolve("success1.txt"))).isFalse();
+            assertThat(Files.exists(tempDir.resolve("success2.txt"))).isFalse();
+        } finally {
+            // Restore write permission for cleanup
+            readOnlyFile.toFile().setWritable(true);
+        }
+    }
+
+    @Test
+    void dryRunMetadataContainsDryRunFlag() throws IOException {
+        List<Object> files = List.of(fileEntry("test.txt", "content"));
+
+        ToolResult result = tool.execute(Map.of("files", files, "dryRun", true), ctx(tempDir));
+
+        assertThat(result.isError()).isFalse();
+        assertThat(result.metadata()).containsKey("dryRun");
+        assertThat(result.metadata().get("dryRun")).isEqualTo(true);
+    }
+
+    @Test
+    void normalWriteMetadataContainsDryRunFlagFalse() throws IOException {
+        List<Object> files = List.of(fileEntry("test.txt", "content"));
+
+        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+
+        assertThat(result.isError()).isFalse();
+        assertThat(result.metadata()).containsKey("dryRun");
+        assertThat(result.metadata().get("dryRun")).isEqualTo(false);
     }
 }
