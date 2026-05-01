@@ -72,8 +72,7 @@ class NegativeAutoConfigTest {
         runner.run(
                 context -> {
                     assertThat(context).hasFailed();
-                    assertThat(context.getStartupFailure())
-                            .hasMessageContaining("ModelProvider");
+                    assertThat(context.getStartupFailure()).hasMessageContaining("ModelProvider");
                 });
     }
 
