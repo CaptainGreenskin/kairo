@@ -75,8 +75,7 @@ class CoreAutoConfiguration {
     @ConditionalOnMissingBean(ModelProvider.class)
     @ConditionalOnProperty(
             name = "kairo.model.provider",
-            havingValue = "anthropic",
-            matchIfMissing = true)
+            havingValue = "anthropic")
     ModelProvider anthropicModelProvider(AgentRuntimeProperties properties) {
         ModelProperties model = properties.getModel();
         String apiKey = resolveApiKey(model.getApiKey(), "ANTHROPIC_API_KEY");
