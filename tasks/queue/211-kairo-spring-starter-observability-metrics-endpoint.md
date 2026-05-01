@@ -1,4 +1,4 @@
-状态: TODO
+状态: DONE
 模块: kairo-spring-boot-starter-observability
 标题: Observability starter 添加 /actuator/kairo-metrics 端点
 

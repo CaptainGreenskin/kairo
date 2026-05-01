@@ -1,4 +1,4 @@
-状态: TODO
+状态: DONE
 优先级: P2
 模块: kairo-tools
 标题: HttpTool 单元测试（in-process HttpServer）

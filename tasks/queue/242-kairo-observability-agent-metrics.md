@@ -1,4 +1,4 @@
-状态: TODO
+状态: DONE
 模块: kairo-observability
 标题: AgentMetrics — Micrometer Agent 指标采集
 

@@ -1,4 +1,4 @@
-状态: TODO
+状态: DONE
 模块: kairo-core
 标题: CostAwareRoutingPolicy 完整边界测试
 

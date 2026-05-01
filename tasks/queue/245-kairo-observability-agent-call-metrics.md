@@ -1,4 +1,4 @@
-状态: TODO
+状态: DONE
 优先级: P2
 模块: kairo-observability
 标题: AgentCallMetrics — Micrometer 指标注册

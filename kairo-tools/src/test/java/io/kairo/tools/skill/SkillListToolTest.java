@@ -161,4 +161,68 @@ class SkillListToolTest {
         assertTrue(result.content().contains("[CODE]") || result.content().contains("..."));
         assertEquals(3, result.metadata().get("count"));
     }
+
+    @Test
+    void listWithBlankCategoryFilter_listsAll() {
+        List<SkillDefinition> skills =
+                List.of(
+                        new SkillDefinition(
+                                "all-skill", "1.0", "desc", "instr", List.of(), SkillCategory.CODE));
+        when(registry.list()).thenReturn(skills);
+
+        ToolResult result = tool.execute(Map.of("category", "  "));
+        assertFalse(result.isError());
+        assertTrue(result.content().contains("all-skill"));
+    }
+
+    @Test
+    void listWithBudgetAsStringParameter() {
+        List<SkillDefinition> skills =
+                List.of(
+                        new SkillDefinition(
+                                "str-budget",
+                                "1.0",
+                                "A".repeat(200),
+                                "instr",
+                                List.of(),
+                                SkillCategory.GENERAL));
+        when(registry.list()).thenReturn(skills);
+
+        // Budget passed as String instead of Integer
+        ToolResult result = tool.execute(Map.of("budget", "500"));
+        assertFalse(result.isError());
+        assertTrue(result.content().contains("str-budget"));
+    }
+
+    @Test
+    void listWithInvalidBudgetString_usesDefault() {
+        List<SkillDefinition> skills =
+                List.of(
+                        new SkillDefinition(
+                                "default-budget",
+                                "1.0",
+                                "desc",
+                                "instr",
+                                List.of(),
+                                SkillCategory.CODE));
+        when(registry.list()).thenReturn(skills);
+
+        // Invalid budget string should fall back to default
+        ToolResult result = tool.execute(Map.of("budget", "not-a-number"));
+        assertFalse(result.isError());
+        assertTrue(result.content().contains("default-budget"));
+    }
+
+    @Test
+    void listWithCaseInsensitiveCategoryFilter() {
+        SkillDefinition codeSkill =
+                new SkillDefinition(
+                        "lower-case", "1.0", "desc", "instr", List.of(), SkillCategory.CODE);
+        when(registry.listByCategory(SkillCategory.CODE)).thenReturn(List.of(codeSkill));
+
+        // lowercase "code" should be converted to CODE
+        ToolResult result = tool.execute(Map.of("category", "code"));
+        assertFalse(result.isError());
+        assertTrue(result.content().contains("lower-case"));
+    }
 }

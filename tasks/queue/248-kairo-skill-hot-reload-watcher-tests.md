@@ -1,4 +1,4 @@
-状态: TODO
+状态: DONE
 优先级: P2
 模块: kairo-skill
 标题: SkillHotReloadWatcher 单元测试

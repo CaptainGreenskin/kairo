@@ -1,4 +1,4 @@
-状态: TODO
+状态: DONE
 模块: kairo-tools
 标题: BatchWriteTool 单元测试
 

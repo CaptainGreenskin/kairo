@@ -1,4 +1,4 @@
-状态: TODO
+状态: DONE
 模块: kairo-core
 标题: SessionMemoryCompact 和 ConversationMemory 集成测试
 

@@ -1,4 +1,4 @@
-状态: TODO
+状态: DONE
 模块: kairo-spring-boot-starter-multi-agent
 标题: Multi-Agent Spring Boot 自动配置综合测试
 
