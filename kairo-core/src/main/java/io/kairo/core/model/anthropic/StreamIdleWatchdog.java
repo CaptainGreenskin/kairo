@@ -58,6 +58,13 @@ public final class StreamIdleWatchdog implements AutoCloseable {
     public static final long IDLE_TIMEOUT_MS =
             resolveEnv("KAIRO_STREAM_IDLE_TIMEOUT_MS", DEFAULT_IDLE_MS);
 
+    /**
+     * Maximum total stream duration in milliseconds, regardless of activity. Prevents reasoning
+     * models from streaming indefinitely. Env-configurable via {@code KAIRO_STREAM_MAX_DURATION_MS}
+     * (default 300 000 ms = 5 minutes).
+     */
+    public static final long MAX_DURATION_MS = resolveEnv("KAIRO_STREAM_MAX_DURATION_MS", 300_000L);
+
     private static final ScheduledExecutorService SCHEDULER =
             Executors.newSingleThreadScheduledExecutor(
                     r -> {

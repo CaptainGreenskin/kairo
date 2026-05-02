@@ -79,6 +79,13 @@ public class RawOpenAISseSubscriber implements Flow.Subscriber<String> {
             String finishReason = choice.path("finish_reason").asText(null);
             JsonNode delta = choice.path("delta");
 
+            // Reasoning/thinking delta (GLM-5.1, o1, etc.) — emit as THINKING chunks to reset
+            // the stream idle watchdog without polluting the text accumulator
+            String reasoningDelta = delta.path("reasoning_content").asText(null);
+            if (reasoningDelta != null) {
+                sink.tryEmitNext(StreamChunk.thinking(reasoningDelta));
+            }
+
             // Text delta
             String textDelta = delta.path("content").asText(null);
             if (textDelta != null) {
