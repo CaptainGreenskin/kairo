@@ -63,6 +63,8 @@ public class AnthropicProvider
     private static final Logger log = LoggerFactory.getLogger(AnthropicProvider.class);
     private static final Duration STREAM_IDLE_TIMEOUT =
             Duration.ofMillis(StreamIdleWatchdog.IDLE_TIMEOUT_MS);
+    private static final Duration STREAM_MAX_DURATION =
+            Duration.ofMillis(StreamIdleWatchdog.MAX_DURATION_MS);
     private static final Duration CALL_TIMEOUT = resolveCallTimeout();
 
     private static Duration resolveCallTimeout() {
@@ -221,6 +223,14 @@ public class AnthropicProvider
                                         "anthropic-stream",
                                         errorClassifier::isRetryableError,
                                         STREAM_IDLE_TIMEOUT))
+                .mergeWith(
+                        Mono.delay(STREAM_MAX_DURATION)
+                                .flatMap(
+                                        __ ->
+                                                Mono.error(
+                                                        new ModelProviderException.ApiException(
+                                                                "Stream exceeded max duration of "
+                                                                        + STREAM_MAX_DURATION))))
                 .onErrorMap(ExceptionMapper::toApiException);
     }
 
@@ -292,6 +302,14 @@ public class AnthropicProvider
                                         "anthropic-stream-raw",
                                         errorClassifier::isRetryableError,
                                         STREAM_IDLE_TIMEOUT))
+                .mergeWith(
+                        Mono.delay(STREAM_MAX_DURATION)
+                                .flatMap(
+                                        __ ->
+                                                Mono.error(
+                                                        new ModelProviderException.ApiException(
+                                                                "Stream exceeded max duration of "
+                                                                        + STREAM_MAX_DURATION))))
                 .onErrorMap(ExceptionMapper::toApiException);
     }
 
