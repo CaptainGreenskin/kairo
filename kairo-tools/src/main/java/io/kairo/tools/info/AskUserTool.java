@@ -97,8 +97,8 @@ public class AskUserTool implements SyncTool {
             String userInput = reader.readLine();
 
             if (userInput == null || userInput.isBlank()) {
-                return ToolResult.of(
-                        "ask_user", "(no response)", false, Map.of("question", question));
+                return ToolResult.success(
+                        "ask_user", "(no response)", Map.of("question", question));
             }
 
             // If options were provided and user entered a number, resolve it
@@ -117,7 +117,7 @@ public class AskUserTool implements SyncTool {
                 }
             }
 
-            return ToolResult.of("ask_user", userInput.trim(), false, Map.of("question", question));
+            return ToolResult.success("ask_user", userInput.trim(), Map.of("question", question));
 
         } catch (Exception e) {
             log.error("Failed to get user input", e);

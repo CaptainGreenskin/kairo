@@ -179,11 +179,15 @@ public class StreamingToolExecutor {
                 .executeSingle(invocation)
                 .map(
                         result ->
-                                ToolResult.of(
-                                        tool.toolCallId(),
-                                        result.content(),
-                                        result.isError(),
-                                        result.metadata()))
+                                result.isError()
+                                        ? ToolResult.error(
+                                                tool.toolCallId(),
+                                                result.content(),
+                                                result.metadata())
+                                        : ToolResult.success(
+                                                tool.toolCallId(),
+                                                result.content(),
+                                                result.metadata()))
                 .doOnNext(result -> callback.onComplete(tool.toolCallId(), result));
     }
 }

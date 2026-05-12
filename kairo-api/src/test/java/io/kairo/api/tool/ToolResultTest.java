@@ -83,27 +83,6 @@ class ToolResultTest {
     }
 
     @Test
-    @DisplayName("deprecated of() factory bridges old 4-arg pattern")
-    @SuppressWarnings("deprecation")
-    void ofFactory_success() {
-        ToolResult r = ToolResult.of("tu-6", "ok", false, Map.of("k", "v"));
-
-        assertFalse(r.isError());
-        assertEquals("ok", r.content());
-        assertEquals(Map.of("k", "v"), r.metadata());
-    }
-
-    @Test
-    @DisplayName("deprecated of() with null metadata defaults to empty map")
-    @SuppressWarnings("deprecation")
-    void ofFactory_nullMetadata() {
-        ToolResult r = ToolResult.of("tu-7", "fail", true, null);
-
-        assertTrue(r.isError());
-        assertEquals(Map.of(), r.metadata());
-    }
-
-    @Test
     @DisplayName("content() returns text for Text output")
     void content_textOutput() {
         ToolResult r = ToolResult.success("id", "hello world");

@@ -64,7 +64,7 @@ public class TeamCreateTool implements SyncTool {
         }
 
         Team team = teamManager.create(name);
-        return ToolResult.of(
-                null, String.format("Created team '%s'", name), false, Map.of("teamName", name));
+        return ToolResult.success(
+                null, String.format("Created team '%s'", name), Map.of("teamName", name));
     }
 }

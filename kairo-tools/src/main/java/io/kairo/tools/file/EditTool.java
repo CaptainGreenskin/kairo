@@ -105,8 +105,8 @@ public class EditTool implements SyncTool {
                 if (fileTracker != null) {
                     fileTracker.recordAccess(filePath);
                 }
-                return ToolResult.of(
-                        "edit", "Successfully edited " + filePath, false, Map.of("path", filePath));
+                return ToolResult.success(
+                        "edit", "Successfully edited " + filePath, Map.of("path", filePath));
             }
 
             if (count > 1) {

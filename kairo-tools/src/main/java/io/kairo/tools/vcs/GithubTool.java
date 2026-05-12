@@ -249,6 +249,6 @@ public final class GithubTool implements SyncTool {
     }
 
     private static ToolResult error(String id, String message) {
-        return ToolResult.of(id, message, true, Map.of());
+        return ToolResult.error(id, message);
     }
 }

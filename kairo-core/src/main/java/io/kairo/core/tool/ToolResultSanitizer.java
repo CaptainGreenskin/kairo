@@ -58,8 +58,9 @@ public final class ToolResultSanitizer {
                 scanResult.warnings());
         var enrichedMetadata = new HashMap<>(result.metadata());
         enrichedMetadata.put("injection_warning", scanResult.warnings());
-        return ToolResult.of(
-                result.toolUseId(), result.content(), result.isError(), enrichedMetadata);
+        return result.isError()
+                ? ToolResult.error(result.toolUseId(), result.content(), enrichedMetadata)
+                : ToolResult.success(result.toolUseId(), result.content(), enrichedMetadata);
     }
 
     /**

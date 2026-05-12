@@ -24,7 +24,6 @@ import java.io.IOException;
 import java.net.ConnectException;
 import java.net.SocketException;
 import java.time.Duration;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
@@ -137,11 +136,7 @@ public class McpToolExecutor implements SyncTool {
                                             ? e.getMessage()
                                             : e.getClass().getSimpleName();
                             return Mono.just(
-                                    ToolResult.of(
-                                            toolUseId,
-                                            "MCP tool error: " + errorMsg,
-                                            true,
-                                            Collections.emptyMap()));
+                                    ToolResult.error(toolUseId, "MCP tool error: " + errorMsg));
                         });
     }
 

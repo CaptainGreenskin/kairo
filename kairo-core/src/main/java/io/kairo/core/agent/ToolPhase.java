@@ -445,11 +445,15 @@ class ToolPhase {
                                     result = execResults.get(execIdx++);
                                     // Replace toolUseId with the original tool call's ID.
                                     result =
-                                            ToolResult.of(
-                                                    ip.toolCall().toolId(),
-                                                    result.content(),
-                                                    result.isError(),
-                                                    result.metadata());
+                                            result.isError()
+                                                    ? ToolResult.error(
+                                                            ip.toolCall().toolId(),
+                                                            result.content(),
+                                                            result.metadata())
+                                                    : ToolResult.success(
+                                                            ip.toolCall().toolId(),
+                                                            result.content(),
+                                                            result.metadata());
                                 } else {
                                     result = ip.plan().terminalResult();
                                 }
@@ -689,11 +693,11 @@ class ToolPhase {
                 .transform(guards::withCooperativeCancellation)
                 .map(
                         result ->
-                                ToolResult.of(
-                                        toolUseId,
-                                        result.content(),
-                                        result.isError(),
-                                        result.metadata()))
+                                result.isError()
+                                        ? ToolResult.error(
+                                                toolUseId, result.content(), result.metadata())
+                                        : ToolResult.success(
+                                                toolUseId, result.content(), result.metadata()))
                 .onErrorResume(
                         e -> {
                             if (isCancellationException(e)) {

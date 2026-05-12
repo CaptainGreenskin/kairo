@@ -42,14 +42,14 @@ public interface ApprovalGate {
      * Approval decision. Sealed so callers can pattern-match exhaustively.
      *
      * <p>{@link Approved} may carry edited tool arguments — the user can tweak the proposed
-     * arguments before approving (M119 plan-edit flow). {@link Rejected} may carry textual
-     * feedback that gets surfaced back to the agent so it can revise its approach.
+     * arguments before approving (M119 plan-edit flow). {@link Rejected} may carry textual feedback
+     * that gets surfaced back to the agent so it can revise its approach.
      */
     sealed interface Decision permits Approved, Rejected {}
 
     /**
-     * Approved execution. {@code editedArgs} is empty when the user approved the original
-     * arguments verbatim, or a new map when the user edited the call before approving.
+     * Approved execution. {@code editedArgs} is empty when the user approved the original arguments
+     * verbatim, or a new map when the user edited the call before approving.
      */
     record Approved(Optional<Map<String, Object>> editedArgs) implements Decision {
         public static Approved asIs() {
@@ -62,8 +62,8 @@ public interface ApprovalGate {
     }
 
     /**
-     * Rejected execution. {@code feedback} is empty when the user rejected silently, or
-     * carries a message that should be surfaced back to the agent.
+     * Rejected execution. {@code feedback} is empty when the user rejected silently, or carries a
+     * message that should be surfaced back to the agent.
      */
     record Rejected(Optional<String> feedback) implements Decision {
         public static Rejected silent() {

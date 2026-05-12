@@ -17,7 +17,6 @@ package io.kairo.mcp;
 
 import io.kairo.api.tool.ToolResult;
 import io.modelcontextprotocol.spec.McpSchema;
-import java.util.Collections;
 import java.util.stream.Collectors;
 
 /** Converts MCP {@link McpSchema.CallToolResult} to Kairo {@link ToolResult}. */
@@ -35,7 +34,7 @@ public final class McpContentConverter {
     public static ToolResult convert(McpSchema.CallToolResult result, String toolUseId) {
         String text = extractText(result);
         boolean isError = result.isError() != null && result.isError();
-        return ToolResult.of(toolUseId, text, isError, Collections.emptyMap());
+        return isError ? ToolResult.error(toolUseId, text) : ToolResult.success(toolUseId, text);
     }
 
     /** Extracts a textual representation from the MCP result content list. */

@@ -21,9 +21,9 @@ import reactor.core.publisher.Mono;
 /**
  * Safe default {@link ApprovalGate} that rejects every request.
  *
- * <p>Use in headless / unattended environments where there is no human to ask. Pairs naturally
- * with conservative tool sets — dangerous operations simply do not run. Apps that want to opt
- * out of gating entirely should wire {@link AutoApproveGate} instead.
+ * <p>Use in headless / unattended environments where there is no human to ask. Pairs naturally with
+ * conservative tool sets — dangerous operations simply do not run. Apps that want to opt out of
+ * gating entirely should wire {@link AutoApproveGate} instead.
  */
 public final class DenyGate implements ApprovalGate {
 

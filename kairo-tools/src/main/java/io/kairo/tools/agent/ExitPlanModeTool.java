@@ -146,12 +146,10 @@ public class ExitPlanModeTool implements SyncTool {
         }
         String planContentInput = (String) input.get("plan_content");
         if (planContentInput == null || planContentInput.isBlank()) {
-            return ToolResult.of(
+            return ToolResult.error(
                     null,
                     "Parameter 'plan_content' is required — provide the plan as markdown so the"
-                            + " user can review the rationale, not just a checklist",
-                    true,
-                    Map.of());
+                            + " user can review the rationale, not just a checklist");
         }
 
         // Approval blocks here; the WebSocket handler may mutate input.items in place to
@@ -165,13 +163,12 @@ public class ExitPlanModeTool implements SyncTool {
                         result.reason() != null && !result.reason().isBlank()
                                 ? result.reason()
                                 : "User denied";
-                return ToolResult.of(
+                return ToolResult.success(
                         null,
                         "Plan exit denied: "
                                 + reason
                                 + "\nStill in Plan Mode. Refine the plan"
                                 + " based on the feedback and call exit_plan_mode again.",
-                        false,
                         Map.of("mode", "plan", "feedback", reason));
             }
         }
@@ -181,8 +178,7 @@ public class ExitPlanModeTool implements SyncTool {
         try {
             parsedItems = parseItems(input.get("items"));
         } catch (JsonProcessingException e) {
-            return ToolResult.of(
-                    null, "Invalid JSON in 'items': " + e.getOriginalMessage(), true, Map.of());
+            return ToolResult.error(null, "Invalid JSON in 'items': " + e.getOriginalMessage());
         } catch (IllegalArgumentException e) {
             return ToolResult.error(null, e.getMessage());
         }
@@ -195,8 +191,7 @@ public class ExitPlanModeTool implements SyncTool {
                 seedTodos(workspaceRoot, parsedItems);
                 seeded = parsedItems.size();
             } catch (IOException e) {
-                return ToolResult.of(
-                        null, "Failed to seed todos: " + e.getMessage(), true, Map.of());
+                return ToolResult.error(null, "Failed to seed todos: " + e.getMessage());
             }
         }
 

@@ -141,16 +141,16 @@ public class MvnTool implements SyncTool {
             boolean buildSuccess = exitCode == 0;
             List<String> failedTests = parseFailedTests(outputStr);
 
-            return ToolResult.of(
-                    "mvn",
-                    outputStr,
-                    !buildSuccess,
+            Map<String, Object> meta =
                     Map.of(
                             "exitCode", exitCode,
                             "buildSuccess", buildSuccess,
                             "failedTestCount", failedTests.size(),
                             "failedTests", failedTests,
-                            "durationMs", durationMs));
+                            "durationMs", durationMs);
+            return buildSuccess
+                    ? ToolResult.success("mvn", outputStr, meta)
+                    : ToolResult.error("mvn", outputStr, meta);
 
         } catch (IOException e) {
             return error("Failed to start mvn: " + e.getMessage());
@@ -242,6 +242,6 @@ public class MvnTool implements SyncTool {
     }
 
     private ToolResult error(String msg) {
-        return ToolResult.of("mvn", msg, true, Map.of("buildSuccess", false));
+        return ToolResult.error("mvn", msg, Map.of("buildSuccess", false));
     }
 }

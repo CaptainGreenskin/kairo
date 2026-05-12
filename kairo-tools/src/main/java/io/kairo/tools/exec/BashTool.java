@@ -140,45 +140,59 @@ public class BashTool implements StreamingTool {
                                     gate.get()
                                             .await(cmd, reason)
                                             .flatMapMany(
-                                                    decision -> switch (decision) {
-                                                        case ApprovalGate.Approved a -> {
-                                                            String effectiveCmd =
-                                                                    a.editedArgs()
-                                                                            .map(m -> m.get("command"))
-                                                                            .filter(v -> v instanceof String)
-                                                                            .map(Object::toString)
-                                                                            .orElse(cmd);
-                                                            yield executeCommand(
-                                                                    effectiveCmd,
-                                                                    timeoutSec,
-                                                                    workspaceRoot,
-                                                                    ctx);
-                                                        }
-                                                        case ApprovalGate.Rejected r -> {
-                                                            String msg =
-                                                                    r.feedback()
-                                                                            .map(f ->
-                                                                                    "Command rejected by user: "
-                                                                                            + cmd
-                                                                                            + " — "
-                                                                                            + f)
-                                                                            .orElse(
-                                                                                    "Command rejected by user: "
-                                                                                            + cmd);
-                                                            yield Flux.just(
-                                                                    new ToolEvent.Final(
-                                                                            new ToolResult(
-                                                                                    "bash",
-                                                                                    new ToolOutput
-                                                                                            .Text(msg),
-                                                                                    ToolOutcome
-                                                                                            .CANCELLED,
-                                                                                    List.of(),
-                                                                                    Map.of(
-                                                                                            "command",
-                                                                                            cmd))));
-                                                        }
-                                                    }));
+                                                    decision ->
+                                                            switch (decision) {
+                                                                case ApprovalGate.Approved a -> {
+                                                                    String effectiveCmd =
+                                                                            a.editedArgs()
+                                                                                    .map(
+                                                                                            m ->
+                                                                                                    m
+                                                                                                            .get(
+                                                                                                                    "command"))
+                                                                                    .filter(
+                                                                                            v ->
+                                                                                                    v
+                                                                                                            instanceof
+                                                                                                            String)
+                                                                                    .map(
+                                                                                            Object
+                                                                                                    ::toString)
+                                                                                    .orElse(cmd);
+                                                                    yield executeCommand(
+                                                                            effectiveCmd,
+                                                                            timeoutSec,
+                                                                            workspaceRoot,
+                                                                            ctx);
+                                                                }
+                                                                case ApprovalGate.Rejected r -> {
+                                                                    String msg =
+                                                                            r.feedback()
+                                                                                    .map(
+                                                                                            f ->
+                                                                                                    "Command rejected by user: "
+                                                                                                            + cmd
+                                                                                                            + " — "
+                                                                                                            + f)
+                                                                                    .orElse(
+                                                                                            "Command rejected by user: "
+                                                                                                    + cmd);
+                                                                    yield Flux.just(
+                                                                            new ToolEvent.Final(
+                                                                                    new ToolResult(
+                                                                                            "bash",
+                                                                                            new ToolOutput
+                                                                                                    .Text(
+                                                                                                    msg),
+                                                                                            ToolOutcome
+                                                                                                    .CANCELLED,
+                                                                                            List
+                                                                                                    .of(),
+                                                                                            Map.of(
+                                                                                                    "command",
+                                                                                                    cmd))));
+                                                                }
+                                                            }));
                         }
                         // No gate bound = headless mode, proceed without approval
                         log.warn(

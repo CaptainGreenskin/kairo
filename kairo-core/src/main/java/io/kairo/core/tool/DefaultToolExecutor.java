@@ -86,7 +86,9 @@ public class DefaultToolExecutor implements ToolExecutor {
         if (content.length() <= MAX_TOOL_RESULT_CHARS) return result;
         // Use semantic compression instead of hard truncation
         String compressed = ToolOutputCompressor.compress(content, MAX_TOOL_RESULT_CHARS);
-        return ToolResult.of(result.toolUseId(), compressed, result.isError(), result.metadata());
+        return result.isError()
+                ? ToolResult.error(result.toolUseId(), compressed, result.metadata())
+                : ToolResult.success(result.toolUseId(), compressed, result.metadata());
     }
 
     private final DefaultToolRegistry registry;

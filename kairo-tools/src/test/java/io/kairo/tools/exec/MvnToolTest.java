@@ -286,20 +286,17 @@ class MvnToolTest {
     private ToolResult simulateMvnOutput(String output, int exitCode, boolean timedOut) {
         boolean buildSuccess = exitCode == 0 && !timedOut;
         List<String> failedTests = parseFailedTests(output);
-        @SuppressWarnings("deprecation")
-        ToolResult result =
-                ToolResult.of(
-                        "mvn",
-                        output,
-                        !buildSuccess,
-                        Map.of(
-                                "exitCode", exitCode,
-                                "buildSuccess", buildSuccess,
-                                "failedTestCount", failedTests.size(),
-                                "failedTests", failedTests,
-                                "durationMs", 0L,
-                                "timedOut", timedOut));
-        return result;
+        Map<String, Object> meta =
+                Map.of(
+                        "exitCode", exitCode,
+                        "buildSuccess", buildSuccess,
+                        "failedTestCount", failedTests.size(),
+                        "failedTests", failedTests,
+                        "durationMs", 0L,
+                        "timedOut", timedOut);
+        return buildSuccess
+                ? ToolResult.success("mvn", output, meta)
+                : ToolResult.error("mvn", output, meta);
     }
 
     private List<String> parseFailedTests(String output) {

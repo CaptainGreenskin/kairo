@@ -33,8 +33,10 @@ public final class AutoApproveGate implements ApprovalGate {
 
     @Override
     public Mono<Decision> await(String description, String reason) {
-        log.warn("AutoApproveGate approving without prompt: description={} reason={}",
-                description, reason);
+        log.warn(
+                "AutoApproveGate approving without prompt: description={} reason={}",
+                description,
+                reason);
         return Mono.just(Approved.asIs());
     }
 }

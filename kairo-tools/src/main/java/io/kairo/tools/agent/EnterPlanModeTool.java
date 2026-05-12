@@ -102,10 +102,9 @@ public class EnterPlanModeTool implements SyncTool {
                         + "- List: List directory contents\n\n"
                         + "Write tools (Write, Edit, Bash) are blocked until you exit Plan Mode.";
 
-        return ToolResult.of(
+        return ToolResult.success(
                 null,
                 message,
-                false,
                 planId != null ? Map.of("mode", "plan", "planId", planId) : Map.of("mode", "plan"));
     }
 }

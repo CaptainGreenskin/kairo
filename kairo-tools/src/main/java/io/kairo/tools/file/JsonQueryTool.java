@@ -127,8 +127,8 @@ public class JsonQueryTool implements SyncTool {
         }
 
         String output = sb.toString().stripTrailing();
-        return ToolResult.of(
-                "json_query", output, false, Map.of("resultCount", results.size(), "query", query));
+        return ToolResult.success(
+                "json_query", output, Map.of("resultCount", results.size(), "query", query));
     }
 
     // ---- JSON resolution ----

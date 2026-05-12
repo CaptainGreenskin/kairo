@@ -180,10 +180,7 @@ public class HttpTool implements SyncTool {
             responseHeaders.remove(null);
 
             boolean isError = statusCode < 200 || statusCode >= 300;
-            return ToolResult.of(
-                    "http_request",
-                    responseBody,
-                    isError,
+            Map<String, Object> meta =
                     Map.of(
                             "statusCode",
                             statusCode,
@@ -196,7 +193,10 @@ public class HttpTool implements SyncTool {
                             "truncated",
                             truncated,
                             "readOnly",
-                            false));
+                            false);
+            return isError
+                    ? ToolResult.error("http_request", responseBody, meta)
+                    : ToolResult.success("http_request", responseBody, meta);
 
         } catch (java.net.http.HttpTimeoutException e) {
             return error("Request timed out after " + timeout + "s");
@@ -240,6 +240,6 @@ public class HttpTool implements SyncTool {
     }
 
     private ToolResult error(String msg) {
-        return ToolResult.of("http_request", msg, true, Map.of("readOnly", false));
+        return ToolResult.error("http_request", msg, Map.of("readOnly", false));
     }
 }

@@ -67,11 +67,10 @@ public class TodoReadTool implements SyncTool {
         }
         try {
             String content = Files.readString(todoFile, StandardCharsets.UTF_8);
-            return ToolResult.of(
-                    "todo_read", content.trim(), false, Map.of("file", TodoWriteTool.TODO_FILE));
+            return ToolResult.success(
+                    "todo_read", content.trim(), Map.of("file", TodoWriteTool.TODO_FILE));
         } catch (IOException e) {
-            return ToolResult.of(
-                    "todo_read", "Failed to read todos: " + e.getMessage(), true, Map.of());
+            return ToolResult.error("todo_read", "Failed to read todos: " + e.getMessage());
         }
     }
 }

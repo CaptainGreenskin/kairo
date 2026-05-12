@@ -127,8 +127,8 @@ public class MonitorTool implements SyncTool {
                         "monitor", "No output available for: " + target, Map.of("target", target));
             }
 
-            return ToolResult.of(
-                    "monitor", outputStr, false, Map.of("target", target, "lines", numLines));
+            return ToolResult.success(
+                    "monitor", outputStr, Map.of("target", target, "lines", numLines));
 
         } catch (Exception e) {
             log.error("Monitor failed for target: {}", target, e);

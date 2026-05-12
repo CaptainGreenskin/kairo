@@ -480,7 +480,9 @@ class ToolContextInjectionTest {
                     @Override
                     public ToolResult execute(Map<String, Object> input) {
                         boolean fail = Boolean.TRUE.equals(input.get("fail"));
-                        return ToolResult.of("flaky", fail ? "Error: boom" : "ok", fail, Map.of());
+                        return fail
+                                ? ToolResult.error("flaky", "Error: boom")
+                                : ToolResult.success("flaky", "ok");
                     }
                 });
 

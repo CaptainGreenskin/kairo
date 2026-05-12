@@ -116,11 +116,15 @@ class GuardrailIntegrationTest {
                                         instanceof GuardrailPayload.ToolOutput toolOutput) {
                             ToolResult original = toolOutput.result();
                             ToolResult redacted =
-                                    ToolResult.of(
-                                            original.toolUseId(),
-                                            "[REDACTED]",
-                                            original.isError(),
-                                            original.metadata());
+                                    original.isError()
+                                            ? ToolResult.error(
+                                                    original.toolUseId(),
+                                                    "[REDACTED]",
+                                                    original.metadata())
+                                            : ToolResult.success(
+                                                    original.toolUseId(),
+                                                    "[REDACTED]",
+                                                    original.metadata());
                             return Mono.just(
                                     GuardrailDecision.modify(
                                             new GuardrailPayload.ToolOutput(

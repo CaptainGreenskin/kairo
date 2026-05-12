@@ -149,8 +149,10 @@ public class GitTool implements SyncTool {
             }
 
             boolean isError = exitCode != 0;
-            return ToolResult.of(
-                    "git", output, isError, Map.of("exitCode", exitCode, "subcommand", sub));
+            Map<String, Object> meta = Map.of("exitCode", exitCode, "subcommand", sub);
+            return isError
+                    ? ToolResult.error("git", output, meta)
+                    : ToolResult.success("git", output, meta);
 
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {

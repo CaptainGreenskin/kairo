@@ -33,7 +33,9 @@ import java.util.Map;
  * @param metadata additional metadata about the execution
  * @since 1.2.0
  */
-@Stable(value = "Tool execution result record; BREAKING redesign in v1.2 from 1.0.0", since = "1.2.0")
+@Stable(
+        value = "Tool execution result record; BREAKING redesign in v1.2 from 1.0.0",
+        since = "1.2.0")
 public record ToolResult(
         String toolUseId,
         ToolOutput output,
@@ -70,22 +72,6 @@ public record ToolResult(
     public static ToolResult error(String toolUseId, String message, Map<String, Object> metadata) {
         return new ToolResult(
                 toolUseId, new ToolOutput.Text(message), ToolOutcome.ERROR, List.of(), metadata);
-    }
-
-    /**
-     * Backward-compatible factory bridging the old {@code (toolUseId, content, isError, metadata)}
-     * constructor pattern to the new record layout. Use {@link #success} or {@link #error} directly
-     * when the outcome is known at compile time.
-     *
-     * @deprecated Prefer {@link #success} or {@link #error} factories for clarity.
-     */
-    @Deprecated
-    public static ToolResult of(
-            String toolUseId, String content, boolean isError, Map<String, Object> metadata) {
-        ToolOutcome outcome = isError ? ToolOutcome.ERROR : ToolOutcome.SUCCESS;
-        Map<String, Object> safeMeta = metadata == null ? Map.of() : metadata;
-        return new ToolResult(
-                toolUseId, new ToolOutput.Text(content), outcome, List.of(), safeMeta);
     }
 
     /**

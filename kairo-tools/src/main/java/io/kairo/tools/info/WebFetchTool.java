@@ -144,11 +144,11 @@ public class WebFetchTool implements SyncTool {
             }
 
             boolean isError = statusCode >= 400;
-            return ToolResult.of(
-                    "web_fetch",
-                    body,
-                    isError,
-                    Map.of("statusCode", statusCode, "url", rawUrl, "contentType", contentType));
+            Map<String, Object> meta =
+                    Map.of("statusCode", statusCode, "url", rawUrl, "contentType", contentType);
+            return isError
+                    ? ToolResult.error("web_fetch", body, meta)
+                    : ToolResult.success("web_fetch", body, meta);
 
         } catch (java.net.http.HttpTimeoutException e) {
             return error("Request timed out after " + timeout + "s");

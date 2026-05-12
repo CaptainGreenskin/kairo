@@ -77,6 +77,6 @@ public class SendMessageTool implements SyncTool {
 
         Msg msg = Msg.of(MsgRole.USER, content);
         messageBus.send(currentAgentId, to, msg).block();
-        return ToolResult.of(null, String.format("Message sent to agent %s", to), false, Map.of());
+        return ToolResult.success(null, String.format("Message sent to agent %s", to));
     }
 }

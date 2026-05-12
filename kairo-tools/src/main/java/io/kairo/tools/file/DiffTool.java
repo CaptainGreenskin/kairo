@@ -117,8 +117,8 @@ public class DiffTool implements SyncTool {
 
         String diff = unifiedDiff(aText, bText, aLabel, bLabel, contextLines);
         int hunks = countHunks(diff);
-        return ToolResult.of(
-                "diff", diff, false, Map.of("hunks", hunks, "identical", diff.isEmpty()));
+        return ToolResult.success(
+                "diff", diff, Map.of("hunks", hunks, "identical", diff.isEmpty()));
     }
 
     // ---- Text resolution ----

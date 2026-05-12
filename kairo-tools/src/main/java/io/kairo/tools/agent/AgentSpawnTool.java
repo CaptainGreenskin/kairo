@@ -113,19 +113,15 @@ public class AgentSpawnTool implements SyncTool {
             String resultText =
                     result != null ? extractText(result) : "Sub-agent completed with no output";
             log.info("Sub-agent '{}' completed", name);
-            return ToolResult.of(
+            return ToolResult.success(
                     null,
                     String.format("Sub-agent '%s' result:\n%s", name, resultText),
-                    false,
                     Map.of("subAgentName", name));
 
         } catch (Exception e) {
             log.error("Sub-agent '{}' failed: {}", name, e.getMessage(), e);
-            return ToolResult.of(
-                    null,
-                    String.format("Sub-agent '%s' failed: %s", name, e.getMessage()),
-                    true,
-                    Map.of());
+            return ToolResult.error(
+                    null, String.format("Sub-agent '%s' failed: %s", name, e.getMessage()));
         }
     }
 
