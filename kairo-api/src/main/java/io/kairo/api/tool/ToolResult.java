@@ -75,8 +75,10 @@ public record ToolResult(
     }
 
     /**
-     * Returns the text content if the output is a {@link ToolOutput.Text}, or a toString
-     * representation otherwise. Convenience accessor for backward compatibility.
+     * Convenience accessor: returns the text content when {@link #output()} is a {@link
+     * ToolOutput.Text}, or a {@code toString()} representation otherwise. Callers that need to
+     * distinguish output shapes (structured, binary, truncated) should pattern-match on {@link
+     * #output()} directly.
      */
     public String content() {
         if (output instanceof ToolOutput.Text text) {
@@ -86,8 +88,9 @@ public record ToolResult(
     }
 
     /**
-     * Returns whether this result represents an error. Convenience accessor for backward
-     * compatibility.
+     * Convenience predicate: {@code true} for any non-success outcome (ERROR, CANCELLED, TIMEOUT).
+     * Callers that need to distinguish error from cancellation/timeout should compare {@link
+     * #outcome()} against {@link ToolOutcome} directly.
      */
     public boolean isError() {
         return outcome != ToolOutcome.SUCCESS;

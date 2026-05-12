@@ -141,58 +141,12 @@ public class BashTool implements StreamingTool {
                                             .await(cmd, reason)
                                             .flatMapMany(
                                                     decision ->
-                                                            switch (decision) {
-                                                                case ApprovalGate.Approved a -> {
-                                                                    String effectiveCmd =
-                                                                            a.editedArgs()
-                                                                                    .map(
-                                                                                            m ->
-                                                                                                    m
-                                                                                                            .get(
-                                                                                                                    "command"))
-                                                                                    .filter(
-                                                                                            v ->
-                                                                                                    v
-                                                                                                            instanceof
-                                                                                                            String)
-                                                                                    .map(
-                                                                                            Object
-                                                                                                    ::toString)
-                                                                                    .orElse(cmd);
-                                                                    yield executeCommand(
-                                                                            effectiveCmd,
-                                                                            timeoutSec,
-                                                                            workspaceRoot,
-                                                                            ctx);
-                                                                }
-                                                                case ApprovalGate.Rejected r -> {
-                                                                    String msg =
-                                                                            r.feedback()
-                                                                                    .map(
-                                                                                            f ->
-                                                                                                    "Command rejected by user: "
-                                                                                                            + cmd
-                                                                                                            + " — "
-                                                                                                            + f)
-                                                                                    .orElse(
-                                                                                            "Command rejected by user: "
-                                                                                                    + cmd);
-                                                                    yield Flux.just(
-                                                                            new ToolEvent.Final(
-                                                                                    new ToolResult(
-                                                                                            "bash",
-                                                                                            new ToolOutput
-                                                                                                    .Text(
-                                                                                                    msg),
-                                                                                            ToolOutcome
-                                                                                                    .CANCELLED,
-                                                                                            List
-                                                                                                    .of(),
-                                                                                            Map.of(
-                                                                                                    "command",
-                                                                                                    cmd))));
-                                                                }
-                                                            }));
+                                                            handleDecision(
+                                                                    decision,
+                                                                    cmd,
+                                                                    timeoutSec,
+                                                                    workspaceRoot,
+                                                                    ctx)));
                         }
                         // No gate bound = headless mode, proceed without approval
                         log.warn(
@@ -203,6 +157,39 @@ public class BashTool implements StreamingTool {
 
                     return executeCommand(cmd, timeoutSec, workspaceRoot, ctx);
                 });
+    }
+
+    private Flux<ToolEvent> handleDecision(
+            ApprovalGate.Decision decision,
+            String cmd,
+            int timeoutSec,
+            Path workspaceRoot,
+            ToolContext ctx) {
+        if (decision instanceof ApprovalGate.Approved a) {
+            String effectiveCmd =
+                    a.editedArgs()
+                            .map(m -> m.get("command"))
+                            .filter(v -> v instanceof String)
+                            .map(Object::toString)
+                            .orElse(cmd);
+            return executeCommand(effectiveCmd, timeoutSec, workspaceRoot, ctx);
+        }
+        if (decision instanceof ApprovalGate.Rejected r) {
+            String msg =
+                    r.feedback()
+                            .map(f -> "Command rejected by user: " + cmd + " — " + f)
+                            .orElse("Command rejected by user: " + cmd);
+            return Flux.just(
+                    new ToolEvent.Final(
+                            new ToolResult(
+                                    "bash",
+                                    new ToolOutput.Text(msg),
+                                    ToolOutcome.CANCELLED,
+                                    List.of(),
+                                    Map.of("command", cmd))));
+        }
+        // Unreachable: Decision is sealed permits Approved | Rejected
+        throw new IllegalStateException("Unknown ApprovalGate.Decision: " + decision);
     }
 
     /** Executes the command in a sandbox, streaming output chunks and heartbeats. */
