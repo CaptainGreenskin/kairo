@@ -19,8 +19,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.agent.CancellationSignal;
 import io.kairo.api.exception.AgentInterruptedException;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tracing.Tracer;
 import io.kairo.core.shutdown.GracefulShutdownManager;
@@ -49,7 +49,9 @@ class ToolInvocationRunnerTest {
 
     @Test
     void execute_successfulToolReturnsResult() {
-        ToolHandler handler = input -> ToolResult.success("echo", "echoed: " + input.get("msg"));
+        SyncTool handler =
+                (input, ctx) ->
+                        Mono.just(ToolResult.success("echo", "echoed: " + input.get("msg")));
 
         StepVerifier.create(
                         runner.execute(
@@ -66,10 +68,12 @@ class ToolInvocationRunnerTest {
 
     @Test
     void execute_toolThrowingException_returnsErrorResult() {
-        ToolHandler handler =
-                input -> {
-                    throw new RuntimeException("boom");
-                };
+        SyncTool handler =
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    throw new RuntimeException("boom");
+                                });
 
         StepVerifier.create(runner.execute("failing", handler, Map.of(), Duration.ofSeconds(5)))
                 .assertNext(
@@ -84,15 +88,17 @@ class ToolInvocationRunnerTest {
 
     @Test
     void execute_timeout_returnsErrorResult() {
-        ToolHandler handler =
-                input -> {
-                    try {
-                        Thread.sleep(10_000);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                    return ToolResult.success("slow", "done");
-                };
+        SyncTool handler =
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    try {
+                                        Thread.sleep(10_000);
+                                    } catch (InterruptedException e) {
+                                        Thread.currentThread().interrupt();
+                                    }
+                                    return ToolResult.success("slow", "done");
+                                });
 
         StepVerifier.create(runner.execute("slow", handler, Map.of(), Duration.ofSeconds(1)))
                 .assertNext(
@@ -107,10 +113,12 @@ class ToolInvocationRunnerTest {
 
     @Test
     void execute_agentInterruptedException_propagatesAsError() {
-        ToolHandler handler =
-                input -> {
-                    throw new AgentInterruptedException("cancelled");
-                };
+        SyncTool handler =
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    throw new AgentInterruptedException("cancelled");
+                                });
 
         StepVerifier.create(runner.execute("cancel", handler, Map.of(), Duration.ofSeconds(5)))
                 .expectErrorMatches(
@@ -122,15 +130,17 @@ class ToolInvocationRunnerTest {
 
     @Test
     void execute_cooperativeCancellation_propagatesAgentInterruptedException() {
-        ToolHandler handler =
-                input -> {
-                    try {
-                        Thread.sleep(10_000);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                    return ToolResult.success("slow", "done");
-                };
+        SyncTool handler =
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    try {
+                                        Thread.sleep(10_000);
+                                    } catch (InterruptedException e) {
+                                        Thread.currentThread().interrupt();
+                                    }
+                                    return ToolResult.success("slow", "done");
+                                });
 
         AtomicBoolean cancelled = new AtomicBoolean(false);
         CancellationSignal signal = cancelled::get;
@@ -180,18 +190,10 @@ class ToolInvocationRunnerTest {
 
     @Test
     void execute_withToolContextInReactorContext() {
-        ToolHandler handler =
-                new ToolHandler() {
-                    @Override
-                    public ToolResult execute(Map<String, Object> input) {
-                        throw new UnsupportedOperationException();
-                    }
-
-                    @Override
-                    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-                        assertNotNull(context);
-                        return ToolResult.success("ctx_tool", "with context");
-                    }
+        SyncTool handler =
+                (input, context) -> {
+                    assertNotNull(context);
+                    return Mono.just(ToolResult.success("ctx_tool", "with context"));
                 };
 
         ToolContext toolCtx = new ToolContext(null, null, Map.of("key", "value"));

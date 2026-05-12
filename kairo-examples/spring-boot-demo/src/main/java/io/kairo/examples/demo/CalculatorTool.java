@@ -15,12 +15,14 @@
  */
 package io.kairo.examples.demo;
 
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
-import io.kairo.api.tool.ToolHandler;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * A simple calculator tool that evaluates basic two-operand arithmetic expressions.
@@ -37,7 +39,7 @@ import java.util.Map;
                 "Evaluate a basic arithmetic expression with two numbers. "
                         + "Supports: +, -, *, /. Format: 'number operator number' (e.g., '2 + 3').",
         category = ToolCategory.INFORMATION)
-public class CalculatorTool implements ToolHandler {
+public class CalculatorTool implements SyncTool {
 
     @ToolParam(
             description = "The arithmetic expression to evaluate (e.g., '2 + 3 * 4')",
@@ -47,38 +49,42 @@ public class CalculatorTool implements ToolHandler {
     /**
      * Evaluate the arithmetic expression provided in the input.
      *
-     * @param input the input parameters; must contain an "expression" key
+     * @param args the input parameters; must contain an "expression" key
+     * @param ctx the runtime context
      * @return a {@link ToolResult} with the evaluation result, or an error for invalid expressions
      */
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        String expr = (String) input.get("expression");
-        if (expr == null || expr.isBlank()) {
-            return error("Parameter 'expression' is required");
-        }
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(
+                () -> {
+                    String expr = (String) args.get("expression");
+                    if (expr == null || expr.isBlank()) {
+                        return error("Parameter 'expression' is required");
+                    }
 
-        expr = expr.trim();
+                    expr = expr.trim();
 
-        try {
-            double result = evaluate(expr);
-            // Format as integer if the result is a whole number
-            String formatted =
-                    (result == Math.floor(result) && !Double.isInfinite(result))
-                            ? String.valueOf((long) result)
-                            : String.valueOf(result);
-            return ToolResult.success(
-                    "calculator",
-                    expr + " = " + formatted,
-                    Map.of("expression", expr, "result", result));
-        } catch (ArithmeticException e) {
-            return error("Arithmetic error: " + e.getMessage());
-        } catch (Exception e) {
-            return error(
-                    "Invalid expression: "
-                            + expr
-                            + ". Use format: 'number operator number' "
-                            + "(e.g., '2 + 3'). Supported operators: +, -, *, /");
-        }
+                    try {
+                        double result = evaluate(expr);
+                        // Format as integer if the result is a whole number
+                        String formatted =
+                                (result == Math.floor(result) && !Double.isInfinite(result))
+                                        ? String.valueOf((long) result)
+                                        : String.valueOf(result);
+                        return ToolResult.success(
+                                "calculator",
+                                expr + " = " + formatted,
+                                Map.of("expression", expr, "result", result));
+                    } catch (ArithmeticException e) {
+                        return error("Arithmetic error: " + e.getMessage());
+                    } catch (Exception e) {
+                        return error(
+                                "Invalid expression: "
+                                        + expr
+                                        + ". Use format: 'number operator number' "
+                                        + "(e.g., '2 + 3'). Supported operators: +, -, *, /");
+                    }
+                });
     }
 
     /**

@@ -15,12 +15,14 @@
  */
 package io.kairo.examples.demo;
 
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
-import io.kairo.api.tool.ToolHandler;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * A mock weather lookup tool that returns simulated weather data for known cities.
@@ -35,7 +37,7 @@ import java.util.Map;
         name = "weather",
         description = "Look up current weather for a city. Returns temperature and conditions.",
         category = ToolCategory.INFORMATION)
-public class WeatherTool implements ToolHandler {
+public class WeatherTool implements SyncTool {
 
     /** Mock weather data keyed by lowercase city name. */
     private static final Map<String, String> WEATHER_DATA =
@@ -54,35 +56,39 @@ public class WeatherTool implements ToolHandler {
     /**
      * Execute the weather lookup for the given city.
      *
-     * @param input the input parameters; must contain a "city" key
+     * @param args the input parameters; must contain a "city" key
+     * @param ctx the runtime context
      * @return a {@link ToolResult} with the weather report, or an error if the city is unknown
      */
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        String cityName = (String) input.get("city");
-        if (cityName == null || cityName.isBlank()) {
-            return ToolResult.error("weather", "Parameter 'city' is required");
-        }
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(
+                () -> {
+                    String cityName = (String) args.get("city");
+                    if (cityName == null || cityName.isBlank()) {
+                        return ToolResult.error("weather", "Parameter 'city' is required");
+                    }
 
-        String weather = WEATHER_DATA.get(cityName.toLowerCase().trim());
-        if (weather == null) {
-            return ToolResult.success(
-                    "weather",
-                    "Unknown city: "
-                            + cityName
-                            + ". Supported cities: "
-                            + String.join(
-                                    ", ",
-                                    "Beijing",
-                                    "Shanghai",
-                                    "Tokyo",
-                                    "New York",
-                                    "London",
-                                    "Paris",
-                                    "Sydney"),
-                    Map.of("city", cityName));
-        }
+                    String weather = WEATHER_DATA.get(cityName.toLowerCase().trim());
+                    if (weather == null) {
+                        return ToolResult.success(
+                                "weather",
+                                "Unknown city: "
+                                        + cityName
+                                        + ". Supported cities: "
+                                        + String.join(
+                                                ", ",
+                                                "Beijing",
+                                                "Shanghai",
+                                                "Tokyo",
+                                                "New York",
+                                                "London",
+                                                "Paris",
+                                                "Sydney"),
+                                Map.of("city", cityName));
+                    }
 
-        return ToolResult.success("weather", weather, Map.of("city", cityName));
+                    return ToolResult.success("weather", weather, Map.of("city", cityName));
+                });
     }
 }

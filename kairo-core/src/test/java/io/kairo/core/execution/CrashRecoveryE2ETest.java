@@ -26,6 +26,7 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 /**
@@ -118,10 +119,10 @@ class CrashRecoveryE2ETest {
     @DisplayName("Idempotent tool is flagged for REPLAY on recovery")
     void idempotentToolReplayedOnRecovery() {
         @Idempotent("safe lookup")
-        class SearchTool implements ToolHandler {
+        class SearchTool implements SyncTool {
             @Override
-            public ToolResult execute(Map<String, Object> input) {
-                return ToolResult.success("t1", "search result");
+            public Mono<ToolResult> execute(Map<String, Object> input, ToolContext ctx) {
+                return Mono.just(ToolResult.success("t1", "search result"));
             }
         }
 
@@ -176,10 +177,10 @@ class CrashRecoveryE2ETest {
 
         // Verify the @NonIdempotent tool should use CACHED strategy
         @NonIdempotent("sends email")
-        class SendEmailTool implements ToolHandler {
+        class SendEmailTool implements SyncTool {
             @Override
-            public ToolResult execute(Map<String, Object> input) {
-                return ToolResult.success("t1", "email sent");
+            public Mono<ToolResult> execute(Map<String, Object> input, ToolContext ctx) {
+                return Mono.just(ToolResult.success("t1", "email sent"));
             }
         }
         assertEquals(
@@ -203,10 +204,10 @@ class CrashRecoveryE2ETest {
     @DisplayName("Unannotated tool defaults to cached result on recovery")
     void unannotatedToolDefaultsToCachedOnRecovery() {
         // An unannotated tool should behave the same as @NonIdempotent
-        class MysteryTool implements ToolHandler {
+        class MysteryTool implements SyncTool {
             @Override
-            public ToolResult execute(Map<String, Object> input) {
-                return ToolResult.success("t1", "mystery result");
+            public Mono<ToolResult> execute(Map<String, Object> input, ToolContext ctx) {
+                return Mono.just(ToolResult.success("t1", "mystery result"));
             }
         }
 

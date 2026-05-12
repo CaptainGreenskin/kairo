@@ -50,7 +50,7 @@ class ToolPartitionTest {
         executor = new DefaultToolExecutor(registry, ALLOW_ALL);
     }
 
-    private void registerTool(String name, ToolSideEffect sideEffect, ToolHandler handler) {
+    private void registerTool(String name, ToolSideEffect sideEffect, SyncTool handler) {
         ToolDefinition def =
                 new ToolDefinition(
                         name,
@@ -64,8 +64,8 @@ class ToolPartitionTest {
         registry.registerInstance(name, handler);
     }
 
-    private ToolHandler echoHandler(String toolId) {
-        return input -> ToolResult.success(toolId, "result-" + toolId);
+    private SyncTool echoHandler(String toolId) {
+        return (input, ctx) -> Mono.just(ToolResult.success(toolId, "result-" + toolId));
     }
 
     @Test
@@ -95,16 +95,16 @@ class ToolPartitionTest {
         registerTool(
                 "write_file",
                 ToolSideEffect.WRITE,
-                input -> {
+                (input, ctx) -> {
                     executionOrder.add("write_file");
-                    return ToolResult.success("write_file", "ok");
+                    return Mono.just(ToolResult.success("write_file", "ok"));
                 });
         registerTool(
                 "edit_file",
                 ToolSideEffect.WRITE,
-                input -> {
+                (input, ctx) -> {
                     executionOrder.add("edit_file");
-                    return ToolResult.success("edit_file", "ok");
+                    return Mono.just(ToolResult.success("edit_file", "ok"));
                 });
 
         var invocations =
@@ -127,16 +127,16 @@ class ToolPartitionTest {
         registerTool(
                 "read_file",
                 ToolSideEffect.READ_ONLY,
-                input -> {
+                (input, ctx) -> {
                     executionOrder.add("read");
-                    return ToolResult.success("read_file", "data");
+                    return Mono.just(ToolResult.success("read_file", "data"));
                 });
         registerTool(
                 "write_file",
                 ToolSideEffect.WRITE,
-                input -> {
+                (input, ctx) -> {
                     executionOrder.add("write");
-                    return ToolResult.success("write_file", "ok");
+                    return Mono.just(ToolResult.success("write_file", "ok"));
                 });
 
         var invocations =
@@ -233,10 +233,12 @@ class ToolPartitionTest {
             registerTool(
                     name,
                     ToolSideEffect.READ_ONLY,
-                    input -> {
-                        Thread.sleep(sleepMs);
-                        return ToolResult.success(name, "ok");
-                    });
+                    (input, ctx) ->
+                            Mono.fromCallable(
+                                    () -> {
+                                        Thread.sleep(sleepMs);
+                                        return ToolResult.success(name, "ok");
+                                    }));
         }
 
         var invocations = new ArrayList<ToolInvocation>();
@@ -264,9 +266,9 @@ class ToolPartitionTest {
             registerTool(
                     name,
                     ToolSideEffect.WRITE,
-                    input -> {
+                    (input, ctx) -> {
                         order.add(name);
-                        return ToolResult.success(name, "ok");
+                        return Mono.just(ToolResult.success(name, "ok"));
                     });
         }
 
@@ -286,16 +288,16 @@ class ToolPartitionTest {
         registerTool(
                 "bash",
                 ToolSideEffect.SYSTEM_CHANGE,
-                input -> {
+                (input, ctx) -> {
                     executionOrder.add("bash");
-                    return ToolResult.success("bash", "ok");
+                    return Mono.just(ToolResult.success("bash", "ok"));
                 });
         registerTool(
                 "read_file",
                 ToolSideEffect.READ_ONLY,
-                input -> {
+                (input, ctx) -> {
                     executionOrder.add("read");
-                    return ToolResult.success("read_file", "data");
+                    return Mono.just(ToolResult.success("read_file", "data"));
                 });
 
         // SYSTEM_CHANGE defaults to ASK, so set to ALLOWED for this test
@@ -337,9 +339,11 @@ class ToolPartitionTest {
         registerTool(
                 "bad_read",
                 ToolSideEffect.READ_ONLY,
-                input -> {
-                    throw new RuntimeException("tool failure");
-                });
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    throw new RuntimeException("tool failure");
+                                }));
 
         var invocations =
                 List.of(

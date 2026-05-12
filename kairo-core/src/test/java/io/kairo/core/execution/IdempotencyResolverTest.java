@@ -24,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Mono;
 
 /** Tests for {@link IdempotencyResolver}. */
 class IdempotencyResolverTest {
@@ -38,25 +39,25 @@ class IdempotencyResolverTest {
     // --- Test tool implementations ---
 
     @Idempotent("safe to replay")
-    static class IdempotentTool implements ToolHandler {
+    static class IdempotentTool implements SyncTool {
         @Override
-        public ToolResult execute(Map<String, Object> input) {
-            return ToolResult.success("id", "result");
+        public Mono<ToolResult> execute(Map<String, Object> input, ToolContext ctx) {
+            return Mono.just(ToolResult.success("id", "result"));
         }
     }
 
     @NonIdempotent("has side effects")
-    static class NonIdempotentTool implements ToolHandler {
+    static class NonIdempotentTool implements SyncTool {
         @Override
-        public ToolResult execute(Map<String, Object> input) {
-            return ToolResult.success("id", "result");
+        public Mono<ToolResult> execute(Map<String, Object> input, ToolContext ctx) {
+            return Mono.just(ToolResult.success("id", "result"));
         }
     }
 
-    static class UnannotatedTool implements ToolHandler {
+    static class UnannotatedTool implements SyncTool {
         @Override
-        public ToolResult execute(Map<String, Object> input) {
-            return ToolResult.success("id", "result");
+        public Mono<ToolResult> execute(Map<String, Object> input, ToolContext ctx) {
+            return Mono.just(ToolResult.success("id", "result"));
         }
     }
 

@@ -30,7 +30,6 @@ import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
 import io.kairo.api.tool.*;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
@@ -125,7 +124,11 @@ class DefaultReActAgentTest {
         toolRegistry.register(echoTool);
         toolRegistry.registerInstance(
                 "echo",
-                (ToolHandler) input -> ToolResult.success("echo", "echoed: " + input.get("text")));
+                (SyncTool)
+                        (input, ctx) ->
+                                Mono.just(
+                                        ToolResult.success(
+                                                "echo", "echoed: " + input.get("text"))));
 
         AtomicInteger callCount = new AtomicInteger(0);
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
@@ -172,7 +175,7 @@ class DefaultReActAgentTest {
                         Object.class);
         toolRegistry.register(echoTool);
         toolRegistry.registerInstance(
-                "echo", (ToolHandler) input -> ToolResult.success("echo", "result"));
+                "echo", (SyncTool) (input, ctx) -> Mono.just(ToolResult.success("echo", "result")));
 
         DefaultReActAgent agent = createAgent(baseConfig().maxIterations(2).build());
 
@@ -209,7 +212,7 @@ class DefaultReActAgentTest {
                         Object.class);
         toolRegistry.register(echoTool);
         toolRegistry.registerInstance(
-                "echo", (ToolHandler) input -> ToolResult.success("echo", "r"));
+                "echo", (SyncTool) (input, ctx) -> Mono.just(ToolResult.success("echo", "r")));
 
         DefaultReActAgent agent = createAgent(baseConfig().tokenBudget(100_000).build());
 

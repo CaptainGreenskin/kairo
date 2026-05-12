@@ -21,7 +21,6 @@ import io.kairo.api.exception.PlanModeViolationException;
 import io.kairo.api.plan.PlanFile;
 import io.kairo.api.plan.PlanStatus;
 import io.kairo.api.tool.*;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.core.tool.DefaultToolExecutor;
 import io.kairo.core.tool.DefaultToolRegistry;
 import java.io.IOException;
@@ -57,7 +56,7 @@ class PlanModeIsolationTest {
         executor = new DefaultToolExecutor(registry, ALLOW_ALL);
     }
 
-    private void registerTool(String name, ToolSideEffect sideEffect, ToolHandler handler) {
+    private void registerTool(String name, ToolSideEffect sideEffect, SyncTool handler) {
         ToolDefinition def =
                 new ToolDefinition(
                         name,
@@ -71,8 +70,8 @@ class PlanModeIsolationTest {
         registry.registerInstance(name, handler);
     }
 
-    private ToolHandler echoHandler(String id) {
-        return input -> ToolResult.success(id, "result-" + id);
+    private SyncTool echoHandler(String id) {
+        return (input, ctx) -> Mono.just(ToolResult.success(id, "result-" + id));
     }
 
     // ============== Plan Mode Restriction Tests ==============

@@ -30,7 +30,6 @@ import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
 import io.kairo.api.tool.*;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.core.agent.DefaultReActAgent;
 import io.kairo.core.context.compaction.CompactionPipeline;
 import io.kairo.core.hook.DefaultHookChain;
@@ -76,7 +75,7 @@ class AgentPerformanceIT {
                         Object.class);
         registry.register(echoTool);
         registry.registerInstance(
-                "echo", (ToolHandler) input -> ToolResult.success("echo", "result"));
+                "echo", (SyncTool) (input, ctx) -> Mono.just(ToolResult.success("echo", "result")));
         return registry;
     }
 

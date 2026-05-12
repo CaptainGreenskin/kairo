@@ -19,7 +19,8 @@ import io.kairo.api.Stable;
 import java.lang.annotation.*;
 
 /**
- * Marks a {@link ToolHandler} implementation as idempotent — safe to replay during recovery.
+ * Marks a {@link SyncTool} (or {@link StreamingTool}) implementation as idempotent — safe to replay
+ * during recovery.
  *
  * <p>When a durable execution is recovered after a crash, tools annotated with {@code @Idempotent}
  * will be re-executed with the same idempotency key. Implementations should use

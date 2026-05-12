@@ -20,9 +20,11 @@ import io.kairo.api.mcp.McpPlugin;
 import io.kairo.api.mcp.McpPluginRegistration;
 import io.kairo.api.mcp.McpPluginTool;
 import io.kairo.api.tool.JsonSchema;
+import io.kairo.api.tool.StreamingTool;
+import io.kairo.api.tool.SyncTool;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolExecutor;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -110,10 +112,11 @@ class SkillToolManager {
                                         config.toolRegistry().register(def);
                                     }
                                     // Register executor instance into ToolExecutor's registry.
-                                    // McpToolExecutor lives in kairo-mcp and does not implement
-                                    // ToolHandler (kairo-core type), so wrap it in a reflective
-                                    // adapter to satisfy DefaultToolExecutor's handler contract.
-                                    ToolHandler adapter = adaptMcpExecutor(executor);
+                                    // McpToolExecutor lives in kairo-mcp; if it already
+                                    // implements SyncTool/StreamingTool, register it directly.
+                                    // Otherwise, wrap via a reflective adapter that targets
+                                    // executeSync(Map) and exposes a SyncTool.
+                                    Object adapter = adaptMcpExecutor(executor);
                                     toolExecutor.registerToolInstance(def.name(), adapter);
                                     // Set MCP origin metadata for guardrail policy evaluation
                                     toolExecutor.setToolMetadata(
@@ -154,16 +157,16 @@ class SkillToolManager {
     }
 
     /**
-     * Wrap an {@code McpToolExecutor} instance (loaded reflectively to avoid a compile-time
-     * dependency on kairo-mcp) into a {@link ToolHandler} so that {@code DefaultToolExecutor} can
-     * dispatch tool calls through its standard handler contract.
+     * Adapt an MCP tool executor to Kairo's tool SPI. When the executor already implements {@link
+     * SyncTool} or {@link StreamingTool}, it is returned as-is. Otherwise, a reflective {@link
+     * SyncTool} adapter is built around the target's {@code executeSync(Map)} method.
      *
-     * <p>Resolves the target's {@code executeSync(Map)} method once per registration so
-     * per-invocation cost stays at a single reflective call.
+     * <p>Resolves the {@code executeSync(Map)} method once per registration so per-invocation cost
+     * stays at a single reflective call.
      */
-    private static ToolHandler adaptMcpExecutor(Object mcpExecutor) {
-        if (mcpExecutor instanceof ToolHandler toolHandler) {
-            return toolHandler;
+    private static Object adaptMcpExecutor(Object mcpExecutor) {
+        if (mcpExecutor instanceof SyncTool || mcpExecutor instanceof StreamingTool) {
+            return mcpExecutor;
         }
         final Method executeSync;
         try {
@@ -172,26 +175,32 @@ class SkillToolManager {
             throw new IllegalStateException(
                     "MCP executor "
                             + mcpExecutor.getClass().getName()
-                            + " is missing executeSync(Map); cannot adapt to ToolHandler",
+                            + " is missing executeSync(Map); cannot adapt to SyncTool",
                     e);
         }
-        return input -> {
-            try {
-                Object result = executeSync.invoke(mcpExecutor, input);
-                if (result instanceof ToolResult tr) {
-                    return tr;
-                }
-                throw new IllegalStateException(
-                        "MCP executor.executeSync returned unexpected type: "
-                                + (result == null ? "null" : result.getClass().getName()));
-            } catch (ReflectiveOperationException e) {
-                Throwable cause = e.getCause() != null ? e.getCause() : e;
-                if (cause instanceof Exception ex) {
-                    throw ex;
-                }
-                throw new RuntimeException(cause);
-            }
-        };
+        return (SyncTool)
+                (Map<String, Object> args, ToolContext ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    try {
+                                        Object result = executeSync.invoke(mcpExecutor, args);
+                                        if (result instanceof ToolResult tr) {
+                                            return tr;
+                                        }
+                                        throw new IllegalStateException(
+                                                "MCP executor.executeSync returned unexpected"
+                                                        + " type: "
+                                                        + (result == null
+                                                                ? "null"
+                                                                : result.getClass().getName()));
+                                    } catch (ReflectiveOperationException e) {
+                                        Throwable cause = e.getCause() != null ? e.getCause() : e;
+                                        if (cause instanceof Exception ex) {
+                                            throw ex;
+                                        }
+                                        throw new RuntimeException(cause);
+                                    }
+                                });
     }
 
     private List<McpPluginTool> applyMcpGovernance(

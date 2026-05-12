@@ -20,9 +20,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.kairo.api.agent.CancellationSignal;
 import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.tool.JsonSchema;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import java.time.Duration;
 import java.util.Map;
@@ -64,7 +64,7 @@ class CancellationE2ETest {
         executor = new DefaultToolExecutor(registry, guard);
     }
 
-    private void registerToolHandler(String name, ToolHandler handler) {
+    private void registerToolHandler(String name, SyncTool handler) {
         ToolDefinition def =
                 new ToolDefinition(
                         name,
@@ -82,9 +82,11 @@ class CancellationE2ETest {
     void directAgentInterruptedException_propagatesAsMonoError() {
         registerToolHandler(
                 "cancel_tool",
-                input -> {
-                    throw new AgentInterruptedException("Tool execution cancelled");
-                });
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    throw new AgentInterruptedException("Tool execution cancelled");
+                                }));
 
         StepVerifier.create(executor.execute("cancel_tool", Map.of()))
                 .expectErrorMatches(
@@ -100,10 +102,13 @@ class CancellationE2ETest {
     void wrappedAgentInterruptedException_propagatesAsMonoError() {
         registerToolHandler(
                 "wrapped_cancel",
-                input -> {
-                    throw new RuntimeException(
-                            "wrapper", new AgentInterruptedException("inner cancel"));
-                });
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    throw new RuntimeException(
+                                            "wrapper",
+                                            new AgentInterruptedException("inner cancel"));
+                                }));
 
         StepVerifier.create(executor.execute("wrapped_cancel", Map.of()))
                 .expectErrorMatches(
@@ -119,14 +124,16 @@ class CancellationE2ETest {
     void cooperativeCancellation_duringSlowTool_propagatesAgentInterruptedException() {
         registerToolHandler(
                 "slow_tool",
-                input -> {
-                    try {
-                        Thread.sleep(10_000); // block for 10 seconds
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                    return ToolResult.success("slow_tool", "should not reach");
-                });
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    try {
+                                        Thread.sleep(10_000); // block for 10 seconds
+                                    } catch (InterruptedException e) {
+                                        Thread.currentThread().interrupt();
+                                    }
+                                    return ToolResult.success("slow_tool", "should not reach");
+                                }));
 
         AtomicBoolean cancelled = new AtomicBoolean(false);
         CancellationSignal signal = cancelled::get;
@@ -149,10 +156,12 @@ class CancellationE2ETest {
     void preCancelledSignal_immediatelyTerminatesWithAgentInterruptedException() {
         registerToolHandler(
                 "any_tool",
-                input -> {
-                    fail("Tool should not execute when pre-cancelled");
-                    return ToolResult.success("any_tool", "nope");
-                });
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    fail("Tool should not execute when pre-cancelled");
+                                    return ToolResult.success("any_tool", "nope");
+                                }));
 
         CancellationSignal alreadyCancelled = () -> true;
 
@@ -172,9 +181,12 @@ class CancellationE2ETest {
     void cancellationException_propagatesAsError() {
         registerToolHandler(
                 "cancel_ex_tool",
-                input -> {
-                    throw new java.util.concurrent.CancellationException("task cancelled");
-                });
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    throw new java.util.concurrent.CancellationException(
+                                            "task cancelled");
+                                }));
 
         StepVerifier.create(executor.execute("cancel_ex_tool", Map.of()))
                 .expectErrorMatches(e -> e instanceof java.util.concurrent.CancellationException)
@@ -187,9 +199,11 @@ class CancellationE2ETest {
     void normalException_convertedToErrorResult_notPropagated() {
         registerToolHandler(
                 "failing_tool",
-                input -> {
-                    throw new RuntimeException("ordinary failure");
-                });
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    throw new RuntimeException("ordinary failure");
+                                }));
 
         StepVerifier.create(executor.execute("failing_tool", Map.of()))
                 .assertNext(
@@ -205,7 +219,9 @@ class CancellationE2ETest {
     @Test
     void noCancellation_toolCompletesNormally() {
         registerToolHandler(
-                "echo", input -> ToolResult.success("echo", "echoed: " + input.get("msg")));
+                "echo",
+                (input, ctx) ->
+                        Mono.just(ToolResult.success("echo", "echoed: " + input.get("msg"))));
 
         CancellationSignal neverCancelled = () -> false;
 
@@ -234,19 +250,21 @@ class CancellationE2ETest {
                         "delayed tool",
                         ToolCategory.GENERAL,
                         new JsonSchema("object", null, null, null),
-                        ToolHandler.class);
+                        SyncTool.class);
         registry.register(def);
         registry.registerInstance(
                 "delay_tool",
-                (ToolHandler)
-                        input -> {
-                            try {
-                                Thread.sleep(10_000);
-                            } catch (InterruptedException e) {
-                                Thread.currentThread().interrupt();
-                            }
-                            return ToolResult.success("delay_tool", "done");
-                        });
+                (SyncTool)
+                        (input, ctx) ->
+                                Mono.fromCallable(
+                                        () -> {
+                                            try {
+                                                Thread.sleep(10_000);
+                                            } catch (InterruptedException e) {
+                                                Thread.currentThread().interrupt();
+                                            }
+                                            return ToolResult.success("delay_tool", "done");
+                                        }));
 
         AtomicBoolean cancelled = new AtomicBoolean(false);
         CancellationSignal signal = cancelled::get;
@@ -288,19 +306,21 @@ class CancellationE2ETest {
                                 "concurrent test",
                                 ToolCategory.GENERAL,
                                 new JsonSchema("object", null, null, null),
-                                ToolHandler.class);
+                                SyncTool.class);
                 iterRegistry.register(def);
                 iterRegistry.registerInstance(
                         toolName,
-                        (ToolHandler)
-                                input -> {
-                                    try {
-                                        Thread.sleep(500);
-                                    } catch (InterruptedException e) {
-                                        Thread.currentThread().interrupt();
-                                    }
-                                    return ToolResult.success(toolName, "done");
-                                });
+                        (SyncTool)
+                                (input, ctx) ->
+                                        Mono.fromCallable(
+                                                () -> {
+                                                    try {
+                                                        Thread.sleep(500);
+                                                    } catch (InterruptedException e) {
+                                                        Thread.currentThread().interrupt();
+                                                    }
+                                                    return ToolResult.success(toolName, "done");
+                                                }));
 
                 AtomicBoolean cancelled = new AtomicBoolean(false);
                 CancellationSignal signal = cancelled::get;

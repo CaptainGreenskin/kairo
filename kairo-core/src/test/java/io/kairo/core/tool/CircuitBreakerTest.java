@@ -18,14 +18,15 @@ package io.kairo.core.tool;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.tool.JsonSchema;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 class CircuitBreakerTest {
@@ -43,7 +44,7 @@ class CircuitBreakerTest {
         return new DefaultToolExecutor(registry, guard, null, null, threshold);
     }
 
-    private void registerToolHandler(String name, ToolHandler handler) {
+    private void registerToolHandler(String name, SyncTool handler) {
         ToolDefinition def =
                 new ToolDefinition(
                         name,
@@ -62,12 +63,12 @@ class CircuitBreakerTest {
 
         registerToolHandler(
                 "flaky",
-                input -> {
+                (input, ctx) -> {
                     int n = callCount.incrementAndGet();
                     if (n <= 2) {
-                        return ToolResult.error("flaky", "Error: failed");
+                        return Mono.just(ToolResult.error("flaky", "Error: failed"));
                     }
-                    return ToolResult.success("flaky", "success");
+                    return Mono.just(ToolResult.success("flaky", "success"));
                 });
 
         // Two failures
@@ -103,7 +104,8 @@ class CircuitBreakerTest {
     void consecutiveFailuresTriggersCircuitBreaker() {
         DefaultToolExecutor executor = executorWithThreshold(3);
         registerToolHandler(
-                "bad_tool", input -> ToolResult.error("bad_tool", "Error: always fails"));
+                "bad_tool",
+                (input, ctx) -> Mono.just(ToolResult.error("bad_tool", "Error: always fails")));
 
         // 3 consecutive failures
         for (int i = 0; i < 3; i++) {
@@ -130,9 +132,9 @@ class CircuitBreakerTest {
 
         registerToolHandler(
                 "tracked",
-                input -> {
+                (input, ctx) -> {
                     callCount.incrementAndGet();
-                    return ToolResult.error("tracked", "Error: fail");
+                    return Mono.just(ToolResult.error("tracked", "Error: fail"));
                 });
 
         // Trigger circuit breaker with 2 failures
@@ -158,9 +160,9 @@ class CircuitBreakerTest {
 
         registerToolHandler(
                 "resettable",
-                input -> {
+                (input, ctx) -> {
                     callCount.incrementAndGet();
-                    return ToolResult.error("resettable", "Error: fail");
+                    return Mono.just(ToolResult.error("resettable", "Error: fail"));
                 });
 
         // Trigger circuit breaker
@@ -192,8 +194,10 @@ class CircuitBreakerTest {
     void resetSpecificToolClearsOnlyThatTool() {
         DefaultToolExecutor executor = executorWithThreshold(2);
 
-        registerToolHandler("tool_a", input -> ToolResult.error("tool_a", "Error: fail a"));
-        registerToolHandler("tool_b", input -> ToolResult.error("tool_b", "Error: fail b"));
+        registerToolHandler(
+                "tool_a", (input, ctx) -> Mono.just(ToolResult.error("tool_a", "Error: fail a")));
+        registerToolHandler(
+                "tool_b", (input, ctx) -> Mono.just(ToolResult.error("tool_b", "Error: fail b")));
 
         // Trigger circuit breaker for both tools
         for (int i = 0; i < 2; i++) {
@@ -228,7 +232,8 @@ class CircuitBreakerTest {
     @Test
     void customThresholdWorks() {
         DefaultToolExecutor executor = executorWithThreshold(5);
-        registerToolHandler("custom", input -> ToolResult.error("custom", "Error: fail"));
+        registerToolHandler(
+                "custom", (input, ctx) -> Mono.just(ToolResult.error("custom", "Error: fail")));
 
         // 4 failures should NOT trigger circuit breaker
         for (int i = 0; i < 4; i++) {
@@ -265,8 +270,10 @@ class CircuitBreakerTest {
     void differentToolsHaveIndependentCounters() {
         DefaultToolExecutor executor = executorWithThreshold(2);
 
-        registerToolHandler("tool_x", input -> ToolResult.error("tool_x", "Error: fail x"));
-        registerToolHandler("tool_y", input -> ToolResult.success("tool_y", "success y"));
+        registerToolHandler(
+                "tool_x", (input, ctx) -> Mono.just(ToolResult.error("tool_x", "Error: fail x")));
+        registerToolHandler(
+                "tool_y", (input, ctx) -> Mono.just(ToolResult.success("tool_y", "success y")));
 
         // Fail tool_x twice
         for (int i = 0; i < 2; i++) {
@@ -292,10 +299,12 @@ class CircuitBreakerTest {
 
         registerToolHandler(
                 "unstable_tool",
-                input ->
+                (input, ctx) ->
                         // Simulate tools returning invocation-scoped IDs instead of static tool
                         // names
-                        ToolResult.error("invocation-" + System.nanoTime(), "Error: transient"));
+                        Mono.just(
+                                ToolResult.error(
+                                        "invocation-" + System.nanoTime(), "Error: transient")));
 
         StepVerifier.create(executor.execute("unstable_tool", Map.of()))
                 .assertNext(r -> assertTrue(r.isError()))
@@ -315,7 +324,8 @@ class CircuitBreakerTest {
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard, null, null);
 
         registerToolHandler(
-                "default_thresh", input -> ToolResult.error("default_thresh", "Error: fail"));
+                "default_thresh",
+                (input, ctx) -> Mono.just(ToolResult.error("default_thresh", "Error: fail")));
 
         // 3 failures should NOT be circuit-broken (they execute normally)
         for (int i = 0; i < 3; i++) {

@@ -19,7 +19,6 @@ import io.kairo.api.tool.StreamingTool;
 import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolRegistry;
 import java.util.Collections;
 import java.util.HashMap;
@@ -80,10 +79,8 @@ public class DefaultToolRegistry implements ToolRegistry {
         List<ToolDefinition> definitions = scanner.scan(basePackages);
         for (ToolDefinition def : definitions) {
             register(def);
-            // Auto-create instance if implementationClass is a ToolHandler, SyncTool, or
-            // StreamingTool
-            if ((ToolHandler.class.isAssignableFrom(def.implementationClass())
-                            || SyncTool.class.isAssignableFrom(def.implementationClass())
+            // Auto-create instance if implementationClass is a SyncTool or StreamingTool
+            if ((SyncTool.class.isAssignableFrom(def.implementationClass())
                             || StreamingTool.class.isAssignableFrom(def.implementationClass()))
                     && !toolInstances.containsKey(def.name())) {
                 try {
@@ -124,13 +121,21 @@ public class DefaultToolRegistry implements ToolRegistry {
     /**
      * Register a tool class by scanning its annotations and auto-creating an instance.
      *
-     * @param toolClass the annotated tool class
+     * @param toolClass the annotated tool class (must implement {@link SyncTool} or {@link
+     *     StreamingTool})
      */
-    public void registerTool(Class<? extends ToolHandler> toolClass) {
+    public void registerTool(Class<?> toolClass) {
+        if (!SyncTool.class.isAssignableFrom(toolClass)
+                && !StreamingTool.class.isAssignableFrom(toolClass)) {
+            throw new IllegalArgumentException(
+                    "Tool class "
+                            + toolClass.getName()
+                            + " must implement SyncTool or StreamingTool");
+        }
         ToolDefinition def = scanner.scanClass(toolClass);
         register(def);
         try {
-            ToolHandler instance = toolClass.getDeclaredConstructor().newInstance();
+            Object instance = toolClass.getDeclaredConstructor().newInstance();
             registerInstance(def.name(), instance);
         } catch (Exception e) {
             log.error(

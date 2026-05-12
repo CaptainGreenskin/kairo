@@ -54,7 +54,7 @@ class ApprovalFlowTest {
         approvalHandler = Mockito.mock(UserApprovalHandler.class);
     }
 
-    private void registerTool(String name, ToolSideEffect sideEffect, ToolHandler handler) {
+    private void registerTool(String name, ToolSideEffect sideEffect, SyncTool handler) {
         ToolDefinition def =
                 new ToolDefinition(
                         name,
@@ -68,8 +68,8 @@ class ApprovalFlowTest {
         registry.registerInstance(name, handler);
     }
 
-    private ToolHandler echoHandler(String toolId) {
-        return input -> ToolResult.success(toolId, "result-" + toolId);
+    private SyncTool echoHandler(String toolId) {
+        return (input, ctx) -> Mono.just(ToolResult.success(toolId, "result-" + toolId));
     }
 
     @Test

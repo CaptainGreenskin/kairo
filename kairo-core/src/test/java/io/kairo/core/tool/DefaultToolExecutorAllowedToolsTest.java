@@ -60,17 +60,11 @@ class DefaultToolExecutorAllowedToolsTest {
                         "desc",
                         ToolCategory.FILE_AND_CODE,
                         null,
-                        ToolHandler.class,
+                        SyncTool.class,
                         null,
                         sideEffect);
         registry.register(def);
-        ToolHandler handler = mock(ToolHandler.class);
-        try {
-            when(handler.execute(any())).thenReturn(ToolResult.success(name, "ok"));
-            when(handler.execute(any(), any())).thenReturn(ToolResult.success(name, "ok"));
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        SyncTool handler = (input, ctx) -> Mono.just(ToolResult.success(name, "ok"));
         registry.registerInstance(name, handler);
     }
 

@@ -22,7 +22,6 @@ import io.kairo.api.tool.StreamingTool;
 import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolEvent;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tracing.Tracer;
 import io.kairo.core.shutdown.GracefulShutdownManager;
@@ -64,15 +63,15 @@ public final class ToolInvocationRunner {
     /**
      * Execute a tool handler with timeout, cooperative cancellation, and shutdown guard.
      *
-     * <p>Dispatches to {@link SyncTool}, {@link StreamingTool}, or legacy {@link ToolHandler}
-     * depending on the runtime type of the provided instance.
+     * <p>Dispatches to {@link SyncTool} or {@link StreamingTool} depending on the runtime type of
+     * the provided instance.
      *
      * <p>The {@code onErrorResume} block checks {@link #isCancellationException(Throwable)} FIRST
      * and propagates {@link AgentInterruptedException} via {@code Mono.error(e)}. Only other
      * exceptions are converted to error results.
      *
      * @param toolName the tool name (for error messages)
-     * @param handler the tool instance (SyncTool, StreamingTool, or ToolHandler)
+     * @param handler the tool instance (SyncTool or StreamingTool)
      * @param input the tool input parameters
      * @param timeout the maximum execution duration
      * @return a Mono emitting the tool result
@@ -132,7 +131,7 @@ public final class ToolInvocationRunner {
 
     /**
      * Dispatch tool execution based on the runtime type of the handler. SyncTool and StreamingTool
-     * use the new v1.2 SPI; ToolHandler is the legacy path.
+     * are the only v1.2 SPI shapes.
      */
     private Mono<ToolResult> dispatchTool(
             Object handler, Map<String, Object> input, ToolContext ctx) {
@@ -149,12 +148,11 @@ public final class ToolInvocationRunner {
                     .switchIfEmpty(
                             Mono.just(ToolResult.error("stream", "No final result from stream")));
         }
-        if (handler instanceof ToolHandler legacyHandler) {
-            return Mono.fromCallable(() -> legacyHandler.execute(input, ctx));
-        }
-        return Mono.just(
-                ToolResult.error(
-                        "unknown", "Unsupported tool type: " + handler.getClass().getName()));
+        return Mono.error(
+                new IllegalArgumentException(
+                        "Tool handler "
+                                + handler.getClass().getName()
+                                + " does not implement SyncTool or StreamingTool"));
     }
 
     private <T> Mono<T> withCooperativeCancellation(Mono<T> source) {

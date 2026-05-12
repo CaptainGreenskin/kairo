@@ -43,8 +43,8 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
- * Default implementation of {@link ToolExecutor} that dispatches tool calls to {@link ToolHandler}
- * instances registered in a {@link DefaultToolRegistry}.
+ * Default implementation of {@link ToolExecutor} that dispatches tool calls to {@link SyncTool} and
+ * {@link StreamingTool} instances registered in a {@link DefaultToolRegistry}.
  *
  * <p>Orchestrates a pipeline of extracted components:
  *
@@ -423,17 +423,14 @@ public class DefaultToolExecutor implements ToolExecutor {
                                         toolName,
                                         "Tool '" + toolName + "' has no executable handler"));
                     }
-                    // Resolve to SyncTool, StreamingTool, or legacy ToolHandler
-                    if (!(instance instanceof SyncTool)
-                            && !(instance instanceof StreamingTool)
-                            && !(instance instanceof ToolHandler)) {
-                        return Mono.just(
-                                ToolResultSanitizer.errorResult(
-                                        toolName,
+                    // Resolve to SyncTool or StreamingTool
+                    if (!(instance instanceof SyncTool) && !(instance instanceof StreamingTool)) {
+                        return Mono.error(
+                                new IllegalArgumentException(
                                         "Tool '"
                                                 + toolName
-                                                + "' does not implement SyncTool,"
-                                                + " StreamingTool, or ToolHandler"));
+                                                + "' does not implement SyncTool or"
+                                                + " StreamingTool"));
                     }
 
                     // 6. Permission guard check

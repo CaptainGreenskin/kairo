@@ -19,8 +19,8 @@ import io.kairo.api.Stable;
 import java.lang.annotation.*;
 
 /**
- * Marks a {@link ToolHandler} implementation as non-idempotent — not safe to replay during
- * recovery.
+ * Marks a {@link SyncTool} (or {@link StreamingTool}) implementation as non-idempotent — not safe
+ * to replay during recovery.
  *
  * <p>When a durable execution is recovered after a crash, tools annotated with
  * {@code @NonIdempotent} will NOT be re-executed. Instead, the cached result from the execution

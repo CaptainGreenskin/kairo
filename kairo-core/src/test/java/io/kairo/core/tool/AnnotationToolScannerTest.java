@@ -21,13 +21,14 @@ import io.kairo.api.tool.*;
 import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Mono;
 
 class AnnotationToolScannerTest {
 
     private final AnnotationToolScanner scanner = new AnnotationToolScanner();
 
     @Tool(name = "test_tool", description = "A test tool", category = ToolCategory.GENERAL)
-    static class TestToolWithParams implements ToolHandler {
+    static class TestToolWithParams implements SyncTool {
         @ToolParam(description = "The file path", required = true)
         String path;
 
@@ -38,24 +39,24 @@ class AnnotationToolScannerTest {
         boolean verbose;
 
         @Override
-        public ToolResult execute(Map<String, Object> input) {
-            return ToolResult.success("test", "done");
+        public Mono<ToolResult> execute(Map<String, Object> input, ToolContext ctx) {
+            return Mono.just(ToolResult.success("test", "done"));
         }
     }
 
     @Tool(name = "no_params", description = "Tool without params")
-    static class NoParamsTool implements ToolHandler {
+    static class NoParamsTool implements SyncTool {
         @Override
-        public ToolResult execute(Map<String, Object> input) {
-            return ToolResult.success("test", "done");
+        public Mono<ToolResult> execute(Map<String, Object> input, ToolContext ctx) {
+            return Mono.just(ToolResult.success("test", "done"));
         }
     }
 
     @Tool(name = "timed_tool", description = "Tool with custom timeout", timeoutSeconds = 30)
-    static class TimedTool implements ToolHandler {
+    static class TimedTool implements SyncTool {
         @Override
-        public ToolResult execute(Map<String, Object> input) {
-            return ToolResult.success("test", "done");
+        public Mono<ToolResult> execute(Map<String, Object> input, ToolContext ctx) {
+            return Mono.just(ToolResult.success("test", "done"));
         }
     }
 
@@ -63,10 +64,10 @@ class AnnotationToolScannerTest {
             name = "guided_tool",
             description = "Tool with usage guidance",
             usageGuidance = "Use for quick reads; for large files use GrepTool instead")
-    static class GuidedTool implements ToolHandler {
+    static class GuidedTool implements SyncTool {
         @Override
-        public ToolResult execute(Map<String, Object> input) {
-            return ToolResult.success("test", "done");
+        public Mono<ToolResult> execute(Map<String, Object> input, ToolContext ctx) {
+            return Mono.just(ToolResult.success("test", "done"));
         }
     }
 

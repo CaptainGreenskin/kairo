@@ -20,9 +20,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.tool.JsonSchema;
 import io.kairo.api.tool.PermissionGuard;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.ToolCategory;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolDefinition;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import java.time.Duration;
 import java.util.Map;
@@ -44,7 +45,7 @@ class DefaultToolExecutorTest {
         executor = new DefaultToolExecutor(registry, guard);
     }
 
-    private void registerToolHandler(String name, ToolHandler handler) {
+    private void registerToolHandler(String name, SyncTool handler) {
         ToolDefinition def =
                 new ToolDefinition(
                         name,
@@ -59,7 +60,9 @@ class DefaultToolExecutorTest {
     @Test
     void executeSuccessfully() {
         registerToolHandler(
-                "echo", input -> ToolResult.success("echo", "echoed: " + input.get("text")));
+                "echo",
+                (input, ctx) ->
+                        Mono.just(ToolResult.success("echo", "echoed: " + input.get("text"))));
 
         StepVerifier.create(executor.execute("echo", Map.of("text", "hello")))
                 .assertNext(
@@ -106,9 +109,11 @@ class DefaultToolExecutorTest {
     void executeToolThatThrowsReturnsError() {
         registerToolHandler(
                 "failing",
-                input -> {
-                    throw new RuntimeException("boom");
-                });
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    throw new RuntimeException("boom");
+                                }));
 
         StepVerifier.create(executor.execute("failing", Map.of()))
                 .assertNext(
@@ -121,7 +126,8 @@ class DefaultToolExecutorTest {
 
     @Test
     void permissionDeniedForDangerousCommand() {
-        registerToolHandler("bash", input -> ToolResult.success("bash", "executed"));
+        registerToolHandler(
+                "bash", (input, ctx) -> Mono.just(ToolResult.success("bash", "executed")));
 
         // rm -rf should be blocked by DefaultPermissionGuard
         StepVerifier.create(executor.execute("bash", Map.of("command", "rm -rf /")))
@@ -135,7 +141,9 @@ class DefaultToolExecutorTest {
 
     @Test
     void nonBashToolsSkipPermissionCheck() {
-        registerToolHandler("read_file", input -> ToolResult.success("read_file", "file content"));
+        registerToolHandler(
+                "read_file",
+                (input, ctx) -> Mono.just(ToolResult.success("read_file", "file content")));
 
         // Even with dangerous-looking input, non-bash tools pass
         StepVerifier.create(executor.execute("read_file", Map.of("command", "rm -rf /")))
@@ -145,8 +153,10 @@ class DefaultToolExecutorTest {
 
     @Test
     void executeParallelMultipleTools() {
-        registerToolHandler("tool_a", input -> ToolResult.success("a", "result_a"));
-        registerToolHandler("tool_b", input -> ToolResult.success("b", "result_b"));
+        registerToolHandler(
+                "tool_a", (input, ctx) -> Mono.just(ToolResult.success("a", "result_a")));
+        registerToolHandler(
+                "tool_b", (input, ctx) -> Mono.just(ToolResult.success("b", "result_b")));
 
         var invocations =
                 java.util.List.of(
@@ -181,7 +191,8 @@ class DefaultToolExecutorTest {
                 };
 
         DefaultToolExecutor strictExecutor = new DefaultToolExecutor(registry, denyAll);
-        registerToolHandler("bash", input -> ToolResult.success("bash", "executed"));
+        registerToolHandler(
+                "bash", (input, ctx) -> Mono.just(ToolResult.success("bash", "executed")));
 
         StepVerifier.create(strictExecutor.execute("bash", Map.of("command", "echo hi")))
                 .assertNext(
@@ -208,15 +219,17 @@ class DefaultToolExecutorTest {
         registry.register(def);
         registry.registerInstance(
                 "slow_tool",
-                (ToolHandler)
-                        input -> {
-                            try {
-                                Thread.sleep(2000);
-                            } catch (InterruptedException e) {
-                                Thread.currentThread().interrupt();
-                            }
-                            return ToolResult.success("slow_tool", "done");
-                        });
+                (SyncTool)
+                        (input, ctx) ->
+                                Mono.fromCallable(
+                                        () -> {
+                                            try {
+                                                Thread.sleep(2000);
+                                            } catch (InterruptedException e) {
+                                                Thread.currentThread().interrupt();
+                                            }
+                                            return ToolResult.success("slow_tool", "done");
+                                        }));
 
         StepVerifier.create(executor.execute("slow_tool", Map.of()))
                 .assertNext(
@@ -230,7 +243,9 @@ class DefaultToolExecutorTest {
     @Test
     void executeUsesDefaultTimeoutWhenToolHasNoCustomTimeout() {
         // Register a tool without custom timeout — should use DEFAULT_TIMEOUT (120s)
-        registerToolHandler("fast_tool", input -> ToolResult.success("fast_tool", "quick result"));
+        registerToolHandler(
+                "fast_tool",
+                (input, ctx) -> Mono.just(ToolResult.success("fast_tool", "quick result")));
 
         StepVerifier.create(executor.execute("fast_tool", Map.of()))
                 .assertNext(
@@ -242,10 +257,10 @@ class DefaultToolExecutorTest {
     }
 
     // Dummy class for the per-tool timeout test
-    static class SlowHandler implements ToolHandler {
+    static class SlowHandler implements SyncTool {
         @Override
-        public ToolResult execute(Map<String, Object> input) {
-            return ToolResult.success("slow", "done");
+        public Mono<ToolResult> execute(Map<String, Object> input, ToolContext ctx) {
+            return Mono.just(ToolResult.success("slow", "done"));
         }
     }
 
@@ -255,9 +270,11 @@ class DefaultToolExecutorTest {
     void toolThrowingAgentInterruptedExceptionPropagatesNotWrapped() {
         registerToolHandler(
                 "cancelling_tool",
-                input -> {
-                    throw new AgentInterruptedException("Tool execution cancelled");
-                });
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    throw new AgentInterruptedException("Tool execution cancelled");
+                                }));
 
         StepVerifier.create(executor.execute("cancelling_tool", Map.of()))
                 .expectErrorMatches(
@@ -271,10 +288,14 @@ class DefaultToolExecutorTest {
     void toolThrowingWrappedAgentInterruptedExceptionPropagates() {
         registerToolHandler(
                 "wrapped_cancel_tool",
-                input -> {
-                    throw new RuntimeException(
-                            "wrapper", new AgentInterruptedException("Tool execution cancelled"));
-                });
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    throw new RuntimeException(
+                                            "wrapper",
+                                            new AgentInterruptedException(
+                                                    "Tool execution cancelled"));
+                                }));
 
         StepVerifier.create(executor.execute("wrapped_cancel_tool", Map.of()))
                 .expectErrorMatches(

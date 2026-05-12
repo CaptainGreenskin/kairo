@@ -25,9 +25,10 @@ import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
 import io.kairo.api.tool.JsonSchema;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.ToolCategory;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolDefinition;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.core.agent.CoordinatorAgent;
 import io.kairo.core.agent.CoordinatorConfig;
 import io.kairo.core.tool.DefaultToolRegistry;
@@ -107,10 +108,11 @@ class CoordinatorIntegrationTest {
     }
 
     /** A no-op tool handler for testing. */
-    public static class NoOpToolHandler implements ToolHandler {
+    public static class NoOpToolHandler implements SyncTool {
         @Override
-        public io.kairo.api.tool.ToolResult execute(Map<String, Object> input) {
-            return io.kairo.api.tool.ToolResult.success("noop", "executed");
+        public Mono<io.kairo.api.tool.ToolResult> execute(
+                Map<String, Object> input, ToolContext ctx) {
+            return Mono.just(io.kairo.api.tool.ToolResult.success("noop", "executed"));
         }
     }
 

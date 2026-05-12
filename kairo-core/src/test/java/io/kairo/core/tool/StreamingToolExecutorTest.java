@@ -65,7 +65,7 @@ class StreamingToolExecutorTest {
         callbackCompleted.clear();
     }
 
-    private void registerTool(String name, ToolSideEffect sideEffect, ToolHandler handler) {
+    private void registerTool(String name, ToolSideEffect sideEffect, SyncTool handler) {
         ToolDefinition def =
                 new ToolDefinition(
                         name,
@@ -79,8 +79,8 @@ class StreamingToolExecutorTest {
         registry.registerInstance(name, handler);
     }
 
-    private ToolHandler echoHandler(String toolId) {
-        return input -> ToolResult.success(toolId, "result-" + toolId);
+    private SyncTool echoHandler(String toolId) {
+        return (input, ctx) -> Mono.just(ToolResult.success(toolId, "result-" + toolId));
     }
 
     @Test
@@ -104,16 +104,16 @@ class StreamingToolExecutorTest {
         registerTool(
                 "write_a",
                 ToolSideEffect.WRITE,
-                input -> {
+                (input, ctx) -> {
                     order.add("write_a");
-                    return ToolResult.success("write_a", "ok");
+                    return Mono.just(ToolResult.success("write_a", "ok"));
                 });
         registerTool(
                 "write_b",
                 ToolSideEffect.WRITE,
-                input -> {
+                (input, ctx) -> {
                     order.add("write_b");
-                    return ToolResult.success("write_b", "ok");
+                    return Mono.just(ToolResult.success("write_b", "ok"));
                 });
 
         var tools =
@@ -134,16 +134,16 @@ class StreamingToolExecutorTest {
         registerTool(
                 "read_file",
                 ToolSideEffect.READ_ONLY,
-                input -> {
+                (input, ctx) -> {
                     order.add("read");
-                    return ToolResult.success("read_file", "data");
+                    return Mono.just(ToolResult.success("read_file", "data"));
                 });
         registerTool(
                 "write_file",
                 ToolSideEffect.WRITE,
-                input -> {
+                (input, ctx) -> {
                     order.add("write");
-                    return ToolResult.success("write_file", "ok");
+                    return Mono.just(ToolResult.success("write_file", "ok"));
                 });
 
         var tools =

@@ -20,9 +20,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.kairo.api.tool.JsonSchema;
 import io.kairo.api.tool.PermissionDecision;
 import io.kairo.api.tool.PermissionGuard;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
 import java.util.Collections;
@@ -290,11 +290,7 @@ class PermissionDecisionTest {
                         ToolSideEffect.SYSTEM_CHANGE);
         registry.register(def);
         registry.registerInstance(
-                "bash",
-                (ToolHandler)
-                        input -> {
-                            return ToolResult.success("bash", "output");
-                        });
+                "bash", (SyncTool) (input, ctx) -> Mono.just(ToolResult.success("bash", "output")));
 
         var executor = new DefaultToolExecutor(registry, guard);
 

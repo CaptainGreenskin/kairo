@@ -19,9 +19,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.exception.PlanModeViolationException;
 import io.kairo.api.tool.JsonSchema;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolPermission;
 import io.kairo.api.tool.ToolSideEffect;
 import java.util.Set;
@@ -48,7 +48,7 @@ class ToolPermissionResolverTest {
                         "test tool " + name,
                         ToolCategory.GENERAL,
                         new JsonSchema("object", null, null, null),
-                        ToolHandler.class,
+                        SyncTool.class,
                         null,
                         sideEffect);
         registry.register(def);

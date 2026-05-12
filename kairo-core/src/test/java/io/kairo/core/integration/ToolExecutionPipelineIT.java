@@ -18,7 +18,6 @@ package io.kairo.core.integration;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.tool.*;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
 import io.kairo.core.tool.DefaultToolRegistry;
@@ -30,6 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Mono;
 
 /**
  * Integration tests for the tool execution pipeline covering registration, permission checks,
@@ -51,10 +51,10 @@ class ToolExecutionPipelineIT {
     }
 
     // ================================
-    //  Helper: register a ToolHandler with a ToolDefinition
+    //  Helper: register a SyncTool with a ToolDefinition
     // ================================
 
-    private void registerHandler(String name, ToolSideEffect sideEffect, ToolHandler handler) {
+    private void registerHandler(String name, ToolSideEffect sideEffect, SyncTool handler) {
         ToolDefinition def =
                 new ToolDefinition(
                         name,
@@ -68,7 +68,7 @@ class ToolExecutionPipelineIT {
         registry.registerInstance(name, handler);
     }
 
-    private void registerReadHandler(String name, ToolHandler handler) {
+    private void registerReadHandler(String name, SyncTool handler) {
         registerHandler(name, ToolSideEffect.READ_ONLY, handler);
     }
 
@@ -79,7 +79,9 @@ class ToolExecutionPipelineIT {
     @Test
     void toolRegistration_thenExecution_returnsResult() {
         registerReadHandler(
-                "echo", input -> ToolResult.success("echo", "echoed: " + input.get("text")));
+                "echo",
+                (input, ctx) ->
+                        Mono.just(ToolResult.success("echo", "echoed: " + input.get("text"))));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
 
@@ -115,14 +117,16 @@ class ToolExecutionPipelineIT {
     void toolWithTimeout_exceedsTimeout_returnsError() {
         registerReadHandler(
                 "slow_tool",
-                input -> {
-                    try {
-                        Thread.sleep(5000);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                    return ToolResult.success("slow_tool", "done");
-                });
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    try {
+                                        Thread.sleep(5000);
+                                    } catch (InterruptedException e) {
+                                        Thread.currentThread().interrupt();
+                                    }
+                                    return ToolResult.success("slow_tool", "done");
+                                }));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
 
@@ -144,9 +148,11 @@ class ToolExecutionPipelineIT {
         // Threshold = 3 (default)
         registerReadHandler(
                 "flaky",
-                input -> {
-                    throw new RuntimeException("boom");
-                });
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    throw new RuntimeException("boom");
+                                }));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
 
@@ -175,14 +181,16 @@ class ToolExecutionPipelineIT {
 
         registerReadHandler(
                 "intermittent",
-                input -> {
-                    int n = callCount.incrementAndGet();
-                    // Fail on calls 1 and 2, succeed on call 3
-                    if (n <= 2) {
-                        throw new RuntimeException("fail #" + n);
-                    }
-                    return ToolResult.success("intermittent", "ok");
-                });
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    int n = callCount.incrementAndGet();
+                                    // Fail on calls 1 and 2, succeed on call 3
+                                    if (n <= 2) {
+                                        throw new RuntimeException("fail #" + n);
+                                    }
+                                    return ToolResult.success("intermittent", "ok");
+                                }));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
 
@@ -200,9 +208,11 @@ class ToolExecutionPipelineIT {
         callCount.set(0); // reset our call counter to make it fail again
         registerReadHandler(
                 "intermittent",
-                input -> {
-                    throw new RuntimeException("fail again");
-                });
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    throw new RuntimeException("fail again");
+                                }));
 
         executor.execute("intermittent", Map.of()).block(Duration.ofSeconds(5));
         executor.execute("intermittent", Map.of()).block(Duration.ofSeconds(5));
@@ -229,13 +239,15 @@ class ToolExecutionPipelineIT {
 
         registerReadHandler(
                 "resettable",
-                input -> {
-                    int n = callCount.incrementAndGet();
-                    if (n <= 3) {
-                        throw new RuntimeException("fail #" + n);
-                    }
-                    return ToolResult.success("resettable", "recovered");
-                });
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    int n = callCount.incrementAndGet();
+                                    if (n <= 3) {
+                                        throw new RuntimeException("fail #" + n);
+                                    }
+                                    return ToolResult.success("resettable", "recovered");
+                                }));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
 
@@ -266,8 +278,12 @@ class ToolExecutionPipelineIT {
 
     @Test
     void allowedTools_blocksUnauthorized() {
-        registerReadHandler("allowed_tool", input -> ToolResult.success("allowed_tool", "ok"));
-        registerReadHandler("blocked_tool", input -> ToolResult.success("blocked_tool", "ok"));
+        registerReadHandler(
+                "allowed_tool",
+                (input, ctx) -> Mono.just(ToolResult.success("allowed_tool", "ok")));
+        registerReadHandler(
+                "blocked_tool",
+                (input, ctx) -> Mono.just(ToolResult.success("blocked_tool", "ok")));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
         executor.setAllowedTools(Set.of("allowed_tool"));
@@ -285,7 +301,9 @@ class ToolExecutionPipelineIT {
 
     @Test
     void allowedTools_permitsAuthorized() {
-        registerReadHandler("allowed_tool", input -> ToolResult.success("allowed_tool", "success"));
+        registerReadHandler(
+                "allowed_tool",
+                (input, ctx) -> Mono.just(ToolResult.success("allowed_tool", "success")));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
         executor.setAllowedTools(Set.of("allowed_tool"));
@@ -303,7 +321,8 @@ class ToolExecutionPipelineIT {
 
     @Test
     void clearAllowedTools_removesRestriction() {
-        registerReadHandler("any_tool", input -> ToolResult.success("any_tool", "executed"));
+        registerReadHandler(
+                "any_tool", (input, ctx) -> Mono.just(ToolResult.success("any_tool", "executed")));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
 
@@ -331,7 +350,7 @@ class ToolExecutionPipelineIT {
         registerHandler(
                 "bash",
                 ToolSideEffect.SYSTEM_CHANGE,
-                input -> ToolResult.success("bash", "executed"));
+                (input, ctx) -> Mono.just(ToolResult.success("bash", "executed")));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
         // Need ALLOWED permission to bypass the ASK check for SYSTEM_CHANGE
@@ -357,19 +376,21 @@ class ToolExecutionPipelineIT {
 
         registerReadHandler(
                 "tool_a",
-                input -> {
-                    try {
-                        latch.await(2, TimeUnit.SECONDS);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                    return ToolResult.success("tool_a", "result_a");
-                });
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    try {
+                                        latch.await(2, TimeUnit.SECONDS);
+                                    } catch (InterruptedException e) {
+                                        Thread.currentThread().interrupt();
+                                    }
+                                    return ToolResult.success("tool_a", "result_a");
+                                }));
         registerReadHandler(
                 "tool_b",
-                input -> {
+                (input, ctx) -> {
                     latch.countDown(); // signal tool_a to proceed
-                    return ToolResult.success("tool_b", "result_b");
+                    return Mono.just(ToolResult.success("tool_b", "result_b"));
                 });
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
@@ -397,7 +418,9 @@ class ToolExecutionPipelineIT {
     @Test
     void toolResult_isError_trackedByCircuitBreaker() {
         // A tool that returns an error ToolResult (not throwing an exception)
-        registerReadHandler("soft_fail", input -> ToolResult.error("soft_fail", "soft error"));
+        registerReadHandler(
+                "soft_fail",
+                (input, ctx) -> Mono.just(ToolResult.error("soft_fail", "soft error")));
 
         // Use threshold = 2 for faster test
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard, null, null, 2);

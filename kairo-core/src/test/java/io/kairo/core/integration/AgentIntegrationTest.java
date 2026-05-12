@@ -27,7 +27,6 @@ import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
 import io.kairo.api.model.ToolVerbosity;
 import io.kairo.api.tool.*;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.core.agent.AgentBuilder;
 import io.kairo.core.agent.DefaultReActAgent;
 import io.kairo.core.model.ModelCapabilityRegistry;
@@ -68,11 +67,12 @@ class AgentIntegrationTest {
             description =
                     "Read file contents from the filesystem. Returns the content of the specified"
                             + " file path as a string.")
-    public static class StubReadTool implements ToolHandler {
+    public static class StubReadTool implements SyncTool {
         @Override
-        public ToolResult execute(Map<String, Object> input) {
+        public Mono<ToolResult> execute(Map<String, Object> input, ToolContext ctx) {
             String path = (String) input.getOrDefault("path", "/tmp/test.txt");
-            return ToolResult.success("stub_read", "Content of " + path, Map.of("path", path));
+            return Mono.just(
+                    ToolResult.success("stub_read", "Content of " + path, Map.of("path", path)));
         }
     }
 
@@ -83,27 +83,30 @@ class AgentIntegrationTest {
                     "Create or overwrite a file with the given content. Automatically creates"
                             + " parent directories if they do not exist.",
             sideEffect = ToolSideEffect.WRITE)
-    public static class StubWriteTool implements ToolHandler {
+    public static class StubWriteTool implements SyncTool {
         @Override
-        public ToolResult execute(Map<String, Object> input) {
-            String path = (String) input.get("path");
-            String content = (String) input.get("content");
-            if (path == null || content == null) {
-                return ToolResult.error("stub_write", "Missing path or content");
-            }
-            try {
-                Path file = Path.of(path);
-                if (file.getParent() != null) {
-                    Files.createDirectories(file.getParent());
-                }
-                Files.writeString(file, content);
-                return ToolResult.success(
-                        "stub_write",
-                        "Wrote " + content.length() + " chars to " + path,
-                        Map.of("path", path));
-            } catch (Exception e) {
-                return ToolResult.error("stub_write", "Error: " + e.getMessage());
-            }
+        public Mono<ToolResult> execute(Map<String, Object> input, ToolContext ctx) {
+            return Mono.fromCallable(
+                    () -> {
+                        String path = (String) input.get("path");
+                        String content = (String) input.get("content");
+                        if (path == null || content == null) {
+                            return ToolResult.error("stub_write", "Missing path or content");
+                        }
+                        try {
+                            Path file = Path.of(path);
+                            if (file.getParent() != null) {
+                                Files.createDirectories(file.getParent());
+                            }
+                            Files.writeString(file, content);
+                            return ToolResult.success(
+                                    "stub_write",
+                                    "Wrote " + content.length() + " chars to " + path,
+                                    Map.of("path", path));
+                        } catch (Exception e) {
+                            return ToolResult.error("stub_write", "Error: " + e.getMessage());
+                        }
+                    });
         }
     }
 
@@ -115,25 +118,29 @@ class AgentIntegrationTest {
                             + " installing packages, or system operations.",
             category = ToolCategory.EXECUTION,
             sideEffect = ToolSideEffect.SYSTEM_CHANGE)
-    public static class StubBashTool implements ToolHandler {
+    public static class StubBashTool implements SyncTool {
         @Override
-        public ToolResult execute(Map<String, Object> input) {
+        public Mono<ToolResult> execute(Map<String, Object> input, ToolContext ctx) {
             String command = (String) input.getOrDefault("command", "");
-            return ToolResult.success(
-                    "stub_bash",
-                    "Executed: " + command + "\nOutput: ok",
-                    Map.of("command", command));
+            return Mono.just(
+                    ToolResult.success(
+                            "stub_bash",
+                            "Executed: " + command + "\nOutput: ok",
+                            Map.of("command", command)));
         }
     }
 
     /** A second read-only tool for partition testing. */
     @Tool(name = "stub_glob", description = "Find files by glob pattern.")
-    public static class StubGlobTool implements ToolHandler {
+    public static class StubGlobTool implements SyncTool {
         @Override
-        public ToolResult execute(Map<String, Object> input) {
+        public Mono<ToolResult> execute(Map<String, Object> input, ToolContext ctx) {
             String pattern = (String) input.getOrDefault("pattern", "*");
-            return ToolResult.success(
-                    "stub_glob", "Found: file1.txt, file2.txt", Map.of("pattern", pattern));
+            return Mono.just(
+                    ToolResult.success(
+                            "stub_glob",
+                            "Found: file1.txt, file2.txt",
+                            Map.of("pattern", pattern)));
         }
     }
 
@@ -231,7 +238,7 @@ class AgentIntegrationTest {
     //  Helper: build registry with stub tools
     // ================================
 
-    static DefaultToolRegistry buildRegistry(Class<? extends ToolHandler>... toolClasses) {
+    static DefaultToolRegistry buildRegistry(Class<?>... toolClasses) {
         DefaultToolRegistry registry = new DefaultToolRegistry();
         for (var cls : toolClasses) {
             registry.registerTool(cls);

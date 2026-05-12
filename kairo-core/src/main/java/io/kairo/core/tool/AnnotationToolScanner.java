@@ -16,9 +16,9 @@
 package io.kairo.core.tool;
 
 import io.kairo.api.tool.JsonSchema;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolDefinition;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import java.io.File;
 import java.io.IOException;
@@ -104,13 +104,13 @@ public class AnnotationToolScanner {
      * </pre>
      */
     JsonSchema buildSchema(Class<?> toolClass) {
-        // 1. Prefer a hand-rolled schema published via ToolHandler.inputSchema(). This is the only
+        // 1. Prefer a hand-rolled schema published via SyncTool.inputSchema(). This is the only
         //    correct path for tools that consume a raw Map — the field-scan path below produces
         //    empty {properties:{},required:[]} for them, which leaves the model guessing which
         //    arguments are required (observed: GLM-5.1 calling tree/batch_read with no path).
-        if (ToolHandler.class.isAssignableFrom(toolClass)) {
+        if (SyncTool.class.isAssignableFrom(toolClass)) {
             try {
-                ToolHandler probe = (ToolHandler) toolClass.getDeclaredConstructor().newInstance();
+                SyncTool probe = (SyncTool) toolClass.getDeclaredConstructor().newInstance();
                 JsonSchema declared = probe.inputSchema();
                 if (declared != null) {
                     return declared;

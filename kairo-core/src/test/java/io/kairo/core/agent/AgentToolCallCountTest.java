@@ -95,7 +95,7 @@ class AgentToolCallCountTest {
                         Object.class);
         toolRegistry.register(echoTool);
         toolRegistry.registerInstance(
-                "echo", (ToolHandler) input -> ToolResult.success("echo", "result"));
+                "echo", (SyncTool) (input, ctx) -> Mono.just(ToolResult.success("echo", "result")));
 
         String toolCallId = "toolu_abc123";
         ModelResponse toolUseResponse =

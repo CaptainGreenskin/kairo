@@ -18,10 +18,10 @@ package io.kairo.core.tool;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.tool.JsonSchema;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolDefinition;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.core.agent.AgentBuilder;
 import java.time.Duration;
@@ -54,7 +54,7 @@ class ToolContextInjectionTest {
         executor = new DefaultToolExecutor(registry, guard);
     }
 
-    private void registerToolHandler(String name, ToolHandler handler) {
+    private void registerToolHandler(String name, SyncTool handler) {
         ToolDefinition def =
                 new ToolDefinition(
                         name,
@@ -72,18 +72,10 @@ class ToolContextInjectionTest {
     void contextAwareToolReceivesCorrectAgentId() {
         AtomicReference<ToolContext> capturedCtx = new AtomicReference<>();
 
-        ToolHandler contextTool =
-                new ToolHandler() {
-                    @Override
-                    public ToolResult execute(Map<String, Object> input) {
-                        throw new AssertionError("Should not be called");
-                    }
-
-                    @Override
-                    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-                        capturedCtx.set(context);
-                        return ToolResult.success("ctx-tool", "ok");
-                    }
+        SyncTool contextTool =
+                (input, context) -> {
+                    capturedCtx.set(context);
+                    return Mono.just(ToolResult.success("ctx-tool", "ok"));
                 };
 
         registerToolHandler("ctx-tool", contextTool);
@@ -108,18 +100,10 @@ class ToolContextInjectionTest {
     void contextAwareToolReceivesCorrectSessionId() {
         AtomicReference<ToolContext> capturedCtx = new AtomicReference<>();
 
-        ToolHandler contextTool =
-                new ToolHandler() {
-                    @Override
-                    public ToolResult execute(Map<String, Object> input) {
-                        throw new AssertionError("Should not be called");
-                    }
-
-                    @Override
-                    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-                        capturedCtx.set(context);
-                        return ToolResult.success("ctx-tool", "ok");
-                    }
+        SyncTool contextTool =
+                (input, context) -> {
+                    capturedCtx.set(context);
+                    return Mono.just(ToolResult.success("ctx-tool", "ok"));
                 };
 
         registerToolHandler("ctx-tool", contextTool);
@@ -143,18 +127,10 @@ class ToolContextInjectionTest {
     void contextAwareToolReceivesInjectedDependencies() {
         AtomicReference<ToolContext> capturedCtx = new AtomicReference<>();
 
-        ToolHandler contextTool =
-                new ToolHandler() {
-                    @Override
-                    public ToolResult execute(Map<String, Object> input) {
-                        throw new AssertionError("Should not be called");
-                    }
-
-                    @Override
-                    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-                        capturedCtx.set(context);
-                        return ToolResult.success("ctx-tool", "ok");
-                    }
+        SyncTool contextTool =
+                (input, context) -> {
+                    capturedCtx.set(context);
+                    return Mono.just(ToolResult.success("ctx-tool", "ok"));
                 };
 
         registerToolHandler("ctx-tool", contextTool);
@@ -178,9 +154,10 @@ class ToolContextInjectionTest {
 
     @Test
     void legacyToolWithoutContextStillWorks() {
-        // Legacy tool only implements execute(Map) — no context override
-        ToolHandler legacyTool =
-                input -> ToolResult.success("legacy", "legacy-result: " + input.get("x"));
+        // SyncTool that ignores the context — exercises the context-optional path.
+        SyncTool legacyTool =
+                (input, ctx) ->
+                        Mono.just(ToolResult.success("legacy", "legacy-result: " + input.get("x")));
 
         registerToolHandler("legacy", legacyTool);
         ToolContext toolContext = new ToolContext("agent-1", "session-1", Map.of("key", "value"));
@@ -254,18 +231,10 @@ class ToolContextInjectionTest {
         DefaultToolRegistry registry1 = new DefaultToolRegistry();
         DefaultToolExecutor executor1 =
                 new DefaultToolExecutor(registry1, new DefaultPermissionGuard());
-        ToolHandler tool1 =
-                new ToolHandler() {
-                    @Override
-                    public ToolResult execute(Map<String, Object> input) {
-                        throw new AssertionError("Should not be called");
-                    }
-
-                    @Override
-                    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-                        capturedCtx1.set(context);
-                        return ToolResult.success("tool", "ok");
-                    }
+        SyncTool tool1 =
+                (input, context) -> {
+                    capturedCtx1.set(context);
+                    return Mono.just(ToolResult.success("tool", "ok"));
                 };
         ToolDefinition def1 =
                 new ToolDefinition(
@@ -282,18 +251,10 @@ class ToolContextInjectionTest {
         DefaultToolRegistry registry2 = new DefaultToolRegistry();
         DefaultToolExecutor executor2 =
                 new DefaultToolExecutor(registry2, new DefaultPermissionGuard());
-        ToolHandler tool2 =
-                new ToolHandler() {
-                    @Override
-                    public ToolResult execute(Map<String, Object> input) {
-                        throw new AssertionError("Should not be called");
-                    }
-
-                    @Override
-                    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-                        capturedCtx2.set(context);
-                        return ToolResult.success("tool", "ok");
-                    }
+        SyncTool tool2 =
+                (input, context) -> {
+                    capturedCtx2.set(context);
+                    return Mono.just(ToolResult.success("tool", "ok"));
                 };
         ToolDefinition def2 =
                 new ToolDefinition(
@@ -334,18 +295,10 @@ class ToolContextInjectionTest {
     void executorWithoutToolContextProvidesDefaultEmptyContext() {
         AtomicReference<ToolContext> capturedCtx = new AtomicReference<>();
 
-        ToolHandler contextTool =
-                new ToolHandler() {
-                    @Override
-                    public ToolResult execute(Map<String, Object> input) {
-                        throw new AssertionError("Should not be called");
-                    }
-
-                    @Override
-                    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-                        capturedCtx.set(context);
-                        return ToolResult.success("ctx-tool", "ok");
-                    }
+        SyncTool contextTool =
+                (input, context) -> {
+                    capturedCtx.set(context);
+                    return Mono.just(ToolResult.success("ctx-tool", "ok"));
                 };
 
         registerToolHandler("ctx-tool", contextTool);
@@ -370,18 +323,10 @@ class ToolContextInjectionTest {
     @Test
     void reactorContextOverridesMutableField() {
         AtomicReference<ToolContext> capturedCtx = new AtomicReference<>();
-        ToolHandler contextTool =
-                new ToolHandler() {
-                    @Override
-                    public ToolResult execute(Map<String, Object> input) {
-                        throw new AssertionError("Should not be called");
-                    }
-
-                    @Override
-                    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-                        capturedCtx.set(context);
-                        return ToolResult.success("ctx-tool", "ok");
-                    }
+        SyncTool contextTool =
+                (input, context) -> {
+                    capturedCtx.set(context);
+                    return Mono.just(ToolResult.success("ctx-tool", "ok"));
                 };
         registerToolHandler("ctx-tool", contextTool);
 
@@ -412,26 +357,20 @@ class ToolContextInjectionTest {
         CopyOnWriteArrayList<Capture> captures = new CopyOnWriteArrayList<>();
         CountDownLatch latch = new CountDownLatch(1);
 
-        ToolHandler slowTool =
-                new ToolHandler() {
-                    @Override
-                    public ToolResult execute(Map<String, Object> input) {
-                        throw new AssertionError("Should not be called");
-                    }
-
-                    @Override
-                    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-                        // Simulate a non-trivial execution that amplifies any race
-                        try {
-                            latch.await();
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        }
-                        String expected = (String) input.get("expected");
-                        captures.add(new Capture(expected, context));
-                        return ToolResult.success("slow", "ok:" + context.sessionId());
-                    }
-                };
+        SyncTool slowTool =
+                (input, context) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    // Simulate a non-trivial execution that amplifies any race
+                                    try {
+                                        latch.await();
+                                    } catch (InterruptedException e) {
+                                        Thread.currentThread().interrupt();
+                                    }
+                                    String expected = (String) input.get("expected");
+                                    captures.add(new Capture(expected, context));
+                                    return ToolResult.success("slow", "ok:" + context.sessionId());
+                                });
         registerToolHandler("slow", slowTool);
 
         ToolContext ctx1 = new ToolContext("agent-1", "session-AAA", Map.of("tenant", "A"));
@@ -476,14 +415,12 @@ class ToolContextInjectionTest {
 
         registerToolHandler(
                 "flaky",
-                new ToolHandler() {
-                    @Override
-                    public ToolResult execute(Map<String, Object> input) {
-                        boolean fail = Boolean.TRUE.equals(input.get("fail"));
-                        return fail
-                                ? ToolResult.error("flaky", "Error: boom")
-                                : ToolResult.success("flaky", "ok");
-                    }
+                (input, ctx) -> {
+                    boolean fail = Boolean.TRUE.equals(input.get("fail"));
+                    return Mono.just(
+                            fail
+                                    ? ToolResult.error("flaky", "Error: boom")
+                                    : ToolResult.success("flaky", "ok"));
                 });
 
         ToolContext sessionA = new ToolContext("a", "sess-A", Map.of());

@@ -16,7 +16,6 @@
 package io.kairo.core.execution;
 
 import io.kairo.api.tool.Idempotent;
-import io.kairo.api.tool.ToolHandler;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -46,12 +45,12 @@ public class IdempotencyResolver {
     /**
      * Determine the replay strategy for a tool.
      *
-     * @param toolHandler the tool to check
+     * @param toolInstance the tool instance to check (SyncTool or StreamingTool)
      * @return {@link ReplayStrategy#REPLAY} if {@code @Idempotent}, {@link ReplayStrategy#CACHED}
      *     otherwise
      */
-    public ReplayStrategy resolveStrategy(ToolHandler toolHandler) {
-        if (toolHandler.getClass().isAnnotationPresent(Idempotent.class)) {
+    public ReplayStrategy resolveStrategy(Object toolInstance) {
+        if (toolInstance.getClass().isAnnotationPresent(Idempotent.class)) {
             return ReplayStrategy.REPLAY;
         }
         // @NonIdempotent OR no annotation → default safe: use cached

@@ -137,7 +137,10 @@ class DefaultReActAgentIT {
         toolRegistry.register(echo);
         toolRegistry.registerInstance(
                 "echo",
-                (ToolHandler) input -> ToolResult.success("echo", "echoed:" + input.get("text")));
+                (SyncTool)
+                        (input, ctx) ->
+                                Mono.just(
+                                        ToolResult.success("echo", "echoed:" + input.get("text"))));
     }
 
     // ---- Test scenarios ----
