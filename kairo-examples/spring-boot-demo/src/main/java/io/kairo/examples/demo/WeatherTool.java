@@ -61,12 +61,12 @@ public class WeatherTool implements ToolHandler {
     public ToolResult execute(Map<String, Object> input) {
         String cityName = (String) input.get("city");
         if (cityName == null || cityName.isBlank()) {
-            return new ToolResult("weather", "Parameter 'city' is required", true, Map.of());
+            return ToolResult.of("weather", "Parameter 'city' is required", true, Map.of());
         }
 
         String weather = WEATHER_DATA.get(cityName.toLowerCase().trim());
         if (weather == null) {
-            return new ToolResult(
+            return ToolResult.of(
                     "weather",
                     "Unknown city: "
                             + cityName
@@ -84,6 +84,6 @@ public class WeatherTool implements ToolHandler {
                     Map.of("city", cityName));
         }
 
-        return new ToolResult("weather", weather, false, Map.of("city", cityName));
+        return ToolResult.of("weather", weather, false, Map.of("city", cityName));
     }
 }

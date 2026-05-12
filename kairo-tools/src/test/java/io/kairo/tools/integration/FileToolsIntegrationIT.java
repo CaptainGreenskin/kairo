@@ -17,6 +17,7 @@ package io.kairo.tools.integration;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.tools.file.EditTool;
 import io.kairo.tools.file.GlobTool;
@@ -48,6 +49,8 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class FileToolsIntegrationIT {
 
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
+
     private ReadTool readTool;
     private WriteTool writeTool;
     private GrepTool grepTool;
@@ -72,7 +75,7 @@ class FileToolsIntegrationIT {
         Path file = tempDir.resolve("hello.txt");
         Files.writeString(file, "Hello, Kairo!\nSecond line.\n");
 
-        ToolResult result = readTool.execute(Map.of("path", file.toString()));
+        ToolResult result = readTool.execute(Map.of("path", file.toString()), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("Hello, Kairo!"));
@@ -84,7 +87,7 @@ class FileToolsIntegrationIT {
     void readFile_nonExistent_returnsError() {
         String missing = tempDir.resolve("does_not_exist.txt").toString();
 
-        ToolResult result = readTool.execute(Map.of("path", missing));
+        ToolResult result = readTool.execute(Map.of("path", missing), CTX).block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("File not found"));
@@ -100,7 +103,7 @@ class FileToolsIntegrationIT {
                         .collect(Collectors.joining("\n"));
         Files.writeString(file, content);
 
-        ToolResult result = readTool.execute(Map.of("path", file.toString()));
+        ToolResult result = readTool.execute(Map.of("path", file.toString()), CTX).block();
 
         assertFalse(result.isError());
         // Should warn about large file and show only first 2000 lines
@@ -117,7 +120,7 @@ class FileToolsIntegrationIT {
         Files.write(file, bytes);
 
         // ReadTool uses Files.readAllLines which may fail on binary-like content
-        ToolResult result = readTool.execute(Map.of("path", file.toString()));
+        ToolResult result = readTool.execute(Map.of("path", file.toString()), CTX).block();
         // Either succeeds with content or fails gracefully — should not throw
         assertNotNull(result);
     }
@@ -129,7 +132,9 @@ class FileToolsIntegrationIT {
         String filePath = tempDir.resolve("new_file.txt").toString();
 
         ToolResult result =
-                writeTool.execute(Map.of("path", filePath, "content", "brand new content"));
+                writeTool
+                        .execute(Map.of("path", filePath, "content", "brand new content"), CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("Successfully wrote"));
@@ -142,11 +147,13 @@ class FileToolsIntegrationIT {
         Files.writeString(file, "original content");
 
         ToolResult writeResult =
-                writeTool.execute(Map.of("path", file.toString(), "content", "updated content"));
+                writeTool
+                        .execute(Map.of("path", file.toString(), "content", "updated content"), CTX)
+                        .block();
         assertFalse(writeResult.isError());
 
         // Verify via ReadTool
-        ToolResult readResult = readTool.execute(Map.of("path", file.toString()));
+        ToolResult readResult = readTool.execute(Map.of("path", file.toString()), CTX).block();
         assertFalse(readResult.isError());
         assertTrue(readResult.content().contains("updated content"));
         assertFalse(readResult.content().contains("original content"));
@@ -157,7 +164,9 @@ class FileToolsIntegrationIT {
         String filePath = tempDir.resolve("a/b/c/deep_file.txt").toString();
 
         ToolResult result =
-                writeTool.execute(Map.of("path", filePath, "content", "nested content"));
+                writeTool
+                        .execute(Map.of("path", filePath, "content", "nested content"), CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertTrue(Files.exists(Path.of(filePath)));
@@ -173,7 +182,9 @@ class FileToolsIntegrationIT {
         Path file2 = tempDir.resolve("main.java");
         Files.writeString(file2, "public static void main(String[] args) {\n}\n");
 
-        ToolResult result = grepTool.execute(Map.of("pattern", "TODO", "path", tempDir.toString()));
+        ToolResult result =
+                grepTool.execute(Map.of("pattern", "TODO", "path", tempDir.toString()), CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("TODO"));
@@ -188,7 +199,13 @@ class FileToolsIntegrationIT {
 
         ToolResult result =
                 grepTool.execute(
-                        Map.of("pattern", "NONEXISTENT_STRING_xyz", "path", tempDir.toString()));
+                                Map.of(
+                                        "pattern",
+                                        "NONEXISTENT_STRING_xyz",
+                                        "path",
+                                        tempDir.toString()),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("No matches found"));
@@ -204,10 +221,12 @@ class FileToolsIntegrationIT {
 
         ToolResult result =
                 grepTool.execute(
-                        Map.of(
-                                "pattern", "public",
-                                "path", tempDir.toString(),
-                                "glob", "*.java"));
+                                Map.of(
+                                        "pattern", "public",
+                                        "path", tempDir.toString(),
+                                        "glob", "*.java"),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("code.java"));
@@ -217,7 +236,8 @@ class FileToolsIntegrationIT {
     @Test
     void grepTool_invalidRegex_returnsError() {
         ToolResult result =
-                grepTool.execute(Map.of("pattern", "[invalid(", "path", tempDir.toString()));
+                grepTool.execute(Map.of("pattern", "[invalid(", "path", tempDir.toString()), CTX)
+                        .block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("Invalid regex"));
@@ -234,7 +254,8 @@ class FileToolsIntegrationIT {
         Files.writeString(tempDir.resolve("readme.md"), "# Readme");
 
         ToolResult result =
-                globTool.execute(Map.of("pattern", "**/*.java", "path", tempDir.toString()));
+                globTool.execute(Map.of("pattern", "**/*.java", "path", tempDir.toString()), CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("one.java"));
@@ -247,7 +268,8 @@ class FileToolsIntegrationIT {
     void globTool_nonExistentDir_returnsError() {
         String missing = tempDir.resolve("nonexistent_dir").toString();
 
-        ToolResult result = globTool.execute(Map.of("pattern", "**/*", "path", missing));
+        ToolResult result =
+                globTool.execute(Map.of("pattern", "**/*", "path", missing), CTX).block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("Not a directory"));
@@ -258,7 +280,8 @@ class FileToolsIntegrationIT {
         Files.writeString(tempDir.resolve("only.txt"), "data");
 
         ToolResult result =
-                globTool.execute(Map.of("pattern", "**/*.xml", "path", tempDir.toString()));
+                globTool.execute(Map.of("pattern", "**/*.xml", "path", tempDir.toString()), CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("No files matched"));
@@ -274,10 +297,12 @@ class FileToolsIntegrationIT {
 
         ToolResult result =
                 editTool.execute(
-                        Map.of(
-                                "path", file.toString(),
-                                "originalText", "Foo Bar",
-                                "newText", "Baz Qux"));
+                                Map.of(
+                                        "path", file.toString(),
+                                        "originalText", "Foo Bar",
+                                        "newText", "Baz Qux"),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("Successfully edited"));
@@ -295,10 +320,12 @@ class FileToolsIntegrationIT {
 
         ToolResult result =
                 editTool.execute(
-                        Map.of(
-                                "path", file.toString(),
-                                "originalText", "nonexistent text",
-                                "newText", "replacement"));
+                                Map.of(
+                                        "path", file.toString(),
+                                        "originalText", "nonexistent text",
+                                        "newText", "replacement"),
+                                CTX)
+                        .block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("Could not find"));
@@ -311,10 +338,12 @@ class FileToolsIntegrationIT {
 
         ToolResult result =
                 editTool.execute(
-                        Map.of(
-                                "path", file.toString(),
-                                "originalText", "apple",
-                                "newText", "banana"));
+                                Map.of(
+                                        "path", file.toString(),
+                                        "originalText", "apple",
+                                        "newText", "banana"),
+                                CTX)
+                        .block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("occurrences"));
@@ -328,11 +357,12 @@ class FileToolsIntegrationIT {
         String original = "Line 1\nLine 2\nLine 3\n";
 
         // Write
-        ToolResult writeResult = writeTool.execute(Map.of("path", filePath, "content", original));
+        ToolResult writeResult =
+                writeTool.execute(Map.of("path", filePath, "content", original), CTX).block();
         assertFalse(writeResult.isError());
 
         // Read
-        ToolResult readResult = readTool.execute(Map.of("path", filePath));
+        ToolResult readResult = readTool.execute(Map.of("path", filePath), CTX).block();
         assertFalse(readResult.isError());
         assertTrue(readResult.content().contains("Line 1"));
         assertTrue(readResult.content().contains("Line 2"));
@@ -342,34 +372,45 @@ class FileToolsIntegrationIT {
     @Test
     void writeGrepGlob_crossToolWorkflow() {
         // Write several files
-        writeTool.execute(
-                Map.of(
-                        "path",
-                        tempDir.resolve("src/Main.java").toString(),
-                        "content",
-                        "public class Main { // entry point }"));
-        writeTool.execute(
-                Map.of(
-                        "path",
-                        tempDir.resolve("src/Helper.java").toString(),
-                        "content",
-                        "public class Helper { // utility }"));
-        writeTool.execute(
-                Map.of(
-                        "path",
-                        tempDir.resolve("docs/readme.md").toString(),
-                        "content",
-                        "# Documentation"));
+        writeTool
+                .execute(
+                        Map.of(
+                                "path",
+                                tempDir.resolve("src/Main.java").toString(),
+                                "content",
+                                "public class Main { // entry point }"),
+                        CTX)
+                .block();
+        writeTool
+                .execute(
+                        Map.of(
+                                "path",
+                                tempDir.resolve("src/Helper.java").toString(),
+                                "content",
+                                "public class Helper { // utility }"),
+                        CTX)
+                .block();
+        writeTool
+                .execute(
+                        Map.of(
+                                "path",
+                                tempDir.resolve("docs/readme.md").toString(),
+                                "content",
+                                "# Documentation"),
+                        CTX)
+                .block();
 
         // Glob should find Java files
         ToolResult globResult =
-                globTool.execute(Map.of("pattern", "**/*.java", "path", tempDir.toString()));
+                globTool.execute(Map.of("pattern", "**/*.java", "path", tempDir.toString()), CTX)
+                        .block();
         assertFalse(globResult.isError());
         assertEquals(2, globResult.metadata().get("count"));
 
         // Grep should find the entry point comment
         ToolResult grepResult =
-                grepTool.execute(Map.of("pattern", "entry point", "path", tempDir.toString()));
+                grepTool.execute(Map.of("pattern", "entry point", "path", tempDir.toString()), CTX)
+                        .block();
         assertFalse(grepResult.isError());
         assertTrue(grepResult.content().contains("Main.java"));
     }
@@ -388,13 +429,19 @@ class FileToolsIntegrationIT {
                     executor.submit(
                             () -> {
                                 latch.await();
-                                return writeTool.execute(
-                                        Map.of(
-                                                "path",
-                                                tempDir.resolve("concurrent_" + idx + ".txt")
-                                                        .toString(),
-                                                "content",
-                                                "Content from thread " + idx));
+                                return writeTool
+                                        .execute(
+                                                Map.of(
+                                                        "path",
+                                                        tempDir.resolve(
+                                                                        "concurrent_"
+                                                                                + idx
+                                                                                + ".txt")
+                                                                .toString(),
+                                                        "content",
+                                                        "Content from thread " + idx),
+                                                CTX)
+                                        .block();
                             }));
         }
 
@@ -414,10 +461,15 @@ class FileToolsIntegrationIT {
                             () -> {
                                 readLatch.await();
                                 return readTool.execute(
-                                        Map.of(
-                                                "path",
-                                                tempDir.resolve("concurrent_" + idx + ".txt")
-                                                        .toString()));
+                                                Map.of(
+                                                        "path",
+                                                        tempDir.resolve(
+                                                                        "concurrent_"
+                                                                                + idx
+                                                                                + ".txt")
+                                                                .toString()),
+                                                CTX)
+                                        .block();
                             }));
         }
 

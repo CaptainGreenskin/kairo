@@ -143,7 +143,7 @@ class GuardrailContractsTest {
 
     @Test
     void toolOutputVariant() {
-        ToolResult result = new ToolResult("tu-1", "2", false, Map.of());
+        ToolResult result = ToolResult.success("tu-1", "2");
         GuardrailPayload.ToolOutput to = new GuardrailPayload.ToolOutput("calculator", result);
         assertInstanceOf(GuardrailPayload.class, to);
         assertEquals("calculator", to.toolName());

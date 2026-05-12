@@ -32,6 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class WriteToolTest {
 
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
     private WriteTool tool;
 
     @TempDir Path tempDir;
@@ -44,7 +45,9 @@ class WriteToolTest {
     @Test
     void writeNewFile() throws IOException {
         Path file = tempDir.resolve("new.txt");
-        ToolResult result = tool.execute(Map.of("path", file.toString(), "content", "hello world"));
+        ToolResult result =
+                tool.execute(Map.of("path", file.toString(), "content", "hello world"), CTX)
+                        .block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("Successfully wrote"));
         assertEquals("hello world", Files.readString(file));
@@ -55,7 +58,9 @@ class WriteToolTest {
         Path file = tempDir.resolve("existing.txt");
         Files.writeString(file, "old content");
 
-        ToolResult result = tool.execute(Map.of("path", file.toString(), "content", "new content"));
+        ToolResult result =
+                tool.execute(Map.of("path", file.toString(), "content", "new content"), CTX)
+                        .block();
         assertFalse(result.isError());
         assertEquals("new content", Files.readString(file));
     }
@@ -64,7 +69,8 @@ class WriteToolTest {
     void writeCreatesParentDirectories() throws IOException {
         Path file = tempDir.resolve("a/b/c/deep.txt");
         ToolResult result =
-                tool.execute(Map.of("path", file.toString(), "content", "deep content"));
+                tool.execute(Map.of("path", file.toString(), "content", "deep content"), CTX)
+                        .block();
         assertFalse(result.isError());
         assertTrue(Files.exists(file));
         assertEquals("deep content", Files.readString(file));
@@ -72,7 +78,7 @@ class WriteToolTest {
 
     @Test
     void writeMissingPathParameter() {
-        ToolResult result = tool.execute(Map.of("content", "hello"));
+        ToolResult result = tool.execute(Map.of("content", "hello"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'path' is required"));
     }
@@ -80,7 +86,7 @@ class WriteToolTest {
     @Test
     void writeMissingContentParameter() {
         Path file = tempDir.resolve("noContent.txt");
-        ToolResult result = tool.execute(Map.of("path", file.toString()));
+        ToolResult result = tool.execute(Map.of("path", file.toString()), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'content' is required"));
     }
@@ -88,7 +94,8 @@ class WriteToolTest {
     @Test
     void writeEmptyContent() throws IOException {
         Path file = tempDir.resolve("empty.txt");
-        ToolResult result = tool.execute(Map.of("path", file.toString(), "content", ""));
+        ToolResult result =
+                tool.execute(Map.of("path", file.toString(), "content", ""), CTX).block();
         assertFalse(result.isError());
         assertEquals("", Files.readString(file));
     }
@@ -100,7 +107,8 @@ class WriteToolTest {
                         .acquire(WorkspaceRequest.writable(null));
         ToolContext ctx = new ToolContext("a", "s", Map.of(), null, null, ws);
 
-        ToolResult result = tool.execute(Map.of("path", "out.txt", "content", "rooted"), ctx);
+        ToolResult result =
+                tool.execute(Map.of("path", "out.txt", "content", "rooted"), ctx).block();
 
         assertFalse(result.isError(), result.content());
         // File MUST land under the workspace root, not under JVM cwd.
@@ -110,7 +118,8 @@ class WriteToolTest {
     @Test
     void writeReportsBytesWritten() {
         Path file = tempDir.resolve("bytes.txt");
-        ToolResult result = tool.execute(Map.of("path", file.toString(), "content", "hello"));
+        ToolResult result =
+                tool.execute(Map.of("path", file.toString(), "content", "hello"), CTX).block();
         assertFalse(result.isError());
         assertEquals(5, result.metadata().get("bytesWritten"));
     }
@@ -119,7 +128,8 @@ class WriteToolTest {
     void unicodeContentPreserved() throws IOException {
         Path file = tempDir.resolve("unicode.txt");
         String content = "你好世界 🌍 Ελληνικά العربية";
-        ToolResult result = tool.execute(Map.of("path", file.toString(), "content", content));
+        ToolResult result =
+                tool.execute(Map.of("path", file.toString(), "content", content), CTX).block();
         assertFalse(result.isError());
         assertEquals(content, Files.readString(file));
     }
@@ -128,7 +138,8 @@ class WriteToolTest {
     void crlfLineEndingsPreserved() throws IOException {
         Path file = tempDir.resolve("crlf.txt");
         String content = "line1\r\nline2\r\nline3\r\n";
-        ToolResult result = tool.execute(Map.of("path", file.toString(), "content", content));
+        ToolResult result =
+                tool.execute(Map.of("path", file.toString(), "content", content), CTX).block();
         assertFalse(result.isError());
         assertEquals(content, Files.readString(file));
     }
@@ -136,7 +147,8 @@ class WriteToolTest {
     @Test
     void deepNestedDirectoriesCreated() throws IOException {
         Path file = tempDir.resolve("l1/l2/l3/l4/l5/deep.txt");
-        ToolResult result = tool.execute(Map.of("path", file.toString(), "content", "very deep"));
+        ToolResult result =
+                tool.execute(Map.of("path", file.toString(), "content", "very deep"), CTX).block();
         assertFalse(result.isError());
         assertTrue(Files.exists(file));
         assertEquals("very deep", Files.readString(file));

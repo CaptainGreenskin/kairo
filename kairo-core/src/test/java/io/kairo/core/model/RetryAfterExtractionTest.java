@@ -202,18 +202,20 @@ class RetryAfterExtractionTest {
 
     @Test
     void retryWaitsWithServerSpecifiedDelay() {
+        // Use real (small) delays. Virtual time isn't propagated through Retry.backoff's
+        // internal scheduler in some Reactor versions, which caused this test to hang.
         RetryConfig config =
                 RetryConfig.builder()
                         .maxAttempts(2) // 1 initial + 1 retry
-                        .initialBackoff(Duration.ofMillis(10))
-                        .maxBackoff(Duration.ofMillis(50))
+                        .initialBackoff(Duration.ofMillis(1))
+                        .maxBackoff(Duration.ofMillis(5))
                         .jitter(0)
                         .retryOn(e -> e instanceof ModelProviderException.RateLimitException)
                         .build();
         ReactiveRetryPolicy policy = new ReactiveRetryPolicy(config, "test");
 
         AtomicInteger attempts = new AtomicInteger();
-        long serverRetryMs = 5_000; // 5s (virtual time makes this instant)
+        long serverRetryMs = 50; // small real delay — keeps test fast
         Mono<String> source =
                 Mono.defer(
                         () -> {
@@ -225,8 +227,7 @@ class RetryAfterExtractionTest {
                             return Mono.just("ok");
                         });
 
-        StepVerifier.withVirtualTime(() -> policy.applyMono(source, Duration.ofSeconds(60)))
-                .thenAwait(Duration.ofMillis(serverRetryMs + 100))
+        StepVerifier.create(policy.applyMono(source, Duration.ofSeconds(5)))
                 .expectNext("ok")
                 .verifyComplete();
 

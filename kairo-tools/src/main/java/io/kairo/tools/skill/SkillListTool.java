@@ -18,14 +18,16 @@ package io.kairo.tools.skill;
 import io.kairo.api.skill.SkillCategory;
 import io.kairo.api.skill.SkillDefinition;
 import io.kairo.api.skill.SkillRegistry;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
-import io.kairo.api.tool.ToolHandler;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.core.prompt.PromptBudgetFormatter;
 import java.util.List;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Lists available skills grouped by category.
@@ -39,7 +41,7 @@ import java.util.Map;
                 "List available skills. Shows categories and skill names with descriptions. "
                         + "Use skill_load to activate a specific skill.",
         category = ToolCategory.SKILL)
-public class SkillListTool implements ToolHandler {
+public class SkillListTool implements SyncTool {
 
     @ToolParam(
             description =
@@ -56,7 +58,11 @@ public class SkillListTool implements ToolHandler {
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> executeSync(args, ctx));
+    }
+
+    private ToolResult executeSync(Map<String, Object> input, ToolContext ctx) {
         String categoryFilter = (String) input.get("category");
 
         int budgetChars = PromptBudgetFormatter.DEFAULT_BUDGET;
@@ -89,15 +95,15 @@ public class SkillListTool implements ToolHandler {
         }
 
         if (skills.isEmpty()) {
-            return new ToolResult("skill_list", "No skills registered.", false, Map.of("count", 0));
+            return ToolResult.success("skill_list", "No skills registered.", Map.of("count", 0));
         }
 
         String output = PromptBudgetFormatter.formatSkills(skills, budgetChars);
 
-        return new ToolResult("skill_list", output, false, Map.of("count", skills.size()));
+        return ToolResult.success("skill_list", output, Map.of("count", skills.size()));
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("skill_list", msg, true, Map.of());
+        return ToolResult.error("skill_list", msg);
     }
 }

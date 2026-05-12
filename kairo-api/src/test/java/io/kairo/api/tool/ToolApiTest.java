@@ -110,7 +110,7 @@ class ToolApiTest {
     @Test
     void toolResultFields() {
         Map<String, Object> meta = Map.of("elapsed", 100);
-        ToolResult result = new ToolResult("tu-1", "file content", false, meta);
+        ToolResult result = ToolResult.success("tu-1", "file content", meta);
 
         assertEquals("tu-1", result.toolUseId());
         assertEquals("file content", result.content());
@@ -120,9 +120,9 @@ class ToolApiTest {
 
     @Test
     void toolResultError() {
-        ToolResult result = new ToolResult("tu-2", "file not found", true, null);
+        ToolResult result = ToolResult.error("tu-2", "file not found");
         assertTrue(result.isError());
-        assertNull(result.metadata());
+        assertEquals(Map.of(), result.metadata());
     }
 
     // --- ToolInvocation ---
@@ -156,7 +156,7 @@ class ToolApiTest {
         StreamingToolResultCallback noop = StreamingToolResultCallback.noop();
         assertNotNull(noop);
         assertDoesNotThrow(() -> noop.onPartialOutput("id", "chunk"));
-        assertDoesNotThrow(() -> noop.onComplete("id", new ToolResult("id", "done", false, null)));
+        assertDoesNotThrow(() -> noop.onComplete("id", ToolResult.success("id", "done")));
     }
 
     // --- Enums ---

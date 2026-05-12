@@ -78,6 +78,7 @@ class IterationGuardsTest {
                 shutdownManager,
                 null,
                 null,
+                null,
                 null);
     }
 

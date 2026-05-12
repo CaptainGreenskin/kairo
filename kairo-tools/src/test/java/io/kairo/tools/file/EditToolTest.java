@@ -32,6 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class EditToolTest {
 
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
     private EditTool tool;
 
     @TempDir Path tempDir;
@@ -48,10 +49,12 @@ class EditToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "path", file.toString(),
-                                "originalText", "int y = 2;",
-                                "newText", "int y = 42;"));
+                                Map.of(
+                                        "path", file.toString(),
+                                        "originalText", "int y = 2;",
+                                        "newText", "int y = 42;"),
+                                CTX)
+                        .block();
         assertFalse(result.isError());
         String content = Files.readString(file);
         assertTrue(content.contains("int y = 42;"));
@@ -63,10 +66,12 @@ class EditToolTest {
     void editNonExistentFile() {
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "path", tempDir.resolve("missing.txt").toString(),
-                                "originalText", "foo",
-                                "newText", "bar"));
+                                Map.of(
+                                        "path", tempDir.resolve("missing.txt").toString(),
+                                        "originalText", "foo",
+                                        "newText", "bar"),
+                                CTX)
+                        .block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("File not found"));
     }
@@ -78,10 +83,12 @@ class EditToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "path", file.toString(),
-                                "originalText", "not found text",
-                                "newText", "replacement"));
+                                Map.of(
+                                        "path", file.toString(),
+                                        "originalText", "not found text",
+                                        "newText", "replacement"),
+                                CTX)
+                        .block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("Could not find"));
     }
@@ -93,10 +100,12 @@ class EditToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "path", file.toString(),
-                                "originalText", "hello",
-                                "newText", "world"));
+                                Map.of(
+                                        "path", file.toString(),
+                                        "originalText", "hello",
+                                        "newText", "world"),
+                                CTX)
+                        .block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("occurrences"));
     }
@@ -108,16 +117,18 @@ class EditToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "path", file.toString(),
-                                "originalText", "  hello world  ",
-                                "newText", "goodbye"));
+                                Map.of(
+                                        "path", file.toString(),
+                                        "originalText", "  hello world  ",
+                                        "newText", "goodbye"),
+                                CTX)
+                        .block();
         assertFalse(result.isError());
     }
 
     @Test
     void editMissingPathParameter() {
-        ToolResult result = tool.execute(Map.of("originalText", "a", "newText", "b"));
+        ToolResult result = tool.execute(Map.of("originalText", "a", "newText", "b"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'path' is required"));
     }
@@ -125,7 +136,8 @@ class EditToolTest {
     @Test
     void editMissingOriginalTextParameter() {
         Path file = tempDir.resolve("test.txt");
-        ToolResult result = tool.execute(Map.of("path", file.toString(), "newText", "b"));
+        ToolResult result =
+                tool.execute(Map.of("path", file.toString(), "newText", "b"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'originalText' is required"));
     }
@@ -133,7 +145,8 @@ class EditToolTest {
     @Test
     void editMissingNewTextParameter() {
         Path file = tempDir.resolve("test.txt");
-        ToolResult result = tool.execute(Map.of("path", file.toString(), "originalText", "a"));
+        ToolResult result =
+                tool.execute(Map.of("path", file.toString(), "originalText", "a"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'newText' is required"));
     }
@@ -148,11 +161,12 @@ class EditToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "path", "doc.txt",
-                                "originalText", "before-edit",
-                                "newText", "after-edit"),
-                        ctx);
+                                Map.of(
+                                        "path", "doc.txt",
+                                        "originalText", "before-edit",
+                                        "newText", "after-edit"),
+                                ctx)
+                        .block();
 
         assertFalse(result.isError(), result.content());
         assertEquals("after-edit", Files.readString(otherRoot.resolve("doc.txt")));
@@ -165,10 +179,12 @@ class EditToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "path", file.toString(),
-                                "originalText", "function foo() {\n  return 1;\n}",
-                                "newText", "function foo() {\n  return 42;\n}"));
+                                Map.of(
+                                        "path", file.toString(),
+                                        "originalText", "function foo() {\n  return 1;\n}",
+                                        "newText", "function foo() {\n  return 42;\n}"),
+                                CTX)
+                        .block();
         assertFalse(result.isError());
         assertTrue(Files.readString(file).contains("return 42;"));
     }

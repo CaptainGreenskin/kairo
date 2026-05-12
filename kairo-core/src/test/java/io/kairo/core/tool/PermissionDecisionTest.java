@@ -293,7 +293,7 @@ class PermissionDecisionTest {
                 "bash",
                 (ToolHandler)
                         input -> {
-                            return new ToolResult("bash", "output", false, Map.of());
+                            return ToolResult.success("bash", "output");
                         });
 
         var executor = new DefaultToolExecutor(registry, guard);

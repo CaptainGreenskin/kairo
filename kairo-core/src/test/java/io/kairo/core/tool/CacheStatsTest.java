@@ -152,7 +152,7 @@ class CacheStatsTest {
 class CachingToolExecutorStatsTest {
 
     private static ToolResult ok(String content) {
-        return new ToolResult("id", content, false, Map.of());
+        return ToolResult.success("id", content);
     }
 
     private static ToolExecutor countingDelegate(

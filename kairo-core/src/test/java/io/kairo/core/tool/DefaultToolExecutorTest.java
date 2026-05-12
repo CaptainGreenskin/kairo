@@ -59,8 +59,7 @@ class DefaultToolExecutorTest {
     @Test
     void executeSuccessfully() {
         registerToolHandler(
-                "echo",
-                input -> new ToolResult("echo", "echoed: " + input.get("text"), false, Map.of()));
+                "echo", input -> ToolResult.success("echo", "echoed: " + input.get("text")));
 
         StepVerifier.create(executor.execute("echo", Map.of("text", "hello")))
                 .assertNext(
@@ -122,7 +121,7 @@ class DefaultToolExecutorTest {
 
     @Test
     void permissionDeniedForDangerousCommand() {
-        registerToolHandler("bash", input -> new ToolResult("bash", "executed", false, Map.of()));
+        registerToolHandler("bash", input -> ToolResult.success("bash", "executed"));
 
         // rm -rf should be blocked by DefaultPermissionGuard
         StepVerifier.create(executor.execute("bash", Map.of("command", "rm -rf /")))
@@ -136,8 +135,7 @@ class DefaultToolExecutorTest {
 
     @Test
     void nonBashToolsSkipPermissionCheck() {
-        registerToolHandler(
-                "read_file", input -> new ToolResult("read_file", "file content", false, Map.of()));
+        registerToolHandler("read_file", input -> ToolResult.success("read_file", "file content"));
 
         // Even with dangerous-looking input, non-bash tools pass
         StepVerifier.create(executor.execute("read_file", Map.of("command", "rm -rf /")))
@@ -147,8 +145,8 @@ class DefaultToolExecutorTest {
 
     @Test
     void executeParallelMultipleTools() {
-        registerToolHandler("tool_a", input -> new ToolResult("a", "result_a", false, Map.of()));
-        registerToolHandler("tool_b", input -> new ToolResult("b", "result_b", false, Map.of()));
+        registerToolHandler("tool_a", input -> ToolResult.success("a", "result_a"));
+        registerToolHandler("tool_b", input -> ToolResult.success("b", "result_b"));
 
         var invocations =
                 java.util.List.of(
@@ -183,7 +181,7 @@ class DefaultToolExecutorTest {
                 };
 
         DefaultToolExecutor strictExecutor = new DefaultToolExecutor(registry, denyAll);
-        registerToolHandler("bash", input -> new ToolResult("bash", "executed", false, Map.of()));
+        registerToolHandler("bash", input -> ToolResult.success("bash", "executed"));
 
         StepVerifier.create(strictExecutor.execute("bash", Map.of("command", "echo hi")))
                 .assertNext(
@@ -198,7 +196,7 @@ class DefaultToolExecutorTest {
 
     @Test
     void executeUsesPerToolTimeoutFromDefinition() {
-        // Register a tool with a 1-second timeout that takes 5 seconds
+        // Register a tool with a 200ms timeout whose handler sleeps 2s — timeout must fire first
         ToolDefinition def =
                 new ToolDefinition(
                         "slow_tool",
@@ -206,18 +204,18 @@ class DefaultToolExecutorTest {
                         ToolCategory.GENERAL,
                         new JsonSchema("object", null, null, null),
                         SlowHandler.class,
-                        Duration.ofSeconds(1));
+                        Duration.ofMillis(200));
         registry.register(def);
         registry.registerInstance(
                 "slow_tool",
                 (ToolHandler)
                         input -> {
                             try {
-                                Thread.sleep(5000);
+                                Thread.sleep(2000);
                             } catch (InterruptedException e) {
                                 Thread.currentThread().interrupt();
                             }
-                            return new ToolResult("slow_tool", "done", false, Map.of());
+                            return ToolResult.success("slow_tool", "done");
                         });
 
         StepVerifier.create(executor.execute("slow_tool", Map.of()))
@@ -232,8 +230,7 @@ class DefaultToolExecutorTest {
     @Test
     void executeUsesDefaultTimeoutWhenToolHasNoCustomTimeout() {
         // Register a tool without custom timeout — should use DEFAULT_TIMEOUT (120s)
-        registerToolHandler(
-                "fast_tool", input -> new ToolResult("fast_tool", "quick result", false, Map.of()));
+        registerToolHandler("fast_tool", input -> ToolResult.success("fast_tool", "quick result"));
 
         StepVerifier.create(executor.execute("fast_tool", Map.of()))
                 .assertNext(
@@ -248,7 +245,7 @@ class DefaultToolExecutorTest {
     static class SlowHandler implements ToolHandler {
         @Override
         public ToolResult execute(Map<String, Object> input) {
-            return new ToolResult("slow", "done", false, Map.of());
+            return ToolResult.success("slow", "done");
         }
     }
 

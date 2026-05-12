@@ -278,7 +278,7 @@ class GracefulShutdownManagerExtTest {
 
     @Test
     void shutdownTimeout_interruptsActiveAgents() throws InterruptedException {
-        manager.setShutdownTimeout(Duration.ofMillis(500));
+        manager.setShutdownTimeout(Duration.ofMillis(100));
 
         AtomicBoolean interrupted = new AtomicBoolean(false);
         Agent longRunning =
@@ -312,8 +312,11 @@ class GracefulShutdownManagerExtTest {
         manager.registerAgent(longRunning);
         manager.performShutdown();
 
-        // Wait for timeout to fire and interrupt the agent
-        Thread.sleep(1500);
+        // Poll for interrupt rather than fixed sleep
+        long deadline = System.currentTimeMillis() + 2000;
+        while (!interrupted.get() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
 
         assertTrue(interrupted.get(), "Agent must be interrupted when shutdown timeout is reached");
         assertEquals(

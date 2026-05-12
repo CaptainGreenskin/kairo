@@ -49,8 +49,7 @@ class ToolInvocationRunnerTest {
 
     @Test
     void execute_successfulToolReturnsResult() {
-        ToolHandler handler =
-                input -> new ToolResult("echo", "echoed: " + input.get("msg"), false, Map.of());
+        ToolHandler handler = input -> ToolResult.success("echo", "echoed: " + input.get("msg"));
 
         StepVerifier.create(
                         runner.execute(
@@ -92,7 +91,7 @@ class ToolInvocationRunnerTest {
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
-                    return new ToolResult("slow", "done", false, Map.of());
+                    return ToolResult.success("slow", "done");
                 };
 
         StepVerifier.create(runner.execute("slow", handler, Map.of(), Duration.ofSeconds(1)))
@@ -130,7 +129,7 @@ class ToolInvocationRunnerTest {
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
-                    return new ToolResult("slow", "done", false, Map.of());
+                    return ToolResult.success("slow", "done");
                 };
 
         AtomicBoolean cancelled = new AtomicBoolean(false);
@@ -191,7 +190,7 @@ class ToolInvocationRunnerTest {
                     @Override
                     public ToolResult execute(Map<String, Object> input, ToolContext context) {
                         assertNotNull(context);
-                        return new ToolResult("ctx_tool", "with context", false, Map.of());
+                        return ToolResult.success("ctx_tool", "with context");
                     }
                 };
 

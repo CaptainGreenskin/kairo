@@ -17,6 +17,7 @@ package io.kairo.spring;
 
 import io.kairo.spring.config.AgentProperties;
 import io.kairo.spring.config.CheckpointProperties;
+import io.kairo.spring.config.ContinuationProperties;
 import io.kairo.spring.config.EmbeddingProperties;
 import io.kairo.spring.config.MemoryProperties;
 import io.kairo.spring.config.ModelProperties;
@@ -81,6 +82,10 @@ public class AgentRuntimeProperties {
     @NestedConfigurationProperty
     private CheckpointProperties checkpoint = new CheckpointProperties();
 
+    /** Continuation strategy configuration under {@code kairo.agent.continuation.*}. */
+    @NestedConfigurationProperty
+    private ContinuationProperties continuation = new ContinuationProperties();
+
     public ModelProperties getModel() {
         return model;
     }
@@ -135,5 +140,13 @@ public class AgentRuntimeProperties {
 
     public void setCheckpoint(CheckpointProperties checkpoint) {
         this.checkpoint = checkpoint;
+    }
+
+    public ContinuationProperties getContinuation() {
+        return continuation;
+    }
+
+    public void setContinuation(ContinuationProperties continuation) {
+        this.continuation = continuation;
     }
 }

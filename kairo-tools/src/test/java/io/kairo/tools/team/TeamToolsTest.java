@@ -21,6 +21,7 @@ import static org.mockito.Mockito.verify;
 
 import io.kairo.api.team.TeamManager;
 import io.kairo.api.tool.Tool;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.tools.agent.EnterPlanModeTool;
 import io.kairo.tools.agent.TeamCreateTool;
@@ -30,6 +31,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class TeamToolsTest {
+
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
 
     private TeamManager teamManager;
 
@@ -63,7 +66,7 @@ class TeamToolsTest {
     @Test
     void teamCreateTool_missingNameReturnsError() {
         TeamCreateTool tool = new TeamCreateTool(teamManager);
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = tool.execute(Map.of(), CTX).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("'name' is required");
     }
@@ -71,14 +74,14 @@ class TeamToolsTest {
     @Test
     void teamCreateTool_blankNameReturnsError() {
         TeamCreateTool tool = new TeamCreateTool(teamManager);
-        ToolResult result = tool.execute(Map.of("name", "  "));
+        ToolResult result = tool.execute(Map.of("name", "  "), CTX).block();
         assertThat(result.isError()).isTrue();
     }
 
     @Test
     void teamCreateTool_validNameCreatesTeam() {
         TeamCreateTool tool = new TeamCreateTool(teamManager);
-        ToolResult result = tool.execute(Map.of("name", "alpha"));
+        ToolResult result = tool.execute(Map.of("name", "alpha"), CTX).block();
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("alpha");
         verify(teamManager).create("alpha");
@@ -87,7 +90,7 @@ class TeamToolsTest {
     @Test
     void teamCreateTool_metadataContainsTeamName() {
         TeamCreateTool tool = new TeamCreateTool(teamManager);
-        ToolResult result = tool.execute(Map.of("name", "beta"));
+        ToolResult result = tool.execute(Map.of("name", "beta"), CTX).block();
         assertThat(result.metadata()).containsEntry("teamName", "beta");
     }
 
@@ -116,7 +119,7 @@ class TeamToolsTest {
     @Test
     void teamDeleteTool_missingNameReturnsError() {
         TeamDeleteTool tool = new TeamDeleteTool(teamManager);
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = tool.execute(Map.of(), CTX).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("'name' is required");
     }
@@ -124,7 +127,7 @@ class TeamToolsTest {
     @Test
     void teamDeleteTool_validNameDeletesTeam() {
         TeamDeleteTool tool = new TeamDeleteTool(teamManager);
-        ToolResult result = tool.execute(Map.of("name", "alpha"));
+        ToolResult result = tool.execute(Map.of("name", "alpha"), CTX).block();
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("alpha");
         verify(teamManager).delete("alpha");
@@ -155,7 +158,7 @@ class TeamToolsTest {
     @Test
     void enterPlanModeTool_executeWithoutDependenciesSucceeds() {
         EnterPlanModeTool tool = new EnterPlanModeTool();
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = tool.execute(Map.of(), CTX).block();
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("Plan Mode");
     }
@@ -163,14 +166,14 @@ class TeamToolsTest {
     @Test
     void enterPlanModeTool_executeWithNameSucceeds() {
         EnterPlanModeTool tool = new EnterPlanModeTool();
-        ToolResult result = tool.execute(Map.of("name", "My Plan"));
+        ToolResult result = tool.execute(Map.of("name", "My Plan"), CTX).block();
         assertThat(result.isError()).isFalse();
     }
 
     @Test
     void enterPlanModeTool_metadataContainsPlanMode() {
         EnterPlanModeTool tool = new EnterPlanModeTool();
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = tool.execute(Map.of(), CTX).block();
         assertThat(result.metadata()).containsEntry("mode", "plan");
     }
 }

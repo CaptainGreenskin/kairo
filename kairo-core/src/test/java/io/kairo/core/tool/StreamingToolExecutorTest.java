@@ -80,7 +80,7 @@ class StreamingToolExecutorTest {
     }
 
     private ToolHandler echoHandler(String toolId) {
-        return input -> new ToolResult(toolId, "result-" + toolId, false, Map.of());
+        return input -> ToolResult.success(toolId, "result-" + toolId);
     }
 
     @Test
@@ -106,14 +106,14 @@ class StreamingToolExecutorTest {
                 ToolSideEffect.WRITE,
                 input -> {
                     order.add("write_a");
-                    return new ToolResult("write_a", "ok", false, Map.of());
+                    return ToolResult.success("write_a", "ok");
                 });
         registerTool(
                 "write_b",
                 ToolSideEffect.WRITE,
                 input -> {
                     order.add("write_b");
-                    return new ToolResult("write_b", "ok", false, Map.of());
+                    return ToolResult.success("write_b", "ok");
                 });
 
         var tools =
@@ -136,14 +136,14 @@ class StreamingToolExecutorTest {
                 ToolSideEffect.READ_ONLY,
                 input -> {
                     order.add("read");
-                    return new ToolResult("read_file", "data", false, Map.of());
+                    return ToolResult.success("read_file", "data");
                 });
         registerTool(
                 "write_file",
                 ToolSideEffect.WRITE,
                 input -> {
                     order.add("write");
-                    return new ToolResult("write_file", "ok", false, Map.of());
+                    return ToolResult.success("write_file", "ok");
                 });
 
         var tools =

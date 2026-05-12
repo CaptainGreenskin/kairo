@@ -15,20 +15,20 @@
  */
 package io.kairo.tools.file;
 
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
-import io.kairo.api.workspace.Workspace;
 import io.kairo.core.context.recovery.FileAccessTracker;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Makes precise text replacements in a file.
@@ -42,7 +42,7 @@ import java.util.Map;
                 "Make precise text replacements in a file. The original text must be unique in the file.",
         category = ToolCategory.FILE_AND_CODE,
         sideEffect = ToolSideEffect.WRITE)
-public class EditTool implements ToolHandler {
+public class EditTool implements SyncTool {
 
     private final FileAccessTracker fileTracker;
 
@@ -70,13 +70,8 @@ public class EditTool implements ToolHandler {
     private String newText;
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        return doExecute(input, Workspace.cwd().root());
-    }
-
-    @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        return doExecute(input, context.workspace().root());
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> doExecute(args, ctx.workspace().root()));
     }
 
     private ToolResult doExecute(Map<String, Object> input, Path workspaceRoot) {
@@ -110,7 +105,7 @@ public class EditTool implements ToolHandler {
                 if (fileTracker != null) {
                     fileTracker.recordAccess(filePath);
                 }
-                return new ToolResult(
+                return ToolResult.of(
                         "edit", "Successfully edited " + filePath, false, Map.of("path", filePath));
             }
 
@@ -133,12 +128,11 @@ public class EditTool implements ToolHandler {
                     if (fileTracker != null) {
                         fileTracker.recordAccess(filePath);
                     }
-                    return new ToolResult(
+                    return ToolResult.success(
                             "edit",
                             "Successfully edited "
                                     + filePath
                                     + " (matched after trimming whitespace)",
-                            false,
                             Map.of("path", filePath));
                 }
             }
@@ -164,6 +158,6 @@ public class EditTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("edit", msg, true, Map.of());
+        return ToolResult.error("edit", msg);
     }
 }

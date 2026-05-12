@@ -18,6 +18,7 @@ package io.kairo.core.tool;
 import io.kairo.api.tool.JsonSchema;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolDefinition;
+import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import java.io.File;
 import java.io.IOException;
@@ -103,6 +104,33 @@ public class AnnotationToolScanner {
      * </pre>
      */
     JsonSchema buildSchema(Class<?> toolClass) {
+        // 1. Prefer a hand-rolled schema published via ToolHandler.inputSchema(). This is the only
+        //    correct path for tools that consume a raw Map — the field-scan path below produces
+        //    empty {properties:{},required:[]} for them, which leaves the model guessing which
+        //    arguments are required (observed: GLM-5.1 calling tree/batch_read with no path).
+        if (ToolHandler.class.isAssignableFrom(toolClass)) {
+            try {
+                ToolHandler probe = (ToolHandler) toolClass.getDeclaredConstructor().newInstance();
+                JsonSchema declared = probe.inputSchema();
+                if (declared != null) {
+                    return declared;
+                }
+            } catch (NoSuchMethodException e) {
+                // No no-arg constructor — fall through to field-based scan. The framework
+                // contract expects no-arg construction for per-invocation instances, so this is
+                // unusual but we degrade gracefully.
+                log.debug(
+                        "Tool {} lacks no-arg constructor; using field-based schema",
+                        toolClass.getName());
+            } catch (ReflectiveOperationException e) {
+                log.warn(
+                        "Failed to probe inputSchema() on {}: {}",
+                        toolClass.getName(),
+                        e.getMessage());
+            }
+        }
+
+        // 2. Fall back to scanning @ToolParam-annotated fields.
         Map<String, JsonSchema> properties = new LinkedHashMap<>();
         List<String> required = new ArrayList<>();
 

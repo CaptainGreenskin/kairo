@@ -15,20 +15,20 @@
  */
 package io.kairo.tools.file;
 
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
-import io.kairo.api.workspace.Workspace;
 import io.kairo.core.context.recovery.FileAccessTracker;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Creates or overwrites a file with the given content.
@@ -42,7 +42,7 @@ import java.util.Map;
                 "Create or overwrite a file with the given content. Automatically creates parent directories.",
         category = ToolCategory.FILE_AND_CODE,
         sideEffect = ToolSideEffect.WRITE)
-public class WriteTool implements ToolHandler {
+public class WriteTool implements SyncTool {
 
     private final FileAccessTracker fileTracker;
 
@@ -67,13 +67,8 @@ public class WriteTool implements ToolHandler {
     private String content;
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        return doExecute(input, Workspace.cwd().root());
-    }
-
-    @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        return doExecute(input, context.workspace().root());
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> doExecute(args, ctx.workspace().root()));
     }
 
     private ToolResult doExecute(Map<String, Object> input, Path workspaceRoot) {
@@ -102,10 +97,9 @@ public class WriteTool implements ToolHandler {
                 fileTracker.recordAccess(filePath);
             }
 
-            return new ToolResult(
+            return ToolResult.success(
                     "write",
                     "Successfully wrote " + bytes.length + " bytes to " + filePath,
-                    false,
                     Map.of("path", filePath, "bytesWritten", bytes.length));
 
         } catch (IOException e) {
@@ -114,6 +108,6 @@ public class WriteTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("write", msg, true, Map.of());
+        return ToolResult.error("write", msg);
     }
 }

@@ -90,8 +90,8 @@ class StreamIdleWatchdogTest {
     @Test
     void idleTimeoutMsDefaultValue() {
         assertEquals(
-                60_000L,
+                180_000L,
                 StreamIdleWatchdog.IDLE_TIMEOUT_MS,
-                "default idle timeout should be 60 seconds");
+                "default idle timeout should be 180 seconds (reasoning-model headroom)");
     }
 }

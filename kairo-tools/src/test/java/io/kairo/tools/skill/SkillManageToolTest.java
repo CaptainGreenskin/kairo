@@ -22,6 +22,7 @@ import io.kairo.api.exception.ToolException;
 import io.kairo.api.skill.SkillCategory;
 import io.kairo.api.skill.SkillDefinition;
 import io.kairo.api.skill.SkillRegistry;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.skill.SkillChangeHistory;
 import java.io.IOException;
@@ -36,6 +37,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class SkillManageToolTest {
+
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
 
     @TempDir Path tempDir;
 
@@ -73,13 +76,15 @@ class SkillManageToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "operation",
-                                "create",
-                                "name",
-                                "test-skill",
-                                "content",
-                                VALID_SKILL_CONTENT));
+                                Map.of(
+                                        "operation",
+                                        "create",
+                                        "name",
+                                        "test-skill",
+                                        "content",
+                                        VALID_SKILL_CONTENT),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError(), result.content());
         assertTrue(result.content().contains("created"));
@@ -114,13 +119,15 @@ class SkillManageToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "operation",
-                                "edit",
-                                "name",
-                                "test-skill",
-                                "content",
-                                VALID_SKILL_CONTENT));
+                                Map.of(
+                                        "operation",
+                                        "edit",
+                                        "name",
+                                        "test-skill",
+                                        "content",
+                                        VALID_SKILL_CONTENT),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError(), result.content());
         assertTrue(result.content().contains("updated"));
@@ -151,7 +158,8 @@ class SkillManageToolTest {
                         SkillCategory.CODE);
         when(registry.get("test-skill")).thenReturn(Optional.of(existing));
 
-        ToolResult result = tool.execute(Map.of("operation", "delete", "name", "test-skill"));
+        ToolResult result =
+                tool.execute(Map.of("operation", "delete", "name", "test-skill"), CTX).block();
 
         assertFalse(result.isError(), result.content());
         assertTrue(result.content().contains("deleted"));
@@ -171,18 +179,37 @@ class SkillManageToolTest {
                 new SkillManageTool(registry, changeHistory, List.of(tempDir.toString()), true);
 
         ToolResult createResult =
-                readonlyTool.execute(
-                        Map.of("operation", "create", "name", "x", "content", VALID_SKILL_CONTENT));
+                readonlyTool
+                        .execute(
+                                Map.of(
+                                        "operation",
+                                        "create",
+                                        "name",
+                                        "x",
+                                        "content",
+                                        VALID_SKILL_CONTENT),
+                                CTX)
+                        .block();
         assertTrue(createResult.isError());
         assertTrue(createResult.content().contains("readonly"));
 
         ToolResult editResult =
-                readonlyTool.execute(
-                        Map.of("operation", "edit", "name", "x", "content", VALID_SKILL_CONTENT));
+                readonlyTool
+                        .execute(
+                                Map.of(
+                                        "operation",
+                                        "edit",
+                                        "name",
+                                        "x",
+                                        "content",
+                                        VALID_SKILL_CONTENT),
+                                CTX)
+                        .block();
         assertTrue(editResult.isError());
         assertTrue(editResult.content().contains("readonly"));
 
-        ToolResult deleteResult = readonlyTool.execute(Map.of("operation", "delete", "name", "x"));
+        ToolResult deleteResult =
+                readonlyTool.execute(Map.of("operation", "delete", "name", "x"), CTX).block();
         assertTrue(deleteResult.isError());
         assertTrue(deleteResult.content().contains("readonly"));
     }
@@ -196,13 +223,15 @@ class SkillManageToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "operation",
-                                "create",
-                                "name",
-                                "test-skill",
-                                "content",
-                                VALID_SKILL_CONTENT));
+                                Map.of(
+                                        "operation",
+                                        "create",
+                                        "name",
+                                        "test-skill",
+                                        "content",
+                                        VALID_SKILL_CONTENT),
+                                CTX)
+                        .block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("already exists"));
@@ -214,13 +243,15 @@ class SkillManageToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "operation",
-                                "edit",
-                                "name",
-                                "nonexistent",
-                                "content",
-                                VALID_SKILL_CONTENT));
+                                Map.of(
+                                        "operation",
+                                        "edit",
+                                        "name",
+                                        "nonexistent",
+                                        "content",
+                                        VALID_SKILL_CONTENT),
+                                CTX)
+                        .block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("does not exist"));
@@ -230,7 +261,8 @@ class SkillManageToolTest {
     void deleteNonExistentSkillRejected() {
         when(registry.get("nonexistent")).thenReturn(Optional.empty());
 
-        ToolResult result = tool.execute(Map.of("operation", "delete", "name", "nonexistent"));
+        ToolResult result =
+                tool.execute(Map.of("operation", "delete", "name", "nonexistent"), CTX).block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("does not exist"));
@@ -245,14 +277,17 @@ class SkillManageToolTest {
         assertThrows(
                 ToolException.class,
                 () ->
-                        classpathOnlyTool.execute(
-                                Map.of(
-                                        "operation",
-                                        "create",
-                                        "name",
-                                        "test-skill",
-                                        "content",
-                                        VALID_SKILL_CONTENT)));
+                        classpathOnlyTool
+                                .execute(
+                                        Map.of(
+                                                "operation",
+                                                "create",
+                                                "name",
+                                                "test-skill",
+                                                "content",
+                                                VALID_SKILL_CONTENT),
+                                        CTX)
+                                .block());
     }
 
     @Test
@@ -283,13 +318,15 @@ class SkillManageToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "operation",
-                                "create",
-                                "name",
-                                "bad-skill",
-                                "content",
-                                "not valid markdown"));
+                                Map.of(
+                                        "operation",
+                                        "create",
+                                        "name",
+                                        "bad-skill",
+                                        "content",
+                                        "not valid markdown"),
+                                CTX)
+                        .block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("Invalid skill content"));
@@ -297,14 +334,14 @@ class SkillManageToolTest {
 
     @Test
     void missingOperationRejected() {
-        ToolResult result = tool.execute(Map.of("name", "x"));
+        ToolResult result = tool.execute(Map.of("name", "x"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'operation' is required"));
     }
 
     @Test
     void unknownOperationRejected() {
-        ToolResult result = tool.execute(Map.of("operation", "rename", "name", "x"));
+        ToolResult result = tool.execute(Map.of("operation", "rename", "name", "x"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("Unknown operation"));
     }
@@ -315,13 +352,15 @@ class SkillManageToolTest {
         when(registry.get("test-skill")).thenReturn(Optional.empty());
         ToolResult createResult =
                 tool.execute(
-                        Map.of(
-                                "operation",
-                                "create",
-                                "name",
-                                "test-skill",
-                                "content",
-                                VALID_SKILL_CONTENT));
+                                Map.of(
+                                        "operation",
+                                        "create",
+                                        "name",
+                                        "test-skill",
+                                        "content",
+                                        VALID_SKILL_CONTENT),
+                                CTX)
+                        .block();
         assertFalse(createResult.isError(), createResult.content());
 
         // Now set up registry to return an existing skill for the patch call
@@ -340,13 +379,15 @@ class SkillManageToolTest {
 
         ToolResult patchResult =
                 tool.execute(
-                        Map.of(
-                                "operation",
-                                "patch",
-                                "name",
-                                "test-skill",
-                                "content",
-                                patchContent));
+                                Map.of(
+                                        "operation",
+                                        "patch",
+                                        "name",
+                                        "test-skill",
+                                        "content",
+                                        patchContent),
+                                CTX)
+                        .block();
 
         assertFalse(patchResult.isError(), patchResult.content());
         assertTrue(patchResult.content().contains("patched"));
@@ -378,13 +419,15 @@ class SkillManageToolTest {
 
         ToolResult patchResult =
                 tool.execute(
-                        Map.of(
-                                "operation",
-                                "patch",
-                                "name",
-                                "test-skill",
-                                "content",
-                                patchContent));
+                                Map.of(
+                                        "operation",
+                                        "patch",
+                                        "name",
+                                        "test-skill",
+                                        "content",
+                                        patchContent),
+                                CTX)
+                        .block();
 
         assertTrue(patchResult.isError());
         assertTrue(patchResult.content().contains("OLD_STRING not found"));

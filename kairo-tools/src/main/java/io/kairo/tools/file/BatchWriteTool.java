@@ -15,13 +15,13 @@
  */
 package io.kairo.tools.file;
 
+import io.kairo.api.tool.JsonSchema;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
-import io.kairo.api.workspace.Workspace;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Writes multiple files in a single tool call, reducing tool call iterations for code generation.
@@ -48,18 +49,34 @@ import java.util.Map;
                         + " first, then writes all. On failure, rolls back previously written files.",
         category = ToolCategory.FILE_AND_CODE,
         sideEffect = ToolSideEffect.WRITE)
-public class BatchWriteTool implements ToolHandler {
+public class BatchWriteTool implements SyncTool {
 
     private static final int MAX_FILES = 50;
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        return doExecute(input, Workspace.cwd().root());
+    public JsonSchema inputSchema() {
+        Map<String, JsonSchema> props = new java.util.LinkedHashMap<>();
+        props.put(
+                "files",
+                new JsonSchema(
+                        "array",
+                        null,
+                        null,
+                        "Up to 50 entries; each is an object with required 'path' (absolute) + 'content',"
+                                + " optional 'createDirs' (default true)."));
+        props.put(
+                "dryRun",
+                new JsonSchema(
+                        "boolean",
+                        null,
+                        null,
+                        "Validate paths without writing. Defaults to false."));
+        return new JsonSchema("object", props, List.of("files"), null);
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        return doExecute(input, context.workspace().root());
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> doExecute(args, ctx.workspace().root()));
     }
 
     @SuppressWarnings("unchecked")
@@ -139,10 +156,9 @@ public class BatchWriteTool implements ToolHandler {
                     results.add(fileResult(v.path(), false, v.error()));
                 }
             }
-            return new ToolResult(
+            return ToolResult.success(
                     "batch_write",
                     buildContent(results),
-                    false,
                     Map.of(
                             "successCount",
                             0,
@@ -163,10 +179,9 @@ public class BatchWriteTool implements ToolHandler {
             for (FileEntry entry : entries) {
                 results.add(fileResult(entry.path(), true, null));
             }
-            return new ToolResult(
+            return ToolResult.success(
                     "batch_write",
                     "All paths validated successfully (dry run)",
-                    false,
                     Map.of(
                             "successCount",
                             entries.size(),
@@ -228,10 +243,9 @@ public class BatchWriteTool implements ToolHandler {
                 }
             }
 
-            return new ToolResult(
+            return ToolResult.success(
                     "batch_write",
                     buildContent(rolledResults),
-                    false,
                     Map.of(
                             "successCount",
                             0,
@@ -244,10 +258,9 @@ public class BatchWriteTool implements ToolHandler {
         }
 
         int successCount = entries.size();
-        return new ToolResult(
+        return ToolResult.success(
                 "batch_write",
                 buildContent(results),
-                false,
                 Map.of(
                         "successCount",
                         successCount,
@@ -294,6 +307,6 @@ public class BatchWriteTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("batch_write", msg, true, Map.of());
+        return ToolResult.error("batch_write", msg);
     }
 }

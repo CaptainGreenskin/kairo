@@ -17,6 +17,7 @@ package io.kairo.tools.exec;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,9 +29,15 @@ import org.junit.jupiter.api.io.TempDir;
 
 class GitToolTest {
 
+    private static final ToolContext CTX = new ToolContext("agent-1", "sess-1", Map.of());
+
     @TempDir Path repoDir;
 
     private GitTool tool;
+
+    private ToolResult exec(Map<String, Object> args) {
+        return tool.execute(args, CTX).block();
+    }
 
     @BeforeEach
     void setUp() throws IOException, InterruptedException {
@@ -43,14 +50,14 @@ class GitToolTest {
 
     @Test
     void statusInEmptyRepo() {
-        ToolResult result = tool.execute(Map.of("subcommand", "status"));
+        ToolResult result = exec(Map.of("subcommand", "status"));
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).containsIgnoringCase("nothing to commit");
     }
 
     @Test
     void logOnEmptyRepoReturnsNonFatalError() {
-        ToolResult result = tool.execute(Map.of("subcommand", "log --oneline"));
+        ToolResult result = exec(Map.of("subcommand", "log --oneline"));
         // git log on an empty repo exits with code 128 — isError=true is correct
         assertThat(result.metadata()).containsKey("exitCode");
     }
@@ -61,7 +68,7 @@ class GitToolTest {
         run("git", "add", ".");
         run("git", "commit", "-m", "initial");
 
-        ToolResult result = tool.execute(Map.of("subcommand", "log --oneline"));
+        ToolResult result = exec(Map.of("subcommand", "log --oneline"));
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("initial");
     }
@@ -73,35 +80,35 @@ class GitToolTest {
         run("git", "commit", "-m", "base");
         Files.writeString(repoDir.resolve("readme.txt"), "v2");
 
-        ToolResult result = tool.execute(Map.of("subcommand", "diff"));
+        ToolResult result = exec(Map.of("subcommand", "diff"));
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("v2");
     }
 
     @Test
     void forcePushIsBlocked() {
-        ToolResult result = tool.execute(Map.of("subcommand", "push --force origin main"));
+        ToolResult result = exec(Map.of("subcommand", "push --force origin main"));
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("Blocked");
     }
 
     @Test
     void resetHardIsBlocked() {
-        ToolResult result = tool.execute(Map.of("subcommand", "reset --hard HEAD"));
+        ToolResult result = exec(Map.of("subcommand", "reset --hard HEAD"));
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("Blocked");
     }
 
     @Test
     void cleanFIsBlocked() {
-        ToolResult result = tool.execute(Map.of("subcommand", "clean -f"));
+        ToolResult result = exec(Map.of("subcommand", "clean -f"));
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("Blocked");
     }
 
     @Test
     void missingSubcommandReturnsError() {
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = exec(Map.of());
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("'subcommand' is required");
     }

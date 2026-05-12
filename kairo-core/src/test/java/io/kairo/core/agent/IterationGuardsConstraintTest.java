@@ -91,6 +91,7 @@ class IterationGuardsConstraintTest {
                 shutdownManager,
                 null,
                 null,
+                null,
                 null);
     }
 

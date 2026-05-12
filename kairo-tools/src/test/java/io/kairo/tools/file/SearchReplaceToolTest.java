@@ -17,6 +17,7 @@ package io.kairo.tools.file;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -27,6 +28,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class SearchReplaceToolTest {
+
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
 
     private final SearchReplaceTool tool = new SearchReplaceTool();
 
@@ -90,10 +93,12 @@ class SearchReplaceToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "path", "/some/path",
-                                "search", longPattern,
-                                "replace", "x"));
+                                Map.of(
+                                        "path", "/some/path",
+                                        "search", longPattern,
+                                        "replace", "x"),
+                                CTX)
+                        .block();
 
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("Pattern too long");
@@ -113,10 +118,12 @@ class SearchReplaceToolTest {
     void rejectsMissingFile() {
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "path", tempDir.resolve("nonexistent.txt").toString(),
-                                "search", "foo",
-                                "replace", "bar"));
+                                Map.of(
+                                        "path", tempDir.resolve("nonexistent.txt").toString(),
+                                        "search", "foo",
+                                        "replace", "bar"),
+                                CTX)
+                        .block();
 
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("File not found");
@@ -124,7 +131,7 @@ class SearchReplaceToolTest {
 
     @Test
     void rejectsMissingPath() {
-        ToolResult result = tool.execute(Map.of("search", "foo", "replace", "bar"));
+        ToolResult result = tool.execute(Map.of("search", "foo", "replace", "bar"), CTX).block();
 
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("'path' is required");
@@ -134,7 +141,8 @@ class SearchReplaceToolTest {
     void rejectsMissingSearch() throws IOException {
         Path f = writeFile("test.txt", "content");
 
-        ToolResult result = tool.execute(Map.of("path", f.toString(), "replace", "bar"));
+        ToolResult result =
+                tool.execute(Map.of("path", f.toString(), "replace", "bar"), CTX).block();
 
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("'search' is required");
@@ -144,7 +152,8 @@ class SearchReplaceToolTest {
     void rejectsMissingReplace() throws IOException {
         Path f = writeFile("test.txt", "content");
 
-        ToolResult result = tool.execute(Map.of("path", f.toString(), "search", "foo"));
+        ToolResult result =
+                tool.execute(Map.of("path", f.toString(), "search", "foo"), CTX).block();
 
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("'replace' is required");
@@ -167,7 +176,8 @@ class SearchReplaceToolTest {
         Files.createDirectory(dir);
 
         ToolResult result =
-                tool.execute(Map.of("path", dir.toString(), "search", "foo", "replace", "bar"));
+                tool.execute(Map.of("path", dir.toString(), "search", "foo", "replace", "bar"), CTX)
+                        .block();
 
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("directory");
@@ -188,6 +198,6 @@ class SearchReplaceToolTest {
                         Map.of("path", file.toString(), "search", search, "replace", replacement));
         if (replaceAll != null) input.put("replaceAll", replaceAll);
         if (flags != null) input.put("flags", flags);
-        return tool.execute(input);
+        return tool.execute(input, CTX).block();
     }
 }

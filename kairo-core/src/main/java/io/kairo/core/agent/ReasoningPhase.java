@@ -27,6 +27,10 @@ import io.kairo.api.model.ModelResponse;
 import io.kairo.api.model.RawStreamingModelProvider;
 import io.kairo.api.model.StreamChunk;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.core.agent.continuation.AgentContinuationStrategy;
+import io.kairo.core.agent.continuation.ContinuationContext;
+import io.kairo.core.agent.continuation.ContinuationDecision;
+import io.kairo.core.agent.continuation.NoopContinuationStrategy;
 import io.kairo.core.execution.ExecutionEventEmitter;
 import io.kairo.core.model.DetectedToolCall;
 import io.kairo.core.model.StreamingToolDetector;
@@ -47,11 +51,22 @@ import reactor.core.publisher.Mono;
  * <p>Handles streaming vs non-streaming model calls, token accounting, and routes the model
  * response to either a final answer or tool execution via {@link ToolPhase}.
  *
- * <p>Package-private: not part of the public API.
+ * <p>The class itself is package-private and not part of the public API. The single exposed surface
+ * is {@link #THINKING_DELTA_KEY}, which downstream agents need so they can publish reasoning deltas
+ * to a Reactor Context — see kairo-code's {@code AgentService} streaming path.
  */
-class ReasoningPhase {
+public class ReasoningPhase {
 
     private static final Logger log = LoggerFactory.getLogger(ReasoningPhase.class);
+
+    /**
+     * Reactor Context key for an optional consumer of thinking-delta strings. When present, the
+     * streaming reasoning path forwards every {@code reasoning_content} delta (GLM-5.1, o1, Claude
+     * thinking) to the consumer so transports (WebSocket / SSE) can stream the model's thought
+     * process to clients in real time. The consumer must not block — it's invoked on the model
+     * provider's I/O thread.
+     */
+    public static final String THINKING_DELTA_KEY = "kairo.thinking-delta-consumer";
 
     private final ReActLoopContext ctx;
     private final IterationGuards guards;
@@ -63,6 +78,18 @@ class ReasoningPhase {
     private final Supplier<java.util.function.Consumer<String>> textDeltaConsumerSupplier;
     private final ToolPhase toolPhase;
     @Nullable private final ExecutionEventEmitter eventEmitter;
+
+    // Continuation strategy support
+    private final AtomicInteger nudgeCount = new AtomicInteger(0);
+    private volatile ModelResponse.StopReason lastStopReason;
+
+    // Suppresses repeated "GuardrailChain is null" log lines — emitted at most once per phase
+    // per ReasoningPhase instance so multi-iteration sessions don't flood the log when guardrails
+    // are simply not configured (the common case in dev).
+    private final java.util.concurrent.atomic.AtomicBoolean preGuardrailWarnedOnce =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicBoolean postGuardrailWarnedOnce =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
 
     ReasoningPhase(
             ReActLoopContext ctx,
@@ -307,6 +334,8 @@ class ReasoningPhase {
     /** Process the model response: convert to Msg, check for tool calls, execute if needed. */
     private Mono<Msg> processModelResponse(
             ModelResponse response, Supplier<Mono<Msg>> loopContinuation) {
+        // Capture stop reason for continuation strategy evaluation
+        this.lastStopReason = response.stopReason();
         Msg assistantMsg = appendAssistantResponse(response);
         List<Content.ToolUseContent> toolCalls = extractToolCalls(response);
         return routeModelResponseByToolCalls(assistantMsg, toolCalls, loopContinuation);
@@ -323,9 +352,38 @@ class ReasoningPhase {
             Msg assistantMsg,
             List<Content.ToolUseContent> toolCalls,
             Supplier<Mono<Msg>> loopContinuation) {
+        boolean hasText =
+                assistantMsg.contents().stream().anyMatch(c -> c instanceof Content.TextContent);
+        boolean preExec = !toolCalls.isEmpty() && isStreamingPreExecuted(toolCalls);
+        String branch =
+                toolCalls.isEmpty() ? "final" : (preExec ? "streaming-pre-exec" : "tool-execute");
+        // INFO-level so a single grep on iter/branch reveals exactly why the loop took (or
+        // didn't take) the next step. Previously the only signal was "iteration completed N
+        // tokens" — useless for diagnosing premature termination at iter 11.
+        log.info(
+                "react.continuation agent={} iter={} hasText={} toolCount={} branch={}",
+                ctx.agentName(),
+                currentIteration.get(),
+                hasText,
+                toolCalls.size(),
+                branch);
+
         if (toolCalls.isEmpty()) {
+            // Consult continuation strategy before terminating
+            AgentContinuationStrategy strategy = ctx.continuationStrategy();
+            if (strategy != null && !(strategy instanceof NoopContinuationStrategy)) {
+                return strategy.decide(buildContinuationContext(assistantMsg))
+                        .flatMap(
+                                decision ->
+                                        applyContinuationDecision(
+                                                strategy,
+                                                decision,
+                                                assistantMsg,
+                                                loopContinuation));
+            }
+            // No strategy or Noop — fall through to normal termination
             log.debug(
-                    "Agent '{}' final answer candidate — firing PRE_COMPLETE hooks",
+                    "Agent '{}' final answer candidate \u2014 firing PRE_COMPLETE hooks",
                     ctx.agentName());
             return firePreComplete(assistantMsg, loopContinuation);
         }
@@ -346,7 +404,7 @@ class ReasoningPhase {
             }
         }
 
-        if (isStreamingPreExecuted(toolCalls)) {
+        if (preExec) {
             return toolEmissions.then(handleStreamingPreExecutedTools(toolCalls, loopContinuation));
         }
         return toolEmissions.then(toolPhase.executeAndContinue(toolCalls, loopContinuation));
@@ -387,6 +445,107 @@ class ReasoningPhase {
                 .allMatch(tc -> tc.input() != null && tc.input().containsKey("_streaming_result"));
     }
 
+    // ---- Continuation Strategy helpers ----
+
+    private ContinuationContext buildContinuationContext(Msg assistantMsg) {
+        float pressure =
+                ctx.tokenBudgetManager() != null ? ctx.tokenBudgetManager().pressure() : 0f;
+
+        int toolCallsInLastK = countRecentToolCalls(3);
+
+        List<Msg> history = Collections.unmodifiableList(conversationHistory);
+
+        Map<String, Object> extensionData = new HashMap<>();
+
+        return new ContinuationContext(
+                ctx.agentName(),
+                currentIteration.get(),
+                ctx.config().maxIterations(),
+                history,
+                assistantMsg,
+                lastStopReason,
+                pressure,
+                nudgeCount.get(),
+                false, // isPlanMode — reserved for future use
+                toolCallsInLastK,
+                extensionData);
+    }
+
+    private Mono<Msg> applyContinuationDecision(
+            AgentContinuationStrategy strategy,
+            ContinuationDecision decision,
+            Msg assistantMsg,
+            Supplier<Mono<Msg>> loopContinuation) {
+
+        String reason;
+        if (decision instanceof ContinuationDecision.Terminate t) {
+            reason = t.reason();
+        } else if (decision instanceof ContinuationDecision.Nudge n) {
+            reason = n.reason();
+        } else if (decision instanceof ContinuationDecision.CompactAndRetry c) {
+            reason = c.reason();
+        } else if (decision instanceof ContinuationDecision.Escalate e) {
+            reason = e.cause() != null ? e.cause().getMessage() : "escalated";
+        } else {
+            reason = "pass";
+        }
+
+        log.info(
+                "CONTINUATION_DECISION strategy={} decision={} reason={} iter={} nudges={}",
+                strategy.name(),
+                decision.getClass().getSimpleName(),
+                reason,
+                currentIteration.get(),
+                nudgeCount.get());
+
+        if (decision instanceof ContinuationDecision.Terminate t) {
+            log.debug("Agent '{}' continuation terminated: {}", ctx.agentName(), t.reason());
+            return firePreComplete(assistantMsg, loopContinuation);
+        } else if (decision instanceof ContinuationDecision.Nudge n) {
+            nudgeCount.incrementAndGet();
+            conversationHistory.add(n.syntheticUserMessage());
+            log.info(
+                    "Agent '{}' continuation nudge #{}: {}",
+                    ctx.agentName(),
+                    nudgeCount.get(),
+                    n.reason());
+            currentIteration.incrementAndGet();
+            return loopContinuation.get();
+        } else if (decision instanceof ContinuationDecision.CompactAndRetry c) {
+            log.info("Agent '{}' continuation compact-and-retry: {}", ctx.agentName(), c.reason());
+            Mono<Void> compactMono =
+                    ctx.contextManager() != null
+                            ? ctx.contextManager().compact().then()
+                            : Mono.empty();
+            return compactMono.then(Mono.defer(loopContinuation::get));
+        } else if (decision instanceof ContinuationDecision.Escalate e) {
+            log.error("Agent '{}' continuation escalated", ctx.agentName(), e.cause());
+            return Mono.error(e.cause());
+        } else {
+            // Pass means no opinion — fall through to normal termination
+            return firePreComplete(assistantMsg, loopContinuation);
+        }
+    }
+
+    private int countRecentToolCalls(int lookbackIterations) {
+        int count = 0;
+        int assistantMsgsChecked = 0;
+        for (int i = conversationHistory.size() - 1;
+                i >= 0 && assistantMsgsChecked < lookbackIterations;
+                i--) {
+            Msg msg = conversationHistory.get(i);
+            if (msg.role() == MsgRole.ASSISTANT) {
+                assistantMsgsChecked++;
+                count +=
+                        (int)
+                                msg.contents().stream()
+                                        .filter(c -> c instanceof Content.ToolUseContent)
+                                        .count();
+            }
+        }
+        return count;
+    }
+
     private Mono<Msg> handleStreamingPreExecutedTools(
             List<Content.ToolUseContent> toolCalls, Supplier<Mono<Msg>> loopContinuation) {
         log.debug(
@@ -396,11 +555,9 @@ class ReasoningPhase {
                 toolCalls.stream()
                         .map(
                                 tc ->
-                                        new ToolResult(
+                                        ToolResult.success(
                                                 tc.toolId(),
-                                                (String) tc.input().get("_streaming_result"),
-                                                false,
-                                                Map.of()))
+                                                (String) tc.input().get("_streaming_result")))
                         .toList();
         conversationHistory.add(hookDecisions.buildToolResultMsg(preResults, conversationHistory));
         currentIteration.incrementAndGet();
@@ -457,18 +614,38 @@ class ReasoningPhase {
         // Tap TEXT chunks to fire per-token output consumer (if registered).
         // Accumulated text is also used to build a ModelResponse for text-only responses,
         // avoiding a second fallback model call.
+        // Tap THINKING chunks via Reactor Context so transports can stream reasoning_content
+        // deltas to the UI without changing AgentBuilder/AgentService signatures.
         var textAccumulator = new StringBuilder();
         java.util.function.Consumer<String> deltaConsumer = textDeltaConsumerSupplier.get();
         Flux<StreamChunk> tappedStream =
-                rawStream.doOnNext(
-                        chunk -> {
-                            if (chunk.type() == io.kairo.api.model.StreamChunkType.TEXT
-                                    && chunk.content() != null) {
-                                textAccumulator.append(chunk.content());
-                                if (deltaConsumer != null) {
-                                    deltaConsumer.accept(chunk.content());
-                                }
-                            }
+                rawStream.transformDeferredContextual(
+                        (flux, ctxView) -> {
+                            @SuppressWarnings("unchecked")
+                            java.util.function.Consumer<String> thinkingConsumer =
+                                    (java.util.function.Consumer<String>)
+                                            ctxView.getOrDefault(THINKING_DELTA_KEY, null);
+                            return flux.doOnNext(
+                                    chunk -> {
+                                        if (chunk.type() == io.kairo.api.model.StreamChunkType.TEXT
+                                                && chunk.content() != null) {
+                                            textAccumulator.append(chunk.content());
+                                            if (deltaConsumer != null) {
+                                                deltaConsumer.accept(chunk.content());
+                                            }
+                                        } else if (chunk.type()
+                                                        == io.kairo.api.model.StreamChunkType
+                                                                .THINKING
+                                                && chunk.content() != null
+                                                && thinkingConsumer != null) {
+                                            try {
+                                                thinkingConsumer.accept(chunk.content());
+                                            } catch (Exception ignored) {
+                                                // Never let a UI sink failure abort the reasoning
+                                                // stream.
+                                            }
+                                        }
+                                    });
                         });
 
         // Detect tool calls incrementally
@@ -493,13 +670,19 @@ class ReasoningPhase {
             Flux<DetectedToolCall> detectedTools,
             StringBuilder textAccumulator) {
         var streamingExecutor = new StreamingToolExecutor(ctx.toolExecutor());
-        // Track tool call ID → tool name mapping for building the synthetic response
+        // Track tool call ID → tool name AND original args for building the synthetic response.
+        // Preserving args lets downstream consumers (UI bridge hook) display the actual tool
+        // input rather than only the synthetic `_streaming_result` marker.
         var toolNameMap = new java.util.concurrent.ConcurrentHashMap<String, String>();
+        var toolArgsMap = new java.util.concurrent.ConcurrentHashMap<String, Map<String, Object>>();
         Flux<DetectedToolCall> trackedTools =
                 detectedTools.doOnNext(
                         tool -> {
                             if (tool.toolName() != null) {
                                 toolNameMap.put(tool.toolCallId(), tool.toolName());
+                            }
+                            if (tool.args() != null) {
+                                toolArgsMap.put(tool.toolCallId(), tool.args());
                             }
                         });
         return streamingExecutor
@@ -507,6 +690,7 @@ class ReasoningPhase {
                 .collectList()
                 .flatMap(
                         toolResults -> {
+                            int inputTokensEstimate = estimateInputTokens(messages);
                             if (toolResults.isEmpty()) {
                                 // Text-only response: build from accumulated stream text.
                                 // Avoids a redundant fallback model call; per-token output
@@ -518,7 +702,9 @@ class ReasoningPhase {
                                             accumulated.length());
                                     return Mono.just(
                                             buildTextOnlyResponse(
-                                                    accumulated, modelConfig.model()));
+                                                    accumulated,
+                                                    modelConfig.model(),
+                                                    inputTokensEstimate));
                                 }
                                 // Empty stream — fall back (rare edge case)
                                 return fallbackModelCall(messages, modelConfig);
@@ -528,35 +714,88 @@ class ReasoningPhase {
                                     toolResults.size());
                             return Mono.just(
                                     buildSyntheticStreamingResponse(
-                                            toolResults, toolNameMap, modelConfig.model()));
+                                            toolResults,
+                                            toolNameMap,
+                                            toolArgsMap,
+                                            modelConfig.model(),
+                                            inputTokensEstimate));
                         })
                 .transform(guards::withCooperativeCancellation);
     }
 
-    private ModelResponse buildTextOnlyResponse(String text, String modelName) {
+    private ModelResponse buildTextOnlyResponse(String text, String modelName, int inputTokens) {
+        // Provider streaming chunks don't carry usage metadata, so estimate via char-count
+        // heuristic (~4 chars/token, the well-known cl100k approximation). Real values would
+        // be ideal, but a non-zero estimate is strictly better than the previous Usage(0,0,0,0)
+        // which broke every downstream budget/compaction calculation.
+        int outputTokens = estimateTextTokens(text);
         return new ModelResponse(
                 "streaming",
                 List.of(new Content.TextContent(text)),
-                new ModelResponse.Usage(0, 0, 0, 0),
+                new ModelResponse.Usage(inputTokens, outputTokens, 0, 0),
                 ModelResponse.StopReason.END_TURN,
                 modelName);
     }
 
     private ModelResponse buildSyntheticStreamingResponse(
-            List<ToolResult> toolResults, Map<String, String> toolNameMap, String modelName) {
+            List<ToolResult> toolResults,
+            Map<String, String> toolNameMap,
+            Map<String, Map<String, Object>> toolArgsMap,
+            String modelName,
+            int inputTokens) {
         var contents = new ArrayList<Content>();
+        int outputCharCount = 0;
         for (var tr : toolResults) {
             String toolName = toolNameMap.getOrDefault(tr.toolUseId(), tr.toolUseId());
-            contents.add(
-                    new Content.ToolUseContent(
-                            tr.toolUseId(), toolName, Map.of("_streaming_result", tr.content())));
+            // Merge the original tool args with the streaming-result marker so the UI bridge
+            // can display the real input (path, command, …) while the agent loop still
+            // recognizes the response as pre-executed via `isStreamingPreExecuted`.
+            Map<String, Object> originalArgs = toolArgsMap.getOrDefault(tr.toolUseId(), Map.of());
+            var mergedInput = new java.util.LinkedHashMap<String, Object>(originalArgs);
+            mergedInput.put("_streaming_result", tr.content());
+            contents.add(new Content.ToolUseContent(tr.toolUseId(), toolName, mergedInput));
+            outputCharCount += toolName.length();
+            if (originalArgs != null) {
+                outputCharCount += originalArgs.toString().length();
+            }
         }
+        int outputTokens = Math.max(1, outputCharCount / 4);
         return new ModelResponse(
                 "streaming",
                 contents,
-                new ModelResponse.Usage(0, 0, 0, 0),
+                new ModelResponse.Usage(inputTokens, outputTokens, 0, 0),
                 ModelResponse.StopReason.TOOL_USE,
                 modelName);
+    }
+
+    /** Char-count → token estimate (~4 chars/token). Returns at least 1 for non-empty text. */
+    private static int estimateTextTokens(String text) {
+        if (text == null || text.isEmpty()) {
+            return 0;
+        }
+        return Math.max(1, text.length() / 4);
+    }
+
+    /** Walk the input message list and approximate total prompt tokens via char-count. */
+    private static int estimateInputTokens(List<Msg> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return 0;
+        }
+        int totalChars = 0;
+        for (Msg m : messages) {
+            if (m == null || m.contents() == null) continue;
+            for (Content c : m.contents()) {
+                if (c instanceof Content.TextContent t && t.text() != null) {
+                    totalChars += t.text().length();
+                } else if (c instanceof Content.ToolUseContent tu) {
+                    if (tu.toolName() != null) totalChars += tu.toolName().length();
+                    if (tu.input() != null) totalChars += tu.input().toString().length();
+                } else if (c instanceof Content.ToolResultContent tr && tr.content() != null) {
+                    totalChars += tr.content().length();
+                }
+            }
+        }
+        return Math.max(0, totalChars / 4);
     }
 
     // ---- Guardrail helpers ----
@@ -565,7 +804,10 @@ class ReasoningPhase {
             List<Msg> messages, ModelConfig config) {
         GuardrailChain chain = ctx.guardrailChain();
         if (chain == null) {
-            log.warn("GuardrailChain is null — PRE_MODEL guardrail evaluation skipped");
+            if (preGuardrailWarnedOnce.compareAndSet(false, true)) {
+                log.debug(
+                        "GuardrailChain is null — PRE_MODEL guardrail evaluation skipped (suppressed for the rest of this session)");
+            }
             return Mono.just(GuardrailDecision.allow("no-guardrail"));
         }
         return Mono.defer(
@@ -582,7 +824,10 @@ class ReasoningPhase {
     private Mono<ModelResponse> evaluatePostModelGuardrail(ModelResponse response) {
         GuardrailChain chain = ctx.guardrailChain();
         if (chain == null) {
-            log.warn("GuardrailChain is null — POST_MODEL guardrail evaluation skipped");
+            if (postGuardrailWarnedOnce.compareAndSet(false, true)) {
+                log.debug(
+                        "GuardrailChain is null — POST_MODEL guardrail evaluation skipped (suppressed for the rest of this session)");
+            }
             return Mono.just(response);
         }
         String targetName = response.model() != null ? response.model() : "model";

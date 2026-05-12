@@ -110,7 +110,7 @@ class CoordinatorIntegrationTest {
     public static class NoOpToolHandler implements ToolHandler {
         @Override
         public io.kairo.api.tool.ToolResult execute(Map<String, Object> input) {
-            return new io.kairo.api.tool.ToolResult("noop", "executed", false, Map.of());
+            return io.kairo.api.tool.ToolResult.success("noop", "executed");
         }
     }
 

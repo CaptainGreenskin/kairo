@@ -33,7 +33,7 @@ class ToolResultBudgetTest {
         List<Msg> history = List.of(Msg.of(MsgRole.USER, "run diagnostics"));
 
         String oversized = "A".repeat(20_000);
-        ToolResult original = new ToolResult("tc-1", oversized, false, Map.of("source", "bash"));
+        ToolResult original = ToolResult.success("tc-1", oversized, Map.of("source", "bash"));
 
         ToolResultBudget.AppliedResult applied =
                 ToolResultBudget.apply(List.of(original), history, budgetManager);
@@ -54,7 +54,7 @@ class ToolResultBudgetTest {
     void shouldKeepSmallToolResultWithoutTruncation() {
         TokenBudgetManager budgetManager = new TokenBudgetManager(20_000, 4_000);
         List<Msg> history = List.of(Msg.of(MsgRole.USER, "ping"));
-        ToolResult original = new ToolResult("tc-2", "ok", false, Map.of());
+        ToolResult original = ToolResult.success("tc-2", "ok");
 
         ToolResultBudget.AppliedResult applied =
                 ToolResultBudget.apply(List.of(original), history, budgetManager);

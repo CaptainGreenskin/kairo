@@ -171,16 +171,15 @@ public class StreamingToolExecutor {
     private Mono<ToolResult> executeSingle(DetectedToolCall tool) {
         if (tool.toolName() == null || tool.toolName().isEmpty()) {
             log.warn("Skipping tool call with null/empty name: {}", tool.toolCallId());
-            return Mono.just(
-                    new ToolResult(tool.toolCallId(), "Tool name is null or empty", true, null));
+            return Mono.just(ToolResult.error(tool.toolCallId(), "Tool name is null or empty"));
         }
         log.debug("Executing streaming tool: {} (id: {})", tool.toolName(), tool.toolCallId());
-        var invocation = new ToolInvocation(tool.toolName(), tool.args());
+        var invocation = new ToolInvocation(tool.toolName(), tool.args(), tool.toolCallId());
         return toolExecutor
                 .executeSingle(invocation)
                 .map(
                         result ->
-                                new ToolResult(
+                                ToolResult.of(
                                         tool.toolCallId(),
                                         result.content(),
                                         result.isError(),

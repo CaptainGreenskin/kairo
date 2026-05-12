@@ -185,19 +185,25 @@ class TokenBudgetManagerV2Test {
     }
 
     @Test
-    @DisplayName("recordModelUsage updates unified accounted tokens once per turn")
+    @DisplayName("recordModelUsage tracks current context size, not cumulative consumption")
     void testRecordModelUsageSingleSourceAccounting() {
+        // usedTokens reflects the current context size: each turn's inputTokens already includes
+        // the full prior history, so the counter is REPLACED, not accumulated. Without this, a
+        // long session would double-count history N times across N turns and trigger spurious
+        // budget GRACEFUL_EXIT despite a small actual context.
         TokenBudgetManager mgr = TokenBudgetManager.forModel("claude-sonnet-4-20250514");
         ModelResponse.Usage usage = new ModelResponse.Usage(120, 30, 0, 0);
 
         mgr.recordModelUsage(usage);
-        mgr.recordModelUsage(usage);
+        mgr.recordModelUsage(usage); // idempotent within same turn
 
         assertEquals(150, mgr.totalAccountedTokens());
         assertEquals(150, mgr.used());
 
+        // Next turn: inputTokens=10 means current context shrank to 10 (e.g. after compaction).
+        // Counter must reflect the new size, not 150+15.
         mgr.advanceTurn();
         mgr.recordModelUsage(new ModelResponse.Usage(10, 5, 0, 0));
-        assertEquals(165, mgr.totalAccountedTokens());
+        assertEquals(15, mgr.totalAccountedTokens());
     }
 }

@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.kairo.api.team.Team;
 import io.kairo.api.team.TeamManager;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.multiagent.team.InProcessMessageBus;
 import java.util.ArrayList;
@@ -66,6 +67,7 @@ class TeamToolsTest {
     private StubTeamManager teamManager;
     private TeamCreateTool createTool;
     private TeamDeleteTool deleteTool;
+    private static final ToolContext CTX = new ToolContext("agent-1", "sess-1", Map.of());
 
     @BeforeEach
     void setUp() {
@@ -78,33 +80,33 @@ class TeamToolsTest {
 
     @Test
     void createWithValidNameSucceeds() {
-        ToolResult result = createTool.execute(Map.of("name", "alpha"));
+        ToolResult result = createTool.execute(Map.of("name", "alpha"), CTX).block();
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("alpha");
     }
 
     @Test
     void createDelegatesToTeamManager() {
-        createTool.execute(Map.of("name", "bravo"));
+        createTool.execute(Map.of("name", "bravo"), CTX).block();
         assertThat(teamManager.created).containsExactly("bravo");
     }
 
     @Test
     void createMetadataContainsTeamName() {
-        ToolResult result = createTool.execute(Map.of("name", "charlie"));
+        ToolResult result = createTool.execute(Map.of("name", "charlie"), CTX).block();
         assertThat(result.metadata()).containsEntry("teamName", "charlie");
     }
 
     @Test
     void createWithEmptyNameReturnsError() {
-        ToolResult result = createTool.execute(Map.of("name", ""));
+        ToolResult result = createTool.execute(Map.of("name", ""), CTX).block();
         assertThat(result.isError()).isTrue();
         assertThat(teamManager.created).isEmpty();
     }
 
     @Test
     void createWithNullNameReturnsError() {
-        ToolResult result = createTool.execute(Map.of());
+        ToolResult result = createTool.execute(Map.of(), CTX).block();
         assertThat(result.isError()).isTrue();
     }
 
@@ -112,14 +114,14 @@ class TeamToolsTest {
 
     @Test
     void deleteWithValidNameSucceeds() {
-        ToolResult result = deleteTool.execute(Map.of("name", "delta"));
+        ToolResult result = deleteTool.execute(Map.of("name", "delta"), CTX).block();
         assertThat(result.isError()).isFalse();
         assertThat(teamManager.deleted).containsExactly("delta");
     }
 
     @Test
     void deleteWithEmptyNameReturnsError() {
-        ToolResult result = deleteTool.execute(Map.of("name", ""));
+        ToolResult result = deleteTool.execute(Map.of("name", ""), CTX).block();
         assertThat(result.isError()).isTrue();
         assertThat(teamManager.deleted).isEmpty();
     }

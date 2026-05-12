@@ -59,4 +59,19 @@ public interface ToolHandler {
     default ToolResult execute(Map<String, Object> input, ToolContext context) throws Exception {
         return execute(input);
     }
+
+    /**
+     * Optionally declare the JSON schema for this tool's inputs.
+     *
+     * <p>The default implementation returns {@code null}, which signals the framework to derive a
+     * schema by reflecting over {@link ToolParam}-annotated fields. Tools that consume a raw {@link
+     * Map} (no fields) MUST override this method to publish a non-empty schema — otherwise models
+     * see no {@code required} or property descriptions and routinely call the tool with empty
+     * arguments.
+     *
+     * @return the input schema, or {@code null} to fall back to field-based scanning
+     */
+    default JsonSchema inputSchema() {
+        return null;
+    }
 }

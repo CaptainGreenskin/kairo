@@ -18,12 +18,14 @@ package io.kairo.tools.agent;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.team.MessageBus;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
-import io.kairo.api.tool.ToolHandler;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Sends a message to another agent in the team via the message bus.
@@ -35,7 +37,7 @@ import java.util.Map;
         name = "send_message",
         description = "Send a message to another agent in the team.",
         category = ToolCategory.AGENT_AND_TASK)
-public class SendMessageTool implements ToolHandler {
+public class SendMessageTool implements SyncTool {
 
     @ToolParam(description = "The ID of the recipient agent", required = true)
     private String recipientId;
@@ -58,19 +60,23 @@ public class SendMessageTool implements ToolHandler {
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> executeSync(args, ctx));
+    }
+
+    private ToolResult executeSync(Map<String, Object> input, ToolContext ctx) {
         String to = (String) input.get("recipientId");
         String content = (String) input.get("content");
 
         if (to == null || to.isBlank()) {
-            return new ToolResult(null, "Parameter 'recipientId' is required", true, Map.of());
+            return ToolResult.error(null, "Parameter 'recipientId' is required");
         }
         if (content == null || content.isBlank()) {
-            return new ToolResult(null, "Parameter 'content' is required", true, Map.of());
+            return ToolResult.error(null, "Parameter 'content' is required");
         }
 
         Msg msg = Msg.of(MsgRole.USER, content);
         messageBus.send(currentAgentId, to, msg).block();
-        return new ToolResult(null, String.format("Message sent to agent %s", to), false, Map.of());
+        return ToolResult.of(null, String.format("Message sent to agent %s", to), false, Map.of());
     }
 }

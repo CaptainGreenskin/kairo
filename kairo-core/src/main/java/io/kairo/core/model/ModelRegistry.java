@@ -49,8 +49,10 @@ public class ModelRegistry {
         register("gpt-4o-mini", 128_000, 16_384);
         register("gpt-4-turbo", 128_000, 4_096);
         // GLM models
+        register("glm-5.1", 128_000, 8_192);
         register("glm-4-plus", 128_000, 4_096);
         register("glm-4-flash", 128_000, 4_096);
+        register("glm-4-long", 1_000_000, 4_096);
         // DeepSeek
         register("deepseek-chat", 64_000, 8_192);
         register("deepseek-coder", 64_000, 8_192);

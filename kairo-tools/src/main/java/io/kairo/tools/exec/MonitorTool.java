@@ -15,9 +15,10 @@
  */
 package io.kairo.tools.exec;
 
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
-import io.kairo.api.tool.ToolHandler;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
@@ -27,6 +28,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Mono;
 
 /**
  * Monitors a long-running process by PID and returns its recent output.
@@ -40,7 +42,7 @@ import org.slf4j.LoggerFactory;
                 "Monitor a long-running process by PID and return its recent output. Only accepts numeric PIDs.",
         category = ToolCategory.EXECUTION,
         sideEffect = ToolSideEffect.SYSTEM_CHANGE)
-public class MonitorTool implements ToolHandler {
+public class MonitorTool implements SyncTool {
 
     private static final Logger log = LoggerFactory.getLogger(MonitorTool.class);
     private static final int DEFAULT_LINES = 50;
@@ -53,7 +55,11 @@ public class MonitorTool implements ToolHandler {
     private Integer lines;
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> executeSync(args, ctx));
+    }
+
+    private ToolResult executeSync(Map<String, Object> input, ToolContext ctx) {
         String target = (String) input.get("target");
         if (target == null || target.isBlank()) {
             return error("Parameter 'target' is required");
@@ -117,14 +123,11 @@ public class MonitorTool implements ToolHandler {
 
             String outputStr = output.toString();
             if (outputStr.isBlank()) {
-                return new ToolResult(
-                        "monitor",
-                        "No output available for: " + target,
-                        false,
-                        Map.of("target", target));
+                return ToolResult.success(
+                        "monitor", "No output available for: " + target, Map.of("target", target));
             }
 
-            return new ToolResult(
+            return ToolResult.of(
                     "monitor", outputStr, false, Map.of("target", target, "lines", numLines));
 
         } catch (Exception e) {
@@ -134,6 +137,6 @@ public class MonitorTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("monitor", msg, true, Map.of());
+        return ToolResult.error("monitor", msg);
     }
 }

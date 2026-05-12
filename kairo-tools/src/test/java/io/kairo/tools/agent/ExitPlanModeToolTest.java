@@ -18,18 +18,25 @@ package io.kairo.tools.agent;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.tool.ApprovalResult;
+import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCallRequest;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.UserApprovalHandler;
 import io.kairo.core.plan.PlanFileManager;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 
 class ExitPlanModeToolTest {
+
+    private static final ToolContext CTX = new ToolContext("agent-1", "sess-1", Map.of());
 
     @TempDir Path tempDir;
 
@@ -42,23 +49,45 @@ class ExitPlanModeToolTest {
         planFileManager = new PlanFileManager(tempDir);
     }
 
+    /** Minimal valid input — overview + plan_content are both required by the schema. */
+    private static Map<String, Object> base(String overview) {
+        return Map.of("overview", overview, "plan_content", "## Plan\n\nDo the work.");
+    }
+
     @Test
     void missingOverviewParameter() {
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = tool.execute(Map.of(), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'overview' is required"));
     }
 
     @Test
     void blankOverviewParameter() {
-        ToolResult result = tool.execute(Map.of("overview", "   "));
+        ToolResult result =
+                tool.execute(Map.of("overview", "   ", "plan_content", "## Plan\n\nDoit"), CTX)
+                        .block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'overview' is required"));
     }
 
     @Test
+    void missingPlanContentParameter() {
+        ToolResult result = tool.execute(Map.of("overview", "Deploy"), CTX).block();
+        assertTrue(result.isError());
+        assertTrue(result.content().contains("'plan_content' is required"));
+    }
+
+    @Test
+    void blankPlanContentParameter() {
+        ToolResult result =
+                tool.execute(Map.of("overview", "Deploy", "plan_content", "   "), CTX).block();
+        assertTrue(result.isError());
+        assertTrue(result.content().contains("'plan_content' is required"));
+    }
+
+    @Test
     void exitWithoutAnyDependencies() {
-        ToolResult result = tool.execute(Map.of("overview", "Deploy to production"));
+        ToolResult result = tool.execute(base("Deploy to production"), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("Exited Plan Mode"));
         assertTrue(result.content().contains("Deploy to production"));
@@ -67,27 +96,23 @@ class ExitPlanModeToolTest {
 
     @Test
     void exitWithoutToolExecutorDoesNotThrow() {
-        // No tool executor set - should not throw NPE
-        ToolResult result = tool.execute(Map.of("overview", "Deploy"));
+        ToolResult result = tool.execute(base("Deploy"), CTX).block();
         assertFalse(result.isError());
     }
 
     @Test
     void exitWithPlanIdButNoManager() {
-        // planId present but no planFileManager set
-        ToolResult result = tool.execute(Map.of("overview", "Deploy v2", "planId", "abc123"));
-
+        Map<String, Object> input = new java.util.HashMap<>(base("Deploy v2"));
+        input.put("planId", "abc123");
+        ToolResult result = tool.execute(input, CTX).block();
         assertFalse(result.isError());
     }
 
     @Test
     void exitWithPlanManagerButNoPlanId() {
         tool.setPlanFileManager(planFileManager);
-
-        ToolResult result = tool.execute(Map.of("overview", "Deploy v2"));
-
+        ToolResult result = tool.execute(base("Deploy v2"), CTX).block();
         assertFalse(result.isError());
-        // No exception even though planFileManager is set — just no plan to update
     }
 
     @Test
@@ -98,13 +123,15 @@ class ExitPlanModeToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "overview",
-                                "Deploy v2",
-                                "planId",
-                                plan.id(),
-                                "plan_content",
-                                "Full plan content"));
+                                Map.of(
+                                        "overview",
+                                        "Deploy v2",
+                                        "planId",
+                                        plan.id(),
+                                        "plan_content",
+                                        "Full plan content"),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         // Verify the plan was updated
@@ -118,7 +145,9 @@ class ExitPlanModeToolTest {
     void exitWithPlanNotFoundContinues() {
         tool.setPlanFileManager(planFileManager);
 
-        ToolResult result = tool.execute(Map.of("overview", "Deploy v2", "planId", "nonexistent"));
+        Map<String, Object> input = new java.util.HashMap<>(base("Deploy v2"));
+        input.put("planId", "nonexistent");
+        ToolResult result = tool.execute(input, CTX).block();
 
         // Should still succeed despite plan not found (caught IllegalArgumentException)
         assertFalse(result.isError());
@@ -129,7 +158,7 @@ class ExitPlanModeToolTest {
     void exitWithApprovalApproved() {
         tool.setApprovalHandler(new StubApprovalHandler(ApprovalResult.allow()));
 
-        ToolResult result = tool.execute(Map.of("overview", "Deploy v2"));
+        ToolResult result = tool.execute(base("Deploy v2"), CTX).block();
 
         assertFalse(result.isError());
         assertEquals("execute", result.metadata().get("mode"));
@@ -139,7 +168,7 @@ class ExitPlanModeToolTest {
     void exitWithApprovalDenied() {
         tool.setApprovalHandler(new StubApprovalHandler(ApprovalResult.denied("Not ready yet")));
 
-        ToolResult result = tool.execute(Map.of("overview", "Deploy v2"));
+        ToolResult result = tool.execute(base("Deploy v2"), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("Plan exit denied"));
@@ -152,7 +181,7 @@ class ExitPlanModeToolTest {
     void exitWithApprovalNullResult() {
         tool.setApprovalHandler(new StubApprovalHandler(null));
 
-        ToolResult result = tool.execute(Map.of("overview", "Deploy v2"));
+        ToolResult result = tool.execute(base("Deploy v2"), CTX).block();
 
         assertFalse(result.isError());
         // null result is treated as not denied, so exits normally
@@ -160,23 +189,96 @@ class ExitPlanModeToolTest {
     }
 
     @Test
-    void planContentDefaultsToOverview() {
+    void planContentPersistsToFile() {
         tool.setPlanFileManager(planFileManager);
         var plan = planFileManager.createPlan("Test Plan");
 
-        tool.execute(Map.of("overview", "Deploy overview", "planId", plan.id()));
+        tool.execute(
+                        Map.of(
+                                "overview",
+                                "Deploy overview",
+                                "planId",
+                                plan.id(),
+                                "plan_content",
+                                "## Goal\n\nMarkdown body the user reviews"),
+                        CTX)
+                .block();
 
         var updated = planFileManager.getPlan(plan.id());
         assertNotNull(updated);
-        assertEquals("Deploy overview", updated.content());
+        assertEquals("## Goal\n\nMarkdown body the user reviews", updated.content());
     }
 
     @Test
     void successResultFormat() {
-        ToolResult result = tool.execute(Map.of("overview", "Do things"));
+        ToolResult result = tool.execute(base("Do things"), CTX).block();
         assertNull(result.toolUseId());
         assertFalse(result.isError());
         assertEquals("execute", result.metadata().get("mode"));
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Long-task / cooperative-cancellation tests
+    //
+    // The bug we're guarding against: the agent calls exit_plan_mode → block()s on user
+    // approval. Without a long per-tool timeout (and without an external cancel path),
+    // the 120s DefaultToolExecutor timeout would interrupt the wait and surface
+    // InterruptedException as "Plan submission failed".
+    //
+    // The pattern below tests *the cancellation mechanism itself* without actually
+    // sleeping for minutes. We use a Sinks.One that an external thread resolves with
+    // denied (mirroring WebSocketApprovalHandler.cancelAll()), and assert that
+    // tool.execute() unwinds within a budget of 1s with a clean denied result.
+    // ---------------------------------------------------------------------------------
+
+    @Test
+    void exitPlanModeAnnotationDeclaresLongTimeout() {
+        // Static config assertion: the @Tool annotation declares a timeout that exceeds
+        // the DefaultToolExecutor's 120s default. If someone removes this, the test fails
+        // before they cause a regression in production.
+        Tool annotation = ExitPlanModeTool.class.getAnnotation(Tool.class);
+        assertNotNull(annotation, "ExitPlanModeTool must be annotated with @Tool");
+        assertTrue(
+                annotation.timeoutSeconds() >= 3600,
+                "exit_plan_mode timeoutSeconds must be >=1h to survive human review;"
+                        + " got "
+                        + annotation.timeoutSeconds());
+    }
+
+    @Test
+    void externalSinkResolutionUnwindsBlockCleanly() throws Exception {
+        // Simulates the production unwind: the user clicks Stop while exit_plan_mode is
+        // awaiting approval. AgentService.stopAgent() calls approvalHandler.cancelAll(),
+        // which resolves the Sinks.One with denied. block() then returns within ms instead
+        // of throwing InterruptedException.
+        Sinks.One<ApprovalResult> sink = Sinks.one();
+        tool.setApprovalHandler(new SinkBackedApprovalHandler(sink));
+
+        // Schedule the "user pressed Stop" event 50ms after exec starts.
+        CompletableFuture<Void> canceller =
+                CompletableFuture.runAsync(
+                        () -> {
+                            try {
+                                Thread.sleep(50);
+                            } catch (InterruptedException ignored) {
+                                Thread.currentThread().interrupt();
+                            }
+                            sink.tryEmitValue(ApprovalResult.denied("Session terminated"));
+                        });
+
+        long start = System.nanoTime();
+        ToolResult result = tool.execute(base("Long-running plan"), CTX).block();
+        Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
+        canceller.get(2, java.util.concurrent.TimeUnit.SECONDS);
+
+        assertFalse(
+                result.isError(), "Cancellation must produce a clean denied result, not an error");
+        assertEquals("plan", result.metadata().get("mode"));
+        assertTrue(result.content().contains("Session terminated"));
+        assertTrue(result.content().contains("Still in Plan Mode"));
+        assertTrue(
+                elapsed.toMillis() < 1000,
+                "Cancellation should unwind within 1s; took " + elapsed.toMillis() + "ms");
     }
 
     /** Stub UserApprovalHandler for testing without Mockito. */
@@ -193,6 +295,24 @@ class ExitPlanModeToolTest {
                 return Mono.empty();
             }
             return Mono.just(result);
+        }
+    }
+
+    /**
+     * Hands out a Mono backed by an externally-controlled Sinks.One. Mirrors the production pattern
+     * in WebSocketApprovalHandler (one sink per pending approval, resolved out of band by the
+     * WebSocket thread or cancelAll()).
+     */
+    private static class SinkBackedApprovalHandler implements UserApprovalHandler {
+        private final Sinks.One<ApprovalResult> sink;
+
+        SinkBackedApprovalHandler(Sinks.One<ApprovalResult> sink) {
+            this.sink = sink;
+        }
+
+        @Override
+        public Mono<ApprovalResult> requestApproval(ToolCallRequest request) {
+            return sink.asMono();
         }
     }
 }

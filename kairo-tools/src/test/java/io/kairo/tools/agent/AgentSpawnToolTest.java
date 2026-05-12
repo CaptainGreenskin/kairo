@@ -26,6 +26,7 @@ import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +37,7 @@ class AgentSpawnToolTest {
     private AgentSpawnTool tool;
     private StubAgentFactory agentFactory;
     private AgentConfig baseConfig;
+    private static final ToolContext CTX = new ToolContext("agent-1", "sess-1", Map.of());
 
     @BeforeEach
     void setUp() {
@@ -54,28 +56,29 @@ class AgentSpawnToolTest {
 
     @Test
     void missingNameParameter() {
-        ToolResult result = tool.execute(Map.of("task", "do something"));
+        ToolResult result = tool.execute(Map.of("task", "do something"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'name' is required"));
     }
 
     @Test
     void blankNameParameter() {
-        ToolResult result = tool.execute(Map.of("name", "   ", "task", "do something"));
+        ToolResult result =
+                tool.execute(Map.of("name", "   ", "task", "do something"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'name' is required"));
     }
 
     @Test
     void missingTaskParameter() {
-        ToolResult result = tool.execute(Map.of("name", "sub-agent"));
+        ToolResult result = tool.execute(Map.of("name", "sub-agent"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'task' is required"));
     }
 
     @Test
     void blankTaskParameter() {
-        ToolResult result = tool.execute(Map.of("name", "sub-agent", "task", "   "));
+        ToolResult result = tool.execute(Map.of("name", "sub-agent", "task", "   "), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'task' is required"));
     }
@@ -84,7 +87,8 @@ class AgentSpawnToolTest {
     void spawnWithTextResult() {
         agentFactory.response = Msg.of(MsgRole.ASSISTANT, "Task completed successfully");
 
-        ToolResult result = tool.execute(Map.of("name", "worker", "task", "process data"));
+        ToolResult result =
+                tool.execute(Map.of("name", "worker", "task", "process data"), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("worker"));
@@ -97,13 +101,15 @@ class AgentSpawnToolTest {
         agentFactory.response = Msg.of(MsgRole.ASSISTANT, "done");
 
         tool.execute(
-                Map.of(
-                        "name",
-                        "worker",
-                        "task",
-                        "do work",
-                        "systemPrompt",
-                        "You are a specialized agent."));
+                        Map.of(
+                                "name",
+                                "worker",
+                                "task",
+                                "do work",
+                                "systemPrompt",
+                                "You are a specialized agent."),
+                        CTX)
+                .block();
 
         assertEquals("You are a specialized agent.", agentFactory.lastConfig.systemPrompt());
     }
@@ -112,7 +118,7 @@ class AgentSpawnToolTest {
     void spawnWithDefaultSystemPrompt() {
         agentFactory.response = Msg.of(MsgRole.ASSISTANT, "done");
 
-        tool.execute(Map.of("name", "worker", "task", "do work"));
+        tool.execute(Map.of("name", "worker", "task", "do work"), CTX).block();
 
         assertEquals("You are a helpful sub-agent.", agentFactory.lastConfig.systemPrompt());
     }
@@ -121,7 +127,7 @@ class AgentSpawnToolTest {
     void spawnWithNullResult() {
         agentFactory.response = null;
 
-        ToolResult result = tool.execute(Map.of("name", "worker", "task", "do work"));
+        ToolResult result = tool.execute(Map.of("name", "worker", "task", "do work"), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("completed with no output"));
@@ -136,7 +142,8 @@ class AgentSpawnToolTest {
                         .addContent(new Content.TextContent("part 2"))
                         .build();
 
-        ToolResult result = tool.execute(Map.of("name", "worker", "task", "multi-part task"));
+        ToolResult result =
+                tool.execute(Map.of("name", "worker", "task", "multi-part task"), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("part 1"));
@@ -151,7 +158,8 @@ class AgentSpawnToolTest {
                         .addContent(new Content.ToolResultContent("id1", "result text", false))
                         .build();
 
-        ToolResult result = tool.execute(Map.of("name", "worker", "task", "tool task"));
+        ToolResult result =
+                tool.execute(Map.of("name", "worker", "task", "tool task"), CTX).block();
 
         assertFalse(result.isError());
         assertNotNull(result.content());
@@ -161,7 +169,8 @@ class AgentSpawnToolTest {
     void spawnExceptionReturnsError() {
         agentFactory.shouldThrow = true;
 
-        ToolResult result = tool.execute(Map.of("name", "broken", "task", "will fail"));
+        ToolResult result =
+                tool.execute(Map.of("name", "broken", "task", "will fail"), CTX).block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("broken"));
@@ -172,7 +181,7 @@ class AgentSpawnToolTest {
     void spawnAgentCallExceptionReturnsError() {
         agentFactory.shouldFailCall = true;
 
-        ToolResult result = tool.execute(Map.of("name", "failing", "task", "crash"));
+        ToolResult result = tool.execute(Map.of("name", "failing", "task", "crash"), CTX).block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("failing"));
@@ -183,7 +192,7 @@ class AgentSpawnToolTest {
     void subAgentConfigInheritsFromBase() {
         agentFactory.response = Msg.of(MsgRole.ASSISTANT, "done");
 
-        tool.execute(Map.of("name", "worker", "task", "do work"));
+        tool.execute(Map.of("name", "worker", "task", "do work"), CTX).block();
 
         assertNotNull(agentFactory.lastConfig);
         assertEquals("worker", agentFactory.lastConfig.name());
@@ -195,7 +204,7 @@ class AgentSpawnToolTest {
     void taskMessageSentToSubAgent() {
         agentFactory.response = Msg.of(MsgRole.ASSISTANT, "done");
 
-        tool.execute(Map.of("name", "worker", "task", "specific task description"));
+        tool.execute(Map.of("name", "worker", "task", "specific task description"), CTX).block();
 
         assertNotNull(agentFactory.lastStubAgent);
         assertEquals("specific task description", agentFactory.lastStubAgent.lastInputText);

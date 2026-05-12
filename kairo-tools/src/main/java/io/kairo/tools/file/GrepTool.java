@@ -15,13 +15,12 @@
  */
 package io.kairo.tools.file;
 
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
-import io.kairo.api.workspace.Workspace;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -30,6 +29,7 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+import reactor.core.publisher.Mono;
 
 /**
  * Searches file contents using regex patterns, similar to ripgrep.
@@ -42,7 +42,7 @@ import java.util.regex.PatternSyntaxException;
         description =
                 "Search file contents using regex patterns. Returns matching lines with file paths and line numbers.",
         category = ToolCategory.FILE_AND_CODE)
-public class GrepTool implements ToolHandler {
+public class GrepTool implements SyncTool {
 
     private static final int MAX_RESULTS = 500;
     private static final Set<String> SKIP_DIRS =
@@ -77,13 +77,8 @@ public class GrepTool implements ToolHandler {
     private String glob;
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        return doExecute(input, Workspace.cwd().root());
-    }
-
-    @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        return doExecute(input, context.workspace().root());
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> doExecute(args, ctx.workspace().root()));
     }
 
     private ToolResult doExecute(Map<String, Object> input, Path workspaceRoot) {
@@ -185,10 +180,9 @@ public class GrepTool implements ToolHandler {
         }
 
         if (results.isEmpty()) {
-            return new ToolResult(
+            return ToolResult.success(
                     "grep",
                     "No matches found for pattern: " + regexStr,
-                    false,
                     Map.of("count", 0, "pattern", regexStr));
         }
 
@@ -198,14 +192,13 @@ public class GrepTool implements ToolHandler {
             content += "\n... (truncated at " + MAX_RESULTS + " results)";
         }
 
-        return new ToolResult(
+        return ToolResult.success(
                 "grep",
                 content,
-                false,
                 Map.of("count", results.size(), "pattern", regexStr, "truncated", truncated));
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("grep", msg, true, Map.of());
+        return ToolResult.error("grep", msg);
     }
 }

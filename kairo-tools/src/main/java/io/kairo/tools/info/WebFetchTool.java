@@ -15,9 +15,10 @@
  */
 package io.kairo.tools.info;
 
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
-import io.kairo.api.tool.ToolHandler;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
@@ -28,6 +29,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Fetches content from a URL via HTTP GET using the built-in {@link HttpClient}.
@@ -40,7 +42,7 @@ import java.util.Map;
                 "Fetch content from a URL via HTTP GET. Returns the response body as text. Only supports text/* content types.",
         category = ToolCategory.INFORMATION,
         sideEffect = ToolSideEffect.READ_ONLY)
-public class WebFetchTool implements ToolHandler {
+public class WebFetchTool implements SyncTool {
 
     static final int DEFAULT_TIMEOUT_SECONDS = 30;
     static final int DEFAULT_MAX_BYTES = 512_000;
@@ -81,7 +83,11 @@ public class WebFetchTool implements ToolHandler {
     private Integer maxBytes;
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> executeSync(args, ctx));
+    }
+
+    private ToolResult executeSync(Map<String, Object> input, ToolContext ctx) {
         String rawUrl = (String) input.get("url");
         if (rawUrl == null || rawUrl.isBlank()) {
             return error("Parameter 'url' is required");
@@ -138,7 +144,7 @@ public class WebFetchTool implements ToolHandler {
             }
 
             boolean isError = statusCode >= 400;
-            return new ToolResult(
+            return ToolResult.of(
                     "web_fetch",
                     body,
                     isError,
@@ -168,6 +174,6 @@ public class WebFetchTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("web_fetch", msg, true, Map.of());
+        return ToolResult.error("web_fetch", msg);
     }
 }

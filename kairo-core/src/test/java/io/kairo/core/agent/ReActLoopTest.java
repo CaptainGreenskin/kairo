@@ -119,7 +119,8 @@ class ReActLoopTest {
                         shutdownManager,
                         null, // contextManager
                         null, // guardrailChain
-                        null); // eventBus
+                        null, // eventBus
+                        null); // continuationStrategy
 
         ModelConfig modelConfig =
                 ModelConfig.builder()
@@ -186,7 +187,7 @@ class ReActLoopTest {
                         });
 
         when(toolExecutor.execute(eq("search"), any()))
-                .thenReturn(Mono.just(new ToolResult("tc-1", "found 3 results", false, Map.of())));
+                .thenReturn(Mono.just(ToolResult.success("tc-1", "found 3 results")));
 
         ReActLoop loop = createDefaultLoop();
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "search hello")));
@@ -222,7 +223,7 @@ class ReActLoopTest {
 
         String oversized = "B".repeat(20_000);
         when(toolExecutor.execute(eq("search"), any()))
-                .thenReturn(Mono.just(new ToolResult("tc-budget", oversized, false, Map.of())));
+                .thenReturn(Mono.just(ToolResult.success("tc-budget", oversized)));
 
         ReActLoop loop = createDefaultLoop();
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "search big")));
@@ -280,7 +281,7 @@ class ReActLoopTest {
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
                 .thenReturn(Mono.just(toolCallResponse("tc-loop", "echo", Map.of("x", "y"))));
         when(toolExecutor.execute(eq("echo"), any()))
-                .thenReturn(Mono.just(new ToolResult("tc-loop", "echoed", false, Map.of())));
+                .thenReturn(Mono.just(ToolResult.success("tc-loop", "echoed")));
 
         ReActLoop loop = createLoop(2, 200_000);
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "loop")));
@@ -352,7 +353,7 @@ class ReActLoopTest {
                         });
 
         when(toolExecutor.execute(eq("read"), any()))
-                .thenReturn(Mono.just(new ToolResult("tc-x", "file content", false, Map.of())));
+                .thenReturn(Mono.just(ToolResult.success("tc-x", "file content")));
 
         ReActLoop loop = createDefaultLoop();
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "read files")));
@@ -386,7 +387,7 @@ class ReActLoopTest {
                         });
 
         when(toolExecutor.execute(eq("empty_tool"), any()))
-                .thenReturn(Mono.just(new ToolResult("tc-1", "", false, Map.of())));
+                .thenReturn(Mono.just(ToolResult.success("tc-1", "")));
 
         ReActLoop loop = createDefaultLoop();
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "test empty")));
@@ -458,7 +459,7 @@ class ReActLoopTest {
                         });
 
         when(toolExecutor.execute(eq("info"), any()))
-                .thenReturn(Mono.just(new ToolResult("tc-1", "info result data", false, Map.of())));
+                .thenReturn(Mono.just(ToolResult.success("tc-1", "info result data")));
 
         ReActLoop loop = createDefaultLoop();
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "get info")));
@@ -527,6 +528,7 @@ class ReActLoopTest {
                         shutdownManager,
                         null,
                         null,
+                        null,
                         null);
 
         ModelConfig modelConfig =
@@ -576,6 +578,7 @@ class ReActLoopTest {
                         errorRecovery,
                         tokenBudgetManager,
                         shutdownManager,
+                        null,
                         null,
                         null,
                         null);
@@ -631,6 +634,7 @@ class ReActLoopTest {
                         errorRecovery,
                         tokenBudgetManager,
                         shutdownManager,
+                        null,
                         null,
                         null,
                         null);
@@ -697,6 +701,7 @@ class ReActLoopTest {
                         shutdownManager,
                         null,
                         null,
+                        null,
                         null);
 
         ModelConfig modelConfig =
@@ -753,7 +758,7 @@ class ReActLoopTest {
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
                 .thenReturn(Mono.just(bigResponse));
         when(toolExecutor.execute(eq("heavy"), any()))
-                .thenReturn(Mono.just(new ToolResult("tc-1", "result", false, Map.of())));
+                .thenReturn(Mono.just(ToolResult.success("tc-1", "result")));
 
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "heavy task")));
 
@@ -862,7 +867,7 @@ class ReActLoopTest {
                             @SuppressWarnings("unchecked")
                             Map<String, Object> input = inv.getArgument(1);
                             assertEquals("patched", input.get("q"));
-                            return Mono.just(new ToolResult("tc-1", "ok", false, Map.of()));
+                            return Mono.just(ToolResult.success("tc-1", "ok"));
                         });
 
         ReActLoop loop = createDefaultLoop();
@@ -896,7 +901,7 @@ class ReActLoopTest {
                             return Mono.just(textResponse("done"));
                         });
         when(toolExecutor.execute(eq("search"), any()))
-                .thenReturn(Mono.just(new ToolResult("tc-1", "ok", false, Map.of())));
+                .thenReturn(Mono.just(ToolResult.success("tc-1", "ok")));
 
         ReActLoop loop = createDefaultLoop();
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "search hello")));

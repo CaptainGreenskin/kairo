@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.multiagent.team.InProcessMessageBus;
 import io.kairo.tools.agent.SendMessageTool;
@@ -34,6 +35,8 @@ import org.junit.jupiter.api.Test;
 @Tag("integration")
 class AgentToolsIntegrationIT {
 
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
+
     private InProcessMessageBus messageBus;
 
     @BeforeEach
@@ -48,7 +51,8 @@ class AgentToolsIntegrationIT {
 
         SendMessageTool sendTool = new SendMessageTool(messageBus, "agent-a");
         ToolResult result =
-                sendTool.execute(Map.of("recipientId", "agent-b", "content", "Hello from A"));
+                sendTool.execute(Map.of("recipientId", "agent-b", "content", "Hello from A"), CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("Message sent to agent agent-b"));
@@ -65,10 +69,10 @@ class AgentToolsIntegrationIT {
         messageBus.registerAgent("worker-2");
 
         SendMessageTool worker1Send = new SendMessageTool(messageBus, "worker-1");
-        worker1Send.execute(Map.of("recipientId", "leader", "content", "Task done"));
+        worker1Send.execute(Map.of("recipientId", "leader", "content", "Task done"), CTX).block();
 
         SendMessageTool worker2Send = new SendMessageTool(messageBus, "worker-2");
-        worker2Send.execute(Map.of("recipientId", "leader", "content", "Need help"));
+        worker2Send.execute(Map.of("recipientId", "leader", "content", "Need help"), CTX).block();
 
         var leaderMessages = messageBus.poll("leader");
         assertEquals(2, leaderMessages.size());
@@ -80,7 +84,7 @@ class AgentToolsIntegrationIT {
     @Test
     void sendMessage_missingRecipient_returnsError() {
         SendMessageTool sendTool = new SendMessageTool(messageBus, "agent-a");
-        ToolResult result = sendTool.execute(Map.of("content", "Hello"));
+        ToolResult result = sendTool.execute(Map.of("content", "Hello"), CTX).block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("recipientId"));
@@ -89,7 +93,7 @@ class AgentToolsIntegrationIT {
     @Test
     void sendMessage_missingContent_returnsError() {
         SendMessageTool sendTool = new SendMessageTool(messageBus, "agent-a");
-        ToolResult result = sendTool.execute(Map.of("recipientId", "agent-b"));
+        ToolResult result = sendTool.execute(Map.of("recipientId", "agent-b"), CTX).block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("content"));

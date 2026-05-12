@@ -18,9 +18,10 @@ package io.kairo.tools.skill;
 import io.kairo.api.exception.ToolException;
 import io.kairo.api.skill.SkillDefinition;
 import io.kairo.api.skill.SkillRegistry;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
-import io.kairo.api.tool.ToolHandler;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
@@ -32,6 +33,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Create, edit, or delete skills with automatic history tracking.
@@ -44,7 +46,7 @@ import java.util.Map;
         description = "Create, edit, patch, or delete skills. Requires SYSTEM_CHANGE permission.",
         category = ToolCategory.SKILL,
         sideEffect = ToolSideEffect.SYSTEM_CHANGE)
-public class SkillManageTool implements ToolHandler {
+public class SkillManageTool implements SyncTool {
 
     @ToolParam(description = "Operation: create, edit, patch, delete", required = true)
     private String operation;
@@ -85,7 +87,11 @@ public class SkillManageTool implements ToolHandler {
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> executeSync(args, ctx));
+    }
+
+    private ToolResult executeSync(Map<String, Object> input, ToolContext ctx) {
         if (readonly) {
             return error("Skill management is disabled in readonly mode");
         }
@@ -351,10 +357,10 @@ public class SkillManageTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("skill_manage", msg, true, Map.of());
+        return ToolResult.error("skill_manage", msg);
     }
 
     private ToolResult success(String msg) {
-        return new ToolResult("skill_manage", msg, false, Map.of());
+        return ToolResult.success("skill_manage", msg);
     }
 }

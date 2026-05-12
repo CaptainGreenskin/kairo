@@ -19,10 +19,11 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.kairo.api.tool.JsonSchema;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
 import java.net.URI;
@@ -33,6 +34,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Searches the web using the Tavily Search API.
@@ -47,10 +49,32 @@ import java.util.Map;
                         + " Requires TAVILY_API_KEY environment variable.",
         category = ToolCategory.INFORMATION,
         sideEffect = ToolSideEffect.READ_ONLY)
-public class WebSearchTool implements ToolHandler {
+public class WebSearchTool implements SyncTool {
 
     private static final String DEFAULT_TAVILY_URL = "https://api.tavily.com/search";
     private static final int TIMEOUT_SECONDS = 10;
+
+    @Override
+    public JsonSchema inputSchema() {
+        java.util.Map<String, JsonSchema> props = new java.util.LinkedHashMap<>();
+        props.put(
+                "query",
+                new JsonSchema(
+                        "string", null, null, "Search query, e.g. 'java reactor backpressure'."));
+        props.put(
+                "maxResults",
+                new JsonSchema(
+                        "integer", null, null, "Number of results to return. Defaults to 5."));
+        props.put(
+                "includeAnswer",
+                new JsonSchema(
+                        "boolean",
+                        null,
+                        null,
+                        "Include Tavily's AI-generated summary answer. Defaults to true."));
+        return new JsonSchema("object", props, java.util.List.of("query"), null);
+    }
+
     private static final int DEFAULT_MAX_RESULTS = 5;
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -70,14 +94,18 @@ public class WebSearchTool implements ToolHandler {
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        return doExecute(input, resolveApiKey(null));
-    }
-
-    @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        String apiKey = (String) context.dependencies().get("TAVILY_API_KEY");
-        return doExecute(input, resolveApiKey(apiKey));
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(
+                () -> {
+                    String apiKey =
+                            ctx.dependencies() != null
+                                    ? (String) ctx.dependencies().get("TAVILY_API_KEY")
+                                    : null;
+                    if (apiKey == null) {
+                        apiKey = System.getenv("TAVILY_API_KEY");
+                    }
+                    return doExecute(args, apiKey);
+                });
     }
 
     private ToolResult doExecute(Map<String, Object> input, String apiKey) {
@@ -176,10 +204,9 @@ public class WebSearchTool implements ToolHandler {
             }
         }
 
-        return new ToolResult(
+        return ToolResult.success(
                 "web_search",
                 sb.toString().trim(),
-                false,
                 Map.of("query", query, "resultCount", resultsList.size(), "results", resultsList));
     }
 
@@ -189,6 +216,6 @@ public class WebSearchTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("web_search", msg, true, Map.of());
+        return ToolResult.error("web_search", msg);
     }
 }

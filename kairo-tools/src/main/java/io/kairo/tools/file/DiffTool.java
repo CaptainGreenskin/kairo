@@ -15,13 +15,13 @@
  */
 package io.kairo.tools.file;
 
+import io.kairo.api.tool.JsonSchema;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
-import io.kairo.api.workspace.Workspace;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Generates unified diffs between two texts or files (pure Java, no external diff library).
@@ -44,16 +45,49 @@ import java.util.Map;
                         + " file paths (starting with / or ./).",
         category = ToolCategory.FILE_AND_CODE,
         sideEffect = ToolSideEffect.READ_ONLY)
-public class DiffTool implements ToolHandler {
+public class DiffTool implements SyncTool {
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        return doExecute(input, Workspace.cwd().root());
+    public JsonSchema inputSchema() {
+        java.util.Map<String, JsonSchema> props = new java.util.LinkedHashMap<>();
+        props.put(
+                "a",
+                new JsonSchema(
+                        "string",
+                        null,
+                        null,
+                        "Left side: raw text or absolute/relative path (starts with '/' or './')."));
+        props.put(
+                "b",
+                new JsonSchema(
+                        "string", null, null, "Right side: raw text or absolute/relative path."));
+        props.put(
+                "aLabel",
+                new JsonSchema(
+                        "string",
+                        null,
+                        null,
+                        "Optional label for the left side in the diff header."));
+        props.put(
+                "bLabel",
+                new JsonSchema(
+                        "string",
+                        null,
+                        null,
+                        "Optional label for the right side in the diff header."));
+        props.put(
+                "contextLines",
+                new JsonSchema(
+                        "integer",
+                        null,
+                        null,
+                        "Lines of context around each hunk. Defaults to 3."));
+        return new JsonSchema("object", props, java.util.List.of("a", "b"), null);
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        return doExecute(input, context.workspace().root());
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> doExecute(args, ctx.workspace().root()));
     }
 
     private ToolResult doExecute(Map<String, Object> input, Path workspaceRoot) {
@@ -83,7 +117,7 @@ public class DiffTool implements ToolHandler {
 
         String diff = unifiedDiff(aText, bText, aLabel, bLabel, contextLines);
         int hunks = countHunks(diff);
-        return new ToolResult(
+        return ToolResult.of(
                 "diff", diff, false, Map.of("hunks", hunks, "identical", diff.isEmpty()));
     }
 
@@ -287,6 +321,6 @@ public class DiffTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("diff", msg, true, Map.of());
+        return ToolResult.error("diff", msg);
     }
 }

@@ -32,6 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class DiffToolTest {
 
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
     private DiffTool tool;
 
     @TempDir Path tempDir;
@@ -44,7 +45,7 @@ class DiffToolTest {
     @Test
     void identicalTextReturnsEmptyDiff() {
         String text = "line1\nline2\nline3\n";
-        ToolResult result = tool.execute(Map.of("a", text, "b", text));
+        ToolResult result = tool.execute(Map.of("a", text, "b", text), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().isEmpty());
@@ -56,7 +57,7 @@ class DiffToolTest {
 
     @Test
     void emptyInputsAreIdentical() {
-        ToolResult result = tool.execute(Map.of("a", "", "b", ""));
+        ToolResult result = tool.execute(Map.of("a", "", "b", ""), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().isEmpty());
@@ -69,7 +70,7 @@ class DiffToolTest {
     void singleLineReplacementGeneratesHunk() {
         String a = "hello\nworld\n";
         String b = "hello\nkairo\n";
-        ToolResult result = tool.execute(Map.of("a", a, "b", b));
+        ToolResult result = tool.execute(Map.of("a", a, "b", b), CTX).block();
 
         assertFalse(result.isError());
         String diff = result.content();
@@ -88,7 +89,7 @@ class DiffToolTest {
     void addedLinesAppearWithPlusPrefix() {
         String a = "first\n";
         String b = "first\nsecond\nthird\n";
-        ToolResult result = tool.execute(Map.of("a", a, "b", b));
+        ToolResult result = tool.execute(Map.of("a", a, "b", b), CTX).block();
 
         assertFalse(result.isError());
         String diff = result.content();
@@ -100,7 +101,7 @@ class DiffToolTest {
     void deletedLinesAppearWithMinusPrefix() {
         String a = "first\nsecond\nthird\n";
         String b = "first\n";
-        ToolResult result = tool.execute(Map.of("a", a, "b", b));
+        ToolResult result = tool.execute(Map.of("a", a, "b", b), CTX).block();
 
         assertFalse(result.isError());
         String diff = result.content();
@@ -126,9 +127,13 @@ class DiffToolTest {
             }
         }
 
-        ToolResult resultDefault = tool.execute(Map.of("a", aSb.toString(), "b", bSb.toString()));
+        ToolResult resultDefault =
+                tool.execute(Map.of("a", aSb.toString(), "b", bSb.toString()), CTX).block();
         ToolResult resultZero =
-                tool.execute(Map.of("a", aSb.toString(), "b", bSb.toString(), "contextLines", 0));
+                tool.execute(
+                                Map.of("a", aSb.toString(), "b", bSb.toString(), "contextLines", 0),
+                                CTX)
+                        .block();
 
         int defaultHunkLines = countDiffLines(resultDefault.content());
         int zeroHunkLines = countDiffLines(resultZero.content());
@@ -149,7 +154,7 @@ class DiffToolTest {
                         .acquire(WorkspaceRequest.writable(null));
         ToolContext ctx = new ToolContext("a", "s", Map.of(), null, null, ws);
 
-        ToolResult result = tool.execute(Map.of("a", "./a.txt", "b", "./b.txt"), ctx);
+        ToolResult result = tool.execute(Map.of("a", "./a.txt", "b", "./b.txt"), ctx).block();
 
         assertFalse(result.isError(), result.content());
         String diff = result.content();
@@ -159,7 +164,7 @@ class DiffToolTest {
 
     @Test
     void rawStringInputNotTreatedAsFilePath() {
-        ToolResult result = tool.execute(Map.of("a", "foo\n", "b", "bar\n"));
+        ToolResult result = tool.execute(Map.of("a", "foo\n", "b", "bar\n"), CTX).block();
 
         assertFalse(result.isError());
         String diff = result.content();
@@ -173,15 +178,17 @@ class DiffToolTest {
         String b = "new\n";
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "a",
-                                a,
-                                "b",
-                                b,
-                                "aLabel",
-                                "--- old_file.txt",
-                                "bLabel",
-                                "+++ new_file.txt"));
+                                Map.of(
+                                        "a",
+                                        a,
+                                        "b",
+                                        b,
+                                        "aLabel",
+                                        "--- old_file.txt",
+                                        "bLabel",
+                                        "+++ new_file.txt"),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         String diff = result.content();
@@ -195,8 +202,8 @@ class DiffToolTest {
         String aWithNewline = "line1\nline2\n";
         String b = "line1\nchanged\n";
 
-        ToolResult resultNoNewline = tool.execute(Map.of("a", aNoNewline, "b", b));
-        ToolResult resultWithNewline = tool.execute(Map.of("a", aWithNewline, "b", b));
+        ToolResult resultNoNewline = tool.execute(Map.of("a", aNoNewline, "b", b), CTX).block();
+        ToolResult resultWithNewline = tool.execute(Map.of("a", aWithNewline, "b", b), CTX).block();
 
         assertFalse(resultNoNewline.isError());
         assertFalse(resultWithNewline.isError());
@@ -210,7 +217,7 @@ class DiffToolTest {
         String a = "keep1\nchange1\nkeep2\nkeep3\nchange2\nkeep4\n";
         String b = "keep1\nnew1\nkeep2\nkeep3\nnew2\nkeep4\n";
         // With 0 context, changes are far apart and should produce separate hunks
-        ToolResult result = tool.execute(Map.of("a", a, "b", b, "contextLines", 0));
+        ToolResult result = tool.execute(Map.of("a", a, "b", b, "contextLines", 0), CTX).block();
 
         assertFalse(result.isError());
         String diff = result.content();
@@ -220,8 +227,8 @@ class DiffToolTest {
 
     @Test
     void missingRequiredParameterReturnsError() {
-        ToolResult resultA = tool.execute(Map.of("b", "something"));
-        ToolResult resultB = tool.execute(Map.of("a", "something"));
+        ToolResult resultA = tool.execute(Map.of("b", "something"), CTX).block();
+        ToolResult resultB = tool.execute(Map.of("a", "something"), CTX).block();
 
         assertTrue(resultA.isError());
         assertTrue(resultA.content().contains("'a' is required"));
@@ -236,7 +243,8 @@ class DiffToolTest {
                         .acquire(WorkspaceRequest.writable(null));
         ToolContext ctx = new ToolContext("a", "s", Map.of(), null, null, ws);
 
-        ToolResult result = tool.execute(Map.of("a", "./exists.txt", "b", "./missing.txt"), ctx);
+        ToolResult result =
+                tool.execute(Map.of("a", "./exists.txt", "b", "./missing.txt"), ctx).block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("Failed to read"));
@@ -247,7 +255,7 @@ class DiffToolTest {
         // Create input that results in exactly 2 hunks with default context
         String a = "A\nB\nC\nD\nE\nF\nG\nH\nI\nJ\n";
         String b = "A\nX\nC\nD\nE\nF\nG\nH\nY\nJ\n";
-        ToolResult result = tool.execute(Map.of("a", a, "b", b, "contextLines", 0));
+        ToolResult result = tool.execute(Map.of("a", a, "b", b, "contextLines", 0), CTX).block();
 
         assertFalse(result.isError());
         @SuppressWarnings("unchecked")

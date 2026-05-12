@@ -82,6 +82,7 @@ class CompactionMetricsHookTest {
                         new GracefulShutdownManager(),
                         null,
                         null,
+                        null,
                         null);
         ModelConfig modelConfig =
                 ModelConfig.builder()

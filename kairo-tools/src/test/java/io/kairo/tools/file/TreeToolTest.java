@@ -51,7 +51,7 @@ class TreeToolTest {
     void emptyDirectory_outputsOnlyRootName() {
         Path dir = tempDir.resolve("empty");
         dir.toFile().mkdir();
-        ToolResult result = tool.execute(Map.of("path", "empty"), ctx);
+        ToolResult result = tool.execute(Map.of("path", "empty"), ctx).block();
         assertFalse(result.isError(), result.content());
         assertTrue(result.content().startsWith("empty/"));
         // No further lines beyond the root
@@ -63,7 +63,7 @@ class TreeToolTest {
         Path dir = tempDir.resolve("mydir");
         dir.toFile().mkdir();
         Files.writeString(dir.resolve("hello.txt"), "");
-        ToolResult result = tool.execute(Map.of("path", "mydir"), ctx);
+        ToolResult result = tool.execute(Map.of("path", "mydir"), ctx).block();
         assertFalse(result.isError(), result.content());
         assertTrue(result.content().contains("└── hello.txt"));
     }
@@ -75,7 +75,7 @@ class TreeToolTest {
         Files.writeString(dir.resolve("a.txt"), "");
         Files.writeString(dir.resolve("b.txt"), "");
         Files.writeString(dir.resolve("c.txt"), "");
-        ToolResult result = tool.execute(Map.of("path", "multi"), ctx);
+        ToolResult result = tool.execute(Map.of("path", "multi"), ctx).block();
         String out = result.content();
         assertTrue(out.contains("├── a.txt"));
         assertTrue(out.contains("├── b.txt"));
@@ -87,7 +87,7 @@ class TreeToolTest {
         Path dir = tempDir.resolve("parent");
         Path sub = dir.resolve("child");
         Files.createDirectories(sub);
-        ToolResult result = tool.execute(Map.of("path", "parent"), ctx);
+        ToolResult result = tool.execute(Map.of("path", "parent"), ctx).block();
         assertTrue(result.content().contains("child/"));
     }
 
@@ -96,7 +96,7 @@ class TreeToolTest {
         Path dir = tempDir.resolve("deep");
         Files.createDirectories(dir.resolve("sub/nested"));
         Files.writeString(dir.resolve("sub/nested/file.txt"), "");
-        ToolResult result = tool.execute(Map.of("path", "deep", "maxDepth", 0), ctx);
+        ToolResult result = tool.execute(Map.of("path", "deep", "maxDepth", 0), ctx).block();
         String out = result.content();
         assertTrue(out.contains("sub/"));
         assertFalse(out.contains("nested"));
@@ -107,7 +107,7 @@ class TreeToolTest {
         Path dir = tempDir.resolve("layered");
         Files.createDirectories(dir.resolve("a/b"));
         Files.writeString(dir.resolve("a/b/file.txt"), "");
-        ToolResult result = tool.execute(Map.of("path", "layered", "maxDepth", 1), ctx);
+        ToolResult result = tool.execute(Map.of("path", "layered", "maxDepth", 1), ctx).block();
         String out = result.content();
         assertTrue(out.contains("a/"));
         assertFalse(out.contains("file.txt"));
@@ -119,7 +119,7 @@ class TreeToolTest {
         dir.toFile().mkdir();
         Files.writeString(dir.resolve("file.txt"), "");
         Files.createDirectories(dir.resolve("subdir"));
-        ToolResult result = tool.execute(Map.of("path", "mixed", "showFiles", false), ctx);
+        ToolResult result = tool.execute(Map.of("path", "mixed", "showFiles", false), ctx).block();
         String out = result.content();
         assertTrue(out.contains("subdir/"));
         assertFalse(out.contains("file.txt"));
@@ -132,7 +132,8 @@ class TreeToolTest {
         Files.writeString(dir.resolve("Main.java"), "");
         Files.writeString(dir.resolve("README.md"), "");
         Files.writeString(dir.resolve("Test.java"), "");
-        ToolResult result = tool.execute(Map.of("path", "filtered", "pattern", "*.java"), ctx);
+        ToolResult result =
+                tool.execute(Map.of("path", "filtered", "pattern", "*.java"), ctx).block();
         String out = result.content();
         assertTrue(out.contains("Main.java"));
         assertTrue(out.contains("Test.java"));
@@ -145,7 +146,8 @@ class TreeToolTest {
         dir.toFile().mkdir();
         Files.writeString(dir.resolve("notes.md"), "");
         Files.createDirectories(dir.resolve("src"));
-        ToolResult result = tool.execute(Map.of("path", "withsub", "pattern", "*.java"), ctx);
+        ToolResult result =
+                tool.execute(Map.of("path", "withsub", "pattern", "*.java"), ctx).block();
         String out = result.content();
         assertTrue(out.contains("src/"));
         assertFalse(out.contains("notes.md"));
@@ -153,14 +155,14 @@ class TreeToolTest {
 
     @Test
     void nonExistentPath_returnsError() {
-        ToolResult result = tool.execute(Map.of("path", "no-such-dir"), ctx);
+        ToolResult result = tool.execute(Map.of("path", "no-such-dir"), ctx).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("not found"));
     }
 
     @Test
     void missingPathParameter_returnsError() {
-        ToolResult result = tool.execute(Map.of(), ctx);
+        ToolResult result = tool.execute(Map.of(), ctx).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'path'"));
     }
@@ -170,7 +172,7 @@ class TreeToolTest {
         Path sub = tempDir.resolve("ws-sub");
         sub.toFile().mkdir();
         Files.writeString(sub.resolve("f.txt"), "");
-        ToolResult result = tool.execute(Map.of("path", "ws-sub"), ctx);
+        ToolResult result = tool.execute(Map.of("path", "ws-sub"), ctx).block();
         assertFalse(result.isError(), result.content());
         assertTrue(result.content().contains("ws-sub/"));
         assertTrue(result.content().contains("f.txt"));
@@ -183,7 +185,7 @@ class TreeToolTest {
         Files.writeString(root.resolve("src/main/java/Foo.java"), "");
         Files.createDirectories(root.resolve("src/test/java"));
         Files.writeString(root.resolve("src/test/java/FooTest.java"), "");
-        ToolResult result = tool.execute(Map.of("path", "proj", "maxDepth", 5), ctx);
+        ToolResult result = tool.execute(Map.of("path", "proj", "maxDepth", 5), ctx).block();
         String out = result.content();
         assertTrue(out.contains("Foo.java"));
         assertTrue(out.contains("FooTest.java"));

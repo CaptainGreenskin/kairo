@@ -22,6 +22,7 @@ import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.hook.HookChain;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tracing.Tracer;
+import io.kairo.core.agent.continuation.AgentContinuationStrategy;
 import io.kairo.core.context.TokenBudgetManager;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 
@@ -42,4 +43,5 @@ record ReActLoopContext(
         GracefulShutdownManager shutdownManager,
         ContextManager contextManager,
         GuardrailChain guardrailChain,
-        @javax.annotation.Nullable KairoEventBus eventBus) {}
+        @javax.annotation.Nullable KairoEventBus eventBus,
+        @javax.annotation.Nullable AgentContinuationStrategy continuationStrategy) {}

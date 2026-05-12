@@ -102,7 +102,8 @@ class ReasoningPhaseGuardrailTest {
                         shutdownManager,
                         null, // contextManager
                         guardrailChain,
-                        null); // eventBus
+                        null, // eventBus
+                        null); // continuationStrategy
 
         ModelConfig modelConfig =
                 ModelConfig.builder()

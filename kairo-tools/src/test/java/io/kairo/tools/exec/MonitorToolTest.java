@@ -17,6 +17,7 @@ package io.kairo.tools.exec;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,7 +25,13 @@ import org.junit.jupiter.api.Test;
 
 class MonitorToolTest {
 
+    private static final ToolContext CTX = new ToolContext("agent-1", "sess-1", Map.of());
+
     private MonitorTool tool;
+
+    private ToolResult exec(Map<String, Object> args) {
+        return tool.execute(args, CTX).block();
+    }
 
     @BeforeEach
     void setUp() {
@@ -33,42 +40,42 @@ class MonitorToolTest {
 
     @Test
     void missingTargetParameter() {
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = exec(Map.of());
         assertTrue(result.isError());
         assertTrue(result.content().contains("'target' is required"));
     }
 
     @Test
     void blankTargetParameter() {
-        ToolResult result = tool.execute(Map.of("target", "   "));
+        ToolResult result = exec(Map.of("target", "   "));
         assertTrue(result.isError());
         assertTrue(result.content().contains("'target' is required"));
     }
 
     @Test
     void nonNumericTargetRejected() {
-        ToolResult result = tool.execute(Map.of("target", "abc"));
+        ToolResult result = exec(Map.of("target", "abc"));
         assertTrue(result.isError());
         assertTrue(result.content().contains("must be a numeric PID"));
     }
 
     @Test
     void commandInjectionRejected() {
-        ToolResult result = tool.execute(Map.of("target", "123; rm -rf /"));
+        ToolResult result = exec(Map.of("target", "123; rm -rf /"));
         assertTrue(result.isError());
         assertTrue(result.content().contains("must be a numeric PID"));
     }
 
     @Test
     void commandInjectionWithPipeRejected() {
-        ToolResult result = tool.execute(Map.of("target", "1 | cat /etc/passwd"));
+        ToolResult result = exec(Map.of("target", "1 | cat /etc/passwd"));
         assertTrue(result.isError());
         assertTrue(result.content().contains("must be a numeric PID"));
     }
 
     @Test
     void commandInjectionWithBackticksRejected() {
-        ToolResult result = tool.execute(Map.of("target", "`whoami`"));
+        ToolResult result = exec(Map.of("target", "`whoami`"));
         assertTrue(result.isError());
         assertTrue(result.content().contains("must be a numeric PID"));
     }
@@ -76,7 +83,7 @@ class MonitorToolTest {
     @Test
     void monitorNonExistentPid() {
         // Use a very high PID that almost certainly doesn't exist
-        ToolResult result = tool.execute(Map.of("target", "999999999"));
+        ToolResult result = exec(Map.of("target", "999999999"));
         // Should not be an error - the tool returns output from ps (which will show no process)
         assertFalse(result.isError());
     }
@@ -84,7 +91,7 @@ class MonitorToolTest {
     @Test
     void monitorWithNumericLines() {
         // Use PID 1 which typically exists on Unix systems, or will at least not crash
-        ToolResult result = tool.execute(Map.of("target", "1", "lines", 10));
+        ToolResult result = exec(Map.of("target", "1", "lines", 10));
         // Accept both error (if process can't be monitored) and success
         assertNotNull(result);
         assertNotNull(result.content());
@@ -92,7 +99,7 @@ class MonitorToolTest {
 
     @Test
     void monitorWithStringLines() {
-        ToolResult result = tool.execute(Map.of("target", "1", "lines", "20"));
+        ToolResult result = exec(Map.of("target", "1", "lines", "20"));
         assertNotNull(result);
         assertNotNull(result.content());
     }
@@ -100,20 +107,20 @@ class MonitorToolTest {
     @Test
     void monitorWithInvalidStringLines() {
         // Invalid lines value should default to 50
-        ToolResult result = tool.execute(Map.of("target", "1", "lines", "abc"));
+        ToolResult result = exec(Map.of("target", "1", "lines", "abc"));
         assertNotNull(result);
         assertNotNull(result.content());
     }
 
     @Test
     void monitorWithZeroLinesClampedToOne() {
-        ToolResult result = tool.execute(Map.of("target", "1", "lines", 0));
+        ToolResult result = exec(Map.of("target", "1", "lines", 0));
         assertNotNull(result);
     }
 
     @Test
     void monitorWithLargeLinesClampedToMax() {
-        ToolResult result = tool.execute(Map.of("target", "1", "lines", 9999));
+        ToolResult result = exec(Map.of("target", "1", "lines", 9999));
         assertNotNull(result);
     }
 
@@ -121,14 +128,14 @@ class MonitorToolTest {
     void monitorOwnProcess() {
         // Get current process PID
         long pid = ProcessHandle.current().pid();
-        ToolResult result = tool.execute(Map.of("target", String.valueOf(pid)));
+        ToolResult result = exec(Map.of("target", String.valueOf(pid)));
         assertFalse(result.isError());
         assertTrue(result.content().length() > 0);
     }
 
     @Test
     void errorResultFormat() {
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = exec(Map.of());
         assertEquals("monitor", result.toolUseId());
         assertTrue(result.isError());
         assertTrue(result.metadata().isEmpty());
@@ -137,7 +144,7 @@ class MonitorToolTest {
     @Test
     void successResultContainsTargetInMetadata() {
         long pid = ProcessHandle.current().pid();
-        ToolResult result = tool.execute(Map.of("target", String.valueOf(pid)));
+        ToolResult result = exec(Map.of("target", String.valueOf(pid)));
         assertFalse(result.isError());
         assertEquals(String.valueOf(pid), result.metadata().get("target"));
     }
@@ -145,7 +152,7 @@ class MonitorToolTest {
     @Test
     void successResultContainsLinesInMetadata() {
         long pid = ProcessHandle.current().pid();
-        ToolResult result = tool.execute(Map.of("target", String.valueOf(pid), "lines", 10));
+        ToolResult result = exec(Map.of("target", String.valueOf(pid), "lines", 10));
         assertFalse(result.isError());
         assertEquals(10, result.metadata().get("lines"));
     }
@@ -153,7 +160,7 @@ class MonitorToolTest {
     @Test
     void defaultLinesIsUsedWhenNotSpecified() {
         long pid = ProcessHandle.current().pid();
-        ToolResult result = tool.execute(Map.of("target", String.valueOf(pid)));
+        ToolResult result = exec(Map.of("target", String.valueOf(pid)));
         assertFalse(result.isError());
         assertEquals(50, result.metadata().get("lines"));
     }
@@ -161,7 +168,7 @@ class MonitorToolTest {
     @Test
     void negativeLinesClampedToOne() {
         long pid = ProcessHandle.current().pid();
-        ToolResult result = tool.execute(Map.of("target", String.valueOf(pid), "lines", -5));
+        ToolResult result = exec(Map.of("target", String.valueOf(pid), "lines", -5));
         assertFalse(result.isError());
         assertEquals(1, result.metadata().get("lines"));
     }
@@ -169,7 +176,7 @@ class MonitorToolTest {
     @Test
     void linesAt500NotExceededInMetadata() {
         long pid = ProcessHandle.current().pid();
-        ToolResult result = tool.execute(Map.of("target", String.valueOf(pid), "lines", 500));
+        ToolResult result = exec(Map.of("target", String.valueOf(pid), "lines", 500));
         assertFalse(result.isError());
         assertEquals(500, result.metadata().get("lines"));
     }
@@ -177,21 +184,21 @@ class MonitorToolTest {
     @Test
     void successResultToolUseIdIsMonitor() {
         long pid = ProcessHandle.current().pid();
-        ToolResult result = tool.execute(Map.of("target", String.valueOf(pid)));
+        ToolResult result = exec(Map.of("target", String.valueOf(pid)));
         assertFalse(result.isError());
         assertEquals("monitor", result.toolUseId());
     }
 
     @Test
     void nonNumericWithLeadingDigitsRejected() {
-        ToolResult result = tool.execute(Map.of("target", "123abc"));
+        ToolResult result = exec(Map.of("target", "123abc"));
         assertTrue(result.isError());
         assertTrue(result.content().contains("must be a numeric PID"));
     }
 
     @Test
     void tooLongNumericPidRejected() {
-        ToolResult result = tool.execute(Map.of("target", "12345678901"));
+        ToolResult result = exec(Map.of("target", "12345678901"));
         assertTrue(result.isError());
         assertTrue(result.content().contains("must be a numeric PID"));
     }

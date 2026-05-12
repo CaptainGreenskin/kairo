@@ -23,6 +23,14 @@ import java.util.Map;
  *
  * @param toolName the name of the tool to invoke
  * @param input the tool input parameters
+ * @param toolCallId optional id supplied by the model; preserved through the approval flow so that
+ *     frontends can correlate TOOL_CALL/TOOL_RESULT events using a single stable id
  */
 @Stable(value = "Batch tool invocation record; shape frozen since v0.1", since = "1.0.0")
-public record ToolInvocation(String toolName, Map<String, Object> input) {}
+public record ToolInvocation(String toolName, Map<String, Object> input, String toolCallId) {
+
+    /** Backward-compatible constructor — delegates to canonical with null toolCallId. */
+    public ToolInvocation(String toolName, Map<String, Object> input) {
+        this(toolName, input, null);
+    }
+}

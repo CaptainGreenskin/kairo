@@ -15,6 +15,8 @@
  */
 package io.kairo.core.tool;
 
+import io.kairo.api.tool.StreamingTool;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolHandler;
@@ -78,8 +80,11 @@ public class DefaultToolRegistry implements ToolRegistry {
         List<ToolDefinition> definitions = scanner.scan(basePackages);
         for (ToolDefinition def : definitions) {
             register(def);
-            // Auto-create instance if implementationClass is a ToolHandler
-            if (ToolHandler.class.isAssignableFrom(def.implementationClass())
+            // Auto-create instance if implementationClass is a ToolHandler, SyncTool, or
+            // StreamingTool
+            if ((ToolHandler.class.isAssignableFrom(def.implementationClass())
+                            || SyncTool.class.isAssignableFrom(def.implementationClass())
+                            || StreamingTool.class.isAssignableFrom(def.implementationClass()))
                     && !toolInstances.containsKey(def.name())) {
                 try {
                     Object instance =

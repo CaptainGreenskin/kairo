@@ -33,6 +33,11 @@ import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.api.tool.UserApprovalHandler;
 import io.kairo.api.tracing.Tracer;
+import io.kairo.core.agent.continuation.AgentContinuationStrategy;
+import io.kairo.core.agent.continuation.CompositeContinuationStrategy;
+import io.kairo.core.agent.continuation.FinishReasonRecoveryStrategy;
+import io.kairo.core.agent.continuation.PendingTodoNudgeStrategy;
+import io.kairo.core.agent.continuation.RecentToolActivityStrategy;
 import io.kairo.core.context.CompactionThresholds;
 import io.kairo.core.context.DefaultContextManager;
 import io.kairo.core.context.TokenBudgetManager;
@@ -107,6 +112,7 @@ public class AgentBuilder {
     private final List<SystemPromptContributor> systemPromptContributors = new ArrayList<>();
     @javax.annotation.Nullable private java.util.function.Consumer<String> textDeltaConsumer;
     @javax.annotation.Nullable private KairoEventBus eventBus;
+    @javax.annotation.Nullable private AgentContinuationStrategy continuationStrategy;
 
     private AgentBuilder() {}
 
@@ -339,6 +345,52 @@ public class AgentBuilder {
     public AgentBuilder eventBus(KairoEventBus eventBus) {
         this.eventBus = eventBus;
         return this;
+    }
+
+    /**
+     * Set the continuation strategy that decides whether the ReAct loop should continue when the
+     * model emits a response with zero tool calls.
+     *
+     * <p>When not set (null), the loop terminates immediately on a text-only response — preserving
+     * pre-0.5.0 behavior.
+     *
+     * @param strategy the continuation strategy, or null to disable
+     * @return this builder
+     */
+    public AgentBuilder continuationStrategy(AgentContinuationStrategy strategy) {
+        this.continuationStrategy = Objects.requireNonNull(strategy, "continuationStrategy");
+        return this;
+    }
+
+    /**
+     * Convenience: registers the recommended Composite continuation strategy with sensible
+     * defaults. Equivalent to {@code
+     * continuationStrategy(CompositeContinuationStrategy.withDefaults())}.
+     *
+     * @return this builder
+     */
+    public AgentBuilder withSmartContinuation() {
+        return continuationStrategy(CompositeContinuationStrategy.withDefaults());
+    }
+
+    /**
+     * Enable smart continuation with custom parameters.
+     *
+     * <p>Nudge strategies are signal-based and have no per-session budget; only the length-recovery
+     * strategy retains a retry cap since MAX_TOKENS is a real provider failure mode.
+     *
+     * @param maxLengthRetries maximum length-recovery retries for {@link
+     *     FinishReasonRecoveryStrategy}
+     * @param lookbackWindow number of recent iterations to check for tool activity
+     * @return this builder
+     */
+    public AgentBuilder withSmartContinuation(int maxLengthRetries, int lookbackWindow) {
+        return continuationStrategy(
+                new CompositeContinuationStrategy(
+                        List.of(
+                                new FinishReasonRecoveryStrategy(maxLengthRetries),
+                                new PendingTodoNudgeStrategy(),
+                                new RecentToolActivityStrategy(lookbackWindow))));
     }
 
     /**
@@ -623,7 +675,8 @@ public class AgentBuilder {
                         guardrailChain,
                         durableExecutionStore,
                         recoveryHandler,
-                        recoveryOnStartup);
+                        recoveryOnStartup,
+                        continuationStrategy);
 
         // Wire event bus for progress events
         if (eventBus != null) {

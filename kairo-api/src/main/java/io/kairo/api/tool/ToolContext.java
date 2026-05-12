@@ -26,59 +26,65 @@ import javax.annotation.Nullable;
  * Runtime context provided to tool executions.
  *
  * <p>Contains agent and session identifiers, the active {@link TenantContext}, the active {@link
- * Workspace}, plus user-injected runtime dependencies. During crash recovery, the {@code
- * idempotencyKey} is populated to enable tools to detect duplicate invocations.
+ * Workspace}, an {@link OutputBudgetConfig} for output size management, plus user-injected runtime
+ * dependencies. During crash recovery, the {@code idempotencyKey} is populated to enable tools to
+ * detect duplicate invocations.
  *
- * <p>The {@code tenant} component is part of the v1.1 passive multi-tenant contract: tools READ
- * tenant attribution to scope their actions, but the framework — not the tool — is responsible for
- * binding it. The {@code workspace} component lets file tools resolve relative paths against an
- * explicit working directory rather than the ambient JVM cwd. Constructors that omit either
- * component default to the corresponding sentinel ({@link TenantContext#SINGLE} / {@link
- * Workspace#cwd()}).
+ * <p>The {@code budget} component (v1.2) tells tools and the executor how much output is
+ * permissible before truncation kicks in. The {@code tenant} component is part of the v1.1 passive
+ * multi-tenant contract: tools READ tenant attribution to scope their actions, but the framework —
+ * not the tool — is responsible for binding it. The {@code workspace} component lets file tools
+ * resolve relative paths against an explicit working directory rather than the ambient JVM cwd.
  *
  * @param agentId the ID of the agent invoking the tool
  * @param sessionId the current session ID
- * @param dependencies user-injected runtime dependencies (e.g., database connections, API clients)
- * @param idempotencyKey optional key for at-least-once idempotency during crash recovery (null in
- *     normal execution)
- * @param tenant the active tenant; never null (defaults to {@link TenantContext#SINGLE})
+ * @param budget output budget configuration for this execution context
  * @param workspace the active workspace; never null (defaults to {@link Workspace#cwd()})
+ * @param tenant the active tenant; never null (defaults to {@link TenantContext#SINGLE})
+ * @param idempotencyKey optional key for at-least-once idempotency during crash recovery
+ * @param dependencies user-injected runtime dependencies (e.g., database connections, API clients)
+ * @since 1.2.0
  */
-@Stable(value = "Tool runtime context record; tenant + workspace added in v1.1", since = "1.0.0")
+@Stable(value = "Tool runtime context record; budget added in v1.2", since = "1.0.0")
 public record ToolContext(
         String agentId,
         String sessionId,
-        Map<String, Object> dependencies,
-        @Nullable String idempotencyKey,
+        OutputBudgetConfig budget,
+        Workspace workspace,
         TenantContext tenant,
-        Workspace workspace) {
+        Optional<String> idempotencyKey,
+        Map<String, Object> dependencies) {
 
     /**
-     * Compact constructor — defensively copies dependencies, defaults tenant to {@link
-     * TenantContext#SINGLE} and workspace to {@link Workspace#cwd()}.
+     * Compact constructor — applies safe defaults for null fields and defensively copies
+     * dependencies.
      */
     public ToolContext {
-        dependencies = dependencies == null ? Map.of() : Map.copyOf(dependencies);
-        tenant = tenant == null ? TenantContext.SINGLE : tenant;
+        budget = budget == null ? OutputBudgetConfig.DEFAULT : budget;
         workspace = workspace == null ? Workspace.cwd() : workspace;
+        tenant = tenant == null ? TenantContext.SINGLE : tenant;
+        idempotencyKey = idempotencyKey == null ? Optional.empty() : idempotencyKey;
+        dependencies = dependencies == null ? Map.of() : Map.copyOf(dependencies);
     }
 
     /**
-     * Backward-compatible constructor without workspace. Defaults workspace to {@link
-     * Workspace#cwd()}.
+     * Backward-compatible constructor: (agentId, sessionId, dependencies). Defaults budget,
+     * workspace, tenant, and idempotencyKey to their sentinels.
      */
-    public ToolContext(
-            String agentId,
-            String sessionId,
-            Map<String, Object> dependencies,
-            @Nullable String idempotencyKey,
-            TenantContext tenant) {
-        this(agentId, sessionId, dependencies, idempotencyKey, tenant, Workspace.cwd());
+    public ToolContext(String agentId, String sessionId, Map<String, Object> dependencies) {
+        this(
+                agentId,
+                sessionId,
+                OutputBudgetConfig.DEFAULT,
+                Workspace.cwd(),
+                TenantContext.SINGLE,
+                Optional.empty(),
+                dependencies);
     }
 
     /**
-     * Backward-compatible constructor without tenant or workspace. Defaults tenant to {@link
-     * TenantContext#SINGLE} and workspace to {@link Workspace#cwd()}.
+     * Backward-compatible constructor with nullable idempotency key: (agentId, sessionId,
+     * dependencies, idempotencyKey).
      */
     public ToolContext(
             String agentId,
@@ -88,18 +94,52 @@ public record ToolContext(
         this(
                 agentId,
                 sessionId,
-                dependencies,
-                idempotencyKey,
+                OutputBudgetConfig.DEFAULT,
+                Workspace.cwd(),
                 TenantContext.SINGLE,
-                Workspace.cwd());
+                Optional.ofNullable(idempotencyKey),
+                dependencies);
     }
 
     /**
-     * Backward-compatible constructor without idempotency key, tenant, or workspace. Defaults all
-     * three to their sentinels.
+     * Backward-compatible constructor with nullable idempotency key and tenant: (agentId,
+     * sessionId, dependencies, idempotencyKey, tenant).
      */
-    public ToolContext(String agentId, String sessionId, Map<String, Object> dependencies) {
-        this(agentId, sessionId, dependencies, null, TenantContext.SINGLE, Workspace.cwd());
+    public ToolContext(
+            String agentId,
+            String sessionId,
+            Map<String, Object> dependencies,
+            @Nullable String idempotencyKey,
+            TenantContext tenant) {
+        this(
+                agentId,
+                sessionId,
+                OutputBudgetConfig.DEFAULT,
+                Workspace.cwd(),
+                tenant,
+                Optional.ofNullable(idempotencyKey),
+                dependencies);
+    }
+
+    /**
+     * Backward-compatible constructor with all v1.1 fields: (agentId, sessionId, dependencies,
+     * idempotencyKey, tenant, workspace).
+     */
+    public ToolContext(
+            String agentId,
+            String sessionId,
+            Map<String, Object> dependencies,
+            @Nullable String idempotencyKey,
+            TenantContext tenant,
+            Workspace workspace) {
+        this(
+                agentId,
+                sessionId,
+                OutputBudgetConfig.DEFAULT,
+                workspace,
+                tenant,
+                Optional.ofNullable(idempotencyKey),
+                dependencies);
     }
 
     /**
@@ -111,10 +151,6 @@ public record ToolContext(
      * resolve optional SPI overrides — for example {@code BashTool} reads the active {@link
      * io.kairo.api.sandbox.ExecutionSandbox} here and falls back to the bundled local
      * implementation when none is bound.
-     *
-     * <p>This is a thin convenience wrapper over {@link #dependencies()}; user-supplied business
-     * dependencies (DB connections, API clients) typically use shorter, role-based keys instead and
-     * should be retrieved directly via {@code dependencies().get("...")}.
      */
     @SuppressWarnings("unchecked")
     public <T> Optional<T> getBean(Class<T> type) {

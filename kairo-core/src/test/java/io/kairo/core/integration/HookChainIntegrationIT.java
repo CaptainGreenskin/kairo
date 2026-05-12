@@ -471,7 +471,7 @@ class HookChainIntegrationIT {
         chain.register(tracker);
 
         ToolResult result =
-                new ToolResult("tu-1", "file contents", false, Map.of("path", "/tmp/test.txt"));
+                ToolResult.success("tu-1", "file contents", Map.of("path", "/tmp/test.txt"));
         PostActingEvent event = new PostActingEvent("stub_read", result);
 
         StepVerifier.create(chain.firePostActing(event))

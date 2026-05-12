@@ -125,10 +125,7 @@ class DefaultReActAgentTest {
         toolRegistry.register(echoTool);
         toolRegistry.registerInstance(
                 "echo",
-                (ToolHandler)
-                        input ->
-                                new ToolResult(
-                                        "echo", "echoed: " + input.get("text"), false, Map.of()));
+                (ToolHandler) input -> ToolResult.success("echo", "echoed: " + input.get("text")));
 
         AtomicInteger callCount = new AtomicInteger(0);
         when(modelProvider.call(anyList(), any(ModelConfig.class)))
@@ -175,7 +172,7 @@ class DefaultReActAgentTest {
                         Object.class);
         toolRegistry.register(echoTool);
         toolRegistry.registerInstance(
-                "echo", (ToolHandler) input -> new ToolResult("echo", "result", false, Map.of()));
+                "echo", (ToolHandler) input -> ToolResult.success("echo", "result"));
 
         DefaultReActAgent agent = createAgent(baseConfig().maxIterations(2).build());
 
@@ -212,7 +209,7 @@ class DefaultReActAgentTest {
                         Object.class);
         toolRegistry.register(echoTool);
         toolRegistry.registerInstance(
-                "echo", (ToolHandler) input -> new ToolResult("echo", "r", false, Map.of()));
+                "echo", (ToolHandler) input -> ToolResult.success("echo", "r"));
 
         DefaultReActAgent agent = createAgent(baseConfig().tokenBudget(100_000).build());
 

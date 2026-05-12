@@ -32,6 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class PatchApplyToolTest {
 
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
     private PatchApplyTool tool;
 
     @TempDir Path tempDir;
@@ -66,7 +67,7 @@ class PatchApplyToolTest {
                  line4
                 """;
 
-        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx);
+        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx).block();
 
         assertFalse(result.isError(), result.content());
         String content = Files.readString(file);
@@ -99,7 +100,7 @@ class PatchApplyToolTest {
                  f
                 """;
 
-        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx);
+        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx).block();
 
         assertFalse(result.isError(), result.content());
         String content = Files.readString(file);
@@ -108,21 +109,21 @@ class PatchApplyToolTest {
 
     @Test
     void emptyPatchContentReturnsError() {
-        ToolResult result = tool.execute(Map.of("patchContent", ""));
+        ToolResult result = tool.execute(Map.of("patchContent", ""), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("patchContent"));
     }
 
     @Test
     void blankPatchContentReturnsError() {
-        ToolResult result = tool.execute(Map.of("patchContent", "   "));
+        ToolResult result = tool.execute(Map.of("patchContent", "   "), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("patchContent"));
     }
 
     @Test
     void nullPatchContentReturnsError() {
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = tool.execute(Map.of(), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("patchContent"));
     }
@@ -140,7 +141,7 @@ class PatchApplyToolTest {
                 +new
                 """;
 
-        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx);
+        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx).block();
 
         assertTrue(result.isError());
         assertTrue(
@@ -165,7 +166,7 @@ class PatchApplyToolTest {
                  gamma
                 """;
 
-        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx);
+        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx).block();
 
         assertTrue(result.isError());
         String content = Files.readString(file);
@@ -194,7 +195,7 @@ class PatchApplyToolTest {
                 +line5-changed
                 """;
 
-        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx);
+        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx).block();
 
         assertTrue(result.isError());
         String content = Files.readString(file);
@@ -222,7 +223,7 @@ class PatchApplyToolTest {
                  gamma
                 """;
 
-        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx);
+        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx).block();
 
         assertFalse(result.isError(), result.content());
         String content = Files.readString(file);
@@ -246,7 +247,7 @@ class PatchApplyToolTest {
                 +gamma-modified
                 """;
 
-        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx);
+        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx).block();
 
         assertFalse(result.isError(), result.content());
         String content = Files.readString(file);
@@ -268,7 +269,7 @@ class PatchApplyToolTest {
                 +new-content
                 """;
 
-        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx);
+        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx).block();
 
         assertFalse(result.isError(), result.content());
         assertEquals("new-content\n", Files.readString(file));
@@ -292,7 +293,7 @@ class PatchApplyToolTest {
                 +patched
                 """;
 
-        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx);
+        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx).block();
 
         assertFalse(result.isError(), result.content());
         assertEquals("patched\n", Files.readString(otherRoot.resolve("ws-file.txt")));
@@ -313,7 +314,7 @@ class PatchApplyToolTest {
                 +y
                 """;
 
-        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx);
+        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("meta.txt"));
@@ -339,7 +340,8 @@ class PatchApplyToolTest {
                 +after
                 """;
 
-        ToolResult result = tool.execute(Map.of("patchContent", patch, "dryRun", true), ctx);
+        ToolResult result =
+                tool.execute(Map.of("patchContent", patch, "dryRun", true), ctx).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("Dry-run"));
@@ -370,7 +372,7 @@ class PatchApplyToolTest {
                  gamma
                 """;
 
-        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx);
+        ToolResult result = tool.execute(Map.of("patchContent", patch), ctx).block();
 
         assertTrue(result.isError());
         assertEquals(

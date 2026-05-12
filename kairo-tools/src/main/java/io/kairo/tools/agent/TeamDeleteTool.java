@@ -16,19 +16,21 @@
 package io.kairo.tools.agent;
 
 import io.kairo.api.team.TeamManager;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
-import io.kairo.api.tool.ToolHandler;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /** Deletes an agent team and stops all its agents. */
 @Tool(
         name = "team_delete",
         description = "Delete an agent team and stop all its agents.",
         category = ToolCategory.AGENT_AND_TASK)
-public class TeamDeleteTool implements ToolHandler {
+public class TeamDeleteTool implements SyncTool {
 
     @ToolParam(description = "Name of the team to delete", required = true)
     private String name;
@@ -45,13 +47,17 @@ public class TeamDeleteTool implements ToolHandler {
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> executeSync(args, ctx));
+    }
+
+    private ToolResult executeSync(Map<String, Object> input, ToolContext ctx) {
         String name = (String) input.get("name");
         if (name == null || name.isBlank()) {
-            return new ToolResult(null, "Parameter 'name' is required", true, Map.of());
+            return ToolResult.error(null, "Parameter 'name' is required");
         }
 
         teamManager.delete(name);
-        return new ToolResult(null, "Team deleted: " + name, false, Map.of());
+        return ToolResult.success(null, "Team deleted: " + name, Map.of());
     }
 }

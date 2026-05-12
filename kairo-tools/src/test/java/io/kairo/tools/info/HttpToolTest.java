@@ -18,6 +18,7 @@ package io.kairo.tools.info;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sun.net.httpserver.HttpServer;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.Test;
 
 class HttpToolTest {
 
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
     private static HttpServer server;
     private static int port;
     private static String baseUrl;
@@ -155,7 +157,7 @@ class HttpToolTest {
 
     @Test
     void get200NormalPath() {
-        ToolResult result = tool().execute(Map.of("url", baseUrl + "/hello"));
+        ToolResult result = tool().execute(Map.of("url", baseUrl + "/hello"), CTX).block();
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).isEqualTo("Hello, World!");
         assertThat(result.metadata()).containsEntry("statusCode", 200);
@@ -180,7 +182,9 @@ class HttpToolTest {
                                         "method",
                                         "POST",
                                         "body",
-                                        "test payload"));
+                                        "test payload"),
+                                CTX)
+                        .block();
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).isEqualTo("test payload");
         assertThat(result.metadata()).containsEntry("statusCode", 200);
@@ -195,21 +199,24 @@ class HttpToolTest {
                                         "url",
                                         baseUrl + "/headers",
                                         "headers",
-                                        Map.of("X-Test-Header", "custom-value")));
+                                        Map.of("X-Test-Header", "custom-value")),
+                                CTX)
+                        .block();
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).isEqualTo("custom-value");
     }
 
     @Test
     void timeoutReturnsError() {
-        ToolResult result = tool().execute(Map.of("url", baseUrl + "/slow", "timeoutSeconds", 1));
+        ToolResult result =
+                tool().execute(Map.of("url", baseUrl + "/slow", "timeoutSeconds", 1), CTX).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("timed out");
     }
 
     @Test
     void non2xxReturnsErrorWithBody() {
-        ToolResult result = tool().execute(Map.of("url", baseUrl + "/error"));
+        ToolResult result = tool().execute(Map.of("url", baseUrl + "/error"), CTX).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).isEqualTo("Something went wrong");
         assertThat(result.metadata()).containsEntry("statusCode", 500);
@@ -217,7 +224,7 @@ class HttpToolTest {
 
     @Test
     void truncatesLargeResponse() {
-        ToolResult result = tool().execute(Map.of("url", baseUrl + "/large"));
+        ToolResult result = tool().execute(Map.of("url", baseUrl + "/large"), CTX).block();
         assertThat(result.isError()).isFalse();
         assertThat(result.content().length()).isEqualTo(HttpTool.MAX_BYTES);
         assertThat(result.metadata()).containsEntry("truncated", true);
@@ -227,7 +234,9 @@ class HttpToolTest {
     void ssrfBlocksLocalhost() {
         HttpTool productionTool = new HttpTool();
         ToolResult result =
-                productionTool.execute(Map.of("url", "http://localhost:" + port + "/hello"));
+                productionTool
+                        .execute(Map.of("url", "http://localhost:" + port + "/hello"), CTX)
+                        .block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("SSRF protection");
     }
@@ -236,14 +245,16 @@ class HttpToolTest {
     void ssrfBlocks127() {
         HttpTool productionTool = new HttpTool();
         ToolResult result =
-                productionTool.execute(Map.of("url", "http://127.0.0.1:" + port + "/hello"));
+                productionTool
+                        .execute(Map.of("url", "http://127.0.0.1:" + port + "/hello"), CTX)
+                        .block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("SSRF protection");
     }
 
     @Test
     void notFoundReturnsError() {
-        ToolResult result = tool().execute(Map.of("url", baseUrl + "/notfound"));
+        ToolResult result = tool().execute(Map.of("url", baseUrl + "/notfound"), CTX).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).isEqualTo("Not Found");
         assertThat(result.metadata()).containsEntry("statusCode", 404);
@@ -251,21 +262,23 @@ class HttpToolTest {
 
     @Test
     void invalidUrlReturnsError() {
-        ToolResult result = tool().execute(Map.of("url", "ftp://example.com/resource"));
+        ToolResult result =
+                tool().execute(Map.of("url", "ftp://example.com/resource"), CTX).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("URL must start with http:// or https://");
     }
 
     @Test
     void missingUrlReturnsError() {
-        ToolResult result = tool().execute(Map.of("method", "GET"));
+        ToolResult result = tool().execute(Map.of("method", "GET"), CTX).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("'url' is required");
     }
 
     @Test
     void unsupportedMethodDefaultsToGet() {
-        ToolResult result = tool().execute(Map.of("url", baseUrl + "/hello", "method", "OPTIONS"));
+        ToolResult result =
+                tool().execute(Map.of("url", baseUrl + "/hello", "method", "OPTIONS"), CTX).block();
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).isEqualTo("Hello, World!");
         assertThat(result.metadata()).containsEntry("method", "GET");
@@ -273,14 +286,14 @@ class HttpToolTest {
 
     @Test
     void defaultMethodIsGet() {
-        ToolResult result = tool().execute(Map.of("url", baseUrl + "/hello"));
+        ToolResult result = tool().execute(Map.of("url", baseUrl + "/hello"), CTX).block();
         assertThat(result.isError()).isFalse();
         assertThat(result.metadata()).containsEntry("method", "GET");
     }
 
     @Test
     void followRedirectsTrueFollows301() {
-        ToolResult result = tool().execute(Map.of("url", baseUrl + "/redirect"));
+        ToolResult result = tool().execute(Map.of("url", baseUrl + "/redirect"), CTX).block();
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).isEqualTo("Hello, World!");
         assertThat(result.metadata()).containsEntry("statusCode", 200);
@@ -289,7 +302,8 @@ class HttpToolTest {
     @Test
     void followRedirectsFalseDoesNotFollow301() {
         ToolResult result =
-                tool().execute(Map.of("url", baseUrl + "/redirect", "followRedirects", false));
+                tool().execute(Map.of("url", baseUrl + "/redirect", "followRedirects", false), CTX)
+                        .block();
         assertThat(result.isError()).isTrue();
         assertThat(result.metadata()).containsEntry("statusCode", 301);
     }

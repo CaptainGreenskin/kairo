@@ -79,8 +79,7 @@ class ToolExecutionPipelineIT {
     @Test
     void toolRegistration_thenExecution_returnsResult() {
         registerReadHandler(
-                "echo",
-                input -> new ToolResult("echo", "echoed: " + input.get("text"), false, Map.of()));
+                "echo", input -> ToolResult.success("echo", "echoed: " + input.get("text")));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
 
@@ -122,7 +121,7 @@ class ToolExecutionPipelineIT {
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
-                    return new ToolResult("slow_tool", "done", false, Map.of());
+                    return ToolResult.success("slow_tool", "done");
                 });
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
@@ -182,7 +181,7 @@ class ToolExecutionPipelineIT {
                     if (n <= 2) {
                         throw new RuntimeException("fail #" + n);
                     }
-                    return new ToolResult("intermittent", "ok", false, Map.of());
+                    return ToolResult.success("intermittent", "ok");
                 });
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
@@ -235,7 +234,7 @@ class ToolExecutionPipelineIT {
                     if (n <= 3) {
                         throw new RuntimeException("fail #" + n);
                     }
-                    return new ToolResult("resettable", "recovered", false, Map.of());
+                    return ToolResult.success("resettable", "recovered");
                 });
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
@@ -267,10 +266,8 @@ class ToolExecutionPipelineIT {
 
     @Test
     void allowedTools_blocksUnauthorized() {
-        registerReadHandler(
-                "allowed_tool", input -> new ToolResult("allowed_tool", "ok", false, Map.of()));
-        registerReadHandler(
-                "blocked_tool", input -> new ToolResult("blocked_tool", "ok", false, Map.of()));
+        registerReadHandler("allowed_tool", input -> ToolResult.success("allowed_tool", "ok"));
+        registerReadHandler("blocked_tool", input -> ToolResult.success("blocked_tool", "ok"));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
         executor.setAllowedTools(Set.of("allowed_tool"));
@@ -288,9 +285,7 @@ class ToolExecutionPipelineIT {
 
     @Test
     void allowedTools_permitsAuthorized() {
-        registerReadHandler(
-                "allowed_tool",
-                input -> new ToolResult("allowed_tool", "success", false, Map.of()));
+        registerReadHandler("allowed_tool", input -> ToolResult.success("allowed_tool", "success"));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
         executor.setAllowedTools(Set.of("allowed_tool"));
@@ -308,8 +303,7 @@ class ToolExecutionPipelineIT {
 
     @Test
     void clearAllowedTools_removesRestriction() {
-        registerReadHandler(
-                "any_tool", input -> new ToolResult("any_tool", "executed", false, Map.of()));
+        registerReadHandler("any_tool", input -> ToolResult.success("any_tool", "executed"));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
 
@@ -337,7 +331,7 @@ class ToolExecutionPipelineIT {
         registerHandler(
                 "bash",
                 ToolSideEffect.SYSTEM_CHANGE,
-                input -> new ToolResult("bash", "executed", false, Map.of()));
+                input -> ToolResult.success("bash", "executed"));
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
         // Need ALLOWED permission to bypass the ASK check for SYSTEM_CHANGE
@@ -369,13 +363,13 @@ class ToolExecutionPipelineIT {
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
-                    return new ToolResult("tool_a", "result_a", false, Map.of());
+                    return ToolResult.success("tool_a", "result_a");
                 });
         registerReadHandler(
                 "tool_b",
                 input -> {
                     latch.countDown(); // signal tool_a to proceed
-                    return new ToolResult("tool_b", "result_b", false, Map.of());
+                    return ToolResult.success("tool_b", "result_b");
                 });
 
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard);
@@ -403,8 +397,7 @@ class ToolExecutionPipelineIT {
     @Test
     void toolResult_isError_trackedByCircuitBreaker() {
         // A tool that returns an error ToolResult (not throwing an exception)
-        registerReadHandler(
-                "soft_fail", input -> new ToolResult("soft_fail", "soft error", true, Map.of()));
+        registerReadHandler("soft_fail", input -> ToolResult.error("soft_fail", "soft error"));
 
         // Use threshold = 2 for faster test
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard, null, null, 2);

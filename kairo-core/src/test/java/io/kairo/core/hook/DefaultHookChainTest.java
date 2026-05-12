@@ -180,7 +180,7 @@ class DefaultHookChainTest {
         PostActingHandler handler = new PostActingHandler();
         chain.register(handler);
 
-        ToolResult result = new ToolResult("tu-1", "file contents", false, Map.of());
+        ToolResult result = ToolResult.success("tu-1", "file contents");
         PostActingEvent event = new PostActingEvent("read_file", result);
 
         StepVerifier.create(chain.firePostActing(event))

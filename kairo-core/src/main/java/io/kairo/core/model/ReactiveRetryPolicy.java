@@ -18,6 +18,7 @@ package io.kairo.core.model;
 import io.kairo.api.model.RetryConfig;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -119,16 +120,27 @@ public final class ReactiveRetryPolicy {
      * <p>Rate limit errors carrying a server-specified retry delay are delayed before re-emission
      * so that the subsequent retry doesn't fire immediately.
      *
+     * <p><strong>Mid-stream retry guard:</strong> once any element has been emitted downstream,
+     * retries are disabled. {@code retryWhen} re-subscribes the upstream source on retry, which for
+     * model providers means the entire response is re-streamed from the beginning. Downstream
+     * consumers that accumulate chunks (chat UIs, tool-call buffers) would see the same content
+     * concatenated multiple times — the visible "X X X X" duplication bug. Once data has flowed,
+     * the user has already seen partial output, so failing fast with the original error is the only
+     * correct behavior. Retries remain enabled before the first element is emitted.
+     *
      * @param source the source Flux
      * @param idleTimeout the idle timeout duration (time between elements)
      * @return the source with timeout and retry applied
      */
     public <T> Flux<T> applyFlux(Flux<T> source, Duration idleTimeout) {
+        AtomicBoolean emitted = new AtomicBoolean(false);
+        Predicate<Throwable> guardedPredicate = t -> !emitted.get() && retryPredicate.test(t);
         return source.onErrorResume(
                         ModelProviderException.RateLimitException.class,
                         this::delayRateLimitErrorFlux)
+                .doOnNext(t -> emitted.set(true))
                 .timeout(idleTimeout)
-                .retryWhen(buildRetrySpec());
+                .retryWhen(buildRetrySpec(guardedPredicate));
     }
 
     private <T> Mono<T> delayRateLimitError(ModelProviderException.RateLimitException e) {
@@ -157,11 +169,19 @@ public final class ReactiveRetryPolicy {
      * @return the configured retry spec
      */
     RetryBackoffSpec buildRetrySpec() {
+        return buildRetrySpec(retryPredicate);
+    }
+
+    /**
+     * Variant of {@link #buildRetrySpec()} with an explicit filter predicate. Used by {@link
+     * #applyFlux} to inject the mid-stream guard that disables retries after the first element.
+     */
+    RetryBackoffSpec buildRetrySpec(Predicate<Throwable> filter) {
         long maxRetries = Math.max(0, retryConfig.maxAttempts() - 1);
         return Retry.backoff(maxRetries, retryConfig.initialBackoff())
                 .maxBackoff(retryConfig.maxBackoff())
                 .jitter(retryConfig.jitter())
-                .filter(retryPredicate)
+                .filter(filter)
                 .doBeforeRetry(
                         signal -> {
                             Throwable failure = signal.failure();

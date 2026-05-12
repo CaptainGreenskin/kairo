@@ -129,6 +129,25 @@ public class Msg {
         return builder().role(role).addContent(new Content.TextContent(text)).build();
     }
 
+    /**
+     * Creates a synthetic user message for continuation nudges.
+     *
+     * <p>Tagged with metadata so UI/transcript filters can hide it.
+     *
+     * @param message the nudge text content
+     * @param sourceStrategy name of the strategy that generated this nudge
+     * @return a user-role Msg with synthetic=true metadata
+     * @since 0.5.0
+     */
+    public static Msg nudge(String message, String sourceStrategy) {
+        return builder()
+                .role(MsgRole.USER)
+                .addContent(new Content.TextContent(message))
+                .metadata("synthetic", true)
+                .metadata("source", "continuation:" + sourceStrategy)
+                .build();
+    }
+
     /** Builder for {@link Msg}. */
     public static class Builder {
         private String id = UUID.randomUUID().toString();

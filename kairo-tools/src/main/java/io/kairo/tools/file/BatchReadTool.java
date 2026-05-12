@@ -15,19 +15,19 @@
  */
 package io.kairo.tools.file;
 
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
-import io.kairo.api.workspace.Workspace;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Reads multiple files in a single tool call, reducing ReAct loop iterations.
@@ -41,7 +41,7 @@ import java.util.Map;
                         + " headers. Missing or unreadable files are marked with [ERROR: reason]"
                         + " without aborting the batch.",
         category = ToolCategory.FILE_AND_CODE)
-public class BatchReadTool implements ToolHandler {
+public class BatchReadTool implements SyncTool {
 
     private static final int MAX_FILES = 20;
     private static final int DEFAULT_MAX_LINES = 500;
@@ -53,13 +53,8 @@ public class BatchReadTool implements ToolHandler {
     private Integer maxLinesPerFile;
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        return doExecute(input, Workspace.cwd().root());
-    }
-
-    @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        return doExecute(input, context.workspace().root());
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> doExecute(args, ctx.workspace().root()));
     }
 
     private ToolResult doExecute(Map<String, Object> input, Path workspaceRoot) {
@@ -132,14 +127,13 @@ public class BatchReadTool implements ToolHandler {
             }
         }
 
-        return new ToolResult(
+        return ToolResult.success(
                 "batch_read",
                 result.toString().stripTrailing(),
-                false,
                 Map.of("successCount", successCount, "errorCount", errorCount));
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("batch_read", msg, true, Map.of());
+        return ToolResult.error("batch_read", msg);
     }
 }

@@ -198,7 +198,8 @@ public class DefaultReActAgent implements Agent {
                 guardrailChain,
                 null,
                 null,
-                false);
+                false,
+                null);
     }
 
     /**
@@ -224,7 +225,10 @@ public class DefaultReActAgent implements Agent {
             GuardrailChain guardrailChain,
             @javax.annotation.Nullable DurableExecutionStore durableExecutionStore,
             @javax.annotation.Nullable RecoveryHandler recoveryHandler,
-            boolean recoveryOnStartup) {
+            boolean recoveryOnStartup,
+            @javax.annotation.Nullable
+                    io.kairo.core.agent.continuation.AgentContinuationStrategy
+                            continuationStrategy) {
         this.id = UUID.randomUUID().toString();
         this.name = config.name();
         this.state = AgentState.IDLE;
@@ -249,9 +253,17 @@ public class DefaultReActAgent implements Agent {
                         ? middlewarePipeline
                         : new DefaultMiddlewarePipeline(List.of());
 
-        // Initialize token budget manager from model name
-        String modelId = config.modelName();
-        this.tokenBudgetManager = TokenBudgetManager.forModel(modelId);
+        // Initialize token budget manager — reuse the instance inside DefaultContextManager
+        // when present, so that IterationGuards (hard wall) and CompactionTrigger (pressure)
+        // share the same token ledger. Without this, API-reported usage only reaches the
+        // guards' instance while the compaction manager's instance stays at zero pressure,
+        // causing compaction to never trigger (see: fix-dual-tokenbudget).
+        if (config.contextManager() instanceof io.kairo.core.context.DefaultContextManager dcm) {
+            this.tokenBudgetManager = dcm.getTokenBudgetManager();
+        } else {
+            String modelId = config.modelName();
+            this.tokenBudgetManager = TokenBudgetManager.forModel(modelId);
+        }
 
         // Build system prompt including tool overview and session memory
         this.systemPromptResult = buildSystemPromptResult();
@@ -290,7 +302,8 @@ public class DefaultReActAgent implements Agent {
                         this.shutdownManager,
                         this.contextManager,
                         guardrailChain,
-                        null); // eventBus set later via withEventBus()
+                        null, // eventBus set later via withEventBus()
+                        continuationStrategy);
         // Durable execution support
         this.durableExecutionStore = durableExecutionStore;
         this.recoveryHandler = recoveryHandler;
@@ -402,6 +415,15 @@ public class DefaultReActAgent implements Agent {
         return contextManager;
     }
 
+    /**
+     * Get the token budget manager. Package-private for testing.
+     *
+     * @return the token budget manager
+     */
+    TokenBudgetManager getTokenBudgetManager() {
+        return tokenBudgetManager;
+    }
+
     /** Returns the current execution progress snapshot. */
     public ProgressSnapshot getProgress() {
         return progressTracker.getSnapshot();
@@ -417,6 +439,11 @@ public class DefaultReActAgent implements Agent {
                         Mono.defer(
                                 () -> {
                                     Span agentSpan = tracer.startAgentSpan(name, input);
+                                    if (config.sessionId() != null) {
+                                        agentSpan.setAttribute(
+                                                "langfuse.session.id", config.sessionId());
+                                        agentSpan.setAttribute("session.id", config.sessionId());
+                                    }
                                     state = AgentState.RUNNING;
                                     interrupted.set(false);
                                     currentIteration.set(0);
@@ -476,6 +503,36 @@ public class DefaultReActAgent implements Agent {
                                                                     .then(
                                                                             Mono.defer(
                                                                                     () -> {
+                                                                                        if (result
+                                                                                                        != null
+                                                                                                && result
+                                                                                                                .text()
+                                                                                                        != null) {
+                                                                                            agentSpan
+                                                                                                    .setAttribute(
+                                                                                                            "langfuse.trace.output",
+                                                                                                            result
+                                                                                                                    .text());
+                                                                                            agentSpan
+                                                                                                    .setAttribute(
+                                                                                                            "output.value",
+                                                                                                            result
+                                                                                                                    .text());
+                                                                                        }
+                                                                                        long
+                                                                                                tokens =
+                                                                                                        totalTokensUsed
+                                                                                                                .get();
+                                                                                        agentSpan
+                                                                                                .setAttribute(
+                                                                                                        "agent.tokens_total",
+                                                                                                        tokens);
+                                                                                        agentSpan
+                                                                                                .setAttribute(
+                                                                                                        "agent.iterations",
+                                                                                                        (long)
+                                                                                                                currentIteration
+                                                                                                                        .get());
                                                                                         agentSpan
                                                                                                 .setStatus(
                                                                                                         true,
@@ -516,6 +573,24 @@ public class DefaultReActAgent implements Agent {
                                                                     .then(
                                                                             Mono.defer(
                                                                                     () -> {
+                                                                                        long
+                                                                                                failTokens =
+                                                                                                        totalTokensUsed
+                                                                                                                .get();
+                                                                                        agentSpan
+                                                                                                .setAttribute(
+                                                                                                        "agent.tokens_total",
+                                                                                                        failTokens);
+                                                                                        agentSpan
+                                                                                                .setAttribute(
+                                                                                                        "agent.iterations",
+                                                                                                        (long)
+                                                                                                                currentIteration
+                                                                                                                        .get());
+                                                                                        tracer
+                                                                                                .recordException(
+                                                                                                        agentSpan,
+                                                                                                        e);
                                                                                         agentSpan
                                                                                                 .setStatus(
                                                                                                         false,
@@ -603,7 +678,19 @@ public class DefaultReActAgent implements Agent {
                                                                         state
                                                                                 == AgentState
                                                                                         .COMPLETED);
-                                                    });
+                                                    })
+                                            // Expose this agent's span to downstream tool
+                                            // executions via the Reactor Context. Reactor
+                                            // schedulers don't preserve thread-local OTel
+                                            // Context.current(), so a parent passed via
+                                            // ctx is the only reliable way to nest
+                                            // agent.tool spans under agent.run.
+                                            .contextWrite(
+                                                    ctx ->
+                                                            ctx.put(
+                                                                    DefaultToolExecutor
+                                                                            .SPAN_CONTEXT_KEY,
+                                                                    agentSpan));
                                 }))
                 .onErrorResume(
                         MiddlewareRejectException.class,

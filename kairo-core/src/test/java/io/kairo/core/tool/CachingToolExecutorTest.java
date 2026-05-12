@@ -33,11 +33,11 @@ import reactor.test.StepVerifier;
 class CachingToolExecutorTest {
 
     private static ToolResult ok(String content) {
-        return new ToolResult("id", content, false, Map.of());
+        return ToolResult.success("id", content);
     }
 
     private static ToolResult error(String content) {
-        return new ToolResult("id", content, true, Map.of());
+        return ToolResult.error("id", content);
     }
 
     /** Counting delegate that returns a fixed result. */

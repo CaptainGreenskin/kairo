@@ -131,6 +131,7 @@ class CooperativeCancellationTest {
                         shutdownManager,
                         null,
                         null,
+                        null,
                         null);
 
         ModelConfig modelConfig =
@@ -213,8 +214,7 @@ class CooperativeCancellationTest {
                         inv -> {
                             // Set interrupted after tool completes — before next runLoop()
                             interrupted.set(true);
-                            return Mono.just(
-                                    new ToolResult("tc-1", "fetched data", false, Map.of()));
+                            return Mono.just(ToolResult.success("tc-1", "fetched data"));
                         });
 
         ReActLoop loop = createLoop(10);
@@ -249,7 +249,7 @@ class CooperativeCancellationTest {
                         });
 
         when(toolExecutor.execute(eq("echo"), any()))
-                .thenReturn(Mono.just(new ToolResult("tc-1", "hi", false, Map.of())));
+                .thenReturn(Mono.just(ToolResult.success("tc-1", "hi")));
 
         ReActLoop loop = createLoop(10);
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "echo hi")));
@@ -291,7 +291,7 @@ class CooperativeCancellationTest {
                             // Set interrupted — the checkCancelled before compaction/recursion
                             // catches it
                             interrupted.set(true);
-                            return Mono.just(new ToolResult("tc-1", "done", false, Map.of()));
+                            return Mono.just(ToolResult.success("tc-1", "done"));
                         });
 
         ReActLoop loop = createLoop(10);
@@ -336,8 +336,7 @@ class CooperativeCancellationTest {
                             if ("first".equals(toolName)) {
                                 interrupted.set(true);
                             }
-                            return Mono.just(
-                                    new ToolResult("tc-" + toolName, "ok", false, Map.of()));
+                            return Mono.just(ToolResult.success("tc-" + toolName, "ok"));
                         });
 
         ReActLoop loop = createLoop(10);
@@ -428,11 +427,9 @@ class CooperativeCancellationTest {
                         Mono.delay(Duration.ofSeconds(5))
                                 .map(
                                         tick ->
-                                                new ToolResult(
+                                                ToolResult.success(
                                                         "tc-1",
-                                                        "Should not reach — cancelled mid-tool",
-                                                        false,
-                                                        Map.of())));
+                                                        "Should not reach — cancelled mid-tool")));
 
         ReActLoop loop = createLoop(10);
         loop.injectMessages(List.of(Msg.of(MsgRole.USER, "run slow tool")));

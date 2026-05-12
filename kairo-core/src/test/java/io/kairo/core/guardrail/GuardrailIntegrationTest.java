@@ -68,7 +68,7 @@ class GuardrailIntegrationTest {
                     @Override
                     public ToolResult execute(Map<String, Object> input) {
                         handlerCalled.set(true);
-                        return new ToolResult("id", "done", false, Map.of());
+                        return ToolResult.success("id", "done");
                     }
                 });
 
@@ -105,8 +105,7 @@ class GuardrailIntegrationTest {
     @Test
     void postToolModify_altersToolResult() {
         registerToolHandler(
-                "echo-tool",
-                (ToolHandler) input -> new ToolResult("id", "original-output", false, Map.of()));
+                "echo-tool", (ToolHandler) input -> ToolResult.success("id", "original-output"));
 
         GuardrailPolicy modifyPolicy =
                 new GuardrailPolicy() {
@@ -117,7 +116,7 @@ class GuardrailIntegrationTest {
                                         instanceof GuardrailPayload.ToolOutput toolOutput) {
                             ToolResult original = toolOutput.result();
                             ToolResult redacted =
-                                    new ToolResult(
+                                    ToolResult.of(
                                             original.toolUseId(),
                                             "[REDACTED]",
                                             original.isError(),
@@ -152,10 +151,7 @@ class GuardrailIntegrationTest {
     void preToolModify_altersInputArgs() {
         registerToolHandler(
                 "arg-tool",
-                (ToolHandler)
-                        input ->
-                                new ToolResult(
-                                        "id", "received:" + input.get("key"), false, Map.of()));
+                (ToolHandler) input -> ToolResult.success("id", "received:" + input.get("key")));
 
         GuardrailPolicy modifyInputPolicy =
                 new GuardrailPolicy() {
@@ -194,8 +190,7 @@ class GuardrailIntegrationTest {
     @Test
     void postToolWarn_allowsResponseToProceed() {
         registerToolHandler(
-                "warn-tool",
-                (ToolHandler) input -> new ToolResult("id", "normal-output", false, Map.of()));
+                "warn-tool", (ToolHandler) input -> ToolResult.success("id", "normal-output"));
 
         GuardrailPolicy warnPolicy =
                 new GuardrailPolicy() {
@@ -227,8 +222,7 @@ class GuardrailIntegrationTest {
     @Test
     void nullGuardrailChain_pipelineWorksNormally() {
         registerToolHandler(
-                "simple-tool",
-                (ToolHandler) input -> new ToolResult("id", "hello", false, Map.of()));
+                "simple-tool", (ToolHandler) input -> ToolResult.success("id", "hello"));
 
         DefaultToolExecutor executor =
                 new DefaultToolExecutor(registry, guard, null, null, 3, null);
@@ -247,8 +241,7 @@ class GuardrailIntegrationTest {
     @Test
     void emptyPolicies_pipelineWorksNormally() {
         registerToolHandler(
-                "simple-tool",
-                (ToolHandler) input -> new ToolResult("id", "hello", false, Map.of()));
+                "simple-tool", (ToolHandler) input -> ToolResult.success("id", "hello"));
 
         GuardrailChain chain = new DefaultGuardrailChain(List.of());
         DefaultToolExecutor executor =
@@ -268,8 +261,7 @@ class GuardrailIntegrationTest {
     @Test
     void postToolDeny_blocksResult() {
         registerToolHandler(
-                "leaky-tool",
-                (ToolHandler) input -> new ToolResult("id", "secret-data", false, Map.of()));
+                "leaky-tool", (ToolHandler) input -> ToolResult.success("id", "secret-data"));
 
         GuardrailPolicy postDenyPolicy =
                 new GuardrailPolicy() {

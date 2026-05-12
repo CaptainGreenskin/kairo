@@ -86,6 +86,73 @@ class ReactiveRetryPolicyTest {
         assertEquals(2, attempts.get(), "Should attempt 2 times (1 initial + 1 retry)");
     }
 
+    @Test
+    void fluxDoesNotRetryAfterFirstElementEmitted() {
+        // Regression: backend retries used to re-subscribe upstream and replay all chunks,
+        // producing visible "X X X" duplication in the chat UI. After this fix, retries are
+        // disabled once any element has been emitted downstream.
+        RetryConfig config =
+                RetryConfig.builder()
+                        .maxAttempts(5)
+                        .initialBackoff(Duration.ofMillis(10))
+                        .maxBackoff(Duration.ofMillis(50))
+                        .jitter(0)
+                        .retryOn(e -> e instanceof TimeoutException)
+                        .build();
+        ReactiveRetryPolicy policy = new ReactiveRetryPolicy(config, "test");
+
+        AtomicInteger subscriptions = new AtomicInteger();
+        Flux<String> source =
+                Flux.defer(
+                        () -> {
+                            subscriptions.incrementAndGet();
+                            return Flux.just("chunk-A", "chunk-B")
+                                    .concatWith(Flux.error(new TimeoutException("mid-stream")));
+                        });
+
+        StepVerifier.create(policy.applyFlux(source, Duration.ofSeconds(5)))
+                .expectNext("chunk-A", "chunk-B")
+                .expectError(TimeoutException.class)
+                .verify(Duration.ofSeconds(5));
+
+        assertEquals(
+                1,
+                subscriptions.get(),
+                "Must NOT re-subscribe after elements have been emitted (would replay chunks)");
+    }
+
+    @Test
+    void fluxStillRetriesWhenErrorOccursBeforeFirstElement() {
+        // Pre-emission errors (connection refused, immediate rate limit, etc.) are still safe
+        // to retry — nothing has been emitted downstream yet.
+        RetryConfig config =
+                RetryConfig.builder()
+                        .maxAttempts(3) // 1 initial + 2 retries
+                        .initialBackoff(Duration.ofMillis(10))
+                        .maxBackoff(Duration.ofMillis(50))
+                        .jitter(0)
+                        .retryOn(e -> e instanceof TimeoutException)
+                        .build();
+        ReactiveRetryPolicy policy = new ReactiveRetryPolicy(config, "test");
+
+        AtomicInteger subscriptions = new AtomicInteger();
+        Flux<String> source =
+                Flux.defer(
+                        () -> {
+                            int n = subscriptions.incrementAndGet();
+                            if (n < 3) {
+                                return Flux.error(new TimeoutException("pre-emission"));
+                            }
+                            return Flux.just("recovered-A", "recovered-B");
+                        });
+
+        StepVerifier.create(policy.applyFlux(source, Duration.ofSeconds(5)))
+                .expectNext("recovered-A", "recovered-B")
+                .verifyComplete();
+
+        assertEquals(3, subscriptions.get());
+    }
+
     // ---- Exception filtering ----
 
     @Test

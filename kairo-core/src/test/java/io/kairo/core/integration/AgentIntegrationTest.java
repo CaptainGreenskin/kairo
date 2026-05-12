@@ -72,7 +72,7 @@ class AgentIntegrationTest {
         @Override
         public ToolResult execute(Map<String, Object> input) {
             String path = (String) input.getOrDefault("path", "/tmp/test.txt");
-            return new ToolResult("stub_read", "Content of " + path, false, Map.of("path", path));
+            return ToolResult.success("stub_read", "Content of " + path, Map.of("path", path));
         }
     }
 
@@ -89,7 +89,7 @@ class AgentIntegrationTest {
             String path = (String) input.get("path");
             String content = (String) input.get("content");
             if (path == null || content == null) {
-                return new ToolResult("stub_write", "Missing path or content", true, Map.of());
+                return ToolResult.error("stub_write", "Missing path or content");
             }
             try {
                 Path file = Path.of(path);
@@ -97,13 +97,12 @@ class AgentIntegrationTest {
                     Files.createDirectories(file.getParent());
                 }
                 Files.writeString(file, content);
-                return new ToolResult(
+                return ToolResult.success(
                         "stub_write",
                         "Wrote " + content.length() + " chars to " + path,
-                        false,
                         Map.of("path", path));
             } catch (Exception e) {
-                return new ToolResult("stub_write", "Error: " + e.getMessage(), true, Map.of());
+                return ToolResult.error("stub_write", "Error: " + e.getMessage());
             }
         }
     }
@@ -120,10 +119,9 @@ class AgentIntegrationTest {
         @Override
         public ToolResult execute(Map<String, Object> input) {
             String command = (String) input.getOrDefault("command", "");
-            return new ToolResult(
+            return ToolResult.success(
                     "stub_bash",
                     "Executed: " + command + "\nOutput: ok",
-                    false,
                     Map.of("command", command));
         }
     }
@@ -134,8 +132,8 @@ class AgentIntegrationTest {
         @Override
         public ToolResult execute(Map<String, Object> input) {
             String pattern = (String) input.getOrDefault("pattern", "*");
-            return new ToolResult(
-                    "stub_glob", "Found: file1.txt, file2.txt", false, Map.of("pattern", pattern));
+            return ToolResult.success(
+                    "stub_glob", "Found: file1.txt, file2.txt", Map.of("pattern", pattern));
         }
     }
 

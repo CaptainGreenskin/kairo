@@ -174,16 +174,18 @@ class GracefulShutdownManagerTest {
 
     @Test
     void timeoutInterruptsActiveAgents() throws InterruptedException {
-        manager.setShutdownTimeout(Duration.ofSeconds(1));
+        manager.setShutdownTimeout(Duration.ofMillis(100));
         Agent agent = stubAgent("slow", "slow-agent");
         manager.registerAgent(agent);
 
         manager.performShutdown();
 
-        // Wait for timeout to fire
-        Thread.sleep(2000);
+        // Poll for interrupt rather than fixed sleep
+        long deadline = System.currentTimeMillis() + 2000;
+        while (agent.state() != AgentState.SUSPENDED && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
 
-        // Agent should have been interrupted
         assertEquals(AgentState.SUSPENDED, agent.state());
     }
 
@@ -201,7 +203,7 @@ class GracefulShutdownManagerTest {
 
     @Test
     void shutdownSignalCompletesOnTimeout() throws InterruptedException {
-        manager.setShutdownTimeout(Duration.ofSeconds(1));
+        manager.setShutdownTimeout(Duration.ofMillis(100));
         Agent agent = stubAgent("a1", "test");
         manager.registerAgent(agent);
 
@@ -210,7 +212,11 @@ class GracefulShutdownManagerTest {
         manager.getShutdownSignal().doOnTerminate(() -> signalFired.set(true)).subscribe();
 
         manager.performShutdown();
-        Thread.sleep(2500);
+
+        long deadline = System.currentTimeMillis() + 2000;
+        while (!signalFired.get() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
 
         assertTrue(signalFired.get());
     }

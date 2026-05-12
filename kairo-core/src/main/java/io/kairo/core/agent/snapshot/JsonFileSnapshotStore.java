@@ -313,9 +313,6 @@ public final class JsonFileSnapshotStore implements SnapshotStore {
                 map.put("type", "thinking");
                 map.put("thinking", thc.thinking());
                 map.put("budgetTokens", thc.budgetTokens());
-                if (thc.signature() != null) {
-                    map.put("signature", thc.signature());
-                }
             }
             result.add(map);
         }

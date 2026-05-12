@@ -15,14 +15,13 @@
  */
 package io.kairo.tools.exec;
 
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
-import io.kairo.api.workspace.Workspace;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -33,6 +32,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Mono;
 
 /**
  * Executes a git subcommand in the workspace directory.
@@ -48,7 +48,7 @@ import org.slf4j.LoggerFactory;
                         + " Destructive operations (push --force, reset --hard, clean -f) are blocked.",
         category = ToolCategory.EXECUTION,
         sideEffect = ToolSideEffect.WRITE)
-public class GitTool implements ToolHandler {
+public class GitTool implements SyncTool {
 
     private static final Logger log = LoggerFactory.getLogger(GitTool.class);
     private static final int DEFAULT_TIMEOUT_SECONDS = 60;
@@ -91,15 +91,9 @@ public class GitTool implements ToolHandler {
     private String workingDirectory;
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        return doExecute(
-                input, overrideWorkspace != null ? overrideWorkspace : Workspace.cwd().root());
-    }
-
-    @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        Path base = overrideWorkspace != null ? overrideWorkspace : context.workspace().root();
-        return doExecute(input, base);
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        Path root = overrideWorkspace != null ? overrideWorkspace : ctx.workspace().root();
+        return Mono.fromCallable(() -> doExecute(args, root));
     }
 
     private ToolResult doExecute(Map<String, Object> input, Path defaultRoot) {
@@ -155,7 +149,7 @@ public class GitTool implements ToolHandler {
             }
 
             boolean isError = exitCode != 0;
-            return new ToolResult(
+            return ToolResult.of(
                     "git", output, isError, Map.of("exitCode", exitCode, "subcommand", sub));
 
         } catch (IOException | InterruptedException e) {
@@ -186,6 +180,6 @@ public class GitTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("git", msg, true, Map.of());
+        return ToolResult.error("git", msg);
     }
 }

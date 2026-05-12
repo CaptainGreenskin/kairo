@@ -41,7 +41,7 @@ class IdempotencyResolverTest {
     static class IdempotentTool implements ToolHandler {
         @Override
         public ToolResult execute(Map<String, Object> input) {
-            return new ToolResult("id", "result", false, Map.of());
+            return ToolResult.success("id", "result");
         }
     }
 
@@ -49,14 +49,14 @@ class IdempotencyResolverTest {
     static class NonIdempotentTool implements ToolHandler {
         @Override
         public ToolResult execute(Map<String, Object> input) {
-            return new ToolResult("id", "result", false, Map.of());
+            return ToolResult.success("id", "result");
         }
     }
 
     static class UnannotatedTool implements ToolHandler {
         @Override
         public ToolResult execute(Map<String, Object> input) {
-            return new ToolResult("id", "result", false, Map.of());
+            return ToolResult.success("id", "result");
         }
     }
 

@@ -32,6 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class GrepToolTest {
 
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
     private GrepTool tool;
 
     @TempDir Path tempDir;
@@ -46,7 +47,8 @@ class GrepToolTest {
         Files.writeString(
                 tempDir.resolve("hello.txt"), "hello world\ngoodbye world\nhello again\n");
 
-        ToolResult result = tool.execute(Map.of("pattern", "hello", "path", tempDir.toString()));
+        ToolResult result =
+                tool.execute(Map.of("pattern", "hello", "path", tempDir.toString()), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("hello world"));
         assertTrue(result.content().contains("hello again"));
@@ -57,7 +59,8 @@ class GrepToolTest {
     void searchRegexPattern() throws IOException {
         Files.writeString(tempDir.resolve("nums.txt"), "abc123\ndef456\nghi\n");
 
-        ToolResult result = tool.execute(Map.of("pattern", "\\d+", "path", tempDir.toString()));
+        ToolResult result =
+                tool.execute(Map.of("pattern", "\\d+", "path", tempDir.toString()), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("abc123"));
         assertTrue(result.content().contains("def456"));
@@ -67,7 +70,9 @@ class GrepToolTest {
     void noMatchesShouldReturnEmptyResult() throws IOException {
         Files.writeString(tempDir.resolve("data.txt"), "nothing special here\n");
 
-        ToolResult result = tool.execute(Map.of("pattern", "notfound", "path", tempDir.toString()));
+        ToolResult result =
+                tool.execute(Map.of("pattern", "notfound", "path", tempDir.toString()), CTX)
+                        .block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("No matches"));
         assertEquals(0, result.metadata().get("count"));
@@ -80,10 +85,12 @@ class GrepToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "pattern", "print",
-                                "path", tempDir.toString(),
-                                "glob", "*.java"));
+                                Map.of(
+                                        "pattern", "print",
+                                        "path", tempDir.toString(),
+                                        "glob", "*.java"),
+                                CTX)
+                        .block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("code.java"));
         assertFalse(result.content().contains("code.py"));
@@ -91,28 +98,31 @@ class GrepToolTest {
 
     @Test
     void invalidRegexShouldReturnError() {
-        ToolResult result = tool.execute(Map.of("pattern", "[invalid", "path", tempDir.toString()));
+        ToolResult result =
+                tool.execute(Map.of("pattern", "[invalid", "path", tempDir.toString()), CTX)
+                        .block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("Invalid regex"));
     }
 
     @Test
     void invalidDirectoryShouldReturnError() {
-        ToolResult result = tool.execute(Map.of("pattern", "test", "path", "/nonexistent/dir"));
+        ToolResult result =
+                tool.execute(Map.of("pattern", "test", "path", "/nonexistent/dir"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("Not a directory"));
     }
 
     @Test
     void missingPatternParameter() {
-        ToolResult result = tool.execute(Map.of("path", tempDir.toString()));
+        ToolResult result = tool.execute(Map.of("path", tempDir.toString()), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'pattern' is required"));
     }
 
     @Test
     void missingPathParameter() {
-        ToolResult result = tool.execute(Map.of("pattern", "test"));
+        ToolResult result = tool.execute(Map.of("pattern", "test"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'path' is required"));
     }
@@ -128,7 +138,8 @@ class GrepToolTest {
         ToolContext ctx = new ToolContext("a", "s", Map.of(), null, null, ws);
 
         // "docs" is relative — must resolve against workspace root.
-        ToolResult result = tool.execute(Map.of("pattern", "found-me", "path", "docs"), ctx);
+        ToolResult result =
+                tool.execute(Map.of("pattern", "found-me", "path", "docs"), ctx).block();
 
         assertFalse(result.isError(), result.content());
         assertTrue(result.content().contains("found-me"));
@@ -138,7 +149,8 @@ class GrepToolTest {
     void resultIncludesFilePathAndLineNumber() throws IOException {
         Files.writeString(tempDir.resolve("example.txt"), "line one\nfind me\nline three\n");
 
-        ToolResult result = tool.execute(Map.of("pattern", "find me", "path", tempDir.toString()));
+        ToolResult result =
+                tool.execute(Map.of("pattern", "find me", "path", tempDir.toString()), CTX).block();
         assertFalse(result.isError());
         // Format: filepath:lineNumber:lineContent
         assertTrue(result.content().contains(":2:find me"));
@@ -149,7 +161,8 @@ class GrepToolTest {
         Files.writeString(tempDir.resolve("a.txt"), "match here\nno match\nmatch again\n");
         Files.writeString(tempDir.resolve("b.txt"), "another match\n");
 
-        ToolResult result = tool.execute(Map.of("pattern", "match", "path", tempDir.toString()));
+        ToolResult result =
+                tool.execute(Map.of("pattern", "match", "path", tempDir.toString()), CTX).block();
         assertFalse(result.isError());
         assertTrue((int) result.metadata().get("count") >= 3);
         assertTrue(result.content().contains("a.txt"));
@@ -158,7 +171,8 @@ class GrepToolTest {
 
     @Test
     void nestedQuantifierPatternIsRejected() {
-        ToolResult result = tool.execute(Map.of("pattern", "(a+)+", "path", tempDir.toString()));
+        ToolResult result =
+                tool.execute(Map.of("pattern", "(a+)+", "path", tempDir.toString()), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("nested quantifiers"));
     }
@@ -167,7 +181,8 @@ class GrepToolTest {
     void patternLongerThan500CharsIsRejected() {
         String longPattern = "a".repeat(501);
         ToolResult result =
-                tool.execute(Map.of("pattern", longPattern, "path", tempDir.toString()));
+                tool.execute(Map.of("pattern", longPattern, "path", tempDir.toString()), CTX)
+                        .block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("too long"));
     }
@@ -180,7 +195,8 @@ class GrepToolTest {
         Files.writeString(tempDir.resolve("top.txt"), "not-here\n");
 
         ToolResult result =
-                tool.execute(Map.of("pattern", "find-nested", "path", tempDir.toString()));
+                tool.execute(Map.of("pattern", "find-nested", "path", tempDir.toString()), CTX)
+                        .block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("nested.txt"));
     }

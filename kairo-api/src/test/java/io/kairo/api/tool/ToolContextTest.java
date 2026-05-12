@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.tenant.TenantContext;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -71,7 +72,7 @@ class ToolContextTest {
     void legacyFourArgCtorDefaultsTenantToSingle() {
         ToolContext ctx = new ToolContext("a", "s", Map.of(), "idem-1");
         assertSame(TenantContext.SINGLE, ctx.tenant());
-        assertEquals("idem-1", ctx.idempotencyKey());
+        assertEquals(Optional.of("idem-1"), ctx.idempotencyKey());
     }
 
     @Test

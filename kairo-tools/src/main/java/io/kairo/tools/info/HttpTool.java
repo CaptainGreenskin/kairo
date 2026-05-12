@@ -15,10 +15,10 @@
  */
 package io.kairo.tools.info;
 
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
@@ -33,6 +33,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import reactor.core.publisher.Mono;
 
 /**
  * Performs arbitrary HTTP requests using the built-in {@link HttpClient}.
@@ -47,7 +48,7 @@ import java.util.Set;
                         + " custom headers and body. Response body is limited to 100KB.",
         category = ToolCategory.INFORMATION,
         sideEffect = ToolSideEffect.WRITE)
-public class HttpTool implements ToolHandler {
+public class HttpTool implements SyncTool {
 
     static final int DEFAULT_TIMEOUT_SECONDS = 30;
     static final int MAX_BYTES = 100_000;
@@ -93,13 +94,8 @@ public class HttpTool implements ToolHandler {
     private Boolean followRedirects;
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        return doExecute(input);
-    }
-
-    @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        return doExecute(input);
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> doExecute(args));
     }
 
     @SuppressWarnings("unchecked")
@@ -184,7 +180,7 @@ public class HttpTool implements ToolHandler {
             responseHeaders.remove(null);
 
             boolean isError = statusCode < 200 || statusCode >= 300;
-            return new ToolResult(
+            return ToolResult.of(
                     "http_request",
                     responseBody,
                     isError,
@@ -244,6 +240,6 @@ public class HttpTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("http_request", msg, true, Map.of("readOnly", false));
+        return ToolResult.of("http_request", msg, true, Map.of("readOnly", false));
     }
 }

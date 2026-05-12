@@ -72,7 +72,7 @@ class PlanModeIsolationTest {
     }
 
     private ToolHandler echoHandler(String id) {
-        return input -> new ToolResult(id, "result-" + id, false, Map.of());
+        return input -> ToolResult.success(id, "result-" + id);
     }
 
     // ============== Plan Mode Restriction Tests ==============

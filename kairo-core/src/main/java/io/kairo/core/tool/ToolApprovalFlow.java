@@ -84,7 +84,11 @@ public final class ToolApprovalFlow {
                                             + "' requires approval but no handler configured"));
                 }
                 var request =
-                        new ToolCallRequest(invocation.toolName(), invocation.input(), sideEffect);
+                        new ToolCallRequest(
+                                invocation.toolName(),
+                                invocation.input(),
+                                sideEffect,
+                                invocation.toolCallId());
                 yield approvalHandler
                         .requestApproval(request)
                         .flatMap(

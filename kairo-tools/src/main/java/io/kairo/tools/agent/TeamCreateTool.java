@@ -17,12 +17,14 @@ package io.kairo.tools.agent;
 
 import io.kairo.api.team.Team;
 import io.kairo.api.team.TeamManager;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
-import io.kairo.api.tool.ToolHandler;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Creates a new agent team for collaborative work.
@@ -34,7 +36,7 @@ import java.util.Map;
         name = "team_create",
         description = "Create a new agent team for collaborative work.",
         category = ToolCategory.AGENT_AND_TASK)
-public class TeamCreateTool implements ToolHandler {
+public class TeamCreateTool implements SyncTool {
 
     @ToolParam(description = "Name for the team", required = true)
     private String name;
@@ -51,14 +53,18 @@ public class TeamCreateTool implements ToolHandler {
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> executeSync(args, ctx));
+    }
+
+    private ToolResult executeSync(Map<String, Object> input, ToolContext ctx) {
         String name = (String) input.get("name");
         if (name == null || name.isBlank()) {
-            return new ToolResult(null, "Parameter 'name' is required", true, Map.of());
+            return ToolResult.error(null, "Parameter 'name' is required");
         }
 
         Team team = teamManager.create(name);
-        return new ToolResult(
+        return ToolResult.of(
                 null, String.format("Created team '%s'", name), false, Map.of("teamName", name));
     }
 }

@@ -18,6 +18,7 @@ package io.kairo.tools.agent;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.plan.PlanStatus;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.core.plan.PlanFileManager;
 import java.nio.file.Path;
@@ -28,10 +29,16 @@ import org.junit.jupiter.api.io.TempDir;
 
 class ListPlansToolTest {
 
+    private static final ToolContext CTX = new ToolContext("agent-1", "sess-1", Map.of());
+
     @TempDir Path tempDir;
 
     private ListPlansTool tool;
     private PlanFileManager planFileManager;
+
+    private ToolResult exec(Map<String, Object> args) {
+        return tool.execute(args, CTX).block();
+    }
 
     @BeforeEach
     void setUp() {
@@ -41,7 +48,7 @@ class ListPlansToolTest {
 
     @Test
     void noPlanFileManagerConfigured() {
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = exec(Map.of());
         assertTrue(result.isError());
         assertTrue(result.content().contains("PlanFileManager is not configured"));
     }
@@ -50,7 +57,7 @@ class ListPlansToolTest {
     void emptyPlanList() {
         tool.setPlanFileManager(planFileManager);
 
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = exec(Map.of());
         assertFalse(result.isError());
         assertTrue(result.content().contains("No plans found"));
     }
@@ -60,7 +67,7 @@ class ListPlansToolTest {
         planFileManager.createPlan("Deploy to production");
         tool.setPlanFileManager(planFileManager);
 
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = exec(Map.of());
         assertFalse(result.isError());
         assertTrue(result.content().contains("Deploy to production"));
         assertTrue(result.content().contains("DRAFT"));
@@ -74,7 +81,7 @@ class ListPlansToolTest {
         planFileManager.createPlan("Plan C");
         tool.setPlanFileManager(planFileManager);
 
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = exec(Map.of());
         assertFalse(result.isError());
         assertTrue(result.content().contains("Plan A"));
         assertTrue(result.content().contains("Plan B"));
@@ -88,7 +95,7 @@ class ListPlansToolTest {
         planFileManager.updatePlan(plan.id(), "Updated content", PlanStatus.APPROVED);
         tool.setPlanFileManager(planFileManager);
 
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = exec(Map.of());
         assertFalse(result.isError());
         assertTrue(result.content().contains("APPROVED"));
     }
@@ -98,7 +105,7 @@ class ListPlansToolTest {
         planFileManager.createPlan("Some Plan");
         tool.setPlanFileManager(planFileManager);
 
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = exec(Map.of());
         assertFalse(result.isError());
         assertTrue(result.content().contains("ID"));
         assertTrue(result.content().contains("Name"));
@@ -111,7 +118,7 @@ class ListPlansToolTest {
         planFileManager.createPlan("This is a very long plan name that should be truncated");
         tool.setPlanFileManager(planFileManager);
 
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = exec(Map.of());
         assertFalse(result.isError());
         // The truncated name should contain "..."
         assertTrue(result.content().contains("..."));
@@ -125,7 +132,7 @@ class ListPlansToolTest {
         planFileManager.createPlan("New Plan");
         tool.setPlanFileManager(planFileManager);
 
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = exec(Map.of());
         assertFalse(result.isError());
         String content = result.content();
         int newIndex = content.indexOf("New Plan");
@@ -139,7 +146,7 @@ class ListPlansToolTest {
         planFileManager.createPlan("Plan 2");
         tool.setPlanFileManager(planFileManager);
 
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = exec(Map.of());
         assertEquals(2, result.metadata().get("count"));
     }
 }

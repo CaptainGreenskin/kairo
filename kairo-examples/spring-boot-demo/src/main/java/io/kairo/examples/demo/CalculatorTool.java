@@ -66,7 +66,7 @@ public class CalculatorTool implements ToolHandler {
                     (result == Math.floor(result) && !Double.isInfinite(result))
                             ? String.valueOf((long) result)
                             : String.valueOf(result);
-            return new ToolResult(
+            return ToolResult.of(
                     "calculator",
                     expr + " = " + formatted,
                     false,
@@ -145,6 +145,6 @@ public class CalculatorTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("calculator", msg, true, Map.of());
+        return ToolResult.of("calculator", msg, true, Map.of());
     }
 }

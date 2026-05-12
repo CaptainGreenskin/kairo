@@ -86,7 +86,30 @@ class CompactionTrigger {
      * @return Mono&lt;Boolean&gt; — true if compaction occurred
      */
     Mono<Boolean> checkAndCompact(List<Msg> conversationHistory) {
-        if (contextManager == null || !contextManager.needsCompaction(conversationHistory)) {
+        if (contextManager == null) {
+            return Mono.just(false);
+        }
+
+        boolean triggered = contextManager.needsCompaction(conversationHistory);
+        // Always log a decision line so operators can tell compaction is alive even when it
+        // correctly decides NOT to run. Key "COMPACTION_DECISION" is grep-friendly in both
+        // server stdout and browser console logs.
+        float pressure;
+        try {
+            pressure =
+                    contextManager.getTokenBudget() != null
+                            ? contextManager.getTokenBudget().pressure()
+                            : -1f;
+        } catch (RuntimeException e) {
+            pressure = -1f;
+        }
+        log.info(
+                "COMPACTION_DECISION pressure={} messages={} triggered={}",
+                String.format("%.3f", pressure),
+                conversationHistory.size(),
+                triggered);
+
+        if (!triggered) {
             return Mono.just(false);
         }
 

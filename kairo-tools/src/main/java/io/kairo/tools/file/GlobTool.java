@@ -15,18 +15,18 @@
  */
 package io.kairo.tools.file;
 
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
-import io.kairo.api.workspace.Workspace;
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.stream.Collectors;
+import reactor.core.publisher.Mono;
 
 /**
  * Finds files matching a glob pattern within a directory tree.
@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
         name = "glob",
         description = "Find files matching a glob pattern. Useful to discover project structure.",
         category = ToolCategory.FILE_AND_CODE)
-public class GlobTool implements ToolHandler {
+public class GlobTool implements SyncTool {
 
     private static final int MAX_RESULTS = 2000;
     private static final Set<String> SKIP_DIRS =
@@ -59,13 +59,8 @@ public class GlobTool implements ToolHandler {
     private String path;
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        return doExecute(input, Workspace.cwd().root());
-    }
-
-    @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        return doExecute(input, context.workspace().root());
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> doExecute(args, ctx.workspace().root()));
     }
 
     private ToolResult doExecute(Map<String, Object> input, Path workspaceRoot) {
@@ -121,10 +116,9 @@ public class GlobTool implements ToolHandler {
                     });
 
             if (matches.isEmpty()) {
-                return new ToolResult(
+                return ToolResult.success(
                         "glob",
                         "No files matched pattern: " + globPattern,
-                        false,
                         Map.of("count", 0, "pattern", globPattern, "path", searchPath));
             }
 
@@ -134,10 +128,9 @@ public class GlobTool implements ToolHandler {
                 result += "\n... (truncated at " + MAX_RESULTS + " results)";
             }
 
-            return new ToolResult(
+            return ToolResult.success(
                     "glob",
                     result,
-                    false,
                     Map.of(
                             "count",
                             matches.size(),
@@ -154,6 +147,6 @@ public class GlobTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("glob", msg, true, Map.of());
+        return ToolResult.error("glob", msg);
     }
 }

@@ -15,10 +15,10 @@
  */
 package io.kairo.tools.exec;
 
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
@@ -36,6 +36,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Mono;
 
 /**
  * Runs Maven goals and returns structured build results.
@@ -52,7 +53,7 @@ import org.slf4j.LoggerFactory;
                 "Run Maven goals (compile, test, package, etc.) in the workspace and return the build result.",
         category = ToolCategory.EXECUTION,
         sideEffect = ToolSideEffect.SYSTEM_CHANGE)
-public class MvnTool implements ToolHandler {
+public class MvnTool implements SyncTool {
 
     private static final Logger log = LoggerFactory.getLogger(MvnTool.class);
     private static final int DEFAULT_TIMEOUT_SECONDS = 300;
@@ -81,13 +82,8 @@ public class MvnTool implements ToolHandler {
     private Integer timeout;
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        return doExecute(input, null);
-    }
-
-    @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        return doExecute(input, context);
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> doExecute(args, ctx));
     }
 
     @SuppressWarnings("unchecked")
@@ -124,10 +120,9 @@ public class MvnTool implements ToolHandler {
             if (!finished) {
                 process.destroyForcibly();
                 String tail = tailBytes(output);
-                return new ToolResult(
+                return ToolResult.error(
                         "mvn",
                         "Maven timed out after " + timeoutSec + "s.\n\n" + tail,
-                        true,
                         Map.of(
                                 "exitCode",
                                 -1,
@@ -146,7 +141,7 @@ public class MvnTool implements ToolHandler {
             boolean buildSuccess = exitCode == 0;
             List<String> failedTests = parseFailedTests(outputStr);
 
-            return new ToolResult(
+            return ToolResult.of(
                     "mvn",
                     outputStr,
                     !buildSuccess,
@@ -247,6 +242,6 @@ public class MvnTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("mvn", msg, true, Map.of("buildSuccess", false));
+        return ToolResult.of("mvn", msg, true, Map.of("buildSuccess", false));
     }
 }

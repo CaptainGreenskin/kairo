@@ -125,7 +125,7 @@ class CancellationE2ETest {
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
-                    return new ToolResult("slow_tool", "should not reach", false, Map.of());
+                    return ToolResult.success("slow_tool", "should not reach");
                 });
 
         AtomicBoolean cancelled = new AtomicBoolean(false);
@@ -151,7 +151,7 @@ class CancellationE2ETest {
                 "any_tool",
                 input -> {
                     fail("Tool should not execute when pre-cancelled");
-                    return new ToolResult("any_tool", "nope", false, Map.of());
+                    return ToolResult.success("any_tool", "nope");
                 });
 
         CancellationSignal alreadyCancelled = () -> true;
@@ -205,8 +205,7 @@ class CancellationE2ETest {
     @Test
     void noCancellation_toolCompletesNormally() {
         registerToolHandler(
-                "echo",
-                input -> new ToolResult("echo", "echoed: " + input.get("msg"), false, Map.of()));
+                "echo", input -> ToolResult.success("echo", "echoed: " + input.get("msg")));
 
         CancellationSignal neverCancelled = () -> false;
 
@@ -246,7 +245,7 @@ class CancellationE2ETest {
                             } catch (InterruptedException e) {
                                 Thread.currentThread().interrupt();
                             }
-                            return new ToolResult("delay_tool", "done", false, Map.of());
+                            return ToolResult.success("delay_tool", "done");
                         });
 
         AtomicBoolean cancelled = new AtomicBoolean(false);
@@ -300,12 +299,13 @@ class CancellationE2ETest {
                                     } catch (InterruptedException e) {
                                         Thread.currentThread().interrupt();
                                     }
-                                    return new ToolResult(toolName, "done", false, Map.of());
+                                    return ToolResult.success(toolName, "done");
                                 });
 
                 AtomicBoolean cancelled = new AtomicBoolean(false);
                 CancellationSignal signal = cancelled::get;
                 CountDownLatch startLatch = new CountDownLatch(1);
+                CountDownLatch doneLatch = new CountDownLatch(1);
                 AtomicInteger completed = new AtomicInteger(0);
                 AtomicInteger errors = new AtomicInteger(0);
 
@@ -328,6 +328,8 @@ class CancellationE2ETest {
                             } catch (Exception e) {
                                 // Either AgentInterruptedException or timeout — both acceptable
                                 errors.incrementAndGet();
+                            } finally {
+                                doneLatch.countDown();
                             }
                         });
 
@@ -336,7 +338,7 @@ class CancellationE2ETest {
                         () -> {
                             try {
                                 startLatch.await();
-                                Thread.sleep(100); // brief delay before cancel
+                                Thread.sleep(50); // brief delay before cancel
                                 cancelled.set(true);
                             } catch (InterruptedException e) {
                                 Thread.currentThread().interrupt();
@@ -346,8 +348,10 @@ class CancellationE2ETest {
                 // Release both threads simultaneously
                 startLatch.countDown();
 
-                // Wait for completion with a generous timeout to detect deadlock
-                Thread.sleep(2000);
+                // Wait for executor thread to finish (or hit its own 5s block timeout)
+                assertTrue(
+                        doneLatch.await(6, TimeUnit.SECONDS),
+                        "Iteration " + iter + ": executor did not terminate (possible deadlock)");
 
                 // Verify: either completed or got a cancellation error — no deadlock
                 assertTrue(

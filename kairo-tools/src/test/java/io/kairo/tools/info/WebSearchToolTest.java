@@ -41,6 +41,8 @@ import org.junit.jupiter.api.Test;
 
 class WebSearchToolTest {
 
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
+
     private static HttpServer server;
     private static int port;
     private static String baseUrl;
@@ -197,7 +199,7 @@ class WebSearchToolTest {
     void normalSearchReturnsResults() {
         WebSearchTool tool = tool();
         ToolResult result =
-                tool.execute(Map.of("query", "Java 21 features"), toolContext("test-key"));
+                tool.execute(Map.of("query", "Java 21 features"), toolContext("test-key")).block();
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("Answer");
         assertThat(result.content()).contains("AI-generated answer");
@@ -213,7 +215,7 @@ class WebSearchToolTest {
     @Test
     void queryMissingReturnsError() {
         WebSearchTool tool = tool();
-        ToolResult result = tool.execute(Map.of(), toolContext("test-key"));
+        ToolResult result = tool.execute(Map.of(), toolContext("test-key")).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("query");
     }
@@ -221,7 +223,7 @@ class WebSearchToolTest {
     @Test
     void queryBlankReturnsError() {
         WebSearchTool tool = tool();
-        ToolResult result = tool.execute(Map.of("query", "   "), toolContext("test-key"));
+        ToolResult result = tool.execute(Map.of("query", "   "), toolContext("test-key")).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("query");
     }
@@ -229,7 +231,7 @@ class WebSearchToolTest {
     @Test
     void apiKeyNotConfiguredReturnsError() {
         WebSearchTool tool = tool();
-        ToolResult result = tool.execute(Map.of("query", "test"));
+        ToolResult result = tool.execute(Map.of("query", "test"), CTX).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("TAVILY_API_KEY");
     }
@@ -238,7 +240,7 @@ class WebSearchToolTest {
     void apiKeyBlankReturnsError() {
         WebSearchTool tool = tool();
         ToolContext ctx = toolContext("   ");
-        ToolResult result = tool.execute(Map.of("query", "test"), ctx);
+        ToolResult result = tool.execute(Map.of("query", "test"), ctx).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("TAVILY_API_KEY");
     }
@@ -247,7 +249,8 @@ class WebSearchToolTest {
     void unauthorizedReturnsError() {
         scenario.set("unauthorized");
         WebSearchTool tool = tool();
-        ToolResult result = tool.execute(Map.of("query", "test"), toolContext("invalid-key"));
+        ToolResult result =
+                tool.execute(Map.of("query", "test"), toolContext("invalid-key")).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("401");
     }
@@ -256,7 +259,7 @@ class WebSearchToolTest {
     void rateLimitReturnsErrorWithStatusCode() {
         scenario.set("ratelimit");
         WebSearchTool tool = tool();
-        ToolResult result = tool.execute(Map.of("query", "test"), toolContext("test-key"));
+        ToolResult result = tool.execute(Map.of("query", "test"), toolContext("test-key")).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("429");
     }
@@ -265,7 +268,8 @@ class WebSearchToolTest {
     void emptyResultsReturnsNotErrorWithNoResults() {
         scenario.set("empty");
         WebSearchTool tool = tool();
-        ToolResult result = tool.execute(Map.of("query", "obscure query"), toolContext("test-key"));
+        ToolResult result =
+                tool.execute(Map.of("query", "obscure query"), toolContext("test-key")).block();
         assertThat(result.isError()).isFalse();
         @SuppressWarnings("unchecked")
         List<Map<String, String>> results =
@@ -279,7 +283,9 @@ class WebSearchToolTest {
         WebSearchTool tool = tool();
         ToolResult result =
                 tool.execute(
-                        Map.of("query", "test query", "maxResults", 2), toolContext("test-key"));
+                                Map.of("query", "test query", "maxResults", 2),
+                                toolContext("test-key"))
+                        .block();
         assertThat(result.isError()).isFalse();
         @SuppressWarnings("unchecked")
         List<Map<String, String>> results =
@@ -290,7 +296,7 @@ class WebSearchToolTest {
     @Test
     void searchResultsCorrectlyParseTitleUrlContent() {
         WebSearchTool tool = tool();
-        ToolResult result = tool.execute(Map.of("query", "test"), toolContext("test-key"));
+        ToolResult result = tool.execute(Map.of("query", "test"), toolContext("test-key")).block();
         assertThat(result.isError()).isFalse();
         @SuppressWarnings("unchecked")
         List<Map<String, String>> results =
@@ -306,7 +312,7 @@ class WebSearchToolTest {
     void nonJsonResponseReturnsError() {
         scenario.set("nonjson");
         WebSearchTool tool = tool();
-        ToolResult result = tool.execute(Map.of("query", "test"), toolContext("test-key"));
+        ToolResult result = tool.execute(Map.of("query", "test"), toolContext("test-key")).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("failed");
     }
@@ -315,7 +321,8 @@ class WebSearchToolTest {
     void searchUsesToolContextApiKey() {
         WebSearchTool tool = tool();
         ToolResult result =
-                tool.execute(Map.of("query", "context key test"), toolContext("ctx-api-key"));
+                tool.execute(Map.of("query", "context key test"), toolContext("ctx-api-key"))
+                        .block();
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("Answer");
     }
@@ -326,7 +333,8 @@ class WebSearchToolTest {
         HttpClient shortTimeoutClient =
                 HttpClient.newBuilder().connectTimeout(Duration.ofMillis(500)).build();
         WebSearchTool tool = toolWithClient(shortTimeoutClient);
-        ToolResult result = tool.execute(Map.of("query", "slow query"), toolContext("test-key"));
+        ToolResult result =
+                tool.execute(Map.of("query", "slow query"), toolContext("test-key")).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("Tavily API call failed");
     }

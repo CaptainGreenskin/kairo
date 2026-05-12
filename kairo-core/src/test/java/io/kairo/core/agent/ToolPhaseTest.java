@@ -77,6 +77,7 @@ class ToolPhaseTest {
                 shutdownManager,
                 null,
                 null,
+                null,
                 null);
     }
 

@@ -248,7 +248,8 @@ class GithubToolTest {
                                         "action", "list_issues",
                                         "owner", "test-org",
                                         "repo", "test-repo"),
-                                contextWithToken("test-token"));
+                                contextWithToken("test-token"))
+                        .block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("\"id\":1"));
@@ -284,7 +285,8 @@ class GithubToolTest {
                                         "repo", "test-repo",
                                         "title", "New Issue",
                                         "body", "Description here"),
-                                contextWithToken("test-token"));
+                                contextWithToken("test-token"))
+                        .block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("\"id\":3"));
@@ -310,7 +312,8 @@ class GithubToolTest {
                                         "action", "list_prs",
                                         "owner", "test-org",
                                         "repo", "test-repo"),
-                                contextWithToken("test-token"));
+                                contextWithToken("test-token"))
+                        .block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("\"id\":10"));
@@ -337,7 +340,8 @@ class GithubToolTest {
                                         "owner", "test-org",
                                         "repo", "test-repo",
                                         "issue_number", 10),
-                                contextWithToken("test-token"));
+                                contextWithToken("test-token"))
+                        .block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("\"id\":10"));
@@ -367,7 +371,8 @@ class GithubToolTest {
                                         "repo", "test-repo",
                                         "issue_number", 1,
                                         "body", "Great fix!"),
-                                contextWithToken("test-token"));
+                                contextWithToken("test-token"))
+                        .block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("\"id\":100"));
@@ -386,7 +391,8 @@ class GithubToolTest {
                                         "action", "list_issues",
                                         "owner", "test-org",
                                         "repo", "test-repo"),
-                                contextWithoutToken());
+                                contextWithoutToken())
+                        .block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("GITHUB_TOKEN"));
@@ -411,7 +417,8 @@ class GithubToolTest {
                                         "owner", "test-org",
                                         "repo", "test-repo",
                                         "issue_number", 999),
-                                contextWithToken("test-token"));
+                                contextWithToken("test-token"))
+                        .block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("404"));
@@ -439,7 +446,8 @@ class GithubToolTest {
                                         "owner", "test-org",
                                         "repo", "test-repo",
                                         "title", "Test"),
-                                contextWithToken("test-token"));
+                                contextWithToken("test-token"))
+                        .block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("422"));
@@ -457,7 +465,8 @@ class GithubToolTest {
                                         "action", "delete_repo",
                                         "owner", "test-org",
                                         "repo", "test-repo"),
-                                contextWithToken("test-token"));
+                                contextWithToken("test-token"))
+                        .block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("Unknown action"));
@@ -489,7 +498,8 @@ class GithubToolTest {
                                         "head", "new-branch",
                                         "base", "main",
                                         "body", "PR description"),
-                                contextWithToken("test-token"));
+                                contextWithToken("test-token"))
+                        .block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("\"id\":11"));
@@ -516,7 +526,8 @@ class GithubToolTest {
                                 "owner", "test-org",
                                 "repo", "test-repo",
                                 "state", "closed"),
-                        contextWithToken("test-token"));
+                        contextWithToken("test-token"))
+                .block();
 
         String query = capturedUri.get().getQuery();
         assertNotNull(query);
@@ -537,6 +548,7 @@ class GithubToolTest {
                                                 "action", "create_issue",
                                                 "owner", "test-org",
                                                 "repo", "test-repo"),
-                                        contextWithToken("test-token")));
+                                        contextWithToken("test-token"))
+                                .block());
     }
 }

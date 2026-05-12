@@ -215,4 +215,37 @@ class AgentBuilderTest {
         // Should keep the explicit context manager, not replace with DefaultContextManager
         assertSame(explicitCm, reactAgent.getContextManager());
     }
+
+    // ==================== SHARED TOKEN BUDGET MANAGER ====================
+
+    @Test
+    void compactionThresholds_sharesTokenBudgetManagerWithContextManager() {
+        ModelProvider provider = mock(ModelProvider.class);
+        CompactionThresholds thresholds =
+                CompactionThresholds.builder().triggerPressure(0.80f).build();
+
+        Agent agent =
+                AgentBuilder.create()
+                        .name("shared-budget-agent")
+                        .model(provider)
+                        .modelName("gpt-4o")
+                        .compactionThresholds(thresholds)
+                        .build();
+
+        assertNotNull(agent);
+        DefaultReActAgent reactAgent = (DefaultReActAgent) agent;
+
+        // contextManager must be a DefaultContextManager (auto-created by builder)
+        assertInstanceOf(DefaultContextManager.class, reactAgent.getContextManager());
+        DefaultContextManager dcm = (DefaultContextManager) reactAgent.getContextManager();
+
+        // The TokenBudgetManager used by IterationGuards (via ReActLoopContext) must be
+        // the SAME instance as the one inside DefaultContextManager, so that API-reported
+        // token usage drives compaction pressure correctly.
+        assertSame(
+                dcm.getTokenBudgetManager(),
+                reactAgent.getTokenBudgetManager(),
+                "IterationGuards and DefaultContextManager must share the same "
+                        + "TokenBudgetManager instance to prevent compaction from never triggering");
+    }
 }

@@ -15,7 +15,8 @@
  */
 package io.kairo.mcp;
 
-import io.kairo.api.tool.ToolHandler;
+import io.kairo.api.tool.SyncTool;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import io.modelcontextprotocol.client.McpAsyncClient;
 import io.modelcontextprotocol.spec.McpSchema;
@@ -40,7 +41,7 @@ import reactor.util.retry.RetryBackoffSpec;
  * <p>This class bridges Kairo's tool execution model with the MCP protocol. It supports preset
  * arguments that are merged with each invocation's input (input takes precedence).
  */
-public class McpToolExecutor implements ToolHandler {
+public class McpToolExecutor implements SyncTool {
 
     private static final Logger logger = LoggerFactory.getLogger(McpToolExecutor.class);
     private static final Duration DEFAULT_EXECUTION_TIMEOUT = Duration.ofSeconds(30);
@@ -136,7 +137,7 @@ public class McpToolExecutor implements ToolHandler {
                                             ? e.getMessage()
                                             : e.getClass().getSimpleName();
                             return Mono.just(
-                                    new ToolResult(
+                                    ToolResult.of(
                                             toolUseId,
                                             "MCP tool error: " + errorMsg,
                                             true,
@@ -144,14 +145,18 @@ public class McpToolExecutor implements ToolHandler {
                         });
     }
 
+    @Override
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return execute(args, "");
+    }
+
     /**
-     * Synchronous execution for use with Kairo's {@code ToolHandler} interface.
+     * Synchronous execution for backward-compatibility.
      *
      * @param input the input parameters
      * @return the tool result
      */
-    @Override
-    public ToolResult execute(Map<String, Object> input) {
+    public ToolResult executeBlocking(Map<String, Object> input) {
         return executeSync(input);
     }
 

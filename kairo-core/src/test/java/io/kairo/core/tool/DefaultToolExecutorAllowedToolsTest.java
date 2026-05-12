@@ -66,9 +66,8 @@ class DefaultToolExecutorAllowedToolsTest {
         registry.register(def);
         ToolHandler handler = mock(ToolHandler.class);
         try {
-            when(handler.execute(any())).thenReturn(new ToolResult(name, "ok", false, Map.of()));
-            when(handler.execute(any(), any()))
-                    .thenReturn(new ToolResult(name, "ok", false, Map.of()));
+            when(handler.execute(any())).thenReturn(ToolResult.success(name, "ok"));
+            when(handler.execute(any(), any())).thenReturn(ToolResult.success(name, "ok"));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

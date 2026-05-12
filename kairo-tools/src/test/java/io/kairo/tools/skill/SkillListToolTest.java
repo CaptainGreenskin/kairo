@@ -21,6 +21,7 @@ import static org.mockito.Mockito.*;
 import io.kairo.api.skill.SkillCategory;
 import io.kairo.api.skill.SkillDefinition;
 import io.kairo.api.skill.SkillRegistry;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +29,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class SkillListToolTest {
+
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
 
     private SkillRegistry registry;
     private SkillListTool tool;
@@ -58,7 +61,7 @@ class SkillListToolTest {
                                 SkillCategory.DEVOPS));
         when(registry.list()).thenReturn(skills);
 
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = tool.execute(Map.of(), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("## Available Skills"));
         assertTrue(result.content().contains("- **commit**"));
@@ -70,7 +73,7 @@ class SkillListToolTest {
     void listEmptyRegistry() {
         when(registry.list()).thenReturn(List.of());
 
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = tool.execute(Map.of(), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("No skills registered"));
     }
@@ -82,14 +85,14 @@ class SkillListToolTest {
                         "lint", "1.0", "Linter", "instr", List.of(), SkillCategory.CODE);
         when(registry.listByCategory(SkillCategory.CODE)).thenReturn(List.of(codeSkill));
 
-        ToolResult result = tool.execute(Map.of("category", "CODE"));
+        ToolResult result = tool.execute(Map.of("category", "CODE"), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("lint"));
     }
 
     @Test
     void listWithInvalidCategoryFilter() {
-        ToolResult result = tool.execute(Map.of("category", "INVALID"));
+        ToolResult result = tool.execute(Map.of("category", "INVALID"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("Unknown category"));
     }
@@ -106,7 +109,7 @@ class SkillListToolTest {
                                 "c", "1.0", "desc c", "instr", List.of(), SkillCategory.TESTING));
         when(registry.list()).thenReturn(skills);
 
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = tool.execute(Map.of(), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("CODE"));
         assertTrue(result.content().contains("TESTING"));
@@ -122,7 +125,7 @@ class SkillListToolTest {
 
         // Default budget is large enough for Level 1 with a single skill,
         // but the description should still appear (possibly full at Level 1)
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = tool.execute(Map.of(), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("**verbose**"));
     }
@@ -155,7 +158,7 @@ class SkillListToolTest {
         when(registry.list()).thenReturn(skills);
 
         // Very tight budget should trigger degradation
-        ToolResult result = tool.execute(Map.of("budget", 200));
+        ToolResult result = tool.execute(Map.of("budget", 200), CTX).block();
         assertFalse(result.isError());
         // Level 3 minimal format: name + category bracket
         assertTrue(result.content().contains("[CODE]") || result.content().contains("..."));
@@ -167,10 +170,15 @@ class SkillListToolTest {
         List<SkillDefinition> skills =
                 List.of(
                         new SkillDefinition(
-                                "all-skill", "1.0", "desc", "instr", List.of(), SkillCategory.CODE));
+                                "all-skill",
+                                "1.0",
+                                "desc",
+                                "instr",
+                                List.of(),
+                                SkillCategory.CODE));
         when(registry.list()).thenReturn(skills);
 
-        ToolResult result = tool.execute(Map.of("category", "  "));
+        ToolResult result = tool.execute(Map.of("category", "  "), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("all-skill"));
     }
@@ -189,7 +197,7 @@ class SkillListToolTest {
         when(registry.list()).thenReturn(skills);
 
         // Budget passed as String instead of Integer
-        ToolResult result = tool.execute(Map.of("budget", "500"));
+        ToolResult result = tool.execute(Map.of("budget", "500"), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("str-budget"));
     }
@@ -208,7 +216,7 @@ class SkillListToolTest {
         when(registry.list()).thenReturn(skills);
 
         // Invalid budget string should fall back to default
-        ToolResult result = tool.execute(Map.of("budget", "not-a-number"));
+        ToolResult result = tool.execute(Map.of("budget", "not-a-number"), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("default-budget"));
     }
@@ -221,7 +229,7 @@ class SkillListToolTest {
         when(registry.listByCategory(SkillCategory.CODE)).thenReturn(List.of(codeSkill));
 
         // lowercase "code" should be converted to CODE
-        ToolResult result = tool.execute(Map.of("category", "code"));
+        ToolResult result = tool.execute(Map.of("category", "code"), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("lower-case"));
     }

@@ -121,7 +121,7 @@ class CrashRecoveryE2ETest {
         class SearchTool implements ToolHandler {
             @Override
             public ToolResult execute(Map<String, Object> input) {
-                return new ToolResult("t1", "search result", false, Map.of());
+                return ToolResult.success("t1", "search result");
             }
         }
 
@@ -179,7 +179,7 @@ class CrashRecoveryE2ETest {
         class SendEmailTool implements ToolHandler {
             @Override
             public ToolResult execute(Map<String, Object> input) {
-                return new ToolResult("t1", "email sent", false, Map.of());
+                return ToolResult.success("t1", "email sent");
             }
         }
         assertEquals(
@@ -206,7 +206,7 @@ class CrashRecoveryE2ETest {
         class MysteryTool implements ToolHandler {
             @Override
             public ToolResult execute(Map<String, Object> input) {
-                return new ToolResult("t1", "mystery result", false, Map.of());
+                return ToolResult.success("t1", "mystery result");
             }
         }
 

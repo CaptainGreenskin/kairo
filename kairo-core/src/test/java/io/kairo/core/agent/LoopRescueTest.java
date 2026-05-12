@@ -84,6 +84,7 @@ class LoopRescueTest {
                 shutdownManager,
                 null,
                 null,
+                null,
                 null);
     }
 

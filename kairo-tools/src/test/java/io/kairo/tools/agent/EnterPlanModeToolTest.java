@@ -17,6 +17,8 @@ package io.kairo.tools.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.kairo.api.tool.ToolContext;
+import io.kairo.api.tool.ToolResult;
 import io.kairo.core.plan.PlanFileManager;
 import java.nio.file.Path;
 import java.util.Map;
@@ -24,6 +26,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class EnterPlanModeToolTest {
+
+    private static final ToolContext CTX = new ToolContext("agent-1", "sess-1", Map.of());
 
     @TempDir Path workDir;
 
@@ -35,22 +39,26 @@ class EnterPlanModeToolTest {
         return new PlanFileManager(workDir);
     }
 
+    private ToolResult exec(EnterPlanModeTool t, Map<String, Object> args) {
+        return t.execute(args, CTX).block();
+    }
+
     @Test
     void withoutDependenciesEntersPlanMode() {
-        var result = tool().execute(Map.of());
+        var result = exec(tool(), Map.of());
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("Entered Plan Mode");
     }
 
     @Test
     void metadataModeIsPlan() {
-        var result = tool().execute(Map.of());
+        var result = exec(tool(), Map.of());
         assertThat(result.metadata()).containsEntry("mode", "plan");
     }
 
     @Test
     void noPlanIdInMetadataWhenNoPlanFileManager() {
-        var result = tool().execute(Map.of());
+        var result = exec(tool(), Map.of());
         assertThat(result.metadata()).doesNotContainKey("planId");
     }
 
@@ -58,7 +66,7 @@ class EnterPlanModeToolTest {
     void noNameParameterCreatesUntitledPlan() {
         var t = tool();
         t.setPlanFileManager(planFileManager());
-        var result = t.execute(Map.of());
+        var result = exec(t, Map.of());
 
         assertThat(result.isError()).isFalse();
         assertThat(result.metadata()).containsKey("planId");
@@ -71,7 +79,7 @@ class EnterPlanModeToolTest {
     void nameParameterIsUsedForPlan() {
         var t = tool();
         t.setPlanFileManager(planFileManager());
-        var result = t.execute(Map.of("name", "Refactor Auth"));
+        var result = exec(t, Map.of("name", "Refactor Auth"));
 
         assertThat(result.isError()).isFalse();
         assertThat(result.metadata()).containsKey("planId");
@@ -87,7 +95,7 @@ class EnterPlanModeToolTest {
     void planIdAppearsInMetadataWhenManagerIsSet() {
         var t = tool();
         t.setPlanFileManager(planFileManager());
-        var result = t.execute(Map.of("name", "Test Plan"));
+        var result = exec(t, Map.of("name", "Test Plan"));
 
         String planId = (String) result.metadata().get("planId");
         assertThat(planId).isNotNull().isNotBlank();
@@ -96,7 +104,7 @@ class EnterPlanModeToolTest {
 
     @Test
     void contentMentionsBlockedWriteTools() {
-        var result = tool().execute(Map.of());
+        var result = exec(tool(), Map.of());
         assertThat(result.content()).containsIgnoringCase("write");
     }
 }

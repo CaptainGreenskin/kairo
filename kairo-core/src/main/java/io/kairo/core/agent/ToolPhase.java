@@ -363,10 +363,7 @@ class ToolPhase {
 
     private List<ToolResult> noToolExecutorResults(List<Content.ToolUseContent> toolCalls) {
         return toolCalls.stream()
-                .map(
-                        tc ->
-                                new ToolResult(
-                                        tc.toolId(), "No tool executor configured", true, Map.of()))
+                .map(tc -> ToolResult.error(tc.toolId(), "No tool executor configured"))
                 .toList();
     }
 
@@ -425,7 +422,12 @@ class ToolPhase {
         // Build invocations for parallel dispatch.
         List<ToolInvocation> invocations =
                 executablePlans.stream()
-                        .map(p -> new ToolInvocation(p.plan().toolName(), p.plan().input()))
+                        .map(
+                                p ->
+                                        new ToolInvocation(
+                                                p.plan().toolName(),
+                                                p.plan().input(),
+                                                p.toolCall().toolId()))
                         .toList();
 
         // Use executeParallel with cooperative cancellation so interrupt signals terminate tools.
@@ -443,7 +445,7 @@ class ToolPhase {
                                     result = execResults.get(execIdx++);
                                     // Replace toolUseId with the original tool call's ID.
                                     result =
-                                            new ToolResult(
+                                            ToolResult.of(
                                                     ip.toolCall().toolId(),
                                                     result.content(),
                                                     result.isError(),
@@ -468,10 +470,9 @@ class ToolPhase {
                                 IndexedPlan ip = plans.get(i);
                                 if (ip.plan().shouldExecute()) {
                                     errorResults.add(
-                                            new ToolResult(
+                                            ToolResult.error(
                                                     ip.toolCall().toolId(),
                                                     "Error executing tool: " + e.getMessage(),
-                                                    true,
                                                     Map.of(
                                                             "error_code", "tool_execution_failed",
                                                             "error_type",
@@ -659,26 +660,23 @@ class ToolPhase {
     }
 
     private ToolResult blockedByHookToolResult(String toolUseId, String reason) {
-        return new ToolResult(
+        return ToolResult.error(
                 toolUseId,
                 "Tool execution blocked by hook: " + (reason != null ? reason : "no reason given"),
-                true,
                 Map.of("error_code", "tool_blocked_by_hook"));
     }
 
     private ToolResult skippedByHookToolResult(String toolUseId) {
-        return new ToolResult(
+        return ToolResult.success(
                 toolUseId,
                 "Tool execution skipped by hook",
-                false,
                 Map.of("skipped_by_hook", true, "result_code", "tool_skipped_by_hook"));
     }
 
     private ToolResult cancelledByHookToolResult(String toolUseId) {
-        return new ToolResult(
+        return ToolResult.error(
                 toolUseId,
                 "Tool execution cancelled by hook",
-                true,
                 Map.of("error_code", "tool_cancelled_by_hook"));
     }
 
@@ -691,7 +689,7 @@ class ToolPhase {
                 .transform(guards::withCooperativeCancellation)
                 .map(
                         result ->
-                                new ToolResult(
+                                ToolResult.of(
                                         toolUseId,
                                         result.content(),
                                         result.isError(),
@@ -703,10 +701,9 @@ class ToolPhase {
                             }
                             log.error("Tool '{}' execution failed: {}", toolName, e.getMessage());
                             return Mono.just(
-                                    new ToolResult(
+                                    ToolResult.error(
                                             toolUseId,
                                             "Error executing tool: " + e.getMessage(),
-                                            true,
                                             Map.of(
                                                     "error_code",
                                                     "tool_execution_failed",

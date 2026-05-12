@@ -137,10 +137,7 @@ class DefaultReActAgentIT {
         toolRegistry.register(echo);
         toolRegistry.registerInstance(
                 "echo",
-                (ToolHandler)
-                        input ->
-                                new ToolResult(
-                                        "echo", "echoed:" + input.get("text"), false, Map.of()));
+                (ToolHandler) input -> ToolResult.success("echo", "echoed:" + input.get("text")));
     }
 
     // ---- Test scenarios ----

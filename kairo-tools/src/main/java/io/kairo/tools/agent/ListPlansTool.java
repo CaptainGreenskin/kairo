@@ -16,9 +16,10 @@
 package io.kairo.tools.agent;
 
 import io.kairo.api.plan.PlanFile;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
-import io.kairo.api.tool.ToolHandler;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
 import io.kairo.core.plan.PlanFileManager;
@@ -26,6 +27,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Lists all saved plans with their status.
@@ -38,7 +40,7 @@ import java.util.Map;
         description = "List all saved plans with their status",
         category = ToolCategory.AGENT_AND_TASK,
         sideEffect = ToolSideEffect.READ_ONLY)
-public class ListPlansTool implements ToolHandler {
+public class ListPlansTool implements SyncTool {
 
     private static final DateTimeFormatter FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
@@ -58,14 +60,18 @@ public class ListPlansTool implements ToolHandler {
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> executeSync(args, ctx));
+    }
+
+    private ToolResult executeSync(Map<String, Object> input, ToolContext ctx) {
         if (planFileManager == null) {
-            return new ToolResult(null, "PlanFileManager is not configured.", true, Map.of());
+            return ToolResult.error(null, "PlanFileManager is not configured.");
         }
 
         List<PlanFile> plans = planFileManager.listPlans();
         if (plans.isEmpty()) {
-            return new ToolResult(null, "No plans found.", false, Map.of());
+            return ToolResult.success(null, "No plans found.");
         }
 
         var sb = new StringBuilder();
@@ -81,7 +87,7 @@ public class ListPlansTool implements ToolHandler {
                             FORMATTER.format(plan.createdAt())));
         }
 
-        return new ToolResult(null, sb.toString(), false, Map.of("count", plans.size()));
+        return ToolResult.success(null, sb.toString(), Map.of("count", plans.size()));
     }
 
     private static String truncate(String str, int maxLen) {

@@ -15,9 +15,10 @@
  */
 package io.kairo.tools.info;
 
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
-import io.kairo.api.tool.ToolHandler;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import java.io.BufferedReader;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Mono;
 
 /**
  * Asks the user a question to get clarification or additional input.
@@ -39,7 +41,7 @@ import org.slf4j.LoggerFactory;
         description =
                 "Ask the user a question to get clarification or input. Use when you need user decision or additional information.",
         category = ToolCategory.INFORMATION)
-public class AskUserTool implements ToolHandler {
+public class AskUserTool implements SyncTool {
 
     private static final Logger log = LoggerFactory.getLogger(AskUserTool.class);
 
@@ -50,8 +52,12 @@ public class AskUserTool implements ToolHandler {
     private List<String> options;
 
     @Override
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> executeSync(args, ctx));
+    }
+
     @SuppressWarnings("unchecked")
-    public ToolResult execute(Map<String, Object> input) {
+    private ToolResult executeSync(Map<String, Object> input, ToolContext ctx) {
         String question = (String) input.get("question");
         if (question == null || question.isBlank()) {
             return error("Parameter 'question' is required");
@@ -91,7 +97,7 @@ public class AskUserTool implements ToolHandler {
             String userInput = reader.readLine();
 
             if (userInput == null || userInput.isBlank()) {
-                return new ToolResult(
+                return ToolResult.of(
                         "ask_user", "(no response)", false, Map.of("question", question));
             }
 
@@ -101,10 +107,9 @@ public class AskUserTool implements ToolHandler {
                     int choice = Integer.parseInt(userInput.trim());
                     if (choice >= 1 && choice <= optionsList.size()) {
                         String selected = optionsList.get(choice - 1);
-                        return new ToolResult(
+                        return ToolResult.success(
                                 "ask_user",
                                 selected,
-                                false,
                                 Map.of("question", question, "selectedIndex", choice));
                     }
                 } catch (NumberFormatException ignored) {
@@ -112,8 +117,7 @@ public class AskUserTool implements ToolHandler {
                 }
             }
 
-            return new ToolResult(
-                    "ask_user", userInput.trim(), false, Map.of("question", question));
+            return ToolResult.of("ask_user", userInput.trim(), false, Map.of("question", question));
 
         } catch (Exception e) {
             log.error("Failed to get user input", e);
@@ -122,6 +126,6 @@ public class AskUserTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("ask_user", msg, true, Map.of());
+        return ToolResult.error("ask_user", msg);
     }
 }

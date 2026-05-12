@@ -18,6 +18,7 @@ package io.kairo.tools.info;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sun.net.httpserver.HttpServer;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -29,6 +30,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 class WebFetchToolTest {
+
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
 
     private static HttpServer server;
     private static int port;
@@ -115,7 +118,7 @@ class WebFetchToolTest {
 
     @Test
     void successfulTextFetch() {
-        ToolResult result = tool().execute(Map.of("url", baseUrl + "/hello"));
+        ToolResult result = tool().execute(Map.of("url", baseUrl + "/hello"), CTX).block();
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).isEqualTo("Hello, World!");
         assertThat(result.metadata()).containsEntry("statusCode", 200);
@@ -123,28 +126,29 @@ class WebFetchToolTest {
 
     @Test
     void jsonContentTypeAccepted() {
-        ToolResult result = tool().execute(Map.of("url", baseUrl + "/json"));
+        ToolResult result = tool().execute(Map.of("url", baseUrl + "/json"), CTX).block();
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("\"key\"");
     }
 
     @Test
     void binaryContentRejected() {
-        ToolResult result = tool().execute(Map.of("url", baseUrl + "/binary"));
+        ToolResult result = tool().execute(Map.of("url", baseUrl + "/binary"), CTX).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("non-text content");
     }
 
     @Test
     void httpErrorStatusIsError() {
-        ToolResult result = tool().execute(Map.of("url", baseUrl + "/notfound"));
+        ToolResult result = tool().execute(Map.of("url", baseUrl + "/notfound"), CTX).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.metadata()).containsEntry("statusCode", 404);
     }
 
     @Test
     void nonHttpUrlRejected() {
-        ToolResult result = tool().execute(Map.of("url", "ftp://example.com/file.txt"));
+        ToolResult result =
+                tool().execute(Map.of("url", "ftp://example.com/file.txt"), CTX).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("http:// or https://");
     }
@@ -153,7 +157,9 @@ class WebFetchToolTest {
     void ssrfProtectionBlocksLocalhostByDefault() {
         WebFetchTool productionTool = new WebFetchTool();
         ToolResult result =
-                productionTool.execute(Map.of("url", "http://localhost:" + port + "/hello"));
+                productionTool
+                        .execute(Map.of("url", "http://localhost:" + port + "/hello"), CTX)
+                        .block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("SSRF protection");
     }
@@ -162,14 +168,17 @@ class WebFetchToolTest {
     void ssrfProtectionBlocks127() {
         WebFetchTool productionTool = new WebFetchTool();
         ToolResult result =
-                productionTool.execute(Map.of("url", "http://127.0.0.1:" + port + "/hello"));
+                productionTool
+                        .execute(Map.of("url", "http://127.0.0.1:" + port + "/hello"), CTX)
+                        .block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("SSRF protection");
     }
 
     @Test
     void truncatesLargeResponse() {
-        ToolResult result = tool().execute(Map.of("url", baseUrl + "/hello", "maxBytes", 5));
+        ToolResult result =
+                tool().execute(Map.of("url", baseUrl + "/hello", "maxBytes", 5), CTX).block();
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).startsWith("Hello");
         assertThat(result.content()).contains("truncated");
@@ -177,14 +186,15 @@ class WebFetchToolTest {
 
     @Test
     void timeoutReturnsError() {
-        ToolResult result = tool().execute(Map.of("url", baseUrl + "/slow", "timeoutSeconds", 1));
+        ToolResult result =
+                tool().execute(Map.of("url", baseUrl + "/slow", "timeoutSeconds", 1), CTX).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).containsAnyOf("timed out", "timeout", "Failed to fetch");
     }
 
     @Test
     void missingUrlReturnsError() {
-        ToolResult result = tool().execute(Map.of());
+        ToolResult result = tool().execute(Map.of(), CTX).block();
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("'url' is required");
     }

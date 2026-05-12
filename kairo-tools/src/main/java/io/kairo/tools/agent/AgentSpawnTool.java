@@ -21,14 +21,16 @@ import io.kairo.api.agent.AgentFactory;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
-import io.kairo.api.tool.ToolHandler;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Mono;
 
 /**
  * Spawns a sub-agent to handle a specific task autonomously.
@@ -44,7 +46,7 @@ import org.slf4j.LoggerFactory;
         name = "agent_spawn",
         description = "Spawn a sub-agent to handle a specific task autonomously.",
         category = ToolCategory.AGENT_AND_TASK)
-public class AgentSpawnTool implements ToolHandler {
+public class AgentSpawnTool implements SyncTool {
 
     private static final Logger log = LoggerFactory.getLogger(AgentSpawnTool.class);
 
@@ -72,16 +74,20 @@ public class AgentSpawnTool implements ToolHandler {
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> executeSync(args, ctx));
+    }
+
+    private ToolResult executeSync(Map<String, Object> input, ToolContext ctx) {
         String name = (String) input.get("name");
         String task = (String) input.get("task");
         String prompt = (String) input.getOrDefault("systemPrompt", "You are a helpful sub-agent.");
 
         if (name == null || name.isBlank()) {
-            return new ToolResult(null, "Parameter 'name' is required", true, Map.of());
+            return ToolResult.error(null, "Parameter 'name' is required");
         }
         if (task == null || task.isBlank()) {
-            return new ToolResult(null, "Parameter 'task' is required", true, Map.of());
+            return ToolResult.error(null, "Parameter 'task' is required");
         }
 
         try {
@@ -107,7 +113,7 @@ public class AgentSpawnTool implements ToolHandler {
             String resultText =
                     result != null ? extractText(result) : "Sub-agent completed with no output";
             log.info("Sub-agent '{}' completed", name);
-            return new ToolResult(
+            return ToolResult.of(
                     null,
                     String.format("Sub-agent '%s' result:\n%s", name, resultText),
                     false,
@@ -115,7 +121,7 @@ public class AgentSpawnTool implements ToolHandler {
 
         } catch (Exception e) {
             log.error("Sub-agent '{}' failed: {}", name, e.getMessage(), e);
-            return new ToolResult(
+            return ToolResult.of(
                     null,
                     String.format("Sub-agent '%s' failed: %s", name, e.getMessage()),
                     true,

@@ -17,6 +17,7 @@ package io.kairo.tools.info;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.Test;
 
 class AskUserToolTest {
 
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
     private AskUserTool tool;
     private InputStream originalIn;
 
@@ -44,14 +46,14 @@ class AskUserToolTest {
 
     @Test
     void missingQuestionParameter() {
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = tool.execute(Map.of(), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'question' is required"));
     }
 
     @Test
     void blankQuestionParameter() {
-        ToolResult result = tool.execute(Map.of("question", "   "));
+        ToolResult result = tool.execute(Map.of("question", "   "), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'question' is required"));
     }
@@ -59,7 +61,7 @@ class AskUserToolTest {
     @Test
     void freeTextInput() {
         setInput("my answer");
-        ToolResult result = tool.execute(Map.of("question", "What is your name?"));
+        ToolResult result = tool.execute(Map.of("question", "What is your name?"), CTX).block();
         assertFalse(result.isError());
         assertEquals("my answer", result.content());
         assertEquals("What is your name?", result.metadata().get("question"));
@@ -68,7 +70,7 @@ class AskUserToolTest {
     @Test
     void emptyInputReturnsNoResponse() {
         setInput("");
-        ToolResult result = tool.execute(Map.of("question", "What is your name?"));
+        ToolResult result = tool.execute(Map.of("question", "What is your name?"), CTX).block();
         assertFalse(result.isError());
         assertEquals("(no response)", result.content());
     }
@@ -76,7 +78,7 @@ class AskUserToolTest {
     @Test
     void blankInputReturnsNoResponse() {
         setInput("   ");
-        ToolResult result = tool.execute(Map.of("question", "What is your name?"));
+        ToolResult result = tool.execute(Map.of("question", "What is your name?"), CTX).block();
         assertFalse(result.isError());
         assertEquals("(no response)", result.content());
     }
@@ -86,11 +88,13 @@ class AskUserToolTest {
         setInput("2");
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "question",
-                                "Choose a color",
-                                "options",
-                                List.of("Red", "Green", "Blue")));
+                                Map.of(
+                                        "question",
+                                        "Choose a color",
+                                        "options",
+                                        List.of("Red", "Green", "Blue")),
+                                CTX)
+                        .block();
         assertFalse(result.isError());
         assertEquals("Green", result.content());
         assertEquals(2, result.metadata().get("selectedIndex"));
@@ -102,7 +106,13 @@ class AskUserToolTest {
         setInput("1");
         ToolResult result =
                 tool.execute(
-                        Map.of("question", "Pick one", "options", List.of("Option A", "Option B")));
+                                Map.of(
+                                        "question",
+                                        "Pick one",
+                                        "options",
+                                        List.of("Option A", "Option B")),
+                                CTX)
+                        .block();
         assertFalse(result.isError());
         assertEquals("Option A", result.content());
         assertEquals(1, result.metadata().get("selectedIndex"));
@@ -112,7 +122,8 @@ class AskUserToolTest {
     void optionSelectionLastOption() {
         setInput("3");
         ToolResult result =
-                tool.execute(Map.of("question", "Pick one", "options", List.of("A", "B", "C")));
+                tool.execute(Map.of("question", "Pick one", "options", List.of("A", "B", "C")), CTX)
+                        .block();
         assertFalse(result.isError());
         assertEquals("C", result.content());
         assertEquals(3, result.metadata().get("selectedIndex"));
@@ -122,7 +133,8 @@ class AskUserToolTest {
     void optionNumberOutOfRangeReturnsCustomText() {
         setInput("5");
         ToolResult result =
-                tool.execute(Map.of("question", "Pick one", "options", List.of("A", "B", "C")));
+                tool.execute(Map.of("question", "Pick one", "options", List.of("A", "B", "C")), CTX)
+                        .block();
         assertFalse(result.isError());
         assertEquals("5", result.content());
         assertNull(result.metadata().get("selectedIndex"));
@@ -132,7 +144,8 @@ class AskUserToolTest {
     void optionZeroOutOfRangeReturnsCustomText() {
         setInput("0");
         ToolResult result =
-                tool.execute(Map.of("question", "Pick one", "options", List.of("A", "B", "C")));
+                tool.execute(Map.of("question", "Pick one", "options", List.of("A", "B", "C")), CTX)
+                        .block();
         assertFalse(result.isError());
         assertEquals("0", result.content());
     }
@@ -141,7 +154,8 @@ class AskUserToolTest {
     void customTextWhenOptionsProvided() {
         setInput("custom text");
         ToolResult result =
-                tool.execute(Map.of("question", "Pick one", "options", List.of("A", "B")));
+                tool.execute(Map.of("question", "Pick one", "options", List.of("A", "B")), CTX)
+                        .block();
         assertFalse(result.isError());
         assertEquals("custom text", result.content());
         assertNull(result.metadata().get("selectedIndex"));
@@ -150,7 +164,8 @@ class AskUserToolTest {
     @Test
     void emptyOptionsListActsAsFreeText() {
         setInput("my answer");
-        ToolResult result = tool.execute(Map.of("question", "Name?", "options", List.of()));
+        ToolResult result =
+                tool.execute(Map.of("question", "Name?", "options", List.of()), CTX).block();
         assertFalse(result.isError());
         assertEquals("my answer", result.content());
     }
@@ -158,14 +173,14 @@ class AskUserToolTest {
     @Test
     void inputIsTrimmed() {
         setInput("  hello world  ");
-        ToolResult result = tool.execute(Map.of("question", "Say hi"));
+        ToolResult result = tool.execute(Map.of("question", "Say hi"), CTX).block();
         assertFalse(result.isError());
         assertEquals("hello world", result.content());
     }
 
     @Test
     void errorResultFormat() {
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = tool.execute(Map.of(), CTX).block();
         assertTrue(result.isError());
         assertEquals("ask_user", result.toolUseId());
     }
@@ -180,7 +195,7 @@ class AskUserToolTest {
                         throw new RuntimeException("Simulated IO error");
                     }
                 });
-        ToolResult result = tool.execute(Map.of("question", "test?"));
+        ToolResult result = tool.execute(Map.of("question", "test?"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("Failed to read user input"));
     }

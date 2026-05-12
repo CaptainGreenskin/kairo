@@ -66,7 +66,23 @@ public class OpenAIProvider implements RawStreamingModelProvider, ProviderPipeli
             Duration.ofMillis(StreamIdleWatchdog.IDLE_TIMEOUT_MS);
     private static final Duration STREAM_MAX_DURATION =
             Duration.ofMillis(StreamIdleWatchdog.MAX_DURATION_MS);
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(30);
+
+    // Non-streaming call cap (used by context compaction summarization). Reasoning models
+    // (GLM-5.1 thinking) can take well past 30 s on a long compaction call. Mirrors
+    // AnthropicProvider env-configurable pattern; default 180 s.
+    private static final Duration CALL_TIMEOUT = resolveCallTimeout();
+
+    private static Duration resolveCallTimeout() {
+        String env = System.getenv("KAIRO_API_TIMEOUT_MS");
+        if (env != null && !env.isBlank()) {
+            try {
+                long parsed = Long.parseLong(env.trim());
+                if (parsed > 0) return Duration.ofMillis(parsed);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return Duration.ofSeconds(180);
+    }
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -361,8 +377,11 @@ public class OpenAIProvider implements RawStreamingModelProvider, ProviderPipeli
                                                                         "Streaming request failed: "
                                                                                 + err
                                                                                         .getMessage()));
-                                                        sink.tryEmitComplete();
                                                     }
+                                                    // Defensive: ensure sink is closed even if the
+                                                    // SSE subscriber's onComplete does not fire
+                                                    // (e.g. provider closes connection silently).
+                                                    sink.tryEmitComplete();
                                                 });
 
                                 Flux<StreamChunk> flux = sink.asFlux();
@@ -394,14 +413,11 @@ public class OpenAIProvider implements RawStreamingModelProvider, ProviderPipeli
                                         "openai-stream-raw",
                                         errorClassifier::isRetryableError,
                                         STREAM_IDLE_TIMEOUT))
-                .mergeWith(
-                        Mono.delay(STREAM_MAX_DURATION)
-                                .flatMap(
-                                        __ ->
-                                                Mono.error(
-                                                        new ModelProviderException.ApiException(
-                                                                "Stream exceeded max duration of "
-                                                                        + STREAM_MAX_DURATION))))
+                .timeout(
+                        STREAM_MAX_DURATION,
+                        Mono.error(
+                                new ModelProviderException.ApiException(
+                                        "Stream exceeded max duration of " + STREAM_MAX_DURATION)))
                 .onErrorMap(ExceptionMapper::toApiException);
     }
 

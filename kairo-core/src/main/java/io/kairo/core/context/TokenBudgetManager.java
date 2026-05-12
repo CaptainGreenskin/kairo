@@ -239,6 +239,12 @@ public class TokenBudgetManager {
      * <p>This method is idempotent within the same turn and should be called once after each model
      * invocation response is received.
      *
+     * <p><b>Semantics</b>: {@code usedTokens} tracks the <em>current</em> context size, not
+     * cumulative consumption. Each API call's {@code inputTokens} already contains the full
+     * conversation history (the model rereads it every turn), so we replace, not add. Output tokens
+     * are added on top because they will appear in the next turn's input. Compaction is the only
+     * reason this counter ever goes down (via {@link #releaseUsage}).
+     *
      * @param usage usage from the model response
      */
     public void recordModelUsage(ModelResponse.Usage usage) {
@@ -247,7 +253,7 @@ public class TokenBudgetManager {
         }
         updateFromApiUsage(usage);
         if (lastAccountedUsageTurn != currentTurn) {
-            usedTokens.addAndGet(usage.inputTokens() + usage.outputTokens());
+            usedTokens.set(usage.inputTokens() + usage.outputTokens());
             lastAccountedUsageTurn = currentTurn;
         }
     }

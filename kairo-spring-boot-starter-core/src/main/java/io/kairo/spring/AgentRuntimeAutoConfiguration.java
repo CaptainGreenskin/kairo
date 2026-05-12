@@ -18,6 +18,7 @@ package io.kairo.spring;
 import io.kairo.api.agent.Agent;
 import io.kairo.spring.config.AgentProperties;
 import io.kairo.spring.config.CheckpointProperties;
+import io.kairo.spring.config.ContinuationProperties;
 import io.kairo.spring.config.EmbeddingProperties;
 import io.kairo.spring.config.MemoryProperties;
 import io.kairo.spring.config.ModelProperties;
@@ -44,11 +45,13 @@ import org.springframework.context.annotation.Import;
     SkillProperties.class,
     MemoryProperties.class,
     EmbeddingProperties.class,
-    CheckpointProperties.class
+    CheckpointProperties.class,
+    ContinuationProperties.class
 })
 @ConditionalOnClass(Agent.class)
 @Import({
     CoreAutoConfiguration.class,
+    ContinuationAutoConfiguration.class,
     MemoryAutoConfiguration.class,
     SkillAutoConfiguration.class,
     io.kairo.spring.routing.CostRoutingAutoConfiguration.class,

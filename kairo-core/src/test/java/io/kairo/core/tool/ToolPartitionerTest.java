@@ -116,9 +116,9 @@ class ToolPartitionerTest {
 
         var parallelResults =
                 List.of(
-                        new ToolResult("u1", "read-result", false, Map.of()),
-                        new ToolResult("u3", "glob-result", false, Map.of()));
-        var serialResults = List.of(new ToolResult("u2", "bash-result", false, Map.of()));
+                        ToolResult.success("u1", "read-result"),
+                        ToolResult.success("u3", "glob-result"));
+        var serialResults = List.of(ToolResult.success("u2", "bash-result"));
 
         var merged =
                 ToolPartitioner.mergePreservingOrder(
@@ -137,9 +137,7 @@ class ToolPartitionerTest {
         var partition = ToolPartitioner.partition(toolUses, ToolPartitionerTest::resolver);
 
         var parallelResults =
-                List.of(
-                        new ToolResult("u1", "r1", false, Map.of()),
-                        new ToolResult("u2", "r2", false, Map.of()));
+                List.of(ToolResult.success("u1", "r1"), ToolResult.success("u2", "r2"));
         var serialResults = List.<ToolResult>of();
 
         var merged =
@@ -157,10 +155,7 @@ class ToolPartitionerTest {
         var partition = ToolPartitioner.partition(toolUses, ToolPartitionerTest::resolver);
 
         var parallelResults = List.<ToolResult>of();
-        var serialResults =
-                List.of(
-                        new ToolResult("u1", "s1", false, Map.of()),
-                        new ToolResult("u2", "s2", false, Map.of()));
+        var serialResults = List.of(ToolResult.success("u1", "s1"), ToolResult.success("u2", "s2"));
 
         var merged =
                 ToolPartitioner.mergePreservingOrder(
@@ -187,7 +182,7 @@ class ToolPartitionerTest {
         var toolUses = List.of(toolUse("u1", "read"));
         var partition = ToolPartitioner.partition(toolUses, ToolPartitionerTest::resolver);
 
-        var parallelResults = List.of(new ToolResult("u1", "single-result", false, Map.of()));
+        var parallelResults = List.of(ToolResult.success("u1", "single-result"));
         var serialResults = List.<ToolResult>of();
 
         var merged =
@@ -205,8 +200,8 @@ class ToolPartitionerTest {
         var toolUses = List.of(toolUse("u1", "write"), toolUse("u2", "read"));
         var partition = ToolPartitioner.partition(toolUses, ToolPartitionerTest::resolver);
 
-        var parallelResults = List.of(new ToolResult("u2", "read-r", false, Map.of()));
-        var serialResults = List.of(new ToolResult("u1", "write-r", false, Map.of()));
+        var parallelResults = List.of(ToolResult.success("u2", "read-r"));
+        var serialResults = List.of(ToolResult.success("u1", "write-r"));
 
         var merged =
                 ToolPartitioner.mergePreservingOrder(

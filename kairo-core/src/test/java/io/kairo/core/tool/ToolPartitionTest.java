@@ -65,7 +65,7 @@ class ToolPartitionTest {
     }
 
     private ToolHandler echoHandler(String toolId) {
-        return input -> new ToolResult(toolId, "result-" + toolId, false, Map.of());
+        return input -> ToolResult.success(toolId, "result-" + toolId);
     }
 
     @Test
@@ -97,14 +97,14 @@ class ToolPartitionTest {
                 ToolSideEffect.WRITE,
                 input -> {
                     executionOrder.add("write_file");
-                    return new ToolResult("write_file", "ok", false, Map.of());
+                    return ToolResult.success("write_file", "ok");
                 });
         registerTool(
                 "edit_file",
                 ToolSideEffect.WRITE,
                 input -> {
                     executionOrder.add("edit_file");
-                    return new ToolResult("edit_file", "ok", false, Map.of());
+                    return ToolResult.success("edit_file", "ok");
                 });
 
         var invocations =
@@ -129,14 +129,14 @@ class ToolPartitionTest {
                 ToolSideEffect.READ_ONLY,
                 input -> {
                     executionOrder.add("read");
-                    return new ToolResult("read_file", "data", false, Map.of());
+                    return ToolResult.success("read_file", "data");
                 });
         registerTool(
                 "write_file",
                 ToolSideEffect.WRITE,
                 input -> {
                     executionOrder.add("write");
-                    return new ToolResult("write_file", "ok", false, Map.of());
+                    return ToolResult.success("write_file", "ok");
                 });
 
         var invocations =
@@ -235,7 +235,7 @@ class ToolPartitionTest {
                     ToolSideEffect.READ_ONLY,
                     input -> {
                         Thread.sleep(sleepMs);
-                        return new ToolResult(name, "ok", false, Map.of());
+                        return ToolResult.success(name, "ok");
                     });
         }
 
@@ -266,7 +266,7 @@ class ToolPartitionTest {
                     ToolSideEffect.WRITE,
                     input -> {
                         order.add(name);
-                        return new ToolResult(name, "ok", false, Map.of());
+                        return ToolResult.success(name, "ok");
                     });
         }
 
@@ -288,14 +288,14 @@ class ToolPartitionTest {
                 ToolSideEffect.SYSTEM_CHANGE,
                 input -> {
                     executionOrder.add("bash");
-                    return new ToolResult("bash", "ok", false, Map.of());
+                    return ToolResult.success("bash", "ok");
                 });
         registerTool(
                 "read_file",
                 ToolSideEffect.READ_ONLY,
                 input -> {
                     executionOrder.add("read");
-                    return new ToolResult("read_file", "data", false, Map.of());
+                    return ToolResult.success("read_file", "data");
                 });
 
         // SYSTEM_CHANGE defaults to ASK, so set to ALLOWED for this test

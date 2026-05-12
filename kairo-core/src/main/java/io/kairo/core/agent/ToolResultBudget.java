@@ -86,7 +86,7 @@ final class ToolResultBudget {
         metadata.put("tool_result_kept_tokens", budgeted.keptTokens());
         metadata.put("tool_result_truncated", budgeted.truncated());
         metadata.put("tool_result_budget_reason", budgeted.reason());
-        return new ToolResult(
+        return ToolResult.of(
                 result.toolUseId(), budgeted.content(), result.isError(), Map.copyOf(metadata));
     }
 

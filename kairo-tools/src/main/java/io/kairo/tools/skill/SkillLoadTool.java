@@ -17,15 +17,17 @@ package io.kairo.tools.skill;
 
 import io.kairo.api.skill.SkillDefinition;
 import io.kairo.api.skill.SkillRegistry;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
-import io.kairo.api.tool.ToolHandler;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.skill.SkillLoader;
 import io.kairo.skill.SkillMarkdownParser;
 import java.util.HashMap;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Loads and activates a skill by name.
@@ -40,7 +42,7 @@ import java.util.Map;
                 "Load and activate a skill by name. Skills provide specialized instructions for specific tasks. "
                         + "Use skill_list first to see available skills.",
         category = ToolCategory.SKILL)
-public class SkillLoadTool implements ToolHandler {
+public class SkillLoadTool implements SyncTool {
 
     @ToolParam(description = "Name of the skill to load", required = true)
     private String name;
@@ -66,7 +68,11 @@ public class SkillLoadTool implements ToolHandler {
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> executeSync(args, ctx));
+    }
+
+    private ToolResult executeSync(Map<String, Object> input, ToolContext ctx) {
         String skillName = (String) input.get("name");
         if (skillName == null || skillName.isBlank()) {
             return error("Parameter 'name' is required");
@@ -148,10 +154,10 @@ public class SkillLoadTool implements ToolHandler {
             metadata.put("allowedTools", skill.allowedTools());
         }
 
-        return new ToolResult("skill_load", sb.toString(), false, metadata);
+        return ToolResult.success("skill_load", sb.toString(), metadata);
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("skill_load", msg, true, Map.of());
+        return ToolResult.error("skill_load", msg);
     }
 }

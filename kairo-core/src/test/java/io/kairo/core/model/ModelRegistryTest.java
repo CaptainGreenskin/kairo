@@ -106,4 +106,18 @@ class ModelRegistryTest {
         assertEquals(200_000, ModelRegistry.getContextWindow("claude-3-haiku-20240307"));
         assertEquals(4_096, ModelRegistry.getMaxOutputTokens("claude-3-haiku-20240307"));
     }
+
+    @Test
+    @DisplayName("GLM-5.1 model has 128K context window and 8192 max output")
+    void testGlm51ModelRegistered() {
+        assertEquals(128_000, ModelRegistry.getContextWindow("glm-5.1"));
+        assertEquals(8_192, ModelRegistry.getMaxOutputTokens("glm-5.1"));
+    }
+
+    @Test
+    @DisplayName("GLM-4-long model has 1M context window")
+    void testGlm4LongModelRegistered() {
+        assertEquals(1_000_000, ModelRegistry.getContextWindow("glm-4-long"));
+        assertEquals(4_096, ModelRegistry.getMaxOutputTokens("glm-4-long"));
+    }
 }

@@ -18,7 +18,6 @@ package io.kairo.core.tool;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.tool.ToolResult;
-import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -32,11 +31,11 @@ class ToolCircuitBreakerTrackerTest {
     }
 
     private ToolResult errorResult() {
-        return new ToolResult("test", "error", true, Map.of());
+        return ToolResult.error("test", "error");
     }
 
     private ToolResult successResult() {
-        return new ToolResult("test", "ok", false, Map.of());
+        return ToolResult.success("test", "ok");
     }
 
     // ===== allowCall =====

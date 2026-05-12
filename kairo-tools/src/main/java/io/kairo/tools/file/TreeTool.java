@@ -15,13 +15,13 @@
  */
 package io.kairo.tools.file;
 
+import io.kairo.api.tool.JsonSchema;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
-import io.kairo.api.workspace.Workspace;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileSystems;
@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Renders an ASCII directory tree, similar to the Unix {@code tree} command, using pure Java NIO.
@@ -43,18 +44,50 @@ import java.util.Map;
                         + " filtering, and pattern exclusion.",
         category = ToolCategory.FILE_AND_CODE,
         sideEffect = ToolSideEffect.READ_ONLY)
-public class TreeTool implements ToolHandler {
+public class TreeTool implements SyncTool {
 
     private static final int MAX_ENTRIES = 1000;
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        return doExecute(input, Workspace.cwd().root());
+    public JsonSchema inputSchema() {
+        Map<String, JsonSchema> props = new java.util.LinkedHashMap<>();
+        props.put(
+                "path",
+                new JsonSchema(
+                        "string",
+                        null,
+                        null,
+                        "Absolute path to the directory to render. Required."));
+        props.put(
+                "maxDepth",
+                new JsonSchema("integer", null, null, "Maximum recursion depth. Defaults to 3."));
+        props.put(
+                "showFiles",
+                new JsonSchema(
+                        "boolean",
+                        null,
+                        null,
+                        "Whether to show files (true) or directories only (false). Defaults to true."));
+        props.put(
+                "pattern",
+                new JsonSchema(
+                        "string",
+                        null,
+                        null,
+                        "Optional glob pattern to include (e.g. \"*.java\")."));
+        props.put(
+                "excludePatterns",
+                new JsonSchema(
+                        "string",
+                        null,
+                        null,
+                        "Optional comma-separated glob patterns to exclude."));
+        return new JsonSchema("object", props, java.util.List.of("path"), null);
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        return doExecute(input, context.workspace().root());
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> doExecute(args, ctx.workspace().root()));
     }
 
     private ToolResult doExecute(Map<String, Object> input, Path workspaceRoot) {
@@ -114,10 +147,9 @@ public class TreeTool implements ToolHandler {
             sb.append("... (truncated at ").append(MAX_ENTRIES).append(" entries)\n");
         }
 
-        return new ToolResult(
+        return ToolResult.success(
                 "tree",
                 sb.toString(),
-                false,
                 Map.of("totalFiles", counts[0], "totalDirs", counts[1], "truncated", truncated[0]));
     }
 
@@ -236,6 +268,6 @@ public class TreeTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("tree", msg, true, Map.of());
+        return ToolResult.error("tree", msg);
     }
 }

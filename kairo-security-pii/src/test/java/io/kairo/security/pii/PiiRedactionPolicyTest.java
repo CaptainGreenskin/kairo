@@ -125,10 +125,9 @@ class PiiRedactionPolicyTest {
                         "tool",
                         new GuardrailPayload.ToolOutput(
                                 "tool",
-                                new ToolResult(
+                                ToolResult.success(
                                         "use-1",
                                         "email alice@example.com please",
-                                        false,
                                         Map.of("k", "v"))),
                         Map.of());
         var decision = policy.evaluate(ctx).block();
@@ -148,8 +147,7 @@ class PiiRedactionPolicyTest {
                         "agent",
                         "tool",
                         new GuardrailPayload.ToolOutput(
-                                "tool",
-                                new ToolResult("use-2", "no sensitive data", false, Map.of())),
+                                "tool", ToolResult.success("use-2", "no sensitive data")),
                         Map.of());
         var decision = policy.evaluate(ctx).block();
         assertThat(decision).isNotNull();

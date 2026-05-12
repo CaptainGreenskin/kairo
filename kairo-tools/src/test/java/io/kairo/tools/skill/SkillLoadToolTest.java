@@ -21,7 +21,11 @@ import static org.mockito.Mockito.*;
 import io.kairo.api.skill.SkillCategory;
 import io.kairo.api.skill.SkillDefinition;
 import io.kairo.api.skill.SkillRegistry;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -30,6 +34,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class SkillLoadToolTest {
+
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
 
     private SkillRegistry registry;
     private SkillLoadTool tool;
@@ -52,7 +58,7 @@ class SkillLoadToolTest {
                         SkillCategory.CODE);
         when(registry.get("commit")).thenReturn(Optional.of(skill));
 
-        ToolResult result = tool.execute(Map.of("name", "commit"));
+        ToolResult result = tool.execute(Map.of("name", "commit"), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("commit"));
         assertTrue(result.content().contains("v1.0"));
@@ -64,7 +70,7 @@ class SkillLoadToolTest {
         when(registry.get("unknown")).thenReturn(Optional.empty());
         when(registry.list()).thenReturn(List.of());
 
-        ToolResult result = tool.execute(Map.of("name", "unknown"));
+        ToolResult result = tool.execute(Map.of("name", "unknown"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("Skill not found"));
     }
@@ -79,7 +85,7 @@ class SkillLoadToolTest {
                         "commit", "1.0", "desc", "instructions", List.of(), SkillCategory.CODE);
         when(registry.list()).thenReturn(List.of(similar));
 
-        ToolResult result = tool.execute(Map.of("name", "com"));
+        ToolResult result = tool.execute(Map.of("name", "com"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("Did you mean"));
         assertTrue(result.content().contains("commit"));
@@ -92,21 +98,21 @@ class SkillLoadToolTest {
                         "empty-skill", "1.0", "desc", "", List.of(), SkillCategory.GENERAL);
         when(registry.get("empty-skill")).thenReturn(Optional.of(skill));
 
-        ToolResult result = tool.execute(Map.of("name", "empty-skill"));
+        ToolResult result = tool.execute(Map.of("name", "empty-skill"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("no instructions"));
     }
 
     @Test
     void missingNameParameter() {
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = tool.execute(Map.of(), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'name' is required"));
     }
 
     @Test
     void blankNameParameter() {
-        ToolResult result = tool.execute(Map.of("name", "  "));
+        ToolResult result = tool.execute(Map.of("name", "  "), CTX).block();
         assertTrue(result.isError());
     }
 
@@ -127,7 +133,7 @@ class SkillLoadToolTest {
                         List.of("Read", "Grep"));
         when(registry.get("restricted")).thenReturn(Optional.of(skill));
 
-        ToolResult result = tool.execute(Map.of("name", "restricted"));
+        ToolResult result = tool.execute(Map.of("name", "restricted"), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.metadata().containsKey("allowedTools"));
         assertEquals(List.of("Read", "Grep"), result.metadata().get("allowedTools"));
@@ -150,7 +156,7 @@ class SkillLoadToolTest {
                         List.of("Read", "Grep"));
         when(registry.get("restricted")).thenReturn(Optional.of(skill));
 
-        ToolResult result = tool.execute(Map.of("name", "restricted"));
+        ToolResult result = tool.execute(Map.of("name", "restricted"), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("TOOL RESTRICTION"));
         assertTrue(result.content().contains("Read"));
@@ -164,9 +170,54 @@ class SkillLoadToolTest {
                         "normal", "1.0", "desc", "Do normal things", List.of(), SkillCategory.CODE);
         when(registry.get("normal")).thenReturn(Optional.of(skill));
 
-        ToolResult result = tool.execute(Map.of("name", "normal"));
+        ToolResult result = tool.execute(Map.of("name", "normal"), CTX).block();
         assertFalse(result.isError());
         assertFalse(result.content().contains("TOOL RESTRICTION"));
         assertFalse(result.metadata().containsKey("allowedTools"));
+    }
+
+    @Test
+    void loadBundleSkill_listsResources(@TempDir Path bundleDir) throws IOException {
+        // Create bundle structure
+        Files.writeString(bundleDir.resolve("SKILL.md"), "# Bundle Skill");
+        Files.writeString(bundleDir.resolve("template.txt"), "template content");
+        Files.writeString(bundleDir.resolve("config.json"), "{}");
+
+        SkillDefinition bundleSkill =
+                new SkillDefinition(
+                        "my-bundle",
+                        "1.0",
+                        "A bundle skill",
+                        "Bundle instructions with ${SKILL_DIR}",
+                        List.of(),
+                        SkillCategory.CODE,
+                        null,
+                        null,
+                        null,
+                        0,
+                        null,
+                        bundleDir);
+        when(registry.get("my-bundle")).thenReturn(Optional.of(bundleSkill));
+
+        ToolResult result = tool.execute(Map.of("name", "my-bundle"), CTX).block();
+        assertFalse(result.isError());
+        assertTrue(result.content().contains("Available resources"));
+        assertTrue(result.content().contains("template.txt"));
+        assertTrue(result.content().contains("config.json"));
+        // ${SKILL_DIR} should be substituted with actual path
+        assertTrue(result.content().contains(bundleDir.toAbsolutePath().toString()));
+        assertFalse(result.content().contains("${SKILL_DIR}"));
+    }
+
+    @Test
+    void loadSkillWithNullInstructions_returnsError() {
+        SkillDefinition skill =
+                new SkillDefinition(
+                        "null-instr", "1.0", "desc", null, List.of(), SkillCategory.GENERAL);
+        when(registry.get("null-instr")).thenReturn(Optional.of(skill));
+
+        ToolResult result = tool.execute(Map.of("name", "null-instr"), CTX).block();
+        assertTrue(result.isError());
+        assertTrue(result.content().contains("no instructions"));
     }
 }

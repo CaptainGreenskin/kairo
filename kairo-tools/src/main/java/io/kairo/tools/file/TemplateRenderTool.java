@@ -17,13 +17,13 @@ package io.kairo.tools.file;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.kairo.api.tool.JsonSchema;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
-import io.kairo.api.workspace.Workspace;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -31,6 +31,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Renders Mustache templates (pure Java subset — no external library).
@@ -48,18 +49,40 @@ import java.util.Map;
                         + " template may be a string or a file path starting with /.",
         category = ToolCategory.FILE_AND_CODE,
         sideEffect = ToolSideEffect.WRITE)
-public class TemplateRenderTool implements ToolHandler {
+public class TemplateRenderTool implements SyncTool {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        return doExecute(input, Workspace.cwd().root());
+    public JsonSchema inputSchema() {
+        java.util.Map<String, JsonSchema> props = new java.util.LinkedHashMap<>();
+        props.put(
+                "template",
+                new JsonSchema(
+                        "string",
+                        null,
+                        null,
+                        "Mustache-style template body, OR an absolute path starting with '/' to load it from disk."));
+        props.put(
+                "outputPath",
+                new JsonSchema(
+                        "string",
+                        null,
+                        null,
+                        "Absolute destination path. The rendered text is written here."));
+        props.put(
+                "variables",
+                new JsonSchema(
+                        "object",
+                        null,
+                        null,
+                        "Key/value map substituted into {{name}} placeholders."));
+        return new JsonSchema("object", props, java.util.List.of("template", "outputPath"), null);
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        return doExecute(input, context.workspace().root());
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> doExecute(args, ctx.workspace().root()));
     }
 
     private ToolResult doExecute(Map<String, Object> input, Path workspaceRoot) {
@@ -116,10 +139,9 @@ public class TemplateRenderTool implements ToolHandler {
         }
 
         int linesRendered = rendered.isEmpty() ? 0 : rendered.split("\n", -1).length;
-        return new ToolResult(
+        return ToolResult.success(
                 "template_render",
                 rendered,
-                false,
                 Map.of(
                         "linesRendered",
                         linesRendered,
@@ -334,7 +356,7 @@ public class TemplateRenderTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("template_render", msg, true, Map.of());
+        return ToolResult.error("template_render", msg);
     }
 
     static class RenderException extends Exception {

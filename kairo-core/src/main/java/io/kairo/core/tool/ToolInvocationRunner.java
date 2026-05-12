@@ -17,7 +17,11 @@ package io.kairo.core.tool;
 
 import io.kairo.api.agent.CancellationSignal;
 import io.kairo.api.exception.AgentInterruptedException;
+import io.kairo.api.tool.FailureReason;
+import io.kairo.api.tool.StreamingTool;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.ToolContext;
+import io.kairo.api.tool.ToolEvent;
 import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tracing.Tracer;
@@ -60,18 +64,21 @@ public final class ToolInvocationRunner {
     /**
      * Execute a tool handler with timeout, cooperative cancellation, and shutdown guard.
      *
+     * <p>Dispatches to {@link SyncTool}, {@link StreamingTool}, or legacy {@link ToolHandler}
+     * depending on the runtime type of the provided instance.
+     *
      * <p>The {@code onErrorResume} block checks {@link #isCancellationException(Throwable)} FIRST
      * and propagates {@link AgentInterruptedException} via {@code Mono.error(e)}. Only other
      * exceptions are converted to error results.
      *
      * @param toolName the tool name (for error messages)
-     * @param handler the tool handler to invoke
+     * @param handler the tool instance (SyncTool, StreamingTool, or ToolHandler)
      * @param input the tool input parameters
      * @param timeout the maximum execution duration
      * @return a Mono emitting the tool result
      */
     public Mono<ToolResult> execute(
-            String toolName, ToolHandler handler, Map<String, Object> input, Duration timeout) {
+            String toolName, Object handler, Map<String, Object> input, Duration timeout) {
         Mono<ToolResult> execution =
                 Mono.deferContextual(
                                 innerCtxView -> {
@@ -83,8 +90,7 @@ public final class ToolInvocationRunner {
                                         ctx = new ToolContext(null, null, Map.of());
                                     }
                                     ToolContext effective = ctx;
-                                    return Mono.fromCallable(
-                                            () -> handler.execute(input, effective));
+                                    return dispatchTool(handler, input, effective);
                                 })
                         .subscribeOn(Schedulers.boundedElastic())
                         .transform(this::withCooperativeCancellation)
@@ -100,12 +106,15 @@ public final class ToolInvocationRunner {
                                                         toolName,
                                                         "Tool execution timed out after "
                                                                 + timeout.getSeconds()
-                                                                + "s"));
+                                                                + "s",
+                                                        FailureReason.TIMEOUT));
                                     }
                                     log.error("Tool '{}' execution failed", toolName, e);
                                     return Mono.just(
                                             ToolResultSanitizer.errorResult(
-                                                    toolName, "Error: " + e.getMessage()));
+                                                    toolName,
+                                                    "Error: " + e.getMessage(),
+                                                    FailureReason.HANDLER_ERROR));
                                 });
 
         // Race against shutdown signal (shutdown guard pattern)
@@ -115,8 +124,37 @@ public final class ToolInvocationRunner {
                         .then(
                                 Mono.just(
                                         ToolResultSanitizer.errorResult(
-                                                toolName, "Tool aborted due to system shutdown")));
+                                                toolName,
+                                                "Tool aborted due to system shutdown",
+                                                FailureReason.INTERRUPTED)));
         return Mono.firstWithSignal(execution, shutdownGuard);
+    }
+
+    /**
+     * Dispatch tool execution based on the runtime type of the handler. SyncTool and StreamingTool
+     * use the new v1.2 SPI; ToolHandler is the legacy path.
+     */
+    private Mono<ToolResult> dispatchTool(
+            Object handler, Map<String, Object> input, ToolContext ctx) {
+        if (handler instanceof SyncTool syncTool) {
+            return syncTool.execute(input, ctx);
+        }
+        if (handler instanceof StreamingTool streamingTool) {
+            // Collect streaming events and extract the Final result
+            return streamingTool.stream(input, ctx)
+                    .filter(event -> event instanceof ToolEvent.Final)
+                    .cast(ToolEvent.Final.class)
+                    .map(ToolEvent.Final::result)
+                    .next()
+                    .switchIfEmpty(
+                            Mono.just(ToolResult.error("stream", "No final result from stream")));
+        }
+        if (handler instanceof ToolHandler legacyHandler) {
+            return Mono.fromCallable(() -> legacyHandler.execute(input, ctx));
+        }
+        return Mono.just(
+                ToolResult.error(
+                        "unknown", "Unsupported tool type: " + handler.getClass().getName()));
     }
 
     private <T> Mono<T> withCooperativeCancellation(Mono<T> source) {

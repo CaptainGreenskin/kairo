@@ -32,6 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class GlobToolTest {
 
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
     private GlobTool tool;
 
     @TempDir Path tempDir;
@@ -47,7 +48,8 @@ class GlobToolTest {
         Files.writeString(tempDir.resolve("Bar.java"), "class Bar {}");
         Files.writeString(tempDir.resolve("readme.txt"), "text");
 
-        ToolResult result = tool.execute(Map.of("pattern", "*.java", "path", tempDir.toString()));
+        ToolResult result =
+                tool.execute(Map.of("pattern", "*.java", "path", tempDir.toString()), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("Foo.java"));
         assertTrue(result.content().contains("Bar.java"));
@@ -63,7 +65,8 @@ class GlobToolTest {
         Files.writeString(tempDir.resolve("Top.java"), "top");
 
         ToolResult result =
-                tool.execute(Map.of("pattern", "**/*.java", "path", tempDir.toString()));
+                tool.execute(Map.of("pattern", "**/*.java", "path", tempDir.toString()), CTX)
+                        .block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("Main.java"));
         // Top.java might or might not match **/*.java depending on depth—just check no error
@@ -73,7 +76,8 @@ class GlobToolTest {
     void noMatches() throws IOException {
         Files.writeString(tempDir.resolve("data.csv"), "a,b,c");
 
-        ToolResult result = tool.execute(Map.of("pattern", "*.xml", "path", tempDir.toString()));
+        ToolResult result =
+                tool.execute(Map.of("pattern", "*.xml", "path", tempDir.toString()), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("No files matched"));
         assertEquals(0, result.metadata().get("count"));
@@ -81,21 +85,22 @@ class GlobToolTest {
 
     @Test
     void invalidDirectory() {
-        ToolResult result = tool.execute(Map.of("pattern", "*.java", "path", "/nonexistent/dir"));
+        ToolResult result =
+                tool.execute(Map.of("pattern", "*.java", "path", "/nonexistent/dir"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("Not a directory"));
     }
 
     @Test
     void missingPatternParameter() {
-        ToolResult result = tool.execute(Map.of("path", tempDir.toString()));
+        ToolResult result = tool.execute(Map.of("path", tempDir.toString()), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'pattern' is required"));
     }
 
     @Test
     void missingPathParameter() {
-        ToolResult result = tool.execute(Map.of("pattern", "*.java"));
+        ToolResult result = tool.execute(Map.of("pattern", "*.java"), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'path' is required"));
     }
@@ -111,7 +116,7 @@ class GlobToolTest {
         ToolContext ctx = new ToolContext("a", "s", Map.of(), null, null, ws);
 
         // "src" is relative — must resolve against workspace root, not JVM cwd.
-        ToolResult result = tool.execute(Map.of("pattern", "*.java", "path", "src"), ctx);
+        ToolResult result = tool.execute(Map.of("pattern", "*.java", "path", "src"), ctx).block();
 
         assertFalse(result.isError(), result.content());
         assertTrue(result.content().contains("Hit.java"));
@@ -127,7 +132,8 @@ class GlobToolTest {
         Files.writeString(b.resolve("mid.java"), "mid");
 
         ToolResult result =
-                tool.execute(Map.of("pattern", "**/*.java", "path", tempDir.toString()));
+                tool.execute(Map.of("pattern", "**/*.java", "path", tempDir.toString()), CTX)
+                        .block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("deep.java"));
         assertTrue(result.content().contains("mid.java"));
@@ -139,7 +145,8 @@ class GlobToolTest {
         Files.writeString(tempDir.resolve("a.java"), "x");
         Files.writeString(tempDir.resolve("b.java"), "y");
 
-        ToolResult result = tool.execute(Map.of("pattern", "*.rb", "path", tempDir.toString()));
+        ToolResult result =
+                tool.execute(Map.of("pattern", "*.rb", "path", tempDir.toString()), CTX).block();
         assertFalse(result.isError());
         assertEquals(0, result.metadata().get("count"));
         assertTrue(result.content().contains("No files matched"));
@@ -147,7 +154,8 @@ class GlobToolTest {
 
     @Test
     void emptyPatternReturnsError() {
-        ToolResult result = tool.execute(Map.of("pattern", "   ", "path", tempDir.toString()));
+        ToolResult result =
+                tool.execute(Map.of("pattern", "   ", "path", tempDir.toString()), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'pattern' is required"));
     }

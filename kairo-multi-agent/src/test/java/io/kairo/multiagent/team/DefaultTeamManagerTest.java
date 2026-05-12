@@ -75,7 +75,7 @@ class DefaultTeamManagerTest {
         manager.create("delta");
         Agent agent = mock(Agent.class);
         when(agent.id()).thenReturn("agent-1");
-        when(agent.name()).thenReturn("Agent 1");
+        when(agent.name()).thenReturn("agent-1");
         manager.addAgent("delta", agent);
 
         manager.delete("delta");

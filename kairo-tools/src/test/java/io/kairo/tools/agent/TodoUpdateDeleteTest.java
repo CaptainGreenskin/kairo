@@ -17,6 +17,8 @@ package io.kairo.tools.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.kairo.api.tool.ToolContext;
+import io.kairo.api.tool.ToolResult;
 import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,10 +33,22 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class TodoUpdateDeleteTest {
 
+    private static final ToolContext CTX = new ToolContext("agent-1", "sess-1", Map.of());
+
     @TempDir Path workspaceRoot;
 
     private TodoWriteTool writer;
     private TodoReadTool reader;
+
+    /** Helper to execute write tool synchronously. */
+    private ToolResult write(Map<String, Object> args) {
+        return writer.execute(args, CTX).block();
+    }
+
+    /** Helper to execute read tool synchronously. */
+    private ToolResult read(Map<String, Object> args) {
+        return reader.execute(args, CTX).block();
+    }
 
     @BeforeEach
     void setUp() {
@@ -45,20 +59,20 @@ class TodoUpdateDeleteTest {
     @Test
     void updateTodoStatusByReplacingList() {
         // Initial write with status pending
-        writer.execute(
+        write(
                 Map.of(
                         "todos",
                         "[{\"id\":\"1\",\"content\":\"task A\",\"status\":\"pending\",\"priority\":\"high\"}]"));
 
         // Update: write back with status completed
         var updateResult =
-                writer.execute(
+                write(
                         Map.of(
                                 "todos",
                                 "[{\"id\":\"1\",\"content\":\"task A\",\"status\":\"completed\",\"priority\":\"high\"}]"));
 
         assertThat(updateResult.isError()).isFalse();
-        var readResult = reader.execute(Map.of());
+        var readResult = read(Map.of());
         assertThat(readResult.content()).contains("\"completed\"");
         assertThat(readResult.content()).doesNotContain("\"pending\"");
     }
@@ -66,7 +80,7 @@ class TodoUpdateDeleteTest {
     @Test
     void deleteTodoByWritingSmallerList() {
         // Write two todos
-        writer.execute(
+        write(
                 Map.of(
                         "todos",
                         """
@@ -77,30 +91,30 @@ class TodoUpdateDeleteTest {
 
         // Delete todo id=2 by writing only id=1
         var deleteResult =
-                writer.execute(
+                write(
                         Map.of(
                                 "todos",
                                 "[{\"id\":\"1\",\"content\":\"keep me\",\"status\":\"pending\",\"priority\":\"high\"}]"));
 
         assertThat(deleteResult.isError()).isFalse();
         assertThat(deleteResult.metadata()).containsEntry("count", 1);
-        var readResult = reader.execute(Map.of());
+        var readResult = read(Map.of());
         assertThat(readResult.content()).contains("keep me").doesNotContain("delete me");
     }
 
     @Test
     void updateStatusAndPriorityTogether() {
-        writer.execute(
+        write(
                 Map.of(
                         "todos",
                         "[{\"id\":\"x\",\"content\":\"review PR\",\"status\":\"pending\",\"priority\":\"low\"}]"));
 
-        writer.execute(
+        write(
                 Map.of(
                         "todos",
                         "[{\"id\":\"x\",\"content\":\"review PR\",\"status\":\"in_progress\",\"priority\":\"high\"}]"));
 
-        var read = reader.execute(Map.of());
+        var read = read(Map.of());
         assertThat(read.content()).contains("\"in_progress\"").contains("\"high\"");
         assertThat(read.content()).doesNotContain("\"pending\"").doesNotContain("\"low\"");
     }
@@ -108,7 +122,7 @@ class TodoUpdateDeleteTest {
     @Test
     void readCountMatchesWrittenCount() {
         var writeResult =
-                writer.execute(
+                write(
                         Map.of(
                                 "todos",
                                 """
@@ -119,7 +133,7 @@ class TodoUpdateDeleteTest {
                                 ]"""));
 
         assertThat(writeResult.metadata()).containsEntry("count", 3);
-        var readResult = reader.execute(Map.of());
+        var readResult = read(Map.of());
         // Read returns file path in metadata; count is in the write result
         assertThat(readResult.isError()).isFalse();
         assertThat(readResult.content())
@@ -131,17 +145,17 @@ class TodoUpdateDeleteTest {
     @Test
     void writeEmptyListSucceeds() {
         // First write something
-        writer.execute(
+        write(
                 Map.of(
                         "todos",
                         "[{\"id\":\"1\",\"content\":\"x\",\"status\":\"pending\",\"priority\":\"low\"}]"));
 
         // Clear the list
-        var clearResult = writer.execute(Map.of("todos", "[]"));
+        var clearResult = write(Map.of("todos", "[]"));
         assertThat(clearResult.isError()).isFalse();
         assertThat(clearResult.metadata()).containsEntry("count", 0);
 
-        var readResult = reader.execute(Map.of());
+        var readResult = read(Map.of());
         // File exists but contains an empty array
         assertThat(readResult.isError()).isFalse();
         assertThat(readResult.content().trim()).isEqualTo("[ ]");
@@ -153,11 +167,11 @@ class TodoUpdateDeleteTest {
         String idTemplate =
                 "[{\"id\":\"1\",\"content\":\"task\",\"status\":\"%s\",\"priority\":\"medium\"}]";
 
-        writer.execute(Map.of("todos", String.format(idTemplate, "pending")));
-        writer.execute(Map.of("todos", String.format(idTemplate, "in_progress")));
-        writer.execute(Map.of("todos", String.format(idTemplate, "completed")));
+        write(Map.of("todos", String.format(idTemplate, "pending")));
+        write(Map.of("todos", String.format(idTemplate, "in_progress")));
+        write(Map.of("todos", String.format(idTemplate, "completed")));
 
-        var final_ = reader.execute(Map.of());
+        var final_ = read(Map.of());
         assertThat(final_.content()).contains("\"completed\"");
         assertThat(final_.content())
                 .doesNotContain("\"pending\"")

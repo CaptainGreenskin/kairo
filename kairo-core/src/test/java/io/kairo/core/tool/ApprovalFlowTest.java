@@ -69,7 +69,7 @@ class ApprovalFlowTest {
     }
 
     private ToolHandler echoHandler(String toolId) {
-        return input -> new ToolResult(toolId, "result-" + toolId, false, Map.of());
+        return input -> ToolResult.success(toolId, "result-" + toolId);
     }
 
     @Test

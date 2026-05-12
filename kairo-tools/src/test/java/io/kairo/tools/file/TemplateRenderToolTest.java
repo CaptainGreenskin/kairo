@@ -2,6 +2,7 @@ package io.kairo.tools.file;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class TemplateRenderToolTest {
 
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
     private TemplateRenderTool tool;
 
     @TempDir Path tempDir;
@@ -29,11 +31,13 @@ class TemplateRenderToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "template",
-                                templateFile.toString(),
-                                "variables",
-                                "{\"name\": \"Alice\", \"age\": 30}"));
+                                Map.of(
+                                        "template",
+                                        templateFile.toString(),
+                                        "variables",
+                                        "{\"name\": \"Alice\", \"age\": 30}"),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertEquals("Hello, Alice! You are 30 years old.", result.content());
@@ -46,11 +50,13 @@ class TemplateRenderToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "template",
-                                templateFile.toString(),
-                                "variables",
-                                "{\"html\": \"<b>bold</b>\"}"));
+                                Map.of(
+                                        "template",
+                                        templateFile.toString(),
+                                        "variables",
+                                        "{\"html\": \"<b>bold</b>\"}"),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertEquals("Content: <b>bold</b>", result.content());
@@ -63,11 +69,13 @@ class TemplateRenderToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "template",
-                                templateFile.toString(),
-                                "variables",
-                                "{\"html\": \"<script>&\\\"test\\\"</script>\"}"));
+                                Map.of(
+                                        "template",
+                                        templateFile.toString(),
+                                        "variables",
+                                        "{\"html\": \"<script>&\\\"test\\\"</script>\"}"),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertEquals("Safe: &lt;script&gt;&amp;&quot;test&quot;&lt;/script&gt;", result.content());
@@ -80,11 +88,13 @@ class TemplateRenderToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "template",
-                                templateFile.toString(),
-                                "variables",
-                                "{\"show\": true}"));
+                                Map.of(
+                                        "template",
+                                        templateFile.toString(),
+                                        "variables",
+                                        "{\"show\": true}"),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertEquals("Start visibleEnd", result.content());
@@ -97,11 +107,13 @@ class TemplateRenderToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "template",
-                                templateFile.toString(),
-                                "variables",
-                                "{\"user\": {\"name\": \"Bob\", \"age\": 25}}"));
+                                Map.of(
+                                        "template",
+                                        templateFile.toString(),
+                                        "variables",
+                                        "{\"user\": {\"name\": \"Bob\", \"age\": 25}}"),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertEquals("Name: Bob, Age: 25", result.content());
@@ -114,11 +126,13 @@ class TemplateRenderToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "template",
-                                templateFile.toString(),
-                                "variables",
-                                "{\"items\": [\"a\", \"b\", \"c\"]}"));
+                                Map.of(
+                                        "template",
+                                        templateFile.toString(),
+                                        "variables",
+                                        "{\"items\": [\"a\", \"b\", \"c\"]}"),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertEquals("Items: [a] [b] [c]", result.content());
@@ -131,11 +145,13 @@ class TemplateRenderToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "template",
-                                templateFile.toString(),
-                                "variables",
-                                "{\"users\": [{\"name\": \"Alice\"}, {\"name\": \"Bob\"}]}"));
+                                Map.of(
+                                        "template",
+                                        templateFile.toString(),
+                                        "variables",
+                                        "{\"users\": [{\"name\": \"Alice\"}, {\"name\": \"Bob\"}]}"),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertEquals("<ul><li>Alice</li><li>Bob</li></ul>", result.content());
@@ -148,11 +164,13 @@ class TemplateRenderToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "template",
-                                templateFile.toString(),
-                                "variables",
-                                "{\"hidden\": false}"));
+                                Map.of(
+                                        "template",
+                                        templateFile.toString(),
+                                        "variables",
+                                        "{\"hidden\": false}"),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertEquals("This is visible", result.content());
@@ -165,11 +183,13 @@ class TemplateRenderToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "template",
-                                templateFile.toString(),
-                                "variables",
-                                "{\"show\": true}"));
+                                Map.of(
+                                        "template",
+                                        templateFile.toString(),
+                                        "variables",
+                                        "{\"show\": true}"),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertEquals("Done", result.content());
@@ -181,7 +201,8 @@ class TemplateRenderToolTest {
         Files.writeString(templateFile, "{{^missing}}Fallback content{{/missing}}");
 
         ToolResult result =
-                tool.execute(Map.of("template", templateFile.toString(), "variables", "{}"));
+                tool.execute(Map.of("template", templateFile.toString(), "variables", "{}"), CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertEquals("Fallback content", result.content());
@@ -193,7 +214,8 @@ class TemplateRenderToolTest {
         Files.writeString(templateFile, "Before{{! this is a comment }}After");
 
         ToolResult result =
-                tool.execute(Map.of("template", templateFile.toString(), "variables", "{}"));
+                tool.execute(Map.of("template", templateFile.toString(), "variables", "{}"), CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertEquals("BeforeAfter", result.content());
@@ -203,11 +225,13 @@ class TemplateRenderToolTest {
     void templateFileNotFound() {
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "template",
-                                tempDir.resolve("nonexistent.txt").toString(),
-                                "variables",
-                                "{}"));
+                                Map.of(
+                                        "template",
+                                        tempDir.resolve("nonexistent.txt").toString(),
+                                        "variables",
+                                        "{}"),
+                                CTX)
+                        .block();
 
         assertTrue(result.isError());
     }
@@ -217,7 +241,7 @@ class TemplateRenderToolTest {
         Path templateFile = tempDir.resolve("template.txt");
         Files.writeString(templateFile, "Hello {{name}}");
 
-        ToolResult result = tool.execute(Map.of("template", templateFile.toString()));
+        ToolResult result = tool.execute(Map.of("template", templateFile.toString()), CTX).block();
 
         assertTrue(result.isError());
     }
@@ -230,10 +254,12 @@ class TemplateRenderToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "template", templateFile.toString(),
-                                "variables", "{\"value\": \"42\"}",
-                                "outputPath", outputFile.toString()));
+                                Map.of(
+                                        "template", templateFile.toString(),
+                                        "variables", "{\"value\": \"42\"}",
+                                        "outputPath", outputFile.toString()),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertEquals("Result: 42", result.content());
@@ -248,11 +274,13 @@ class TemplateRenderToolTest {
 
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "template",
-                                templateFile.toString(),
-                                "variables",
-                                "{\"a\": \"x\", \"b\": \"y\"}"));
+                                Map.of(
+                                        "template",
+                                        templateFile.toString(),
+                                        "variables",
+                                        "{\"a\": \"x\", \"b\": \"y\"}"),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertTrue(result.metadata().containsKey("linesRendered"));
@@ -262,9 +290,11 @@ class TemplateRenderToolTest {
     void inlineTemplateString() {
         ToolResult result =
                 tool.execute(
-                        Map.of(
-                                "template", "Hello {{name}}!",
-                                "variables", "{\"name\": \"World\"}"));
+                                Map.of(
+                                        "template", "Hello {{name}}!",
+                                        "variables", "{\"name\": \"World\"}"),
+                                CTX)
+                        .block();
 
         assertFalse(result.isError());
         assertEquals("Hello World!", result.content());

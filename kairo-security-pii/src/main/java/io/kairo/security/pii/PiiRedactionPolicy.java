@@ -91,7 +91,7 @@ public final class PiiRedactionPolicy implements GuardrailPolicy {
             return GuardrailDecision.allow("no PII detected", name());
         }
         ToolResult redacted =
-                new ToolResult(result.toolUseId(), red.text(), result.isError(), result.metadata());
+                ToolResult.of(result.toolUseId(), red.text(), result.isError(), result.metadata());
         return GuardrailDecision.modify(
                 new GuardrailPayload.ToolOutput(out.toolName(), redacted),
                 "redacted " + red.matchCount() + " PII match(es) in tool output",

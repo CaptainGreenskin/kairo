@@ -20,13 +20,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import io.kairo.api.tool.JsonSchema;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
-import io.kairo.api.workspace.Workspace;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -34,6 +34,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Queries JSON data using a jq-like path expression (pure Java, no external tools).
@@ -49,18 +50,37 @@ import java.util.Map;
                         + " (.arr[] | .field), keys, length, and type.",
         category = ToolCategory.FILE_AND_CODE,
         sideEffect = ToolSideEffect.READ_ONLY)
-public class JsonQueryTool implements ToolHandler {
+public class JsonQueryTool implements SyncTool {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        return doExecute(input, Workspace.cwd().root());
+    public JsonSchema inputSchema() {
+        java.util.Map<String, JsonSchema> props = new java.util.LinkedHashMap<>();
+        props.put(
+                "json",
+                new JsonSchema(
+                        "string",
+                        null,
+                        null,
+                        "JSON document to query. Either inline JSON text or an absolute path starting with '/'."));
+        props.put(
+                "query",
+                new JsonSchema(
+                        "string",
+                        null,
+                        null,
+                        "jq-style path expression, e.g. '.foo.bar', '.arr[0]', '.arr[] | .field'."));
+        props.put(
+                "pretty",
+                new JsonSchema(
+                        "boolean", null, null, "Pretty-print the result. Defaults to false."));
+        return new JsonSchema("object", props, java.util.List.of("json", "query"), null);
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        return doExecute(input, context.workspace().root());
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> doExecute(args, ctx.workspace().root()));
     }
 
     private ToolResult doExecute(Map<String, Object> input, Path workspaceRoot) {
@@ -107,7 +127,7 @@ public class JsonQueryTool implements ToolHandler {
         }
 
         String output = sb.toString().stripTrailing();
-        return new ToolResult(
+        return ToolResult.of(
                 "json_query", output, false, Map.of("resultCount", results.size(), "query", query));
     }
 
@@ -311,7 +331,7 @@ public class JsonQueryTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("json_query", msg, true, Map.of());
+        return ToolResult.error("json_query", msg);
     }
 
     static class QueryException extends Exception {

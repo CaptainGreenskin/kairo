@@ -81,7 +81,8 @@ class DanglingToolCallRecoveryTest {
                         new GracefulShutdownManager(),
                         null, // contextManager
                         null,
-                        null); // guardrailChain
+                        null, // eventBus
+                        null); // continuationStrategy
 
         ModelConfig modelConfig =
                 ModelConfig.builder()

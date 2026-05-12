@@ -24,10 +24,14 @@ import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelConfig;
+import io.kairo.api.tool.OutputBudgetConfig;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.core.agent.checkpoint.IterationCheckpointManager;
 import io.kairo.core.execution.DefaultResourceConstraint;
 import io.kairo.core.execution.ExecutionEventEmitter;
+import io.kairo.core.tool.DefaultToolExecutor;
+import io.kairo.core.tool.OutputBudgetTracker;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -66,6 +70,7 @@ class ReActLoop {
     @Nullable private final AgentProgressTracker progressTracker;
     @Nullable private volatile IterationCheckpointManager checkpointManager;
     @Nullable private volatile KairoEventBus eventBus;
+    @Nullable private volatile CompactionTrigger compactionTrigger;
 
     // Decomposed phase collaborators
     private final IterationGuards guards;
@@ -196,6 +201,7 @@ class ReActLoop {
     }
 
     void setCompactionTrigger(CompactionTrigger compactionTrigger) {
+        this.compactionTrigger = compactionTrigger;
         this.toolPhase.setCompactionTrigger(compactionTrigger);
     }
 
@@ -246,6 +252,39 @@ class ReActLoop {
         // Publish ITERATION_START event (best-effort, must not break the loop)
         publishIterationStart();
 
+        // Preemptive compaction: if pressure is already high entering the iteration,
+        // compact BEFORE evaluating budget guards. Without this, ToolPhase's post-tool
+        // compact runs too late — guards trip at the START of the next iter and fire
+        // GRACEFUL_EXIT even though the pipeline could have freed enough headroom.
+        return preemptiveCompactIfNeeded()
+                .then(Mono.defer(this::evaluateGuardsAndExecute))
+                .contextWrite(
+                        ctx -> {
+                            // Inject a fresh OutputBudgetTracker per iteration via Reactor Context.
+                            // Reads the OutputBudgetConfig from the ToolContext (set by
+                            // DefaultReActAgent).
+                            OutputBudgetConfig budgetConfig = OutputBudgetConfig.DEFAULT;
+                            if (ctx.hasKey(DefaultToolExecutor.CONTEXT_KEY)) {
+                                ToolContext tc = ctx.get(DefaultToolExecutor.CONTEXT_KEY);
+                                if (tc.budget() != null) {
+                                    budgetConfig = tc.budget();
+                                }
+                            }
+                            return ctx.put(
+                                    OutputBudgetTracker.CONTEXT_KEY,
+                                    new OutputBudgetTracker(budgetConfig));
+                        });
+    }
+
+    private Mono<Void> preemptiveCompactIfNeeded() {
+        CompactionTrigger trigger = compactionTrigger;
+        if (trigger == null) {
+            return Mono.empty();
+        }
+        return trigger.checkAndCompact(conversationHistory).then();
+    }
+
+    private Mono<Msg> evaluateGuardsAndExecute() {
         return guards.evaluate()
                 .switchIfEmpty(
                         Mono.defer(
@@ -428,13 +467,7 @@ class ReActLoop {
 
     private List<ToolResult> buildDanglingErrorResults(List<String> danglingIds) {
         return danglingIds.stream()
-                .map(
-                        id ->
-                                new ToolResult(
-                                        id,
-                                        "Tool call interrupted \u2014 no result available",
-                                        true,
-                                        Map.of()))
+                .map(id -> ToolResult.error(id, "Tool call interrupted \u2014 no result available"))
                 .toList();
     }
 

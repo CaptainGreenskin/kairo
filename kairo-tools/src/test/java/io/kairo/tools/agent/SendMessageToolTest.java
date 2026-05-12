@@ -17,6 +17,7 @@ package io.kairo.tools.agent;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.multiagent.team.InProcessMessageBus;
 import java.util.Map;
@@ -25,8 +26,14 @@ import org.junit.jupiter.api.Test;
 
 class SendMessageToolTest {
 
+    private static final ToolContext CTX = new ToolContext("agent-1", "sess-1", Map.of());
+
     private InProcessMessageBus messageBus;
     private SendMessageTool tool;
+
+    private ToolResult exec(Map<String, Object> args) {
+        return tool.execute(args, CTX).block();
+    }
 
     @BeforeEach
     void setUp() {
@@ -36,8 +43,7 @@ class SendMessageToolTest {
 
     @Test
     void sendMessageSuccessfully() {
-        ToolResult result =
-                tool.execute(Map.of("recipientId", "agent-B", "content", "Hello agent B"));
+        ToolResult result = exec(Map.of("recipientId", "agent-B", "content", "Hello agent B"));
         assertFalse(result.isError());
         assertTrue(result.content().contains("Message sent"));
 
@@ -49,34 +55,34 @@ class SendMessageToolTest {
 
     @Test
     void sendMessageMissingRecipientId() {
-        ToolResult result = tool.execute(Map.of("content", "hello"));
+        ToolResult result = exec(Map.of("content", "hello"));
         assertTrue(result.isError());
         assertTrue(result.content().contains("'recipientId' is required"));
     }
 
     @Test
     void sendMessageMissingContent() {
-        ToolResult result = tool.execute(Map.of("recipientId", "agent-B"));
+        ToolResult result = exec(Map.of("recipientId", "agent-B"));
         assertTrue(result.isError());
         assertTrue(result.content().contains("'content' is required"));
     }
 
     @Test
     void sendMessageBlankRecipientId() {
-        ToolResult result = tool.execute(Map.of("recipientId", "  ", "content", "hi"));
+        ToolResult result = exec(Map.of("recipientId", "  ", "content", "hi"));
         assertTrue(result.isError());
     }
 
     @Test
     void sendMessageBlankContent() {
-        ToolResult result = tool.execute(Map.of("recipientId", "agent-B", "content", "  "));
+        ToolResult result = exec(Map.of("recipientId", "agent-B", "content", "  "));
         assertTrue(result.isError());
     }
 
     @Test
     void sendMultipleMessages() {
-        tool.execute(Map.of("recipientId", "agent-B", "content", "msg1"));
-        tool.execute(Map.of("recipientId", "agent-B", "content", "msg2"));
+        exec(Map.of("recipientId", "agent-B", "content", "msg1"));
+        exec(Map.of("recipientId", "agent-B", "content", "msg2"));
 
         var messages = messageBus.poll("agent-B");
         assertEquals(2, messages.size());
@@ -86,8 +92,8 @@ class SendMessageToolTest {
 
     @Test
     void sendToDifferentRecipients() {
-        tool.execute(Map.of("recipientId", "agent-B", "content", "for B"));
-        tool.execute(Map.of("recipientId", "agent-C", "content", "for C"));
+        exec(Map.of("recipientId", "agent-B", "content", "for B"));
+        exec(Map.of("recipientId", "agent-C", "content", "for C"));
 
         assertEquals(1, messageBus.poll("agent-B").size());
         assertEquals(1, messageBus.poll("agent-C").size());

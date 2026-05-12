@@ -17,6 +17,7 @@ package io.kairo.tools.file;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class JsonQueryToolTest {
 
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
     private JsonQueryTool tool;
 
     @TempDir Path tempDir;
@@ -40,7 +42,7 @@ class JsonQueryToolTest {
     @Test
     void simpleFieldAccess() {
         String json = "{\"name\": \"Alice\", \"age\": 30}";
-        ToolResult result = tool.execute(Map.of("json", json, "query", ".name"));
+        ToolResult result = tool.execute(Map.of("json", json, "query", ".name"), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("Alice"));
@@ -50,7 +52,7 @@ class JsonQueryToolTest {
     @Test
     void arrayIndexAccess() {
         String json = "[\"first\", \"second\", \"third\"]";
-        ToolResult result = tool.execute(Map.of("json", json, "query", ".[1]"));
+        ToolResult result = tool.execute(Map.of("json", json, "query", ".[1]"), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("second"));
@@ -60,7 +62,7 @@ class JsonQueryToolTest {
     @Test
     void negativeArrayIndex() {
         String json = "[\"a\", \"b\", \"c\"]";
-        ToolResult result = tool.execute(Map.of("json", json, "query", ".[-1]"));
+        ToolResult result = tool.execute(Map.of("json", json, "query", ".[-1]"), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("c"));
@@ -69,7 +71,8 @@ class JsonQueryToolTest {
     @Test
     void nestedFieldAccess() {
         String json = "{\"user\": {\"address\": {\"city\": \"NYC\"}}}";
-        ToolResult result = tool.execute(Map.of("json", json, "query", ".user.address.city"));
+        ToolResult result =
+                tool.execute(Map.of("json", json, "query", ".user.address.city"), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("NYC"));
@@ -78,7 +81,7 @@ class JsonQueryToolTest {
     @Test
     void arrayMappingWithPipe() {
         String json = "[{\"name\": \"Alice\", \"age\": 25}, {\"name\": \"Bob\", \"age\": 30}]";
-        ToolResult result = tool.execute(Map.of("json", json, "query", ".[] | .name"));
+        ToolResult result = tool.execute(Map.of("json", json, "query", ".[] | .name"), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("Alice"));
@@ -89,7 +92,7 @@ class JsonQueryToolTest {
     @Test
     void keysBuiltin() {
         String json = "{\"b\": 2, \"a\": 1, \"c\": 3}";
-        ToolResult result = tool.execute(Map.of("json", json, "query", "keys"));
+        ToolResult result = tool.execute(Map.of("json", json, "query", "keys"), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("a"));
@@ -100,7 +103,7 @@ class JsonQueryToolTest {
     @Test
     void lengthBuiltin() {
         String json = "[1, 2, 3, 4]";
-        ToolResult result = tool.execute(Map.of("json", json, "query", "length"));
+        ToolResult result = tool.execute(Map.of("json", json, "query", "length"), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("4"));
@@ -109,7 +112,7 @@ class JsonQueryToolTest {
     @Test
     void typeBuiltin() {
         String json = "{\"key\": \"value\"}";
-        ToolResult result = tool.execute(Map.of("json", json, "query", "type"));
+        ToolResult result = tool.execute(Map.of("json", json, "query", "type"), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("object"));
@@ -118,7 +121,7 @@ class JsonQueryToolTest {
     @Test
     void invalidJsonInput() {
         String json = "{not valid json}";
-        ToolResult result = tool.execute(Map.of("json", json, "query", "."));
+        ToolResult result = tool.execute(Map.of("json", json, "query", "."), CTX).block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("Failed to read JSON"));
@@ -127,7 +130,7 @@ class JsonQueryToolTest {
     @Test
     void nonExistentFieldReturnsNull() {
         String json = "{\"existing\": \"value\"}";
-        ToolResult result = tool.execute(Map.of("json", json, "query", ".missing"));
+        ToolResult result = tool.execute(Map.of("json", json, "query", ".missing"), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("null"));
@@ -144,7 +147,8 @@ class JsonQueryToolTest {
                   ]
                 }
                 """;
-        ToolResult result = tool.execute(Map.of("json", json, "query", ".users[0].skills[1]"));
+        ToolResult result =
+                tool.execute(Map.of("json", json, "query", ".users[0].skills[1]"), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("python"));
@@ -153,7 +157,7 @@ class JsonQueryToolTest {
     @Test
     void arrayExpansionWithoutPipe() {
         String json = "[1, 2, 3]";
-        ToolResult result = tool.execute(Map.of("json", json, "query", ".[]"));
+        ToolResult result = tool.execute(Map.of("json", json, "query", ".[]"), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("1"));
@@ -164,7 +168,7 @@ class JsonQueryToolTest {
 
     @Test
     void missingJsonParameter() {
-        ToolResult result = tool.execute(Map.of("query", "."));
+        ToolResult result = tool.execute(Map.of("query", "."), CTX).block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("'json' is required"));
@@ -172,7 +176,7 @@ class JsonQueryToolTest {
 
     @Test
     void missingQueryParameter() {
-        ToolResult result = tool.execute(Map.of("json", "{}"));
+        ToolResult result = tool.execute(Map.of("json", "{}"), CTX).block();
 
         assertTrue(result.isError());
         assertTrue(result.content().contains("'query' is required"));
@@ -180,14 +184,14 @@ class JsonQueryToolTest {
 
     @Test
     void blankJsonParameter() {
-        ToolResult result = tool.execute(Map.of("json", "   ", "query", "."));
+        ToolResult result = tool.execute(Map.of("json", "   ", "query", "."), CTX).block();
 
         assertTrue(result.isError());
     }
 
     @Test
     void blankQueryParameter() {
-        ToolResult result = tool.execute(Map.of("json", "{}", "query", "  "));
+        ToolResult result = tool.execute(Map.of("json", "{}", "query", "  "), CTX).block();
 
         assertTrue(result.isError());
     }
@@ -198,7 +202,9 @@ class JsonQueryToolTest {
         Path jsonFile = tempDir.resolve("data.json");
         Files.writeString(jsonFile, json);
 
-        ToolResult result = tool.execute(Map.of("json", jsonFile.toString(), "query", ".fromFile"));
+        ToolResult result =
+                tool.execute(Map.of("json", jsonFile.toString(), "query", ".fromFile"), CTX)
+                        .block();
 
         assertFalse(result.isError(), result.content());
         assertTrue(result.content().contains("true"));
@@ -207,7 +213,8 @@ class JsonQueryToolTest {
     @Test
     void prettyPrintDisabled() {
         String json = "{\"a\": 1, \"b\": 2}";
-        ToolResult result = tool.execute(Map.of("json", json, "query", ".", "pretty", false));
+        ToolResult result =
+                tool.execute(Map.of("json", json, "query", ".", "pretty", false), CTX).block();
 
         assertFalse(result.isError());
         // Compact output should be on a single line
@@ -217,7 +224,7 @@ class JsonQueryToolTest {
     @Test
     void rootDotReturnsFullDocument() {
         String json = "{\"full\": \"document\"}";
-        ToolResult result = tool.execute(Map.of("json", json, "query", "."));
+        ToolResult result = tool.execute(Map.of("json", json, "query", "."), CTX).block();
 
         assertFalse(result.isError());
         assertTrue(result.content().contains("full"));

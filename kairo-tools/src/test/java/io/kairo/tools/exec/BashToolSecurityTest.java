@@ -26,6 +26,7 @@ import io.kairo.api.sandbox.SandboxHandle;
 import io.kairo.api.sandbox.SandboxOutputChunk;
 import io.kairo.api.sandbox.SandboxRequest;
 import io.kairo.api.tool.ToolContext;
+import io.kairo.api.tool.ToolEvent;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.workspace.Workspace;
 import java.nio.charset.StandardCharsets;
@@ -49,6 +50,21 @@ class BashToolSecurityTest {
     private ExecutionSandbox mockSandbox;
     private ToolContext mockContext;
 
+    private static final ToolContext CTX = new ToolContext("agent-1", "sess-1", Map.of());
+
+    /** Helper to stream and extract final result using default CTX. */
+    private ToolResult exec(Map<String, Object> args) {
+        return exec(args, CTX);
+    }
+
+    /** Helper to stream and extract final result using provided context. */
+    private ToolResult exec(Map<String, Object> args, ToolContext ctx) {
+        return tool.stream(args, ctx)
+                .filter(e -> e instanceof ToolEvent.Final)
+                .map(e -> ((ToolEvent.Final) e).result())
+                .blockLast();
+    }
+
     @BeforeEach
     void setUp() {
         tool = new BashTool();
@@ -66,7 +82,7 @@ class BashToolSecurityTest {
         // Semicolon injection: /bin/sh -c runs the entire string as one script.
         // `rm -rf /` fails without root, so exit code is non-zero, but echo output
         // is still captured — confirming the sandbox executes the full string safely.
-        ToolResult result = tool.execute(Map.of("command", "echo safe; rm -rf /"));
+        ToolResult result = exec(Map.of("command", "echo safe; rm -rf /"));
         assertTrue(result.isError(), "rm -rf / fails without root, so exit code is non-zero");
         assertTrue(result.content().contains("safe"));
     }
@@ -74,7 +90,7 @@ class BashToolSecurityTest {
     @Test
     void shellInjectionWithBackticksIsContained() {
         // Backtick injection — the inner command runs as part of the shell string
-        ToolResult result = tool.execute(Map.of("command", "echo `whoami`"));
+        ToolResult result = exec(Map.of("command", "echo `whoami`"));
         // This is expected behaviour: /bin/sh -c evaluates the full string.
         // The test confirms no crash and that output is captured.
         assertFalse(result.isError());
@@ -83,7 +99,7 @@ class BashToolSecurityTest {
     @Test
     void shellInjectionWithDollarParenthesisIsContained() {
         // $(cmd) injection — same containment via /bin/sh -c
-        ToolResult result = tool.execute(Map.of("command", "echo $(date)"));
+        ToolResult result = exec(Map.of("command", "echo $(date)"));
         assertFalse(result.isError());
     }
 
@@ -92,7 +108,7 @@ class BashToolSecurityTest {
     @Test
     void commandWithNewlineRunsBothLines() {
         // /bin/sh -c treats \n as a command separator, both lines execute
-        ToolResult result = tool.execute(Map.of("command", "echo first\necho second"));
+        ToolResult result = exec(Map.of("command", "echo first\necho second"));
         assertFalse(result.isError());
         assertTrue(result.content().contains("first"));
         assertTrue(result.content().contains("second"));
@@ -102,7 +118,7 @@ class BashToolSecurityTest {
 
     @Test
     void timeoutForcesTerminationAndReturnsError() {
-        ToolResult result = tool.execute(Map.of("command", "sleep 10", "timeout", 1));
+        ToolResult result = exec(Map.of("command", "sleep 10", "timeout", 1));
         assertTrue(result.isError(), "Timed-out command should return isError=true");
         assertTrue(result.content().contains("timed out"));
         assertEquals(-1, result.metadata().get("exitCode"));
@@ -114,7 +130,7 @@ class BashToolSecurityTest {
         // After timeout, verify the sandbox handle is properly closed
         // by running multiple slow commands and checking they don't accumulate
         for (int i = 0; i < 3; i++) {
-            ToolResult result = tool.execute(Map.of("command", "sleep 60", "timeout", 1));
+            ToolResult result = exec(Map.of("command", "sleep 60", "timeout", 1));
             assertTrue(result.isError());
         }
         // If processes leaked, system load would be abnormal; the test passing
@@ -130,7 +146,7 @@ class BashToolSecurityTest {
         SandboxHandle mockHandle = createSuccessfulHandle("docker-output", 0);
         when(mockSandbox.start(any(SandboxRequest.class))).thenReturn(mockHandle);
 
-        ToolResult result = tool.execute(Map.of("command", "echo test"), mockContext);
+        ToolResult result = exec(Map.of("command", "echo test"), mockContext);
         assertFalse(result.isError());
         assertTrue(result.content().contains("docker-output"));
         assertEquals(0, result.metadata().get("exitCode"));
@@ -142,7 +158,7 @@ class BashToolSecurityTest {
         SandboxHandle mockHandle = createTimedOutHandle();
         when(mockSandbox.start(any(SandboxRequest.class))).thenReturn(mockHandle);
 
-        ToolResult result = tool.execute(Map.of("command", "slow-cmd"), mockContext);
+        ToolResult result = exec(Map.of("command", "slow-cmd"), mockContext);
         assertTrue(result.isError());
         assertTrue(result.content().contains("timed out"));
         assertEquals(true, result.metadata().get("timedOut"));
@@ -152,14 +168,14 @@ class BashToolSecurityTest {
 
     @Test
     void emptyCommandReturnsError() {
-        ToolResult result = tool.execute(Map.of("command", ""));
+        ToolResult result = exec(Map.of("command", ""));
         assertTrue(result.isError());
         assertTrue(result.content().contains("'command' is required"));
     }
 
     @Test
     void whitespaceOnlyCommandReturnsError() {
-        ToolResult result = tool.execute(Map.of("command", "   \t\n  "));
+        ToolResult result = exec(Map.of("command", "   \t\n  "));
         assertTrue(result.isError());
     }
 
@@ -169,8 +185,7 @@ class BashToolSecurityTest {
     void largeOutputIsTruncatedAtThreshold() {
         // Generate >100KB of output using a shell loop
         ToolResult result =
-                tool.execute(
-                        Map.of("command", "for i in $(seq 1 2000); do printf '%0100d' 0; done"));
+                exec(Map.of("command", "for i in $(seq 1 2000); do printf '%0100d' 0; done"));
         assertFalse(result.isError());
         assertTrue(
                 result.content().contains("output truncated"),
@@ -183,7 +198,7 @@ class BashToolSecurityTest {
     @Test
     void nonexistentWorkingDirectoryReturnsError() {
         ToolResult result =
-                tool.execute(
+                exec(
                         Map.of(
                                 "command", "echo test",
                                 "workingDirectory", "/this/path/does/not/exist/abc123"));
@@ -195,28 +210,28 @@ class BashToolSecurityTest {
 
     @Test
     void exitCodeZeroIsNotError() {
-        ToolResult result = tool.execute(Map.of("command", "exit 0"));
+        ToolResult result = exec(Map.of("command", "exit 0"));
         assertFalse(result.isError());
         assertEquals(0, result.metadata().get("exitCode"));
     }
 
     @Test
     void exitCodeOneIsError() {
-        ToolResult result = tool.execute(Map.of("command", "exit 1"));
+        ToolResult result = exec(Map.of("command", "exit 1"));
         assertTrue(result.isError());
         assertEquals(1, result.metadata().get("exitCode"));
     }
 
     @Test
     void exitCodeTwoIsMappedCorrectly() {
-        ToolResult result = tool.execute(Map.of("command", "exit 2"));
+        ToolResult result = exec(Map.of("command", "exit 2"));
         assertTrue(result.isError());
         assertEquals(2, result.metadata().get("exitCode"));
     }
 
     @Test
     void exitCode127ForCommandNotFound() {
-        ToolResult result = tool.execute(Map.of("command", "nonexistent_command_xyz"));
+        ToolResult result = exec(Map.of("command", "nonexistent_command_xyz"));
         assertTrue(result.isError());
         assertEquals(127, result.metadata().get("exitCode"));
     }

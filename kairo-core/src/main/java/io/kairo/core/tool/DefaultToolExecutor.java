@@ -22,6 +22,10 @@ import io.kairo.api.tool.*;
 import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
 import io.kairo.core.shutdown.GracefulShutdownManager;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -78,7 +82,7 @@ public class DefaultToolExecutor implements ToolExecutor {
         if (content.length() <= MAX_TOOL_RESULT_CHARS) return result;
         // Use semantic compression instead of hard truncation
         String compressed = ToolOutputCompressor.compress(content, MAX_TOOL_RESULT_CHARS);
-        return new ToolResult(result.toolUseId(), compressed, result.isError(), result.metadata());
+        return ToolResult.of(result.toolUseId(), compressed, result.isError(), result.metadata());
     }
 
     private final DefaultToolRegistry registry;
@@ -92,6 +96,13 @@ public class DefaultToolExecutor implements ToolExecutor {
 
     /** Reactor Context key used to propagate {@link ToolContext} through the reactive pipeline. */
     public static final Class<ToolContext> CONTEXT_KEY = ToolContext.class;
+
+    /**
+     * Reactor Context key used to propagate the active agent {@link Span} from {@code
+     * DefaultReActAgent} to tool executions. Tool spans use this as their explicit parent because
+     * Reactor schedulers can leak/strand thread-local OTel context.
+     */
+    public static final Class<Span> SPAN_CONTEXT_KEY = Span.class;
 
     /**
      * Create a new executor with the given registry and permission guard.
@@ -286,25 +297,57 @@ public class DefaultToolExecutor implements ToolExecutor {
 
     @Override
     public Mono<ToolResult> execute(String toolName, Map<String, Object> input, Duration timeout) {
-        Span toolSpan = tracer.startToolSpan(null, toolName, input);
-        return executeInternal(toolName, input, timeout)
-                .map(DefaultToolExecutor::applyResultBudget)
-                .doOnSuccess(
-                        result -> {
-                            if (result != null) {
-                                toolSpan.setStatus(
-                                        !result.isError(),
-                                        result.isError() ? result.content() : "OK");
-                            } else {
-                                toolSpan.setStatus(false, "empty result");
-                            }
-                            toolSpan.end();
-                        })
-                .doOnError(
-                        e -> {
-                            toolSpan.setStatus(false, e.getMessage());
-                            toolSpan.end();
-                        });
+        return Mono.deferContextual(
+                ctxView -> {
+                    Span parent =
+                            ctxView.hasKey(SPAN_CONTEXT_KEY) ? ctxView.get(SPAN_CONTEXT_KEY) : null;
+                    Span toolSpan = tracer.startToolSpan(parent, toolName, input);
+                    long startMs = System.currentTimeMillis();
+                    return executeInternal(toolName, input, timeout)
+                            .map(DefaultToolExecutor::applyResultBudget)
+                            .flatMap(result -> enforceBudget(result, toolName))
+                            .doOnSuccess(
+                                    result -> {
+                                        Duration elapsed =
+                                                Duration.ofMillis(
+                                                        System.currentTimeMillis() - startMs);
+                                        if (result != null) {
+                                            String content = result.content();
+                                            if (content != null) {
+                                                String preview =
+                                                        content.length() <= 4000
+                                                                ? content
+                                                                : content.substring(0, 4000) + "…";
+                                                toolSpan.setAttribute(
+                                                        "langfuse.observation.output", preview);
+                                                toolSpan.setAttribute("output.value", preview);
+                                                toolSpan.setAttribute(
+                                                        "tool.output.length",
+                                                        (long) content.length());
+                                            }
+                                            tracer.recordToolResult(
+                                                    toolSpan, toolName, !result.isError(), elapsed);
+                                            toolSpan.setStatus(
+                                                    !result.isError(),
+                                                    result.isError() ? result.content() : "OK");
+                                        } else {
+                                            tracer.recordToolResult(
+                                                    toolSpan, toolName, false, elapsed);
+                                            toolSpan.setStatus(false, "empty result");
+                                        }
+                                        toolSpan.end();
+                                    })
+                            .doOnError(
+                                    e -> {
+                                        Duration elapsed =
+                                                Duration.ofMillis(
+                                                        System.currentTimeMillis() - startMs);
+                                        tracer.recordToolResult(toolSpan, toolName, false, elapsed);
+                                        tracer.recordException(toolSpan, e);
+                                        toolSpan.setStatus(false, e.getMessage());
+                                        toolSpan.end();
+                                    });
+                });
     }
 
     /** Build a composite circuit-breaker key scoped to both tool name and session. */
@@ -368,11 +411,23 @@ public class DefaultToolExecutor implements ToolExecutor {
 
                     // 5. Get tool handler instance
                     Object instance = registry.getToolInstance(toolName);
-                    if (!(instance instanceof ToolHandler handler)) {
+                    if (instance == null) {
                         return Mono.just(
                                 ToolResultSanitizer.errorResult(
                                         toolName,
                                         "Tool '" + toolName + "' has no executable handler"));
+                    }
+                    // Resolve to SyncTool, StreamingTool, or legacy ToolHandler
+                    if (!(instance instanceof SyncTool)
+                            && !(instance instanceof StreamingTool)
+                            && !(instance instanceof ToolHandler)) {
+                        return Mono.just(
+                                ToolResultSanitizer.errorResult(
+                                        toolName,
+                                        "Tool '"
+                                                + toolName
+                                                + "' does not implement SyncTool,"
+                                                + " StreamingTool, or ToolHandler"));
                     }
 
                     // 6. Permission guard check
@@ -427,7 +482,7 @@ public class DefaultToolExecutor implements ToolExecutor {
                                                             return invocationRunner
                                                                     .execute(
                                                                             toolName,
-                                                                            handler,
+                                                                            instance,
                                                                             finalInput,
                                                                             timeout)
                                                                     .doOnNext(
@@ -594,6 +649,113 @@ public class DefaultToolExecutor implements ToolExecutor {
     @Override
     public void resetCircuitBreaker(String toolName) {
         circuitBreakerTracker.reset(toolName);
+    }
+
+    // ---- Output Budget enforcement ----
+
+    /**
+     * Enforce output budget limits using the {@link OutputBudgetTracker} from Reactor Context. If
+     * no tracker is present (e.g. direct executor usage without agent loop), passes through.
+     */
+    private Mono<ToolResult> enforceBudget(ToolResult result, String toolName) {
+        return Mono.deferContextual(
+                ctxView -> {
+                    if (!ctxView.hasKey(OutputBudgetTracker.CONTEXT_KEY)) {
+                        return Mono.just(result);
+                    }
+                    OutputBudgetTracker tracker = ctxView.get(OutputBudgetTracker.CONTEXT_KEY);
+                    String content = result.content();
+                    if (content == null || content.isEmpty()) {
+                        return Mono.just(result);
+                    }
+
+                    long outputBytes = content.getBytes(StandardCharsets.UTF_8).length;
+
+                    // Check per-tool limit
+                    if (tracker.exceedsPerToolLimit(outputBytes)) {
+                        long limit = tracker.config().maxPerToolBytes();
+                        ToolResult truncated = truncateResult(result, limit);
+                        tracker.consume(limit);
+                        return Mono.just(truncated);
+                    }
+
+                    // Check per-turn limit
+                    if (tracker.exceedsPerTurnLimit(outputBytes)) {
+                        long remaining = tracker.remainingTurnBudget();
+                        long effectiveLimit = Math.max(remaining, 1024); // at least 1KB visible
+                        ToolResult truncated = truncateResult(result, effectiveLimit);
+                        tracker.consume(effectiveLimit);
+                        return Mono.just(truncated);
+                    }
+
+                    // Within budget — record consumption
+                    tracker.consume(outputBytes);
+                    return Mono.just(result);
+                });
+    }
+
+    /**
+     * Truncate a tool result to the given byte limit, persisting the full output to a spill file.
+     */
+    private ToolResult truncateResult(ToolResult result, long maxBytes) {
+        String content = result.content();
+        byte[] fullBytes = content.getBytes(StandardCharsets.UTF_8);
+        int truncateAt = (int) Math.min(fullBytes.length, maxBytes);
+
+        // Find a safe UTF-8 boundary
+        while (truncateAt > 0 && (fullBytes[truncateAt - 1] & 0xC0) == 0x80) {
+            truncateAt--;
+        }
+
+        String visible = new String(fullBytes, 0, truncateAt, StandardCharsets.UTF_8);
+        visible +=
+                "\n\n... (output truncated: "
+                        + fullBytes.length
+                        + " bytes total, "
+                        + truncateAt
+                        + " bytes shown)";
+
+        // Persist full output best-effort
+        URI spillUri = persistFullOutput(result.toolUseId(), content);
+
+        ToolOutput.Truncated truncatedOutput =
+                new ToolOutput.Truncated(
+                        visible, fullBytes.length, java.util.Optional.ofNullable(spillUri));
+
+        List<Hint> hints = new ArrayList<>(result.hints());
+        hints.add(
+                new Hint(
+                        Hint.HintLevel.INFO,
+                        "Output truncated by budget policy."
+                                + (spillUri != null ? " Full output: " + spillUri : ""),
+                        java.util.Optional.empty()));
+
+        return new ToolResult(
+                result.toolUseId(), truncatedOutput, result.outcome(), hints, result.metadata());
+    }
+
+    /**
+     * Persist full output to .kairo/tool-output/ for later retrieval. Returns the file URI on
+     * success, null on failure.
+     */
+    private URI persistFullOutput(String toolUseId, String content) {
+        try {
+            Path spillDir = Path.of(System.getProperty("user.dir"), ".kairo", "tool-output");
+            Files.createDirectories(spillDir);
+            String safeId =
+                    toolUseId != null ? toolUseId.replaceAll("[^a-zA-Z0-9_\\-]", "_") : "unknown";
+            String fileName = safeId + "_" + System.currentTimeMillis() + ".txt";
+            Path spillFile = spillDir.resolve(fileName);
+            Files.writeString(spillFile, content, StandardCharsets.UTF_8);
+            log.debug("Persisted truncated tool output to: {}", spillFile);
+            return spillFile.toUri();
+        } catch (Exception e) {
+            log.warn(
+                    "Failed to persist truncated tool output for {}: {}",
+                    toolUseId,
+                    e.getMessage());
+            return null;
+        }
     }
 
     // ---- Guardrail helpers ----

@@ -15,18 +15,18 @@
  */
 package io.kairo.tools.agent;
 
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
-import io.kairo.api.workspace.Workspace;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Reads the agent's todo list from {@code .kairo/todos.json} in the workspace root.
@@ -40,7 +40,7 @@ import java.util.Map;
                         + " todos have been written yet.",
         category = ToolCategory.AGENT_AND_TASK,
         sideEffect = ToolSideEffect.READ_ONLY)
-public class TodoReadTool implements ToolHandler {
+public class TodoReadTool implements SyncTool {
 
     private final Path overrideRoot;
 
@@ -55,28 +55,22 @@ public class TodoReadTool implements ToolHandler {
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        Path root = overrideRoot != null ? overrideRoot : Workspace.cwd().root();
-        return doExecute(root);
-    }
-
-    @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        Path root = overrideRoot != null ? overrideRoot : context.workspace().root();
-        return doExecute(root);
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        Path root = overrideRoot != null ? overrideRoot : ctx.workspace().root();
+        return Mono.fromCallable(() -> doExecute(root));
     }
 
     private ToolResult doExecute(Path workspaceRoot) {
         Path todoFile = workspaceRoot.resolve(TodoWriteTool.TODO_FILE);
         if (!Files.exists(todoFile)) {
-            return new ToolResult("todo_read", "[]", false, Map.of("count", 0));
+            return ToolResult.success("todo_read", "[]", Map.of("count", 0));
         }
         try {
             String content = Files.readString(todoFile, StandardCharsets.UTF_8);
-            return new ToolResult(
+            return ToolResult.of(
                     "todo_read", content.trim(), false, Map.of("file", TodoWriteTool.TODO_FILE));
         } catch (IOException e) {
-            return new ToolResult(
+            return ToolResult.of(
                     "todo_read", "Failed to read todos: " + e.getMessage(), true, Map.of());
         }
     }

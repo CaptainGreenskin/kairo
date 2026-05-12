@@ -17,6 +17,8 @@ package io.kairo.tools.exec;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.tool.ToolContext;
+import io.kairo.api.tool.ToolEvent;
 import io.kairo.api.tool.ToolResult;
 import java.nio.file.Path;
 import java.util.Map;
@@ -26,7 +28,17 @@ import org.junit.jupiter.api.io.TempDir;
 
 class BashToolTest {
 
+    private static final ToolContext CTX = new ToolContext("agent-1", "sess-1", Map.of());
+
     private BashTool tool;
+
+    /** Helper to stream a BashTool call and extract the final ToolResult. */
+    private ToolResult exec(Map<String, Object> args) {
+        return tool.stream(args, CTX)
+                .filter(e -> e instanceof ToolEvent.Final)
+                .map(e -> ((ToolEvent.Final) e).result())
+                .blockLast();
+    }
 
     @BeforeEach
     void setUp() {
@@ -35,41 +47,40 @@ class BashToolTest {
 
     @Test
     void executeEchoCommand() {
-        ToolResult result = tool.execute(Map.of("command", "echo hello"));
+        ToolResult result = exec(Map.of("command", "echo hello"));
         assertFalse(result.isError());
         assertTrue(result.content().contains("hello"));
     }
 
     @Test
     void executeCommandWithExitCode() {
-        ToolResult result = tool.execute(Map.of("command", "echo hello"));
+        ToolResult result = exec(Map.of("command", "echo hello"));
         assertEquals(0, result.metadata().get("exitCode"));
     }
 
     @Test
     void executeFailingCommand() {
-        ToolResult result = tool.execute(Map.of("command", "exit 1"));
+        ToolResult result = exec(Map.of("command", "exit 1"));
         assertTrue(result.isError());
         assertEquals(1, result.metadata().get("exitCode"));
     }
 
     @Test
     void executeMissingCommandParameter() {
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = exec(Map.of());
         assertTrue(result.isError());
         assertTrue(result.content().contains("'command' is required"));
     }
 
     @Test
     void executeBlankCommandParameter() {
-        ToolResult result = tool.execute(Map.of("command", "   "));
+        ToolResult result = exec(Map.of("command", "   "));
         assertTrue(result.isError());
     }
 
     @Test
     void executeWithWorkingDirectory(@TempDir Path tempDir) {
-        ToolResult result =
-                tool.execute(Map.of("command", "pwd", "workingDirectory", tempDir.toString()));
+        ToolResult result = exec(Map.of("command", "pwd", "workingDirectory", tempDir.toString()));
         assertFalse(result.isError());
         assertTrue(result.content().trim().contains(tempDir.getFileName().toString()));
     }
@@ -77,8 +88,7 @@ class BashToolTest {
     @Test
     void executeWithInvalidWorkingDirectory() {
         ToolResult result =
-                tool.execute(
-                        Map.of("command", "echo test", "workingDirectory", "/nonexistent/path"));
+                exec(Map.of("command", "echo test", "workingDirectory", "/nonexistent/path"));
         assertTrue(result.isError());
         assertTrue(result.content().contains("Working directory does not exist"));
     }
@@ -88,14 +98,14 @@ class BashToolTest {
         // BashTool reads all output before checking timeout, so the timeout only
         // triggers if the process produces output and THEN hangs. With a fast
         // command, the timeout param is parsed but not triggered.
-        ToolResult result = tool.execute(Map.of("command", "echo fast", "timeout", 5));
+        ToolResult result = exec(Map.of("command", "echo fast", "timeout", 5));
         assertFalse(result.isError());
         assertTrue(result.content().contains("fast"));
     }
 
     @Test
     void executeMultiLineOutput() {
-        ToolResult result = tool.execute(Map.of("command", "echo line1 && echo line2"));
+        ToolResult result = exec(Map.of("command", "echo line1 && echo line2"));
         assertFalse(result.isError());
         assertTrue(result.content().contains("line1"));
         assertTrue(result.content().contains("line2"));
@@ -103,50 +113,49 @@ class BashToolTest {
 
     @Test
     void executeWithStringTimeout() {
-        ToolResult result = tool.execute(Map.of("command", "echo ok", "timeout", "60"));
+        ToolResult result = exec(Map.of("command", "echo ok", "timeout", "60"));
         assertFalse(result.isError());
         assertTrue(result.content().contains("ok"));
     }
 
     @Test
     void stderrIsCapturedInOutput() {
-        ToolResult result = tool.execute(Map.of("command", "echo errline >&2"));
+        ToolResult result = exec(Map.of("command", "echo errline >&2"));
         assertFalse(result.isError());
         assertTrue(result.content().contains("errline"));
     }
 
     @Test
     void commandWithPipeSucceeds() {
-        ToolResult result = tool.execute(Map.of("command", "echo hello | tr a-z A-Z"));
+        ToolResult result = exec(Map.of("command", "echo hello | tr a-z A-Z"));
         assertFalse(result.isError());
         assertTrue(result.content().contains("HELLO"));
     }
 
     @Test
     void metadataContainsCommandString() {
-        ToolResult result = tool.execute(Map.of("command", "echo meta-test"));
+        ToolResult result = exec(Map.of("command", "echo meta-test"));
         assertFalse(result.isError());
         assertEquals("echo meta-test", result.metadata().get("command"));
     }
 
     @Test
     void invalidTimeoutStringDefaultsGracefully() {
-        ToolResult result =
-                tool.execute(Map.of("command", "echo fallback", "timeout", "notanumber"));
+        ToolResult result = exec(Map.of("command", "echo fallback", "timeout", "notanumber"));
         assertFalse(result.isError());
         assertTrue(result.content().contains("fallback"));
     }
 
     @Test
     void exitCodeTwoIsReportedInMetadata() {
-        ToolResult result = tool.execute(Map.of("command", "exit 2"));
+        ToolResult result = exec(Map.of("command", "exit 2"));
         assertTrue(result.isError());
         assertEquals(2, result.metadata().get("exitCode"));
     }
 
     @Test
     void commandWithStdoutAndStderrCapturesBoth() {
-        ToolResult result = tool.execute(Map.of("command", "echo stdout && echo stderr >&2"));
+        ToolResult result = exec(Map.of("command", "echo stdout && echo stderr >&2"));
         assertFalse(result.isError());
         assertTrue(result.content().contains("stdout"));
         assertTrue(result.content().contains("stderr"));
@@ -154,7 +163,7 @@ class BashToolTest {
 
     @Test
     void commandOutputContainsNewline() {
-        ToolResult result = tool.execute(Map.of("command", "printf 'a\\nb\\n'"));
+        ToolResult result = exec(Map.of("command", "printf 'a\\nb\\n'"));
         assertFalse(result.isError());
         assertTrue(result.content().contains("a"));
         assertTrue(result.content().contains("b"));

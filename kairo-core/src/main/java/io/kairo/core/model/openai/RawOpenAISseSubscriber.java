@@ -63,7 +63,6 @@ public class RawOpenAISseSubscriber implements Flow.Subscriber<String> {
 
         String data = line.substring(5).trim();
         if ("[DONE]".equals(data)) {
-            // End all open tool blocks, then emit DONE
             flushRemainingTools();
             sink.tryEmitNext(StreamChunk.done());
             sink.tryEmitComplete();
@@ -130,11 +129,14 @@ public class RawOpenAISseSubscriber implements Flow.Subscriber<String> {
                 }
             }
 
-            // finish_reason signals end of tool calls
-            if ("tool_calls".equals(finishReason)) {
+            // finish_reason signals end of stream — some providers (e.g. Zhipu GLM) do not emit
+            // a trailing `data: [DONE]`, so we must complete the sink here or executeEager hangs.
+            if ("tool_calls".equals(finishReason)
+                    || "stop".equals(finishReason)
+                    || "length".equals(finishReason)) {
                 flushRemainingTools();
-            } else if ("stop".equals(finishReason) || "length".equals(finishReason)) {
-                flushRemainingTools();
+                sink.tryEmitNext(StreamChunk.done());
+                sink.tryEmitComplete();
             }
         } catch (Exception e) {
             log.warn("Failed to parse SSE chunk: {}", data, e);

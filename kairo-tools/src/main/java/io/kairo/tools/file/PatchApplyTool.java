@@ -15,13 +15,13 @@
  */
 package io.kairo.tools.file;
 
+import io.kairo.api.tool.JsonSchema;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
-import io.kairo.api.workspace.Workspace;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -29,6 +29,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Applies a unified diff (patch) to files in the workspace.
@@ -43,16 +44,36 @@ import java.util.Map;
                         + " Rolls back all changes on failure.",
         category = ToolCategory.FILE_AND_CODE,
         sideEffect = ToolSideEffect.WRITE)
-public class PatchApplyTool implements ToolHandler {
+public class PatchApplyTool implements SyncTool {
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        return doExecute(input, Workspace.cwd().root());
+    public JsonSchema inputSchema() {
+        java.util.Map<String, JsonSchema> props = new java.util.LinkedHashMap<>();
+        props.put(
+                "patchContent",
+                new JsonSchema(
+                        "string",
+                        null,
+                        null,
+                        "Unified-diff text to apply. Must follow `diff --git` / `--- a/...` / `+++ b/...` format."));
+        props.put(
+                "targetPath",
+                new JsonSchema(
+                        "string",
+                        null,
+                        null,
+                        "Absolute workspace root the diff paths are relative to."));
+        props.put(
+                "dryRun",
+                new JsonSchema(
+                        "boolean", null, null, "Validate without writing. Defaults to false."));
+        return new JsonSchema(
+                "object", props, java.util.List.of("patchContent", "targetPath"), null);
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        return doExecute(input, context.workspace().root());
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> doExecute(args, ctx.workspace().root()));
     }
 
     private ToolResult doExecute(Map<String, Object> input, Path workspaceRoot) {
@@ -92,12 +113,11 @@ public class PatchApplyTool implements ToolHandler {
             List<String> modifiedPaths = results.stream().map(r -> r.path().toString()).toList();
 
             if (dryRun) {
-                return new ToolResult(
+                return ToolResult.success(
                         "patch_apply",
                         "Dry-run: patch can be applied successfully to "
                                 + modifiedPaths.size()
                                 + " file(s)",
-                        false,
                         Map.of(
                                 "dryRun", true,
                                 "files", modifiedPaths,
@@ -112,10 +132,9 @@ public class PatchApplyTool implements ToolHandler {
                 Files.writeString(patches.get(i).path(), joined, StandardCharsets.UTF_8);
             }
 
-            return new ToolResult(
+            return ToolResult.success(
                     "patch_apply",
                     "Applied patch to " + modifiedPaths.size() + " file(s): " + modifiedPaths,
-                    false,
                     Map.of(
                             "files", modifiedPaths,
                             "appliedHunks", totalApplied,
@@ -347,7 +366,7 @@ public class PatchApplyTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("patch_apply", msg, true, Map.of());
+        return ToolResult.error("patch_apply", msg);
     }
 
     // ---- Records ----

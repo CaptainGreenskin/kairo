@@ -16,15 +16,17 @@
 package io.kairo.tools.agent;
 
 import io.kairo.api.plan.PlanFile;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
-import io.kairo.api.tool.ToolHandler;
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
 import io.kairo.core.plan.PlanFileManager;
 import io.kairo.core.tool.DefaultToolExecutor;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Enters plan mode for read-only exploration before implementation.
@@ -40,7 +42,7 @@ import java.util.Map;
         description = "Enter plan mode for read-only exploration before implementation.",
         category = ToolCategory.AGENT_AND_TASK,
         sideEffect = ToolSideEffect.READ_ONLY)
-public class EnterPlanModeTool implements ToolHandler {
+public class EnterPlanModeTool implements SyncTool {
 
     @ToolParam(description = "Name of the plan", required = false)
     private String name;
@@ -70,7 +72,11 @@ public class EnterPlanModeTool implements ToolHandler {
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> executeSync(args, ctx));
+    }
+
+    private ToolResult executeSync(Map<String, Object> input, ToolContext ctx) {
         String planName =
                 input.containsKey("name") ? input.get("name").toString() : "Untitled Plan";
 
@@ -96,7 +102,7 @@ public class EnterPlanModeTool implements ToolHandler {
                         + "- List: List directory contents\n\n"
                         + "Write tools (Write, Edit, Bash) are blocked until you exit Plan Mode.";
 
-        return new ToolResult(
+        return ToolResult.of(
                 null,
                 message,
                 false,

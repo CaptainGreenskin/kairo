@@ -162,4 +162,25 @@ public interface ToolExecutor {
      * @param toolName the name of the tool whose circuit breaker should be reset
      */
     default void resetCircuitBreaker(String toolName) {}
+
+    /**
+     * Execute a resolved tool object as a stream of {@link ToolEvent}s.
+     *
+     * <p>This is the v1.2 streaming-first execution entry point. Implementations should:
+     *
+     * <ul>
+     *   <li>{@link SyncTool} → wrap result as {@code Flux.just(new ToolEvent.Final(result))}
+     *   <li>{@link StreamingTool} → direct passthrough of {@link StreamingTool#stream}
+     * </ul>
+     *
+     * @param tool the resolved tool instance (SyncTool or StreamingTool)
+     * @param args the input parameters
+     * @param ctx the runtime context
+     * @return a Flux of tool events, always terminated by a {@link ToolEvent.Final}
+     * @since 1.2.0
+     */
+    default Flux<ToolEvent> executeStreaming(
+            Object tool, Map<String, Object> args, ToolContext ctx) {
+        throw new UnsupportedOperationException("Streaming execution not implemented");
+    }
 }

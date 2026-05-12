@@ -22,7 +22,6 @@ import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.tool.ToolResult;
 import java.time.Duration;
-import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -75,7 +74,7 @@ class SessionLifecycleEventTest {
     @Test
     @DisplayName("ToolResultEvent success case — success=true, result accessible")
     void toolResultEvent_successCase() {
-        ToolResult toolResult = new ToolResult("use-1", "file created", false, Map.of());
+        ToolResult toolResult = ToolResult.success("use-1", "file created");
         ToolResultEvent event =
                 new ToolResultEvent("create_file", toolResult, Duration.ofMillis(150), true);
 
@@ -89,7 +88,7 @@ class SessionLifecycleEventTest {
     @Test
     @DisplayName("ToolResultEvent failure case — success=false")
     void toolResultEvent_failureCase() {
-        ToolResult toolResult = new ToolResult("use-2", "file not found", true, Map.of());
+        ToolResult toolResult = ToolResult.error("use-2", "file not found");
         ToolResultEvent event =
                 new ToolResultEvent("read_file", toolResult, Duration.ofMillis(50), false);
 
@@ -147,7 +146,7 @@ class SessionLifecycleEventTest {
         SessionEndEvent endEvent =
                 new SessionEndEvent(
                         "agent", AgentState.COMPLETED, 3, 500L, Duration.ofSeconds(10), null);
-        ToolResult tr = new ToolResult("id", "ok", false, Map.of());
+        ToolResult tr = ToolResult.success("id", "ok");
         ToolResultEvent toolEvent = new ToolResultEvent("tool", tr, Duration.ofMillis(100), true);
 
         // Default methods should return the event unchanged (using block())

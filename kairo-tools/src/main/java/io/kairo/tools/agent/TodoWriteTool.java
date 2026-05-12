@@ -17,20 +17,20 @@ package io.kairo.tools.agent;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
-import io.kairo.api.workspace.Workspace;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Writes (replaces) the agent's todo list stored at {@code .kairo/todos.json} in the workspace
@@ -42,13 +42,19 @@ import java.util.Map;
         name = "todo_write",
         description =
                 "Create or replace the todo list. Replaces the entire list with the provided todos."
-                        + " Each todo must have id, content, status (pending|in_progress|completed),"
-                        + " and priority (high|medium|low)."
-                        + " Use this to track your work plan. After creating todos, immediately start executing"
-                        + " them with tools — never use todo_write as a substitute for doing the actual work.",
+                        + " The 'todos' parameter accepts EITHER a JSON array directly, OR a string containing"
+                        + " a JSON array. Each item must be an object with these fields:"
+                        + " id (string), content (string),"
+                        + " status (one of: pending, in_progress, completed),"
+                        + " priority (one of: high, medium, low)."
+                        + " Example: [{\"id\":\"1\",\"content\":\"Read pom.xml\",\"status\":\"pending\",\"priority\":\"high\"},"
+                        + "{\"id\":\"2\",\"content\":\"Remove empty controller module\",\"status\":\"pending\",\"priority\":\"high\"}]."
+                        + " After writing todos, IMMEDIATELY continue executing them by calling other tools —"
+                        + " do NOT stop your turn after todo_write; the user expects you to start working"
+                        + " on the first todo right away in the same turn.",
         category = ToolCategory.AGENT_AND_TASK,
         sideEffect = ToolSideEffect.WRITE)
-public class TodoWriteTool implements ToolHandler {
+public class TodoWriteTool implements SyncTool {
 
     static final String TODO_FILE = ".kairo/todos.json";
 
@@ -71,35 +77,47 @@ public class TodoWriteTool implements ToolHandler {
 
     @ToolParam(
             description =
-                    "JSON array of todo items. Each item must have: id (string),"
-                            + " content (string), status (pending|in_progress|completed),"
-                            + " priority (high|medium|low)",
+                    "JSON array of todo items (pass either the array directly or a stringified JSON array)."
+                            + " Each item must have: id (string), content (string),"
+                            + " status (pending|in_progress|completed), priority (high|medium|low).",
             required = true)
     private String todos;
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        Path root = overrideRoot != null ? overrideRoot : Workspace.cwd().root();
-        return doExecute(input, root);
-    }
-
-    @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        Path root = overrideRoot != null ? overrideRoot : context.workspace().root();
-        return doExecute(input, root);
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        Path root = overrideRoot != null ? overrideRoot : ctx.workspace().root();
+        return Mono.fromCallable(() -> doExecute(args, root));
     }
 
     private ToolResult doExecute(Map<String, Object> input, Path workspaceRoot) {
-        String todosJson = (String) input.get("todos");
-        if (todosJson == null || todosJson.isBlank()) {
-            return error("Parameter 'todos' is required");
+        // Accept both shapes: {todos: [...]} (LLM-friendly) and {todos: "[...]"} (String param).
+        // Models routinely ignore "stringified" instructions and pass the array directly, so we
+        // coerce both back into a List<?> via Jackson before validating.
+        Object rawTodos = input.get("todos");
+        if (rawTodos == null) {
+            return error(
+                    "Parameter 'todos' is required. Provide a JSON array of todo items, e.g.:"
+                            + " [{\"id\":\"1\",\"content\":\"...\",\"status\":\"pending\",\"priority\":\"high\"}]");
         }
 
         List<?> todoList;
         try {
-            todoList = MAPPER.readValue(todosJson, List.class);
+            if (rawTodos instanceof List<?> list) {
+                todoList = list;
+            } else if (rawTodos instanceof String s) {
+                if (s.isBlank()) {
+                    return error(
+                            "Parameter 'todos' is empty. Provide at least one todo item, or pass []"
+                                    + " explicitly to clear the list.");
+                }
+                todoList = MAPPER.readValue(s, List.class);
+            } else {
+                return error(
+                        "Parameter 'todos' must be a JSON array (or stringified JSON array), got: "
+                                + rawTodos.getClass().getSimpleName());
+            }
         } catch (JsonProcessingException e) {
-            return error("Invalid JSON: " + e.getOriginalMessage());
+            return error("Invalid JSON in 'todos': " + e.getOriginalMessage());
         }
 
         for (Object item : todoList) {
@@ -126,14 +144,13 @@ public class TodoWriteTool implements ToolHandler {
             return error("Failed to write todos: " + e.getMessage());
         }
 
-        return new ToolResult(
+        return ToolResult.success(
                 "todo_write",
                 "Wrote " + todoList.size() + " todo(s)",
-                false,
                 Map.of("count", todoList.size(), "file", TODO_FILE));
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("todo_write", msg, true, Map.of());
+        return ToolResult.error("todo_write", msg);
     }
 }

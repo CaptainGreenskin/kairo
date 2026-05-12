@@ -35,7 +35,7 @@ public final class McpContentConverter {
     public static ToolResult convert(McpSchema.CallToolResult result, String toolUseId) {
         String text = extractText(result);
         boolean isError = result.isError() != null && result.isError();
-        return new ToolResult(toolUseId, text, isError, Collections.emptyMap());
+        return ToolResult.of(toolUseId, text, isError, Collections.emptyMap());
     }
 
     /** Extracts a textual representation from the MCP result content list. */

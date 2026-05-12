@@ -17,6 +17,7 @@ package io.kairo.tools.file;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class BatchReadToolTest {
 
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
     private final BatchReadTool tool = new BatchReadTool();
 
     @TempDir Path tempDir;
@@ -38,7 +40,7 @@ class BatchReadToolTest {
         Path f = tempDir.resolve("a.txt");
         Files.writeString(f, "hello world");
 
-        ToolResult result = tool.execute(Map.of("paths", List.of(f.toString())));
+        ToolResult result = tool.execute(Map.of("paths", List.of(f.toString())), CTX).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("=== " + f + " ===");
@@ -52,7 +54,8 @@ class BatchReadToolTest {
         Files.writeString(f1, "content1");
         Files.writeString(f2, "content2");
 
-        ToolResult result = tool.execute(Map.of("paths", List.of(f1.toString(), f2.toString())));
+        ToolResult result =
+                tool.execute(Map.of("paths", List.of(f1.toString(), f2.toString())), CTX).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("content1");
@@ -67,7 +70,8 @@ class BatchReadToolTest {
         Files.writeString(exists, "real");
         String missing = tempDir.resolve("missing.txt").toString();
 
-        ToolResult result = tool.execute(Map.of("paths", List.of(exists.toString(), missing)));
+        ToolResult result =
+                tool.execute(Map.of("paths", List.of(exists.toString(), missing)), CTX).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("[ERROR: file not found]");
@@ -86,7 +90,8 @@ class BatchReadToolTest {
         Files.writeString(f, sb.toString());
 
         ToolResult result =
-                tool.execute(Map.of("paths", List.of(f.toString()), "maxLinesPerFile", 10));
+                tool.execute(Map.of("paths", List.of(f.toString()), "maxLinesPerFile", 10), CTX)
+                        .block();
 
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("[... truncated at 10 lines");
@@ -101,7 +106,7 @@ class BatchReadToolTest {
             paths.add("/some/path/file" + i + ".txt");
         }
 
-        ToolResult result = tool.execute(Map.of("paths", paths));
+        ToolResult result = tool.execute(Map.of("paths", paths), CTX).block();
 
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("Too many files");
@@ -109,7 +114,7 @@ class BatchReadToolTest {
 
     @Test
     void rejectsEmptyPathsParam() {
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = tool.execute(Map.of(), CTX).block();
 
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("'paths'");
@@ -117,7 +122,7 @@ class BatchReadToolTest {
 
     @Test
     void rejectsEmptyList() {
-        ToolResult result = tool.execute(Map.of("paths", List.of()));
+        ToolResult result = tool.execute(Map.of("paths", List.of()), CTX).block();
 
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("non-empty");
@@ -128,7 +133,7 @@ class BatchReadToolTest {
         Path dir = tempDir.resolve("subdir");
         Files.createDirectory(dir);
 
-        ToolResult result = tool.execute(Map.of("paths", List.of(dir.toString())));
+        ToolResult result = tool.execute(Map.of("paths", List.of(dir.toString())), CTX).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("[ERROR: path is a directory]");
@@ -144,7 +149,7 @@ class BatchReadToolTest {
         }
         Files.writeString(f, sb.toString());
 
-        ToolResult result = tool.execute(Map.of("paths", List.of(f.toString())));
+        ToolResult result = tool.execute(Map.of("paths", List.of(f.toString())), CTX).block();
 
         assertThat(result.content()).contains("[... truncated at 500 lines");
     }
@@ -158,7 +163,7 @@ class BatchReadToolTest {
             paths.add(f.toString());
         }
 
-        ToolResult result = tool.execute(Map.of("paths", paths));
+        ToolResult result = tool.execute(Map.of("paths", paths), CTX).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(result.metadata().get("successCount")).isEqualTo(20);

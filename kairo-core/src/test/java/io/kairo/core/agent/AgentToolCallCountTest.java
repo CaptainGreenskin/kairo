@@ -95,7 +95,7 @@ class AgentToolCallCountTest {
                         Object.class);
         toolRegistry.register(echoTool);
         toolRegistry.registerInstance(
-                "echo", (ToolHandler) input -> new ToolResult("echo", "result", false, Map.of()));
+                "echo", (ToolHandler) input -> ToolResult.success("echo", "result"));
 
         String toolCallId = "toolu_abc123";
         ModelResponse toolUseResponse =

@@ -46,8 +46,7 @@ class ToolApprovalFlowTest {
     private static final String TOOL_NAME = "bash";
     private static final Map<String, Object> INPUT = Map.of("command", "echo hello");
     private static final ToolInvocation INVOCATION = new ToolInvocation(TOOL_NAME, INPUT);
-    private static final ToolResult SUCCESS_RESULT =
-            new ToolResult("use-1", "hello", false, Map.of());
+    private static final ToolResult SUCCESS_RESULT = ToolResult.success("use-1", "hello");
 
     @BeforeEach
     void setUp() {

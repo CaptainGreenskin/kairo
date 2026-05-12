@@ -65,9 +65,9 @@ class CircuitBreakerTest {
                 input -> {
                     int n = callCount.incrementAndGet();
                     if (n <= 2) {
-                        return new ToolResult("flaky", "Error: failed", true, Map.of());
+                        return ToolResult.error("flaky", "Error: failed");
                     }
-                    return new ToolResult("flaky", "success", false, Map.of());
+                    return ToolResult.success("flaky", "success");
                 });
 
         // Two failures
@@ -103,8 +103,7 @@ class CircuitBreakerTest {
     void consecutiveFailuresTriggersCircuitBreaker() {
         DefaultToolExecutor executor = executorWithThreshold(3);
         registerToolHandler(
-                "bad_tool",
-                input -> new ToolResult("bad_tool", "Error: always fails", true, Map.of()));
+                "bad_tool", input -> ToolResult.error("bad_tool", "Error: always fails"));
 
         // 3 consecutive failures
         for (int i = 0; i < 3; i++) {
@@ -133,7 +132,7 @@ class CircuitBreakerTest {
                 "tracked",
                 input -> {
                     callCount.incrementAndGet();
-                    return new ToolResult("tracked", "Error: fail", true, Map.of());
+                    return ToolResult.error("tracked", "Error: fail");
                 });
 
         // Trigger circuit breaker with 2 failures
@@ -161,7 +160,7 @@ class CircuitBreakerTest {
                 "resettable",
                 input -> {
                     callCount.incrementAndGet();
-                    return new ToolResult("resettable", "Error: fail", true, Map.of());
+                    return ToolResult.error("resettable", "Error: fail");
                 });
 
         // Trigger circuit breaker
@@ -193,10 +192,8 @@ class CircuitBreakerTest {
     void resetSpecificToolClearsOnlyThatTool() {
         DefaultToolExecutor executor = executorWithThreshold(2);
 
-        registerToolHandler(
-                "tool_a", input -> new ToolResult("tool_a", "Error: fail a", true, Map.of()));
-        registerToolHandler(
-                "tool_b", input -> new ToolResult("tool_b", "Error: fail b", true, Map.of()));
+        registerToolHandler("tool_a", input -> ToolResult.error("tool_a", "Error: fail a"));
+        registerToolHandler("tool_b", input -> ToolResult.error("tool_b", "Error: fail b"));
 
         // Trigger circuit breaker for both tools
         for (int i = 0; i < 2; i++) {
@@ -231,8 +228,7 @@ class CircuitBreakerTest {
     @Test
     void customThresholdWorks() {
         DefaultToolExecutor executor = executorWithThreshold(5);
-        registerToolHandler(
-                "custom", input -> new ToolResult("custom", "Error: fail", true, Map.of()));
+        registerToolHandler("custom", input -> ToolResult.error("custom", "Error: fail"));
 
         // 4 failures should NOT trigger circuit breaker
         for (int i = 0; i < 4; i++) {
@@ -269,10 +265,8 @@ class CircuitBreakerTest {
     void differentToolsHaveIndependentCounters() {
         DefaultToolExecutor executor = executorWithThreshold(2);
 
-        registerToolHandler(
-                "tool_x", input -> new ToolResult("tool_x", "Error: fail x", true, Map.of()));
-        registerToolHandler(
-                "tool_y", input -> new ToolResult("tool_y", "success y", false, Map.of()));
+        registerToolHandler("tool_x", input -> ToolResult.error("tool_x", "Error: fail x"));
+        registerToolHandler("tool_y", input -> ToolResult.success("tool_y", "success y"));
 
         // Fail tool_x twice
         for (int i = 0; i < 2; i++) {
@@ -301,11 +295,7 @@ class CircuitBreakerTest {
                 input ->
                         // Simulate tools returning invocation-scoped IDs instead of static tool
                         // names
-                        new ToolResult(
-                                "invocation-" + System.nanoTime(),
-                                "Error: transient",
-                                true,
-                                Map.of()));
+                        ToolResult.error("invocation-" + System.nanoTime(), "Error: transient"));
 
         StepVerifier.create(executor.execute("unstable_tool", Map.of()))
                 .assertNext(r -> assertTrue(r.isError()))
@@ -325,8 +315,7 @@ class CircuitBreakerTest {
         DefaultToolExecutor executor = new DefaultToolExecutor(registry, guard, null, null);
 
         registerToolHandler(
-                "default_thresh",
-                input -> new ToolResult("default_thresh", "Error: fail", true, Map.of()));
+                "default_thresh", input -> ToolResult.error("default_thresh", "Error: fail"));
 
         // 3 failures should NOT be circuit-broken (they execute normally)
         for (int i = 0; i < 3; i++) {

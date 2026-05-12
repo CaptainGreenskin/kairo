@@ -17,6 +17,7 @@ package io.kairo.tools.exec;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -33,6 +34,12 @@ import org.junit.jupiter.api.io.TempDir;
 
 class MvnToolTest {
 
+    private static final ToolContext CTX = new ToolContext("agent-1", "sess-1", Map.of());
+
+    private ToolResult exec(Map<String, Object> args) {
+        return tool.execute(args, CTX).block();
+    }
+
     private static final Pattern FAILED_TEST_PATTERN =
             Pattern.compile("\\[ERROR\\]\\s+(\\S+(?:\\.\\S+)+)\\s+--.*<<<\\s+(?:FAILURE|ERROR)");
 
@@ -47,7 +54,7 @@ class MvnToolTest {
 
     @Test
     void missingGoalsParameter() {
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = exec(Map.of());
         assertTrue(result.isError());
         assertTrue(result.content().contains("'goals' is required"));
         assertEquals("mvn", result.toolUseId());
@@ -56,7 +63,7 @@ class MvnToolTest {
 
     @Test
     void emptyGoalsParameter() {
-        ToolResult result = tool.execute(Map.of("goals", List.of()));
+        ToolResult result = exec(Map.of("goals", List.of()));
         assertTrue(result.isError());
         assertTrue(result.content().contains("'goals' is required"));
     }
@@ -64,12 +71,7 @@ class MvnToolTest {
     @Test
     void invalidWorkingDirectoryReturnsError() {
         ToolResult result =
-                tool.execute(
-                        Map.of(
-                                "goals",
-                                List.of("compile"),
-                                "workingDir",
-                                "/nonexistent/path/abc123"));
+                exec(Map.of("goals", List.of("compile"), "workingDir", "/nonexistent/path/abc123"));
         assertTrue(result.isError());
         assertTrue(result.content().contains("workingDir does not exist"));
     }
@@ -79,7 +81,7 @@ class MvnToolTest {
     @Test
     @EnabledIf("mvnAvailable")
     void goalsBuildCorrectCommand() {
-        ToolResult result = tool.execute(Map.of("goals", List.of("--version")));
+        ToolResult result = exec(Map.of("goals", List.of("--version")));
         assertFalse(result.isError());
         assertTrue(result.content().contains("Apache Maven") || result.content().contains("Maven"));
     }
@@ -90,7 +92,7 @@ class MvnToolTest {
         // -pl requires a real project with pom.xml, so we just verify the parameter is accepted
         // Maven will warn about the module but still run
         ToolResult result =
-                tool.execute(Map.of("goals", List.of("help:effective-pom", "-pl", "some-module")));
+                exec(Map.of("goals", List.of("help:effective-pom", "-pl", "some-module")));
         // Parameter parsing succeeds; build result depends on mvn execution
         assertNotNull(result);
         assertEquals("mvn", result.toolUseId());
@@ -99,7 +101,7 @@ class MvnToolTest {
     @Test
     @EnabledIf("mvnAvailable")
     void skipTestsAddsDskipTests() {
-        ToolResult result = tool.execute(Map.of("goals", List.of("--version"), "skipTests", true));
+        ToolResult result = exec(Map.of("goals", List.of("--version"), "skipTests", true));
         assertFalse(result.isError());
         assertTrue((Boolean) result.metadata().get("buildSuccess"));
     }
@@ -108,12 +110,7 @@ class MvnToolTest {
     @EnabledIf("mvnAvailable")
     void profilesParameterAccepted() {
         ToolResult result =
-                tool.execute(
-                        Map.of(
-                                "goals",
-                                List.of("--version"),
-                                "profiles",
-                                List.of("-Pnonexistent")));
+                exec(Map.of("goals", List.of("--version"), "profiles", List.of("-Pnonexistent")));
         assertNotNull(result);
         assertEquals("mvn", result.toolUseId());
     }
@@ -121,7 +118,7 @@ class MvnToolTest {
     @Test
     @EnabledIf("mvnAvailable")
     void buildSuccessMetadata() {
-        ToolResult result = tool.execute(Map.of("goals", List.of("--version")));
+        ToolResult result = exec(Map.of("goals", List.of("--version")));
         assertFalse(result.isError());
         assertTrue((Boolean) result.metadata().get("buildSuccess"));
         assertEquals(0, result.metadata().get("exitCode"));
@@ -130,7 +127,7 @@ class MvnToolTest {
     @Test
     @EnabledIf("mvnAvailable")
     void metadataContainsExpectedFields() {
-        ToolResult result = tool.execute(Map.of("goals", List.of("--version")));
+        ToolResult result = exec(Map.of("goals", List.of("--version")));
         assertFalse(result.isError());
         assertTrue(result.metadata().containsKey("exitCode"));
         assertTrue(result.metadata().containsKey("buildSuccess"));
@@ -142,7 +139,7 @@ class MvnToolTest {
     @Test
     @EnabledIf("mvnAvailable")
     void timeoutParameterAccepted() {
-        ToolResult result = tool.execute(Map.of("goals", List.of("--version"), "timeout", 30));
+        ToolResult result = exec(Map.of("goals", List.of("--version"), "timeout", 30));
         assertFalse(result.isError());
         assertFalse(result.content().contains("timed out"));
         assertEquals(0, result.metadata().get("exitCode"));
@@ -151,15 +148,14 @@ class MvnToolTest {
     @Test
     @EnabledIf("mvnAvailable")
     void stringTimeoutParsed() {
-        ToolResult result = tool.execute(Map.of("goals", List.of("--version"), "timeout", "30"));
+        ToolResult result = exec(Map.of("goals", List.of("--version"), "timeout", "30"));
         assertFalse(result.isError());
     }
 
     @Test
     @EnabledIf("mvnAvailable")
     void skipTestsAsString() {
-        ToolResult result =
-                tool.execute(Map.of("goals", List.of("--version"), "skipTests", "true"));
+        ToolResult result = exec(Map.of("goals", List.of("--version"), "skipTests", "true"));
         assertFalse(result.isError());
     }
 
@@ -167,7 +163,7 @@ class MvnToolTest {
     @EnabledIf("mvnAvailable")
     void workingDirectoryResolved(@TempDir Path tempDir) {
         ToolResult result =
-                tool.execute(
+                exec(
                         Map.of(
                                 "goals", List.of("--version"),
                                 "workingDir", tempDir.toString()));
@@ -177,7 +173,7 @@ class MvnToolTest {
     @Test
     @EnabledIf("mvnAvailable")
     void failedTestCountZeroForNonTestRun() {
-        ToolResult result = tool.execute(Map.of("goals", List.of("--version")));
+        ToolResult result = exec(Map.of("goals", List.of("--version")));
         assertFalse(result.isError());
         assertEquals(0, result.metadata().get("failedTestCount"));
         @SuppressWarnings("unchecked")
@@ -290,17 +286,20 @@ class MvnToolTest {
     private ToolResult simulateMvnOutput(String output, int exitCode, boolean timedOut) {
         boolean buildSuccess = exitCode == 0 && !timedOut;
         List<String> failedTests = parseFailedTests(output);
-        return new ToolResult(
-                "mvn",
-                output,
-                !buildSuccess,
-                Map.of(
-                        "exitCode", exitCode,
-                        "buildSuccess", buildSuccess,
-                        "failedTestCount", failedTests.size(),
-                        "failedTests", failedTests,
-                        "durationMs", 0L,
-                        "timedOut", timedOut));
+        @SuppressWarnings("deprecation")
+        ToolResult result =
+                ToolResult.of(
+                        "mvn",
+                        output,
+                        !buildSuccess,
+                        Map.of(
+                                "exitCode", exitCode,
+                                "buildSuccess", buildSuccess,
+                                "failedTestCount", failedTests.size(),
+                                "failedTests", failedTests,
+                                "durationMs", 0L,
+                                "timedOut", timedOut));
+        return result;
     }
 
     private List<String> parseFailedTests(String output) {

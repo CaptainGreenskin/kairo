@@ -39,7 +39,7 @@ class AnnotationToolScannerTest {
 
         @Override
         public ToolResult execute(Map<String, Object> input) {
-            return new ToolResult("test", "done", false, Map.of());
+            return ToolResult.success("test", "done");
         }
     }
 
@@ -47,7 +47,7 @@ class AnnotationToolScannerTest {
     static class NoParamsTool implements ToolHandler {
         @Override
         public ToolResult execute(Map<String, Object> input) {
-            return new ToolResult("test", "done", false, Map.of());
+            return ToolResult.success("test", "done");
         }
     }
 
@@ -55,7 +55,7 @@ class AnnotationToolScannerTest {
     static class TimedTool implements ToolHandler {
         @Override
         public ToolResult execute(Map<String, Object> input) {
-            return new ToolResult("test", "done", false, Map.of());
+            return ToolResult.success("test", "done");
         }
     }
 
@@ -66,7 +66,7 @@ class AnnotationToolScannerTest {
     static class GuidedTool implements ToolHandler {
         @Override
         public ToolResult execute(Map<String, Object> input) {
-            return new ToolResult("test", "done", false, Map.of());
+            return ToolResult.success("test", "done");
         }
     }
 

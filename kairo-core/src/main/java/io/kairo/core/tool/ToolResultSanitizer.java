@@ -15,6 +15,7 @@
  */
 package io.kairo.core.tool;
 
+import io.kairo.api.tool.FailureReason;
 import io.kairo.api.tool.ToolResult;
 import java.util.HashMap;
 import java.util.Map;
@@ -57,7 +58,7 @@ public final class ToolResultSanitizer {
                 scanResult.warnings());
         var enrichedMetadata = new HashMap<>(result.metadata());
         enrichedMetadata.put("injection_warning", scanResult.warnings());
-        return new ToolResult(
+        return ToolResult.of(
                 result.toolUseId(), result.content(), result.isError(), enrichedMetadata);
     }
 
@@ -69,6 +70,18 @@ public final class ToolResultSanitizer {
      * @return an error ToolResult
      */
     public static ToolResult errorResult(String toolName, String message) {
-        return new ToolResult(toolName, message, true, Map.of());
+        return ToolResult.error(toolName, message);
+    }
+
+    /**
+     * Create an error {@link ToolResult} with a structured {@link FailureReason} attached so
+     * transports and UIs can render distinct labels (e.g. timeout chip vs. generic error).
+     */
+    public static ToolResult errorResult(String toolName, String message, FailureReason reason) {
+        Map<String, Object> meta = new HashMap<>();
+        if (reason != null) {
+            meta.put(FailureReason.METADATA_KEY, reason.name());
+        }
+        return ToolResult.error(toolName, message, meta);
     }
 }

@@ -28,7 +28,7 @@ class ToolResultBudgetTest {
     @Test
     void applyResultBudget_contentBelowLimit_notTruncated() {
         String content = "short output";
-        ToolResult result = new ToolResult("tool1", content, false, Map.of());
+        ToolResult result = ToolResult.success("tool1", content);
 
         ToolResult budgeted = DefaultToolExecutor.applyResultBudget(result);
 
@@ -40,7 +40,7 @@ class ToolResultBudgetTest {
     void applyResultBudget_contentExactlyAtLimit_notTruncated() {
         // Build content exactly at the default limit (20_000)
         String content = "x".repeat(20_000);
-        ToolResult result = new ToolResult("tool1", content, false, Map.of());
+        ToolResult result = ToolResult.success("tool1", content);
 
         ToolResult budgeted = DefaultToolExecutor.applyResultBudget(result);
 
@@ -53,7 +53,7 @@ class ToolResultBudgetTest {
     @Test
     void applyResultBudget_contentExceedsLimit_compressedWithTailExtract() {
         String content = "x".repeat(30_000);
-        ToolResult result = new ToolResult("tool1", content, false, Map.of());
+        ToolResult result = ToolResult.success("tool1", content);
 
         ToolResult budgeted = DefaultToolExecutor.applyResultBudget(result);
 
@@ -67,7 +67,7 @@ class ToolResultBudgetTest {
     @Test
     void applyResultBudget_compressedContentLength_withinBudgetPlusMarker() {
         String content = "a".repeat(50_000);
-        ToolResult result = new ToolResult("tool1", content, false, Map.of());
+        ToolResult result = ToolResult.success("tool1", content);
 
         ToolResult budgeted = DefaultToolExecutor.applyResultBudget(result);
 
@@ -84,7 +84,7 @@ class ToolResultBudgetTest {
 
     @Test
     void applyResultBudget_nullContent_notTruncated() {
-        ToolResult result = new ToolResult("tool1", null, false, Map.of());
+        ToolResult result = ToolResult.success("tool1", null);
 
         ToolResult budgeted = DefaultToolExecutor.applyResultBudget(result);
 
@@ -94,7 +94,7 @@ class ToolResultBudgetTest {
 
     @Test
     void applyResultBudget_emptyContent_notTruncated() {
-        ToolResult result = new ToolResult("tool1", "", false, Map.of());
+        ToolResult result = ToolResult.success("tool1", "");
 
         ToolResult budgeted = DefaultToolExecutor.applyResultBudget(result);
 
@@ -107,7 +107,7 @@ class ToolResultBudgetTest {
     @Test
     void applyResultBudget_errorResult_compressedSameAsNormal() {
         String content = "e".repeat(40_000);
-        ToolResult result = new ToolResult("tool1", content, true, Map.of());
+        ToolResult result = ToolResult.error("tool1", content);
 
         ToolResult budgeted = DefaultToolExecutor.applyResultBudget(result);
 
@@ -121,7 +121,7 @@ class ToolResultBudgetTest {
     @Test
     void applyResultBudget_truncated_preservesMetadata() {
         String content = "z".repeat(25_000);
-        ToolResult result = new ToolResult("tool1", content, false, Map.of("exit_code", 0));
+        ToolResult result = ToolResult.success("tool1", content, Map.of("exit_code", 0));
 
         ToolResult budgeted = DefaultToolExecutor.applyResultBudget(result);
 
@@ -131,7 +131,7 @@ class ToolResultBudgetTest {
     @Test
     void applyResultBudget_truncated_preservesToolUseId() {
         String content = "y".repeat(25_000);
-        ToolResult result = new ToolResult("my-tool-123", content, false, Map.of());
+        ToolResult result = ToolResult.success("my-tool-123", content);
 
         ToolResult budgeted = DefaultToolExecutor.applyResultBudget(result);
 

@@ -32,6 +32,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class ReadToolTest {
 
+    private static final ToolContext CTX = new ToolContext("a", "s", Map.of());
+
     private ReadTool tool;
 
     @TempDir Path tempDir;
@@ -46,7 +48,7 @@ class ReadToolTest {
         Path file = tempDir.resolve("test.txt");
         Files.writeString(file, "line1\nline2\nline3\n");
 
-        ToolResult result = tool.execute(Map.of("path", file.toString()));
+        ToolResult result = tool.execute(Map.of("path", file.toString()), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("line1"));
         assertTrue(result.content().contains("line2"));
@@ -55,7 +57,9 @@ class ReadToolTest {
 
     @Test
     void readNonExistentFile() {
-        ToolResult result = tool.execute(Map.of("path", tempDir.resolve("missing.txt").toString()));
+        ToolResult result =
+                tool.execute(Map.of("path", tempDir.resolve("missing.txt").toString()), CTX)
+                        .block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("File not found"));
     }
@@ -66,7 +70,8 @@ class ReadToolTest {
         Files.writeString(file, "a\nb\nc\nd\ne\n");
 
         ToolResult result =
-                tool.execute(Map.of("path", file.toString(), "startLine", 2, "endLine", 4));
+                tool.execute(Map.of("path", file.toString(), "startLine", 2, "endLine", 4), CTX)
+                        .block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("b"));
         assertTrue(result.content().contains("c"));
@@ -79,7 +84,8 @@ class ReadToolTest {
         Path file = tempDir.resolve("start.txt");
         Files.writeString(file, "a\nb\nc\n");
 
-        ToolResult result = tool.execute(Map.of("path", file.toString(), "startLine", 2));
+        ToolResult result =
+                tool.execute(Map.of("path", file.toString(), "startLine", 2), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("b"));
         assertTrue(result.content().contains("c"));
@@ -90,28 +96,29 @@ class ReadToolTest {
         Path file = tempDir.resolve("short.txt");
         Files.writeString(file, "only\n");
 
-        ToolResult result = tool.execute(Map.of("path", file.toString(), "startLine", 100));
+        ToolResult result =
+                tool.execute(Map.of("path", file.toString(), "startLine", 100), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("exceeds total lines"));
     }
 
     @Test
     void readDirectoryShouldFail() {
-        ToolResult result = tool.execute(Map.of("path", tempDir.toString()));
+        ToolResult result = tool.execute(Map.of("path", tempDir.toString()), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("directory"));
     }
 
     @Test
     void readMissingPathParameter() {
-        ToolResult result = tool.execute(Map.of());
+        ToolResult result = tool.execute(Map.of(), CTX).block();
         assertTrue(result.isError());
         assertTrue(result.content().contains("'path' is required"));
     }
 
     @Test
     void readBlankPathParameter() {
-        ToolResult result = tool.execute(Map.of("path", "  "));
+        ToolResult result = tool.execute(Map.of("path", "  "), CTX).block();
         assertTrue(result.isError());
     }
 
@@ -124,7 +131,7 @@ class ReadToolTest {
                         .acquire(WorkspaceRequest.writable(null));
         ToolContext ctx = new ToolContext("a", "s", Map.of(), null, null, ws);
 
-        ToolResult result = tool.execute(Map.of("path", "hello.txt"), ctx);
+        ToolResult result = tool.execute(Map.of("path", "hello.txt"), ctx).block();
 
         assertFalse(result.isError(), result.content());
         assertTrue(result.content().contains("from-workspace"));
@@ -135,7 +142,7 @@ class ReadToolTest {
         Path file = tempDir.resolve("numbered.txt");
         Files.writeString(file, "hello\nworld\n");
 
-        ToolResult result = tool.execute(Map.of("path", file.toString()));
+        ToolResult result = tool.execute(Map.of("path", file.toString()), CTX).block();
         assertFalse(result.isError());
         // Lines should have line numbers with │ separator
         assertTrue(result.content().contains("│"));
@@ -147,7 +154,7 @@ class ReadToolTest {
         // Write bytes that are not valid UTF-8
         Files.write(binFile, new byte[] {(byte) 0xFF, (byte) 0xFE, (byte) 0x00, (byte) 0x01});
 
-        ToolResult result = tool.execute(Map.of("path", binFile.toString()));
+        ToolResult result = tool.execute(Map.of("path", binFile.toString()), CTX).block();
         // Must not throw; may succeed or return error, but cannot crash
         assertNotNull(result);
     }
@@ -161,7 +168,7 @@ class ReadToolTest {
         }
         Files.writeString(bigFile, sb.toString());
 
-        ToolResult result = tool.execute(Map.of("path", bigFile.toString()));
+        ToolResult result = tool.execute(Map.of("path", bigFile.toString()), CTX).block();
         assertFalse(result.isError());
         assertTrue(result.content().contains("2500") || result.content().contains("2000"));
         assertTrue(

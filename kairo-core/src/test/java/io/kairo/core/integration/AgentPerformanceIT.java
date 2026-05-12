@@ -76,7 +76,7 @@ class AgentPerformanceIT {
                         Object.class);
         registry.register(echoTool);
         registry.registerInstance(
-                "echo", (ToolHandler) input -> new ToolResult("echo", "result", false, Map.of()));
+                "echo", (ToolHandler) input -> ToolResult.success("echo", "result"));
         return registry;
     }
 

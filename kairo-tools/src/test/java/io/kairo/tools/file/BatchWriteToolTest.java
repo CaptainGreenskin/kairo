@@ -54,7 +54,7 @@ class BatchWriteToolTest {
     @Test
     void writesSingleFile() throws IOException {
         List<Object> files = List.of(fileEntry("single.txt", "hello"));
-        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("=== single.txt ===");
@@ -66,7 +66,7 @@ class BatchWriteToolTest {
     void writesMultipleFiles() throws IOException {
         List<Object> files =
                 List.of(fileEntry("a.txt", "contentA"), fileEntry("b.txt", "contentB"));
-        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(Files.readString(tempDir.resolve("a.txt"))).isEqualTo("contentA");
@@ -78,7 +78,7 @@ class BatchWriteToolTest {
     @Test
     void createsParentDirectories() throws IOException {
         List<Object> files = List.of(fileEntry("deep/nested/dir/file.txt", "nested"));
-        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(Files.readString(tempDir.resolve("deep/nested/dir/file.txt")))
@@ -92,7 +92,7 @@ class BatchWriteToolTest {
             files.add(fileEntry("f" + i + ".txt", "x"));
         }
 
-        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir)).block();
 
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("Too many files");
@@ -106,7 +106,7 @@ class BatchWriteToolTest {
                         fileEntry("", "content"),
                         fileEntry("also_good.txt", "ok2"));
 
-        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         // Atomic behavior: all entries fail when any validation error exists
@@ -122,7 +122,7 @@ class BatchWriteToolTest {
     @Test
     void emptyContentWritesEmptyFile() throws IOException {
         List<Object> files = List.of(fileEntry("empty.txt", ""));
-        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(Files.readString(tempDir.resolve("empty.txt"))).isEmpty();
@@ -134,7 +134,7 @@ class BatchWriteToolTest {
         List<Object> files =
                 List.of(fileEntry("../escape.txt", "evil"), fileEntry("safe.txt", "ok"));
 
-        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         // Atomic behavior: all entries fail when any validation error exists
@@ -154,7 +154,7 @@ class BatchWriteToolTest {
                         fileEntry("two.txt", "b"),
                         fileEntry("three.txt", "c"));
 
-        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(result.metadata().get("successCount")).isEqualTo(3);
@@ -164,7 +164,7 @@ class BatchWriteToolTest {
     @Test
     void relativePathResolvesAgainstWorkspaceRoot() throws IOException {
         List<Object> files = List.of(fileEntry("relative.txt", "rooted"));
-        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(Files.readString(tempDir.resolve("relative.txt"))).isEqualTo("rooted");
@@ -172,7 +172,7 @@ class BatchWriteToolTest {
 
     @Test
     void missingFilesParamReturnsError() {
-        ToolResult result = tool.execute(Map.of(), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of(), ctx(tempDir)).block();
 
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("'files'");
@@ -180,7 +180,7 @@ class BatchWriteToolTest {
 
     @Test
     void emptyFilesArrayReturnsError() {
-        ToolResult result = tool.execute(Map.of("files", List.of()), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of("files", List.of()), ctx(tempDir)).block();
 
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).contains("non-empty");
@@ -193,7 +193,7 @@ class BatchWriteToolTest {
         entry.put("content", "x");
         entry.put("createDirs", "false");
 
-        ToolResult result = tool.execute(Map.of("files", List.of(entry)), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of("files", List.of(entry)), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(result.metadata().get("errorCount")).isEqualTo(1);
@@ -204,7 +204,7 @@ class BatchWriteToolTest {
     void perFileResultWithValidationError() throws IOException {
         List<Object> files = List.of(fileEntry("ok.txt", "yes"), fileEntry("", "bad"));
 
-        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         @SuppressWarnings("unchecked")
@@ -232,7 +232,7 @@ class BatchWriteToolTest {
 
         List<Object> files = List.of(fileEntry("good.txt", "ok"), noContent);
 
-        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         // Atomic behavior: all entries fail when any validation error exists
@@ -251,7 +251,7 @@ class BatchWriteToolTest {
             files.add(fileEntry("f" + i + ".txt", "content" + i));
         }
 
-        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(result.metadata().get("successCount")).isEqualTo(50);
@@ -262,7 +262,8 @@ class BatchWriteToolTest {
     void dryRunValidatesPathsButDoesNotWrite() throws IOException {
         List<Object> files = List.of(fileEntry("dryrun.txt", "should not exist"));
 
-        ToolResult result = tool.execute(Map.of("files", files, "dryRun", true), ctx(tempDir));
+        ToolResult result =
+                tool.execute(Map.of("files", files, "dryRun", true), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("dry run");
@@ -279,7 +280,8 @@ class BatchWriteToolTest {
                         fileEntry("../escape.txt", "evil"),
                         fileEntry("also_valid.txt", "ok2"));
 
-        ToolResult result = tool.execute(Map.of("files", files, "dryRun", true), ctx(tempDir));
+        ToolResult result =
+                tool.execute(Map.of("files", files, "dryRun", true), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(result.metadata().get("dryRun")).isEqualTo(true);
@@ -300,7 +302,7 @@ class BatchWriteToolTest {
                         fileEntry("", "bad entry"),
                         fileEntry("second.txt", "content2"));
 
-        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         // Atomic behavior: all entries fail when any validation error exists
@@ -327,7 +329,7 @@ class BatchWriteToolTest {
                         fileEntry("success2.txt", "will also be rolled back"));
 
         try {
-            ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+            ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir)).block();
 
             assertThat(result.isError()).isFalse();
             assertThat(result.metadata().get("rolledBack")).isEqualTo(true);
@@ -347,7 +349,8 @@ class BatchWriteToolTest {
     void dryRunMetadataContainsDryRunFlag() throws IOException {
         List<Object> files = List.of(fileEntry("test.txt", "content"));
 
-        ToolResult result = tool.execute(Map.of("files", files, "dryRun", true), ctx(tempDir));
+        ToolResult result =
+                tool.execute(Map.of("files", files, "dryRun", true), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(result.metadata()).containsKey("dryRun");
@@ -358,7 +361,7 @@ class BatchWriteToolTest {
     void normalWriteMetadataContainsDryRunFlagFalse() throws IOException {
         List<Object> files = List.of(fileEntry("test.txt", "content"));
 
-        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir));
+        ToolResult result = tool.execute(Map.of("files", files), ctx(tempDir)).block();
 
         assertThat(result.isError()).isFalse();
         assertThat(result.metadata()).containsKey("dryRun");

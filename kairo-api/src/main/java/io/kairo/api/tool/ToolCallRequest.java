@@ -24,7 +24,15 @@ import java.util.Map;
  * @param toolName the name of the tool to call
  * @param args the arguments to pass to the tool
  * @param sideEffect the side-effect classification of the tool
+ * @param toolCallId optional model-supplied id; allows handlers to correlate the approval with the
+ *     UI's existing TOOL_CALL event instead of generating a separate id
  */
 @Stable(value = "Tool approval request record; shape frozen since v0.4", since = "1.0.0")
 public record ToolCallRequest(
-        String toolName, Map<String, Object> args, ToolSideEffect sideEffect) {}
+        String toolName, Map<String, Object> args, ToolSideEffect sideEffect, String toolCallId) {
+
+    /** Backward-compatible constructor — delegates to canonical with null toolCallId. */
+    public ToolCallRequest(String toolName, Map<String, Object> args, ToolSideEffect sideEffect) {
+        this(toolName, args, sideEffect, null);
+    }
+}

@@ -15,9 +15,9 @@
  */
 package io.kairo.tools.vcs;
 
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
 import java.net.URI;
@@ -29,6 +29,7 @@ import java.time.Duration;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Mono;
 
 /**
  * Tool for GitHub REST API operations: issues, pull requests, and comments.
@@ -50,7 +51,7 @@ import org.slf4j.LoggerFactory;
         description =
                 "Interact with GitHub: create/list issues and PRs, add comments. Requires GITHUB_TOKEN.",
         sideEffect = ToolSideEffect.WRITE)
-public final class GithubTool implements ToolHandler {
+public final class GithubTool implements SyncTool {
 
     private static final Logger log = LoggerFactory.getLogger(GithubTool.class);
     private static final String API_BASE = "https://api.github.com";
@@ -67,12 +68,11 @@ public final class GithubTool implements ToolHandler {
     }
 
     @Override
-    public ToolResult execute(Map<String, Object> input) throws Exception {
-        return execute(input, null);
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> doExecute(args, ctx));
     }
 
-    @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) throws Exception {
+    private ToolResult doExecute(Map<String, Object> input, ToolContext context) throws Exception {
         String token = resolveToken(context);
         if (token == null || token.isBlank()) {
             return error(null, "GITHUB_TOKEN not set. Set the env var or inject via ToolContext.");
@@ -245,10 +245,10 @@ public final class GithubTool implements ToolHandler {
     }
 
     private static ToolResult ok(String content) {
-        return new ToolResult(null, content, false, Map.of());
+        return ToolResult.success(null, content);
     }
 
     private static ToolResult error(String id, String message) {
-        return new ToolResult(id, message, true, Map.of());
+        return ToolResult.of(id, message, true, Map.of());
     }
 }

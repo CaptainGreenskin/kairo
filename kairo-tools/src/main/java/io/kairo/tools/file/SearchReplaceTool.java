@@ -15,13 +15,12 @@
  */
 package io.kairo.tools.file;
 
+import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
-import io.kairo.api.tool.ToolHandler;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
-import io.kairo.api.workspace.Workspace;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -30,6 +29,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+import reactor.core.publisher.Mono;
 
 /**
  * Performs regex-based find-and-replace on a file.
@@ -44,7 +44,7 @@ import java.util.regex.PatternSyntaxException;
                         + " capture-group references ($1, $2, …) in the replacement string."
                         + " Safe against ReDoS: patterns over 1000 characters are rejected.",
         category = ToolCategory.FILE_AND_CODE)
-public class SearchReplaceTool implements ToolHandler {
+public class SearchReplaceTool implements SyncTool {
 
     private static final int MAX_PATTERN_LENGTH = 1000;
     private static final long MAX_OUTPUT_BYTES = 10L * 1024 * 1024; // 10 MB
@@ -70,13 +70,8 @@ public class SearchReplaceTool implements ToolHandler {
     private String flags;
 
     @Override
-    public ToolResult execute(Map<String, Object> input) {
-        return doExecute(input, Workspace.cwd().root());
-    }
-
-    @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext context) {
-        return doExecute(input, context.workspace().root());
+    public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
+        return Mono.fromCallable(() -> doExecute(args, ctx.workspace().root()));
     }
 
     private ToolResult doExecute(Map<String, Object> input, Path workspaceRoot) {
@@ -144,10 +139,9 @@ public class SearchReplaceTool implements ToolHandler {
             return error("Failed to write file: " + e.getMessage());
         }
 
-        return new ToolResult(
+        return ToolResult.success(
                 "search_replace",
                 "Replaced " + matchCount + " occurrence(s) in " + filePath,
-                false,
                 Map.of("path", filePath, "matchCount", matchCount));
     }
 
@@ -182,6 +176,6 @@ public class SearchReplaceTool implements ToolHandler {
     }
 
     private ToolResult error(String msg) {
-        return new ToolResult("search_replace", msg, true, Map.of());
+        return ToolResult.error("search_replace", msg);
     }
 }

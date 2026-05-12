@@ -82,7 +82,7 @@ class ToolContextInjectionTest {
                     @Override
                     public ToolResult execute(Map<String, Object> input, ToolContext context) {
                         capturedCtx.set(context);
-                        return new ToolResult("ctx-tool", "ok", false, Map.of());
+                        return ToolResult.success("ctx-tool", "ok");
                     }
                 };
 
@@ -118,7 +118,7 @@ class ToolContextInjectionTest {
                     @Override
                     public ToolResult execute(Map<String, Object> input, ToolContext context) {
                         capturedCtx.set(context);
-                        return new ToolResult("ctx-tool", "ok", false, Map.of());
+                        return ToolResult.success("ctx-tool", "ok");
                     }
                 };
 
@@ -153,7 +153,7 @@ class ToolContextInjectionTest {
                     @Override
                     public ToolResult execute(Map<String, Object> input, ToolContext context) {
                         capturedCtx.set(context);
-                        return new ToolResult("ctx-tool", "ok", false, Map.of());
+                        return ToolResult.success("ctx-tool", "ok");
                     }
                 };
 
@@ -180,9 +180,7 @@ class ToolContextInjectionTest {
     void legacyToolWithoutContextStillWorks() {
         // Legacy tool only implements execute(Map) — no context override
         ToolHandler legacyTool =
-                input ->
-                        new ToolResult(
-                                "legacy", "legacy-result: " + input.get("x"), false, Map.of());
+                input -> ToolResult.success("legacy", "legacy-result: " + input.get("x"));
 
         registerToolHandler("legacy", legacyTool);
         ToolContext toolContext = new ToolContext("agent-1", "session-1", Map.of("key", "value"));
@@ -266,7 +264,7 @@ class ToolContextInjectionTest {
                     @Override
                     public ToolResult execute(Map<String, Object> input, ToolContext context) {
                         capturedCtx1.set(context);
-                        return new ToolResult("tool", "ok", false, Map.of());
+                        return ToolResult.success("tool", "ok");
                     }
                 };
         ToolDefinition def1 =
@@ -294,7 +292,7 @@ class ToolContextInjectionTest {
                     @Override
                     public ToolResult execute(Map<String, Object> input, ToolContext context) {
                         capturedCtx2.set(context);
-                        return new ToolResult("tool", "ok", false, Map.of());
+                        return ToolResult.success("tool", "ok");
                     }
                 };
         ToolDefinition def2 =
@@ -346,7 +344,7 @@ class ToolContextInjectionTest {
                     @Override
                     public ToolResult execute(Map<String, Object> input, ToolContext context) {
                         capturedCtx.set(context);
-                        return new ToolResult("ctx-tool", "ok", false, Map.of());
+                        return ToolResult.success("ctx-tool", "ok");
                     }
                 };
 
@@ -382,7 +380,7 @@ class ToolContextInjectionTest {
                     @Override
                     public ToolResult execute(Map<String, Object> input, ToolContext context) {
                         capturedCtx.set(context);
-                        return new ToolResult("ctx-tool", "ok", false, Map.of());
+                        return ToolResult.success("ctx-tool", "ok");
                     }
                 };
         registerToolHandler("ctx-tool", contextTool);
@@ -431,7 +429,7 @@ class ToolContextInjectionTest {
                         }
                         String expected = (String) input.get("expected");
                         captures.add(new Capture(expected, context));
-                        return new ToolResult("slow", "ok:" + context.sessionId(), false, Map.of());
+                        return ToolResult.success("slow", "ok:" + context.sessionId());
                     }
                 };
         registerToolHandler("slow", slowTool);
@@ -482,7 +480,7 @@ class ToolContextInjectionTest {
                     @Override
                     public ToolResult execute(Map<String, Object> input) {
                         boolean fail = Boolean.TRUE.equals(input.get("fail"));
-                        return new ToolResult("flaky", fail ? "Error: boom" : "ok", fail, Map.of());
+                        return ToolResult.of("flaky", fail ? "Error: boom" : "ok", fail, Map.of());
                     }
                 });
 
