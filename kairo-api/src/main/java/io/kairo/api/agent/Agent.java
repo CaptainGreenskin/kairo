@@ -111,4 +111,21 @@ public interface Agent {
         throw new UnsupportedOperationException(
                 "Snapshot not supported by this agent implementation");
     }
+
+    /**
+     * Per-session diagnostics for this agent.
+     *
+     * <p>Returns a read-only view of the current session's diagnostic counters, timing, and tracing
+     * metadata. The returned instance is only valid for the duration of the current {@link
+     * #call(Msg)} invocation.
+     *
+     * <p>The default implementation returns {@code null}, indicating that diagnostics are not
+     * available for this agent implementation.
+     *
+     * @return the diagnostics snapshot, or {@code null} if not supported
+     * @since 1.2.0
+     */
+    default AgentDiagnostics diagnostics() {
+        return null;
+    }
 }

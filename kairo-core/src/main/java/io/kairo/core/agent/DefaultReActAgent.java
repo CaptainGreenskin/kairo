@@ -17,6 +17,7 @@ package io.kairo.core.agent;
 
 import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentConfig;
+import io.kairo.api.agent.AgentDiagnostics;
 import io.kairo.api.agent.AgentSnapshot;
 import io.kairo.api.agent.AgentState;
 import io.kairo.api.agent.IterationCheckpoint;
@@ -49,6 +50,7 @@ import io.kairo.core.health.AgentHealthInfo;
 import io.kairo.core.health.AgentHealthRegistry;
 import io.kairo.core.hook.AgentErrorEvent;
 import io.kairo.core.hook.DefaultHookChain;
+import io.kairo.core.hook.TerminalHookGuard;
 import io.kairo.core.middleware.DefaultMiddlewarePipeline;
 import io.kairo.core.model.ModelFallbackManager;
 import io.kairo.core.prompt.SystemPromptBuilder;
@@ -64,6 +66,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
 
 /**
@@ -145,6 +148,12 @@ public class DefaultReActAgent implements Agent {
 
     private final SkillToolManager skillToolManager;
     private final CompactionTrigger compactionTrigger;
+
+    /** Per-session diagnostics instance, created at the start of each call(). */
+    private volatile DefaultAgentDiagnostics diagnostics;
+
+    /** Guarantees exactly-once session-end hook firing per call(). */
+    private volatile TerminalHookGuard terminalGuard;
 
     /** Optional iteration-level checkpoint manager for crash recovery (null when disabled). */
     @javax.annotation.Nullable private IterationCheckpointManager checkpointManager;
@@ -449,6 +458,77 @@ public class DefaultReActAgent implements Agent {
                                     currentIteration.set(0);
                                     runStartMs = System.currentTimeMillis();
 
+                                    // Initialize per-session diagnostics
+                                    diagnostics = new DefaultAgentDiagnostics();
+
+                                    // Initialize terminal hook guard for exactly-once session-end
+                                    // firing
+                                    terminalGuard = new TerminalHookGuard(hookChain);
+
+                                    // Initialize stall detector and subscribe to stall signal
+                                    StallDetector stallDetector = new StallDetector(diagnostics);
+                                    stallDetector.start();
+                                    Disposable stallSub =
+                                            stallDetector
+                                                    .stalled()
+                                                    .doOnSuccess(
+                                                            v -> {
+                                                                // Fire error hook for observability
+                                                                // (matches @OnError handlers)
+                                                                if (hookChain
+                                                                        instanceof
+                                                                        DefaultHookChain dhc) {
+                                                                    dhc.fireOnError(
+                                                                                    AgentErrorEvent
+                                                                                            .stalled(
+                                                                                                    name,
+                                                                                                    Duration
+                                                                                                            .ofMillis(
+                                                                                                                    stallDetector
+                                                                                                                            .idleThresholdMs())))
+                                                                            .onErrorResume(
+                                                                                    e ->
+                                                                                            Mono
+                                                                                                    .empty())
+                                                                            .subscribe();
+                                                                }
+
+                                                                // Fire session-end with proper
+                                                                // SessionEndEvent type
+                                                                // (matches @OnSessionEnd handlers)
+                                                                Duration elapsed =
+                                                                        sessionStartTime != null
+                                                                                ? Duration.between(
+                                                                                        sessionStartTime,
+                                                                                        Instant
+                                                                                                .now())
+                                                                                : Duration.ZERO;
+                                                                SessionEndEvent stallEndEvent =
+                                                                        new SessionEndEvent(
+                                                                                name,
+                                                                                AgentState.FAILED,
+                                                                                currentIteration
+                                                                                        .get(),
+                                                                                totalTokensUsed
+                                                                                        .get(),
+                                                                                elapsed,
+                                                                                "Agent stalled: no"
+                                                                                        + " events for "
+                                                                                        + stallDetector
+                                                                                                .idleThresholdMs()
+                                                                                        + "ms",
+                                                                                () ->
+                                                                                        reactLoop
+                                                                                                .getHistory());
+                                                                terminalGuard
+                                                                        .fireSessionEndOnce(
+                                                                                stallEndEvent)
+                                                                        .onErrorResume(
+                                                                                e -> Mono.empty())
+                                                                        .subscribe();
+                                                            })
+                                                    .subscribe();
+
                                     // Register with shutdown manager
                                     if (!shutdownManager.registerAgent(this)) {
                                         return Mono.error(
@@ -659,6 +739,14 @@ public class DefaultReActAgent implements Agent {
                                                                                     })))
                                             .doFinally(
                                                     signal -> {
+                                                        if (diagnostics != null) {
+                                                            diagnostics.setRunning(false);
+                                                        }
+                                                        // Clean up stall detector to prevent
+                                                        // subscription leak
+                                                        stallSub.dispose();
+                                                        stallDetector.dispose();
+
                                                         agentSpan.end();
                                                         shutdownManager.unregisterAgent(this);
                                                         skillToolManager.clearSkillRestrictions();
@@ -690,7 +778,25 @@ public class DefaultReActAgent implements Agent {
                                                             ctx.put(
                                                                     DefaultToolExecutor
                                                                             .SPAN_CONTEXT_KEY,
-                                                                    agentSpan));
+                                                                    agentSpan))
+                                            // Propagate MutableDiagnostics for hook chain
+                                            // event recording via Reactor Context.
+                                            .contextWrite(
+                                                    ctx -> {
+                                                        if (diagnostics == null) return ctx;
+                                                        return ctx.put(
+                                                                        MutableDiagnostics.class,
+                                                                        (MutableDiagnostics)
+                                                                                diagnostics)
+                                                                .put(
+                                                                        DefaultHookChain
+                                                                                .DIAGNOSTICS_RECORDER_KEY,
+                                                                        (java.util.function
+                                                                                                .Consumer<
+                                                                                        String>)
+                                                                                diagnostics
+                                                                                        ::recordEvent);
+                                                    });
                                 }))
                 .onErrorResume(
                         MiddlewareRejectException.class,
@@ -733,16 +839,17 @@ public class DefaultReActAgent implements Agent {
                 sessionStartTime != null
                         ? Duration.between(sessionStartTime, Instant.now())
                         : Duration.ZERO;
-        return hookChain
-                .fireOnSessionEnd(
-                        new SessionEndEvent(
-                                name,
-                                endState,
-                                currentIteration.get(),
-                                totalTokensUsed.get(),
-                                elapsed,
-                                errorMessage,
-                                () -> reactLoop.getHistory()))
+        SessionEndEvent event =
+                new SessionEndEvent(
+                        name,
+                        endState,
+                        currentIteration.get(),
+                        totalTokensUsed.get(),
+                        elapsed,
+                        errorMessage,
+                        () -> reactLoop.getHistory());
+        return terminalGuard
+                .fireSessionEndOnce(event)
                 .onErrorResume(
                         e -> {
                             log.warn(
@@ -838,6 +945,11 @@ public class DefaultReActAgent implements Agent {
      */
     public long totalTokensUsed() {
         return totalTokensUsed.get();
+    }
+
+    @Override
+    public AgentDiagnostics diagnostics() {
+        return diagnostics;
     }
 
     @Override

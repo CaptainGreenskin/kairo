@@ -1,0 +1,19 @@
+{
+  "executor": "qodercli",
+  "task_id": "task-m56-001-streaming-idle-watchdog",
+  "date": "2026-04-30T06:32:46",
+  "branch": "feature/qodercli-task-m56-001-streaming-idle-watchdog",
+  "sha": "757d6b9",
+  "diffstat": " 7 files changed, 210 insertions(+), 398 deletions(-)",
+  "scores": {
+    "completion": 25,
+    "verify": 25,
+    "quality": 13,
+    "tests": 12,
+    "efficiency": 9,
+    "description": 4,
+    "bonus": 0
+  },
+  "total": 88,
+  "note": ""
+}

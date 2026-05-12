@@ -25,4 +25,13 @@ public record AgentErrorEvent(String agentName, Throwable cause, String errorTyp
     public static AgentErrorEvent of(String agentName, Throwable cause) {
         return new AgentErrorEvent(agentName, cause, cause.getClass().getSimpleName());
     }
+
+    /** Factory for stall-timeout events. */
+    public static AgentErrorEvent stalled(String agentName, java.time.Duration idleDuration) {
+        return new AgentErrorEvent(
+                agentName,
+                new java.util.concurrent.TimeoutException(
+                        "Agent stalled: no events for " + idleDuration.toMillis() + "ms"),
+                "STALLED");
+    }
 }

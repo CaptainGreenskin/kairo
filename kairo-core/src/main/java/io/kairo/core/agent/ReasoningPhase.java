@@ -15,6 +15,7 @@
  */
 package io.kairo.core.agent;
 
+import io.kairo.api.agent.IterationSignal;
 import io.kairo.api.execution.ExecutionEventType;
 import io.kairo.api.guardrail.*;
 import io.kairo.api.hook.*;
@@ -76,7 +77,6 @@ public class ReasoningPhase {
     private final AtomicInteger currentIteration;
     private final Supplier<Boolean> streamingEnabledSupplier;
     private final Supplier<java.util.function.Consumer<String>> textDeltaConsumerSupplier;
-    private final ToolPhase toolPhase;
     @Nullable private final ExecutionEventEmitter eventEmitter;
 
     // Continuation strategy support
@@ -98,8 +98,7 @@ public class ReasoningPhase {
             List<Msg> conversationHistory,
             AtomicLong totalTokensUsed,
             AtomicInteger currentIteration,
-            Supplier<Boolean> streamingEnabledSupplier,
-            ToolPhase toolPhase) {
+            Supplier<Boolean> streamingEnabledSupplier) {
         this(
                 ctx,
                 guards,
@@ -109,7 +108,6 @@ public class ReasoningPhase {
                 currentIteration,
                 streamingEnabledSupplier,
                 () -> null,
-                toolPhase,
                 null);
     }
 
@@ -122,7 +120,6 @@ public class ReasoningPhase {
             AtomicInteger currentIteration,
             Supplier<Boolean> streamingEnabledSupplier,
             Supplier<java.util.function.Consumer<String>> textDeltaConsumerSupplier,
-            ToolPhase toolPhase,
             @Nullable ExecutionEventEmitter eventEmitter) {
         this.ctx = ctx;
         this.guards = guards;
@@ -133,7 +130,6 @@ public class ReasoningPhase {
         this.streamingEnabledSupplier = streamingEnabledSupplier;
         this.textDeltaConsumerSupplier =
                 textDeltaConsumerSupplier != null ? textDeltaConsumerSupplier : () -> null;
-        this.toolPhase = toolPhase;
         this.eventEmitter = eventEmitter;
     }
 
@@ -141,15 +137,11 @@ public class ReasoningPhase {
      * Execute one reasoning cycle: pre-hook → model call → post-hook → response processing.
      *
      * @param modelConfig the model configuration for this iteration
-     * @param loopContinuation supplier for the next loop iteration (for recursion)
-     * @return the final response Msg, or the result of continued looping
+     * @return a signal indicating what the dispatcher should do next
      */
-    Mono<Msg> execute(ModelConfig modelConfig, Supplier<Mono<Msg>> loopContinuation) {
+    Mono<IterationSignal> execute(ModelConfig modelConfig) {
         return firePreReasoning(modelConfig)
-                .flatMap(
-                        hookResult ->
-                                handlePreReasoningHookResult(
-                                        hookResult, modelConfig, loopContinuation));
+                .flatMap(hookResult -> handlePreReasoningHookResult(hookResult, modelConfig));
     }
 
     private Mono<HookResult<PreReasoningEvent>> firePreReasoning(ModelConfig modelConfig) {
@@ -159,10 +151,8 @@ public class ReasoningPhase {
         return ctx.hookChain().<PreReasoningEvent>firePreReasoningWithResult(preEvent);
     }
 
-    private Mono<Msg> handlePreReasoningHookResult(
-            HookResult<PreReasoningEvent> hookResult,
-            ModelConfig baseModelConfig,
-            Supplier<Mono<Msg>> loopContinuation) {
+    private Mono<IterationSignal> handlePreReasoningHookResult(
+            HookResult<PreReasoningEvent> hookResult, ModelConfig baseModelConfig) {
         if (!hookResult.shouldProceed()) {
             log.info(
                     "Agent '{}' reasoning aborted by hook: {}",
@@ -172,7 +162,7 @@ public class ReasoningPhase {
                     hookResult.reason() != null
                             ? hookResult.reason()
                             : "Reasoning aborted by hook.";
-            return Mono.just(guards.buildFinalResponse(abortReason));
+            return Mono.just(new IterationSignal.Complete(guards.buildFinalResponse(abortReason)));
         }
 
         if (hookResult.shouldSkip()) {
@@ -180,14 +170,15 @@ public class ReasoningPhase {
                     "Agent '{}' reasoning skipped by hook: {}",
                     ctx.agentName(),
                     hookResult.reason());
-            currentIteration.incrementAndGet();
-            return loopContinuation.get();
+            return Mono.just(new IterationSignal.Skip("pre-reasoning hook vetoed"));
         }
 
         PreReasoningEvent pre = hookResult.event();
         if (pre.cancelled()) {
             log.info("Agent '{}' reasoning cancelled by hook", ctx.agentName());
-            return Mono.just(guards.buildFinalResponse("Processing cancelled by hook."));
+            return Mono.just(
+                    new IterationSignal.Complete(
+                            guards.buildFinalResponse("Processing cancelled by hook.")));
         }
 
         hookDecisions.applyInjections(hookResult, conversationHistory);
@@ -257,27 +248,27 @@ public class ReasoningPhase {
                                                             ? response.model()
                                                             : "unknown")
                                                     + "\"}");
-                            return postEmit.then(
-                                    handleModelResponseWithPostHook(response, loopContinuation));
+                            return postEmit.then(handleModelResponseWithPostHook(response));
                         })
                 .switchIfEmpty(
                         Mono.defer(
                                 () -> {
                                     // PRE_MODEL DENY case — return error message
                                     return Mono.just(
-                                            guards.buildFinalResponse(
-                                                    "Model call blocked by guardrail policy."));
+                                            (IterationSignal)
+                                                    new IterationSignal.Complete(
+                                                            guards.buildFinalResponse(
+                                                                    "Model call blocked by guardrail policy.")));
                                 }));
     }
 
     /** Update budgets, run post-reasoning hook, then process tool/final response flow. */
-    private Mono<Msg> handleModelResponseWithPostHook(
-            ModelResponse response, Supplier<Mono<Msg>> loopContinuation) {
+    private Mono<IterationSignal> handleModelResponseWithPostHook(ModelResponse response) {
         ctx.errorRecovery().fallbackManager().reset();
         applyTokenAccounting(response);
         ctx.tokenBudgetManager().advanceTurn();
 
-        return firePostReasoning(response, loopContinuation);
+        return firePostReasoning(response);
     }
 
     private void applyTokenAccounting(ModelResponse response) {
@@ -297,21 +288,15 @@ public class ReasoningPhase {
         }
     }
 
-    private Mono<Msg> firePostReasoning(
-            ModelResponse response, Supplier<Mono<Msg>> loopContinuation) {
+    private Mono<IterationSignal> firePostReasoning(ModelResponse response) {
         return ctx.hookChain()
                 .<PostReasoningEvent>firePostReasoningWithResult(
                         new PostReasoningEvent(response, false))
-                .flatMap(
-                        postResult ->
-                                handlePostReasoningHookResult(
-                                        postResult, response, loopContinuation));
+                .flatMap(postResult -> handlePostReasoningHookResult(postResult, response));
     }
 
-    private Mono<Msg> handlePostReasoningHookResult(
-            HookResult<PostReasoningEvent> postResult,
-            ModelResponse response,
-            Supplier<Mono<Msg>> loopContinuation) {
+    private Mono<IterationSignal> handlePostReasoningHookResult(
+            HookResult<PostReasoningEvent> postResult, ModelResponse response) {
         if (!postResult.shouldProceed()) {
             log.info(
                     "Agent '{}' post-reasoning aborted by hook: {}",
@@ -321,24 +306,23 @@ public class ReasoningPhase {
                     postResult.reason() != null
                             ? postResult.reason()
                             : "Post-reasoning aborted by hook.";
-            return Mono.just(guards.buildFinalResponse(reason));
+            return Mono.just(new IterationSignal.Complete(guards.buildFinalResponse(reason)));
         }
 
         if (postResult.hasInjectedContext()) {
             conversationHistory.add(
                     hookDecisions.systemHookContextMessage(postResult.injectedContext()));
         }
-        return processModelResponse(response, loopContinuation);
+        return processModelResponse(response);
     }
 
     /** Process the model response: convert to Msg, check for tool calls, execute if needed. */
-    private Mono<Msg> processModelResponse(
-            ModelResponse response, Supplier<Mono<Msg>> loopContinuation) {
+    private Mono<IterationSignal> processModelResponse(ModelResponse response) {
         // Capture stop reason for continuation strategy evaluation
         this.lastStopReason = response.stopReason();
         Msg assistantMsg = appendAssistantResponse(response);
         List<Content.ToolUseContent> toolCalls = extractToolCalls(response);
-        return routeModelResponseByToolCalls(assistantMsg, toolCalls, loopContinuation);
+        return routeModelResponseByToolCalls(assistantMsg, toolCalls);
     }
 
     private Msg appendAssistantResponse(ModelResponse response) {
@@ -348,10 +332,8 @@ public class ReasoningPhase {
     }
 
     /** Route model response based on tool calls, with event emission. */
-    private Mono<Msg> routeModelResponseByToolCalls(
-            Msg assistantMsg,
-            List<Content.ToolUseContent> toolCalls,
-            Supplier<Mono<Msg>> loopContinuation) {
+    private Mono<IterationSignal> routeModelResponseByToolCalls(
+            Msg assistantMsg, List<Content.ToolUseContent> toolCalls) {
         boolean hasText =
                 assistantMsg.contents().stream().anyMatch(c -> c instanceof Content.TextContent);
         boolean preExec = !toolCalls.isEmpty() && isStreamingPreExecuted(toolCalls);
@@ -376,16 +358,13 @@ public class ReasoningPhase {
                         .flatMap(
                                 decision ->
                                         applyContinuationDecision(
-                                                strategy,
-                                                decision,
-                                                assistantMsg,
-                                                loopContinuation));
+                                                strategy, decision, assistantMsg));
             }
             // No strategy or Noop — fall through to normal termination
             log.debug(
                     "Agent '{}' final answer candidate \u2014 firing PRE_COMPLETE hooks",
                     ctx.agentName());
-            return firePreComplete(assistantMsg, loopContinuation);
+            return firePreComplete(assistantMsg);
         }
 
         // Emit TOOL_CALL_REQUEST for each tool call (best-effort)
@@ -405,9 +384,10 @@ public class ReasoningPhase {
         }
 
         if (preExec) {
-            return toolEmissions.then(handleStreamingPreExecutedTools(toolCalls, loopContinuation));
+            return toolEmissions.then(handleStreamingPreExecutedTools(toolCalls));
         }
-        return toolEmissions.then(toolPhase.executeAndContinue(toolCalls, loopContinuation));
+        return toolEmissions.then(
+                Mono.just((IterationSignal) new IterationSignal.ToolCallsRequested(toolCalls)));
     }
 
     /**
@@ -415,7 +395,7 @@ public class ReasoningPhase {
      * loop. Otherwise return the final assistant message — analogous to claude-code
      * preventContinuation.
      */
-    private Mono<Msg> firePreComplete(Msg assistantMsg, Supplier<Mono<Msg>> loopContinuation) {
+    private Mono<IterationSignal> firePreComplete(Msg assistantMsg) {
         PreCompleteEvent event =
                 new PreCompleteEvent(
                         assistantMsg, Collections.unmodifiableList(conversationHistory), false);
@@ -430,13 +410,19 @@ public class ReasoningPhase {
                                         ctx.agentName(),
                                         result.hookSource());
                                 hookDecisions.applyInjections(result, conversationHistory);
-                                currentIteration.incrementAndGet();
-                                return loopContinuation.get();
+                                // Build the injected message from the last added to history
+                                Msg injectedMsg =
+                                        conversationHistory.get(conversationHistory.size() - 1);
+                                return Mono.just(
+                                        (IterationSignal)
+                                                new IterationSignal.ContinueWithNudge(
+                                                        injectedMsg, "PRE_COMPLETE hook injected"));
                             }
                             log.debug(
                                     "Agent '{}' PRE_COMPLETE hooks passed — returning final answer",
                                     ctx.agentName());
-                            return Mono.just(assistantMsg);
+                            return Mono.just(
+                                    (IterationSignal) new IterationSignal.Complete(assistantMsg));
                         });
     }
 
@@ -471,11 +457,8 @@ public class ReasoningPhase {
                 extensionData);
     }
 
-    private Mono<Msg> applyContinuationDecision(
-            AgentContinuationStrategy strategy,
-            ContinuationDecision decision,
-            Msg assistantMsg,
-            Supplier<Mono<Msg>> loopContinuation) {
+    private Mono<IterationSignal> applyContinuationDecision(
+            AgentContinuationStrategy strategy, ContinuationDecision decision, Msg assistantMsg) {
 
         String reason;
         if (decision instanceof ContinuationDecision.Terminate t) {
@@ -500,7 +483,7 @@ public class ReasoningPhase {
 
         if (decision instanceof ContinuationDecision.Terminate t) {
             log.debug("Agent '{}' continuation terminated: {}", ctx.agentName(), t.reason());
-            return firePreComplete(assistantMsg, loopContinuation);
+            return firePreComplete(assistantMsg);
         } else if (decision instanceof ContinuationDecision.Nudge n) {
             nudgeCount.incrementAndGet();
             conversationHistory.add(n.syntheticUserMessage());
@@ -509,21 +492,19 @@ public class ReasoningPhase {
                     ctx.agentName(),
                     nudgeCount.get(),
                     n.reason());
-            currentIteration.incrementAndGet();
-            return loopContinuation.get();
+            return Mono.just(
+                    new IterationSignal.ContinueWithNudge(n.syntheticUserMessage(), n.reason()));
         } else if (decision instanceof ContinuationDecision.CompactAndRetry c) {
             log.info("Agent '{}' continuation compact-and-retry: {}", ctx.agentName(), c.reason());
-            Mono<Void> compactMono =
-                    ctx.contextManager() != null
-                            ? ctx.contextManager().compact().then()
-                            : Mono.empty();
-            return compactMono.then(Mono.defer(loopContinuation::get));
+            return Mono.just(new IterationSignal.CompactThenContinue(c.reason()));
         } else if (decision instanceof ContinuationDecision.Escalate e) {
-            log.error("Agent '{}' continuation escalated", ctx.agentName(), e.cause());
-            return Mono.error(e.cause());
+            Throwable cause =
+                    e.cause() != null ? e.cause() : new IllegalStateException("escalated");
+            log.error("Agent '{}' continuation escalated", ctx.agentName(), cause);
+            return Mono.just(new IterationSignal.Abort(cause, "escalated"));
         } else {
             // Pass means no opinion — fall through to normal termination
-            return firePreComplete(assistantMsg, loopContinuation);
+            return firePreComplete(assistantMsg);
         }
     }
 
@@ -546,8 +527,8 @@ public class ReasoningPhase {
         return count;
     }
 
-    private Mono<Msg> handleStreamingPreExecutedTools(
-            List<Content.ToolUseContent> toolCalls, Supplier<Mono<Msg>> loopContinuation) {
+    private Mono<IterationSignal> handleStreamingPreExecutedTools(
+            List<Content.ToolUseContent> toolCalls) {
         log.debug(
                 "Streaming path already executed {} tool(s), using pre-computed results",
                 toolCalls.size());
@@ -560,8 +541,7 @@ public class ReasoningPhase {
                                                 (String) tc.input().get("_streaming_result")))
                         .toList();
         conversationHistory.add(hookDecisions.buildToolResultMsg(preResults, conversationHistory));
-        currentIteration.incrementAndGet();
-        return loopContinuation.get();
+        return Mono.just(new IterationSignal.ContinueAfterTools(toolCalls.size()));
     }
 
     // ---- Model response conversion ----

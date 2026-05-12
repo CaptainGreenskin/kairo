@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
@@ -40,6 +41,12 @@ import reactor.core.publisher.Mono;
 public class DefaultHookChain implements HookChain {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultHookChain.class);
+
+    /**
+     * Reactor Context key for the diagnostics event recorder. The value stored is a {@code
+     * Consumer<String>} that records event types.
+     */
+    public static final String DIAGNOSTICS_RECORDER_KEY = "kairo.diagnostics.recorder";
 
     private final List<Object> handlers = new CopyOnWriteArrayList<>();
 
@@ -69,7 +76,7 @@ public class DefaultHookChain implements HookChain {
 
     @Override
     public <T> Mono<T> firePostReasoning(T event) {
-        return fireEvent(event, PostReasoning.class);
+        return withDiagnosticsRecording(fireEvent(event, PostReasoning.class), "POST_REASONING");
     }
 
     @Override
@@ -79,7 +86,7 @@ public class DefaultHookChain implements HookChain {
 
     @Override
     public <T> Mono<T> firePostActing(T event) {
-        return fireEvent(event, PostActing.class);
+        return withDiagnosticsRecording(fireEvent(event, PostActing.class), "POST_ACTING");
     }
 
     @Override
@@ -130,12 +137,12 @@ public class DefaultHookChain implements HookChain {
 
     @Override
     public <T> Mono<T> fireOnSessionStart(T event) {
-        return fireEvent(event, OnSessionStart.class);
+        return withDiagnosticsRecording(fireEvent(event, OnSessionStart.class), "SESSION_START");
     }
 
     @Override
     public <T> Mono<T> fireOnSessionEnd(T event) {
-        return fireEvent(event, OnSessionEnd.class);
+        return withDiagnosticsRecording(fireEvent(event, OnSessionEnd.class), "SESSION_END");
     }
 
     @Override
@@ -417,4 +424,31 @@ public class DefaultHookChain implements HookChain {
 
     /** Internal record holding a handler, its annotated method, and the execution order. */
     private record AnnotatedMethod(Object handler, Method method, int order) {}
+
+    /**
+     * Wrap a fire-method Mono to record a diagnostics event on success. Uses {@code
+     * Mono.deferContextual} to access the Reactor Context and invoke the diagnostics recorder if
+     * present.
+     */
+    @SuppressWarnings("unchecked")
+    private <T> Mono<T> withDiagnosticsRecording(Mono<T> mono, String eventType) {
+        return Mono.deferContextual(
+                ctx ->
+                        mono.doOnSuccess(
+                                r -> {
+                                    Object recorder =
+                                            ctx.getOrDefault(DIAGNOSTICS_RECORDER_KEY, null);
+                                    if (recorder instanceof Consumer<?>) {
+                                        try {
+                                            ((Consumer<String>) recorder).accept(eventType);
+                                        } catch (Exception e) {
+                                            // Best-effort — must not break the hook chain
+                                            log.debug(
+                                                    "Diagnostics recording failed for {}: {}",
+                                                    eventType,
+                                                    e.getMessage());
+                                        }
+                                    }
+                                }));
+    }
 }

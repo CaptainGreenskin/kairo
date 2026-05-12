@@ -15,12 +15,12 @@
  */
 package io.kairo.core.agent;
 
+import io.kairo.api.agent.IterationSignal;
 import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.execution.ExecutionEventType;
 import io.kairo.api.hook.*;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
-import io.kairo.api.message.MsgRole;
 import io.kairo.api.tool.ToolInvocation;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.core.agent.checkpoint.IterationCheckpointManager;
@@ -32,9 +32,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.slf4j.Logger;
@@ -46,7 +44,9 @@ import reactor.core.publisher.Mono;
  * The tool execution phase of the ReAct loop.
  *
  * <p>Handles tool selection from model response, single and sequential tool execution with
- * PreActing/PostActing hooks, loop detection, compaction triggers, and skill tool restrictions.
+ * PreActing/PostActing hooks, compaction triggers, and skill tool restrictions.
+ *
+ * <p>Loop detection is handled by the dispatcher in {@link ReActLoop#evaluateLoopDetection}.
  *
  * <p>Package-private: not part of the public API.
  */
@@ -54,46 +54,23 @@ class ToolPhase {
 
     private static final Logger log = LoggerFactory.getLogger(ToolPhase.class);
 
-    /** Environment flag to disable loop rescue (default: enabled). */
-    private static final String LOOP_RESCUE_ENV = "KAIRO_LOOP_DETECT_RESCUE";
-
-    /** Rescue prompt injected as a USER message on first loop detection. */
-    private static final String RESCUE_PROMPT =
-            "It looks like you're repeating the same approach. "
-                    + "Please stop and think about what's not working. "
-                    + "Try a completely different approach or ask yourself: "
-                    + "what assumption might be wrong?";
-
     private final ReActLoopContext ctx;
     private final AtomicInteger totalToolCallsCounter = new AtomicInteger(0);
     private final IterationGuards guards;
     private final HookDecisionApplier hookDecisions;
     private final List<Msg> conversationHistory;
-    private final LoopDetector loopDetector;
-    private final ToolCallHistory toolCallHistory;
     private final AtomicInteger currentIteration;
     @Nullable private final ExecutionEventEmitter eventEmitter;
     @Nullable private volatile IterationCheckpointManager checkpointManager;
     private CompactionTrigger compactionTrigger;
 
-    /** Tracks whether a rescue prompt has already been injected for the current loop. */
-    private final AtomicBoolean loopRescueAttempted = new AtomicBoolean(false);
-
     ToolPhase(
             ReActLoopContext ctx,
             IterationGuards guards,
             HookDecisionApplier hookDecisions,
             List<Msg> conversationHistory,
-            LoopDetector loopDetector,
             AtomicInteger currentIteration) {
-        this(
-                ctx,
-                guards,
-                hookDecisions,
-                conversationHistory,
-                loopDetector,
-                new ToolCallHistory(),
-                currentIteration);
+        this(ctx, guards, hookDecisions, conversationHistory, currentIteration, null);
     }
 
     ToolPhase(
@@ -101,54 +78,12 @@ class ToolPhase {
             IterationGuards guards,
             HookDecisionApplier hookDecisions,
             List<Msg> conversationHistory,
-            LoopDetector loopDetector,
-            ToolCallHistory toolCallHistory,
-            AtomicInteger currentIteration) {
-        this(
-                ctx,
-                guards,
-                hookDecisions,
-                conversationHistory,
-                loopDetector,
-                toolCallHistory,
-                currentIteration,
-                null);
-    }
-
-    ToolPhase(
-            ReActLoopContext ctx,
-            IterationGuards guards,
-            HookDecisionApplier hookDecisions,
-            List<Msg> conversationHistory,
-            LoopDetector loopDetector,
-            AtomicInteger currentIteration,
-            @Nullable ExecutionEventEmitter eventEmitter) {
-        this(
-                ctx,
-                guards,
-                hookDecisions,
-                conversationHistory,
-                loopDetector,
-                new ToolCallHistory(),
-                currentIteration,
-                eventEmitter);
-    }
-
-    ToolPhase(
-            ReActLoopContext ctx,
-            IterationGuards guards,
-            HookDecisionApplier hookDecisions,
-            List<Msg> conversationHistory,
-            LoopDetector loopDetector,
-            ToolCallHistory toolCallHistory,
             AtomicInteger currentIteration,
             @Nullable ExecutionEventEmitter eventEmitter) {
         this.ctx = ctx;
         this.guards = guards;
         this.hookDecisions = hookDecisions;
         this.conversationHistory = conversationHistory;
-        this.loopDetector = loopDetector;
-        this.toolCallHistory = toolCallHistory;
         this.currentIteration = currentIteration;
         this.eventEmitter = eventEmitter;
     }
@@ -170,17 +105,15 @@ class ToolPhase {
     }
 
     /**
-     * Execute tool calls and continue the loop after completion.
+     * Execute tool calls and return a signal describing the outcome.
      *
-     * <p>Handles loop detection, tool execution with hooks, skill restrictions, compaction, and
-     * recursion back into the main loop.
+     * <p>Handles tool execution with hooks, skill restrictions, and compaction checks. Loop
+     * detection is performed by the dispatcher before calling this method.
      *
      * @param toolCalls the tool calls from the model response
-     * @param loopContinuation supplier for the next loop iteration
-     * @return the final response from the continued loop
+     * @return a signal indicating what the dispatcher should do next
      */
-    Mono<Msg> executeAndContinue(
-            List<Content.ToolUseContent> toolCalls, Supplier<Mono<Msg>> loopContinuation) {
+    Mono<IterationSignal> execute(List<Content.ToolUseContent> toolCalls) {
         log.debug(
                 "Agent '{}' requesting {} tool call(s): {}",
                 ctx.agentName(),
@@ -189,109 +122,26 @@ class ToolPhase {
                         .map(Content.ToolUseContent::toolName)
                         .collect(Collectors.joining(", ")));
 
-        Mono<Msg> loopDecision = evaluateLoopDetection(toolCalls, loopContinuation);
-        if (loopDecision != null) {
-            return loopDecision;
-        }
-
-        return runToolExecutionPipeline(toolCalls, loopContinuation);
+        return runToolExecutionPipeline(toolCalls);
     }
 
-    private Mono<Msg> evaluateLoopDetection(
-            List<Content.ToolUseContent> toolCalls, Supplier<Mono<Msg>> loopContinuation) {
-        // Layer 0: per-call repetition check (ToolCallHistory)
-        LoopDetector.DetectionResult.Level worstPerCall = LoopDetector.DetectionResult.Level.NONE;
-        String perCallMessage = null;
-        for (Content.ToolUseContent tc : toolCalls) {
-            String argsJson = tc.input() != null ? tc.input().toString() : "";
-            ToolCallHistory.Status status = toolCallHistory.record(tc.toolName(), argsJson);
-            if (status == ToolCallHistory.Status.ABORT) {
-                worstPerCall = LoopDetector.DetectionResult.Level.HARD_STOP;
-                perCallMessage =
-                        "Tool call loop detected: '"
-                                + tc.toolName()
-                                + "' called "
-                                + toolCallHistory.abortAt()
-                                + " consecutive times with same arguments — aborting";
-                break;
-            }
-            if (status == ToolCallHistory.Status.WARN
-                    && worstPerCall != LoopDetector.DetectionResult.Level.HARD_STOP) {
-                worstPerCall = LoopDetector.DetectionResult.Level.WARN;
-                perCallMessage =
-                        "Potential tool call loop: '"
-                                + tc.toolName()
-                                + "' called "
-                                + toolCallHistory.warnAt()
-                                + " consecutive times with same arguments";
-            }
-        }
-
-        if (worstPerCall == LoopDetector.DetectionResult.Level.HARD_STOP) {
-            if (!isRescueEnabled() || loopRescueAttempted.getAndSet(true)) {
-                return Mono.error(new LoopDetectionException(perCallMessage));
-            }
-            conversationHistory.add(Msg.of(MsgRole.USER, "[Loop Rescue] " + RESCUE_PROMPT));
-            log.warn("Tool call loop detected — injecting rescue prompt (attempt 1/1)");
-            return loopContinuation.get();
-        }
-        if (worstPerCall == LoopDetector.DetectionResult.Level.WARN) {
-            conversationHistory.add(
-                    Msg.of(
-                            MsgRole.USER,
-                            "[Loop Warning] " + (perCallMessage != null ? perCallMessage : "")));
-            return loopContinuation.get();
-        }
-
-        // Layer 1-3: set-level hash/frequency/repetition check (LoopDetector)
-        var detection = loopDetector.check(toolCalls);
-        if (detection.level() == LoopDetector.DetectionResult.Level.HARD_STOP) {
-            if (!isRescueEnabled() || loopRescueAttempted.getAndSet(true)) {
-                // Rescue disabled or already attempted — truly stuck
-                return Mono.error(new LoopDetectionException(detection.message()));
-            }
-            // First detection with rescue enabled — inject rescue prompt and continue
-            conversationHistory.add(Msg.of(MsgRole.USER, "[Loop Rescue] " + RESCUE_PROMPT));
-            log.warn("Loop detected — injecting rescue prompt (attempt 1/1)");
-            return loopContinuation.get();
-        }
-        if (detection.level() == LoopDetector.DetectionResult.Level.WARN) {
-            conversationHistory.add(Msg.of(MsgRole.USER, "[Loop Warning] " + detection.message()));
-            return loopContinuation.get();
-        }
-        return null;
-    }
-
-    /** Check whether loop rescue is enabled via environment flag. */
-    private static boolean isRescueEnabled() {
-        String env = System.getenv(LOOP_RESCUE_ENV);
-        return env == null || !env.equalsIgnoreCase("false");
-    }
-
-    private Mono<Msg> runToolExecutionPipeline(
-            List<Content.ToolUseContent> toolCalls, Supplier<Mono<Msg>> loopContinuation) {
+    private Mono<IterationSignal> runToolExecutionPipeline(List<Content.ToolUseContent> toolCalls) {
         return guards.checkCancelled()
                 .then(executeToolsWithHooks(toolCalls))
-                .flatMap(
-                        toolResults ->
-                                continueAfterToolExecution(
-                                        toolCalls, toolResults, loopContinuation));
+                .flatMap(toolResults -> continueAfterToolExecution(toolCalls, toolResults));
     }
 
-    private Mono<Msg> continueAfterToolExecution(
-            List<Content.ToolUseContent> toolCalls,
-            List<ToolResult> toolResults,
-            Supplier<Mono<Msg>> loopContinuation) {
+    private Mono<IterationSignal> continueAfterToolExecution(
+            List<Content.ToolUseContent> toolCalls, List<ToolResult> toolResults) {
         applySkillToolRestrictions(toolCalls, toolResults);
         conversationHistory.add(hookDecisions.buildToolResultMsg(toolResults, conversationHistory));
-        currentIteration.incrementAndGet();
 
         // Save iteration checkpoint for crash recovery (best-effort).
-        Mono<Msg> loopDecision = proceedWithCompactionIfNeeded(loopContinuation);
+        Mono<IterationSignal> signal = proceedWithCompactionIfNeeded(toolCalls.size());
         if (checkpointManager != null) {
             int iteration = currentIteration.get();
             List<Msg> historySnapshot = List.copyOf(conversationHistory);
-            loopDecision =
+            signal =
                     checkpointManager
                             .save(iteration, historySnapshot)
                             .onErrorResume(
@@ -302,13 +152,13 @@ class ToolPhase {
                                                 e.getMessage());
                                         return Mono.empty();
                                     })
-                            .then(loopDecision);
+                            .then(signal);
         }
 
-        return loopDecision;
+        return signal;
     }
 
-    private Mono<Msg> proceedWithCompactionIfNeeded(Supplier<Mono<Msg>> loopContinuation) {
+    private Mono<IterationSignal> proceedWithCompactionIfNeeded(int toolCallCount) {
         if (compactionTrigger != null) {
             int messagesBefore = conversationHistory.size();
             return guards.checkCancelled()
@@ -318,12 +168,24 @@ class ToolPhase {
                                 if (Boolean.TRUE.equals(compacted)) {
                                     return emitContextCompacted(
                                                     messagesBefore, conversationHistory.size())
-                                            .then(loopContinuation.get());
+                                            .thenReturn(
+                                                    (IterationSignal)
+                                                            new IterationSignal.CompactThenContinue(
+                                                                    "post-tool budget exceeded"));
                                 }
-                                return loopContinuation.get();
-                            });
+                                return Mono.just(
+                                        (IterationSignal)
+                                                new IterationSignal.ContinueAfterTools(
+                                                        toolCallCount));
+                            })
+                    .onErrorResume(
+                            cause ->
+                                    Mono.just(
+                                            new IterationSignal.Abort(cause, "tool exec failed")));
         }
-        return guards.checkCancelled().then(loopContinuation.get());
+        return guards.checkCancelled()
+                .thenReturn(
+                        (IterationSignal) new IterationSignal.ContinueAfterTools(toolCallCount));
     }
 
     /**

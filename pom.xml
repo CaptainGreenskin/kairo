@@ -71,12 +71,12 @@
 
     <properties>
         <revision>1.0.0-SNAPSHOT</revision>
-        <java.version>17</java.version>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
-        <!-- Pair `release` with source/target so javac resolves JDK 17 module boundaries
+        <java.version>21</java.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <!-- Pair `release` with source/target so javac resolves JDK 21 module boundaries
              (prevents accidentally linking against newer JDK APIs on a newer build JDK). -->
-        <maven.compiler.release>17</maven.compiler.release>
+        <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- Reproducible-build hook: any published artifact will use this timestamp (epoch
              second by default = 1970-01-01). Release builds should override via

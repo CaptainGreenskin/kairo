@@ -1,0 +1,19 @@
+{
+  "executor": "qodercli",
+  "task_id": "206-kairo-spring-starter-multi-agent-tests",
+  "date": "2026-04-30T06:59:15",
+  "branch": "feature/qodercli-206-kairo-spring-starter-multi-agent-tests",
+  "sha": "c7e132c",
+  "diffstat": " 4 files changed, 195 insertions(+)",
+  "scores": {
+    "completion": 27,
+    "verify": 25,
+    "quality": 12,
+    "tests": 13,
+    "efficiency": 9,
+    "description": 3,
+    "bonus": 0
+  },
+  "total": 89,
+  "note": ""
+}

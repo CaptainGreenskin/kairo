@@ -1,0 +1,19 @@
+{
+  "executor": "qodercli",
+  "task_id": "248-kairo-skill-hot-reload-watcher-tests",
+  "date": "2026-04-30T11:12:22",
+  "branch": "feature/qodercli-248-kairo-skill-hot-reload-watcher-tests",
+  "sha": "89f615b",
+  "diffstat": " 4 files changed, 243 insertions(+), 450 deletions(-)",
+  "scores": {
+    "completion": 26,
+    "verify": 25,
+    "quality": 13,
+    "tests": 12,
+    "efficiency": 9,
+    "description": 4,
+    "bonus": 0
+  },
+  "total": 89,
+  "note": "SkillHotReloadWatcherTest 6 tests covering file watch, reload, debounce"
+}

@@ -1,0 +1,19 @@
+{
+  "executor": "qodercli",
+  "task_id": "255-kairo-tools-web-search-tool-tests",
+  "date": "2026-04-30T12:25:01",
+  "branch": "feature/qodercli-255-kairo-tools-web-search-tool-tests",
+  "sha": "b47d75c",
+  "diffstat": " 2 files changed, 344 insertions(+), 4 deletions(-)",
+  "scores": {
+    "completion": 24,
+    "verify": 25,
+    "quality": 12,
+    "tests": 12,
+    "efficiency": 8,
+    "description": 4,
+    "bonus": 0
+  },
+  "total": 85,
+  "note": "[heuristic-fallback] verify passed, auto-scoring unavailable"
+}

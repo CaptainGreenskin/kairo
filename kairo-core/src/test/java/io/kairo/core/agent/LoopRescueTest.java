@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import io.kairo.api.agent.AgentConfig;
+import io.kairo.api.agent.IterationSignal;
 import io.kairo.api.hook.HookChain;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
@@ -30,17 +31,14 @@ import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.model.ModelFallbackManager;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import reactor.core.publisher.Mono;
-import reactor.test.StepVerifier;
 
-/** Unit tests for loop rescue injection in {@link ToolPhase}. */
+/** Unit tests for loop rescue injection in {@link ReActLoop}'s dispatcher preamble. */
 class LoopRescueTest {
 
     private ModelProvider modelProvider;
@@ -68,6 +66,8 @@ class LoopRescueTest {
                         .modelName("test-model")
                         .maxIterations(10)
                         .tokenBudget(200_000)
+                        // Set loop detection thresholds: hash hard limit=1 for immediate trigger
+                        .loopDetection(100, 1, 100, 200, Duration.ofMinutes(10))
                         .build();
         ToolExecutor toolExecutor = mock(ToolExecutor.class);
         ErrorRecoveryStrategy errorRecovery =
@@ -92,70 +92,64 @@ class LoopRescueTest {
         return List.of(new Content.ToolUseContent("id-1", "read_file", Map.of("path", "test.txt")));
     }
 
-    private ToolPhase buildToolPhaseWithImmediateHardStop(List<Msg> conversationHistory) {
+    private ReActLoop buildReActLoopWithImmediateHardStop() {
         ReActLoopContext ctx = buildContext();
-        IterationGuards guards = new IterationGuards(ctx, interrupted, currentIteration);
-        HookDecisionApplier hookDecisions = new HookDecisionApplier(ctx);
-        LoopDetector loopDetector =
-                new LoopDetector(100, 1, 100, 200, Duration.ofMinutes(10), 1000);
-        return new ToolPhase(
-                ctx, guards, hookDecisions, conversationHistory, loopDetector, currentIteration);
+        return new ReActLoop(
+                ctx,
+                interrupted,
+                currentIteration,
+                new java.util.concurrent.atomic.AtomicLong(0),
+                () -> null);
     }
 
     @Test
     void firstLoopDetection_injectsRescuePromptAndContinues() {
-        List<Msg> history = new ArrayList<>();
-        ToolPhase phase = buildToolPhaseWithImmediateHardStop(history);
-
-        List<Content.ToolUseContent> calls = identicalToolCalls();
+        ReActLoop loop = buildReActLoopWithImmediateHardStop();
+        List<Msg> history = loop.getHistory();
         int sizeBefore = history.size();
 
-        Mono<Msg> result =
-                phase.executeAndContinue(calls, () -> Mono.just(Msg.of(MsgRole.ASSISTANT, "done")));
+        List<Content.ToolUseContent> calls = identicalToolCalls();
+        IterationSignal result = loop.evaluateLoopDetection(calls);
 
-        StepVerifier.create(result)
-                .assertNext(
-                        msg -> {
-                            assertEquals(sizeBefore + 1, history.size());
-                            Msg rescueMsg = history.get(sizeBefore);
-                            assertEquals(MsgRole.USER, rescueMsg.role());
-                            Content firstContent = rescueMsg.contents().get(0);
-                            assertTrue(firstContent.toString().contains("Loop Rescue"));
-                            Content responseContent = msg.contents().get(0);
-                            assertTrue(responseContent.toString().contains("done"));
-                        })
-                .verifyComplete();
+        // Should be a Skip signal (loop rescue)
+        assertNotNull(result);
+        assertTrue(result instanceof IterationSignal.Skip);
+        IterationSignal.Skip skip = (IterationSignal.Skip) result;
+        assertTrue(skip.reason().contains("loop rescue"));
+        // Rescue prompt should have been injected
+        List<Msg> updatedHistory = loop.getHistory();
+        assertEquals(sizeBefore + 1, updatedHistory.size());
+        Msg rescueMsg = updatedHistory.get(sizeBefore);
+        assertEquals(MsgRole.USER, rescueMsg.role());
+        Content firstContent = rescueMsg.contents().get(0);
+        assertTrue(firstContent.toString().contains("Loop Rescue"));
     }
 
     @Test
-    void secondLoopDetection_throwsLoopDetectionException() {
-        List<Msg> history = new ArrayList<>();
-        ToolPhase phase = buildToolPhaseWithImmediateHardStop(history);
+    void secondLoopDetection_returnsLoopDetectedSignal() {
+        ReActLoop loop = buildReActLoopWithImmediateHardStop();
 
         List<Content.ToolUseContent> calls = identicalToolCalls();
 
-        // First detection: injects rescue, continues
-        Mono<Msg> firstResult =
-                phase.executeAndContinue(
-                        calls, () -> Mono.just(Msg.of(MsgRole.ASSISTANT, "retry")));
-        Msg firstMsg = firstResult.block();
-        assertNotNull(firstMsg);
+        // First detection: injects rescue, returns Skip signal
+        IterationSignal firstSignal = loop.evaluateLoopDetection(calls);
+        assertNotNull(firstSignal);
+        assertTrue(firstSignal instanceof IterationSignal.Skip);
 
-        // Second detection: should throw
-        Mono<Msg> secondResult =
-                phase.executeAndContinue(
-                        calls, () -> Mono.just(Msg.of(MsgRole.ASSISTANT, "retry2")));
-        StepVerifier.create(secondResult).expectError(LoopDetectionException.class).verify();
+        // Second detection: should return LoopDetected signal
+        IterationSignal secondSignal = loop.evaluateLoopDetection(calls);
+        assertNotNull(secondSignal);
+        assertTrue(secondSignal instanceof IterationSignal.LoopDetected);
     }
 
     @Test
     void rescuePrompt_hasExpectedContent() {
-        List<Msg> history = new ArrayList<>();
-        ToolPhase phase = buildToolPhaseWithImmediateHardStop(history);
+        ReActLoop loop = buildReActLoopWithImmediateHardStop();
 
         List<Content.ToolUseContent> calls = identicalToolCalls();
-        phase.executeAndContinue(calls, () -> Mono.just(Msg.of(MsgRole.ASSISTANT, "done"))).block();
+        loop.evaluateLoopDetection(calls);
 
+        List<Msg> history = loop.getHistory();
         List<Msg> rescueMsgs =
                 history.stream()
                         .filter(m -> m.role() == MsgRole.USER)

@@ -1,0 +1,19 @@
+{
+  "executor": "qodercli",
+  "task_id": "209-kairo-core-graceful-shutdown-tests",
+  "date": "2026-04-30T07:37:34",
+  "branch": "feature/qodercli-209-kairo-core-graceful-shutdown-tests",
+  "sha": "8c6d85d",
+  "diffstat": " 3 files changed, 219 insertions(+), 231 deletions(-)",
+  "scores": {
+    "completion": 28,
+    "verify": 25,
+    "quality": 13,
+    "tests": 14,
+    "efficiency": 9,
+    "description": 3,
+    "bonus": 0
+  },
+  "total": 92,
+  "note": ""
+}

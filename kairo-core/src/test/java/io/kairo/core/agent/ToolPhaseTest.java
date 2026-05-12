@@ -26,7 +26,6 @@ import io.kairo.core.context.TokenBudgetManager;
 import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.model.ModelFallbackManager;
 import io.kairo.core.shutdown.GracefulShutdownManager;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -86,7 +85,6 @@ class ToolPhaseTest {
         ReActLoopContext ctx = buildContext();
         IterationGuards guards = new IterationGuards(ctx, interrupted, currentIteration);
         HookDecisionApplier hookDecisions = new HookDecisionApplier(ctx);
-        LoopDetector loopDetector = new LoopDetector(100, 200, 5, 10, Duration.ofMinutes(10), 1000);
 
         assertThatNoException()
                 .isThrownBy(
@@ -96,7 +94,6 @@ class ToolPhaseTest {
                                         guards,
                                         hookDecisions,
                                         new ArrayList<>(),
-                                        loopDetector,
                                         currentIteration));
     }
 
@@ -105,15 +102,8 @@ class ToolPhaseTest {
         ReActLoopContext ctx = buildContext();
         IterationGuards guards = new IterationGuards(ctx, interrupted, currentIteration);
         HookDecisionApplier hookDecisions = new HookDecisionApplier(ctx);
-        LoopDetector loopDetector = new LoopDetector(100, 200, 5, 10, Duration.ofMinutes(10), 1000);
         ToolPhase phase =
-                new ToolPhase(
-                        ctx,
-                        guards,
-                        hookDecisions,
-                        new ArrayList<>(),
-                        loopDetector,
-                        currentIteration);
+                new ToolPhase(ctx, guards, hookDecisions, new ArrayList<>(), currentIteration);
 
         assertThatNoException().isThrownBy(() -> phase.setCompactionTrigger(null));
     }

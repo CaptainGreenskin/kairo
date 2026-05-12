@@ -1,0 +1,19 @@
+{
+  "executor": "qodercli",
+  "task_id": "247-kairo-core-agent-call-observer-tests",
+  "date": "2026-04-30T10:50:10",
+  "branch": "feature/qodercli-247-kairo-core-agent-call-observer-tests",
+  "sha": "edfa4d4",
+  "diffstat": " 1 file changed, 224 insertions(+)",
+  "scores": {
+    "completion": 24,
+    "verify": 25,
+    "quality": 12,
+    "tests": 12,
+    "efficiency": 8,
+    "description": 4,
+    "bonus": 0
+  },
+  "total": 85,
+  "note": "[heuristic-fallback] verify passed, auto-scoring unavailable"
+}

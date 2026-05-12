@@ -1,0 +1,19 @@
+{
+  "executor": "qodercli",
+  "task_id": "259-kairo-skill-hot-reload-watcher-tests-supplement",
+  "date": "2026-04-30T14:03:39",
+  "branch": "feature/qodercli-259-kairo-skill-hot-reload-watcher-tests-supplement",
+  "sha": "80a67c5",
+  "diffstat": " 1 file changed, 135 insertions(+)",
+  "scores": {
+    "completion": 24,
+    "verify": 25,
+    "quality": 12,
+    "tests": 12,
+    "efficiency": 8,
+    "description": 4,
+    "bonus": 0
+  },
+  "total": 85,
+  "note": "[heuristic-fallback] verify passed, auto-scoring unavailable"
+}

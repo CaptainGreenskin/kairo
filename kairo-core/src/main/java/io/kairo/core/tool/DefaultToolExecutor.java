@@ -765,6 +765,9 @@ public class DefaultToolExecutor implements ToolExecutor {
     /** One-shot guard so the cleanup pass runs at most once per executor instance. */
     private final AtomicBoolean spillCleanupRan = new AtomicBoolean(false);
 
+    /** One-shot guard so the guardrail-null INFO log emits at most once per executor instance. */
+    private final AtomicBoolean guardrailNullWarned = new AtomicBoolean(false);
+
     /**
      * Best-effort cleanup of {@code .kairo/tool-output/} files older than the retention window.
      * Runs at most once per executor instance to keep the on-disk footprint bounded without paying
@@ -818,9 +821,10 @@ public class DefaultToolExecutor implements ToolExecutor {
     private Mono<GuardrailDecision> evaluatePreToolGuardrail(
             String toolName, Map<String, Object> input) {
         if (guardrailChain == null) {
-            log.warn(
-                    "GuardrailChain is null — PRE_TOOL guardrail evaluation skipped for tool: {}",
-                    toolName);
+            if (guardrailNullWarned.compareAndSet(false, true)) {
+                log.info(
+                        "GuardrailChain not configured — guardrail evaluation disabled for this executor");
+            }
             return Mono.just(GuardrailDecision.allow("no-guardrail"));
         }
         Map<String, Object> metadata = registry.getToolMetadata(toolName);
@@ -839,9 +843,10 @@ public class DefaultToolExecutor implements ToolExecutor {
 
     private Mono<GuardrailDecision> evaluatePostToolGuardrail(String toolName, ToolResult result) {
         if (guardrailChain == null) {
-            log.warn(
-                    "GuardrailChain is null — POST_TOOL guardrail evaluation skipped for tool: {}",
-                    toolName);
+            if (guardrailNullWarned.compareAndSet(false, true)) {
+                log.info(
+                        "GuardrailChain not configured — guardrail evaluation disabled for this executor");
+            }
             return Mono.just(GuardrailDecision.allow("no-guardrail"));
         }
         return Mono.deferContextual(

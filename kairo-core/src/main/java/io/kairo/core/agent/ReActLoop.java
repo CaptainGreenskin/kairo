@@ -16,6 +16,7 @@
 package io.kairo.core.agent;
 
 import io.kairo.api.agent.AgentConfig;
+import io.kairo.api.agent.IterationSignal;
 import io.kairo.api.event.AgentProgressEvent;
 import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.execution.ExecutionEventType;
@@ -27,6 +28,8 @@ import io.kairo.api.model.ModelConfig;
 import io.kairo.api.tool.OutputBudgetConfig;
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.api.tracing.Span;
+import io.kairo.api.tracing.Tracer;
 import io.kairo.core.agent.checkpoint.IterationCheckpointManager;
 import io.kairo.core.execution.DefaultResourceConstraint;
 import io.kairo.core.execution.ExecutionEventEmitter;
@@ -59,12 +62,34 @@ class ReActLoop {
 
     private static final Logger log = LoggerFactory.getLogger(ReActLoop.class);
 
+    /** Default max consecutive Skip signals before aborting (env-configurable). */
+    private static final int DEFAULT_MAX_CONSECUTIVE_SKIPS =
+            Integer.parseInt(
+                    System.getenv().getOrDefault("KAIRO_AGENT_MAX_CONSECUTIVE_SKIPS", "5"));
+
+    /** Environment flag to disable loop rescue (default: enabled). */
+    private static final String LOOP_RESCUE_ENV = "KAIRO_LOOP_DETECT_RESCUE";
+
+    /** Rescue prompt injected as a USER message on first loop detection. */
+    private static final String RESCUE_PROMPT =
+            "It looks like you're repeating the same approach. "
+                    + "Please stop and think about what's not working. "
+                    + "Try a completely different approach or ask yourself: "
+                    + "what assumption might be wrong?";
+
     private final List<Msg> conversationHistory;
     private final AtomicInteger currentIteration;
     private final Supplier<ModelConfig> modelConfigSupplier;
     private volatile boolean streamingEnabled = false;
     private volatile java.util.function.Consumer<String> textDeltaConsumer = null;
     private final AtomicBoolean danglingRecoveryDone = new AtomicBoolean(false);
+
+    // ---- Loop control fields ----
+    private final int maxConsecutiveSkips = DEFAULT_MAX_CONSECUTIVE_SKIPS;
+    private final AtomicInteger consecutiveSkips = new AtomicInteger(0);
+    private final LoopDetector loopDetector;
+    private final ToolCallHistory toolCallHistory;
+    private final AtomicBoolean loopRescueAttempted = new AtomicBoolean(false);
 
     @Nullable private final ExecutionEventEmitter eventEmitter;
     @Nullable private final AgentProgressTracker progressTracker;
@@ -141,8 +166,8 @@ class ReActLoop {
         this.eventEmitter = eventEmitter;
         this.progressTracker = progressTracker;
 
-        // Initialize loop detector from config thresholds
-        var loopDetector =
+        // Initialize loop detector from config thresholds (owned by ReActLoop for dispatcher use)
+        this.loopDetector =
                 new LoopDetector(
                         ctx.config().loopHashWarnThreshold(),
                         ctx.config().loopHashHardLimit(),
@@ -150,6 +175,7 @@ class ReActLoop {
                         ctx.config().loopFreqHardLimit(),
                         ctx.config().loopFreqWindow(),
                         3);
+        this.toolCallHistory = new ToolCallHistory();
 
         // Build phase collaborators
         List<ResourceConstraint> effectiveConstraints = resolveResourceConstraints(ctx.config());
@@ -161,7 +187,6 @@ class ReActLoop {
                         guards,
                         hookDecisions,
                         conversationHistory,
-                        loopDetector,
                         currentIteration,
                         eventEmitter);
         this.reasoningPhase =
@@ -174,7 +199,6 @@ class ReActLoop {
                         currentIteration,
                         () -> streamingEnabled,
                         () -> textDeltaConsumer,
-                        toolPhase,
                         eventEmitter);
     }
 
@@ -252,12 +276,60 @@ class ReActLoop {
         // Publish ITERATION_START event (best-effort, must not break the loop)
         publishIterationStart();
 
-        // Preemptive compaction: if pressure is already high entering the iteration,
-        // compact BEFORE evaluating budget guards. Without this, ToolPhase's post-tool
-        // compact runs too late — guards trip at the START of the next iter and fire
-        // GRACEFUL_EXIT even though the pipeline could have freed enough headroom.
-        return preemptiveCompactIfNeeded()
-                .then(Mono.defer(this::evaluateGuardsAndExecute))
+        // Wrap in deferContextual to access Reactor Context for span hierarchy
+        return Mono.deferContextual(
+                        ctxView -> {
+                            Tracer t = ctx.tracer();
+                            if (t == null) {
+                                // No tracer available (test/headless path) — skip span creation
+                                return preemptiveCompactIfNeeded()
+                                        .then(Mono.defer(this::evaluateGuardsAndExecute));
+                            }
+
+                            // Retrieve parent agent span from Reactor Context
+                            Span parentSpan =
+                                    ctxView.hasKey(DefaultToolExecutor.SPAN_CONTEXT_KEY)
+                                            ? ctxView.get(DefaultToolExecutor.SPAN_CONTEXT_KEY)
+                                            : null;
+
+                            // Start iteration-level span (child of agent span)
+                            Span iterationSpan =
+                                    t.startIterationSpan(parentSpan, currentIteration.get());
+
+                            // Feed diagnostics with current span info
+                            if (ctxView.hasKey(MutableDiagnostics.class)) {
+                                MutableDiagnostics diag = ctxView.get(MutableDiagnostics.class);
+                                if (iterationSpan.spanId() != null) {
+                                    diag.setCurrentSpanId(iterationSpan.spanId());
+                                }
+                            }
+
+                            return preemptiveCompactIfNeeded()
+                                    .then(Mono.defer(this::evaluateGuardsAndExecute))
+                                    .doOnSuccess(
+                                            msg -> {
+                                                iterationSpan.setStatus(true, "completed");
+                                                iterationSpan.end();
+                                            })
+                                    .doOnError(
+                                            e -> {
+                                                iterationSpan.setStatus(false, e.getMessage());
+                                                t.recordException(iterationSpan, e);
+                                                iterationSpan.end();
+                                            })
+                                    .doOnCancel(
+                                            () -> {
+                                                iterationSpan.setStatus(false, "cancelled");
+                                                iterationSpan.end();
+                                            })
+                                    // Override SPAN_CONTEXT_KEY so tool spans nest under iteration
+                                    .contextWrite(
+                                            c ->
+                                                    c.put(
+                                                            DefaultToolExecutor.SPAN_CONTEXT_KEY,
+                                                            iterationSpan));
+                        })
+                // Keep existing OutputBudgetTracker contextWrite BELOW
                 .contextWrite(
                         ctx -> {
                             // Inject a fresh OutputBudgetTracker per iteration via Reactor Context.
@@ -290,8 +362,9 @@ class ReActLoop {
                         Mono.defer(
                                 () -> {
                                     Mono<Msg> execution =
-                                            reasoningPhase.execute(
-                                                    modelConfigSupplier.get(), this::runLoop);
+                                            reasoningPhase
+                                                    .execute(modelConfigSupplier.get())
+                                                    .flatMap(this::dispatchSignal);
 
                                     // Update progress tracker and emit ITERATION_COMPLETE
                                     // (both best-effort — must not break the loop)
@@ -327,6 +400,189 @@ class ReActLoop {
                                     }
                                     return execution;
                                 }));
+    }
+
+    /**
+     * Dispatch an {@link IterationSignal} returned by ReasoningPhase or ToolPhase. Maps each signal
+     * case to the appropriate loop action.
+     *
+     * <p>This is the "two-level dispatcher" per the v3 design:
+     *
+     * <ul>
+     *   <li>Level 1: Route signals to the correct handler
+     *   <li>Level 2 (ToolCallsRequested): Loop detection guard before tool execution
+     * </ul>
+     */
+    private Mono<Msg> dispatchSignal(IterationSignal sig) {
+        log.info(
+                "react.signal iter={} signal={} reason={}",
+                currentIteration.get(),
+                sig.getClass().getSimpleName(),
+                extractReason(sig));
+
+        return switch (sig) {
+            case IterationSignal.ToolCallsRequested tcr -> {
+                consecutiveSkips.set(0); // non-Skip → reset
+                // ── Loop detection guard (preamble) ──
+                IterationSignal loopResult = evaluateLoopDetection(tcr.calls());
+                if (loopResult != null) {
+                    yield dispatchSignal(loopResult);
+                }
+                // Clean — proceed with tool execution
+                yield toolPhase.execute(tcr.calls()).flatMap(this::dispatchSignal);
+            }
+            case IterationSignal.ContinueAfterTools ignored -> {
+                consecutiveSkips.set(0);
+                currentIteration.incrementAndGet();
+                yield Mono.defer(this::runLoop);
+            }
+            case IterationSignal.ContinueWithNudge n -> {
+                consecutiveSkips.set(0);
+                currentIteration.incrementAndGet();
+                conversationHistory.add(n.syntheticMsg());
+                yield Mono.defer(this::runLoop);
+            }
+            case IterationSignal.CompactThenContinue cc -> {
+                consecutiveSkips.set(0);
+                currentIteration.incrementAndGet();
+                if (compactionTrigger != null) {
+                    yield compactionTrigger
+                            .checkAndCompact(conversationHistory)
+                            .then(Mono.defer(this::runLoop));
+                }
+                yield Mono.defer(this::runLoop);
+            }
+            case IterationSignal.Skip s -> {
+                // Don't increment iter counter (model wasn't called, no max-iter budget consumed)
+                int skips = consecutiveSkips.incrementAndGet();
+                if (skips > maxConsecutiveSkips) {
+                    yield dispatchSignal(
+                            new IterationSignal.Abort(
+                                    new IllegalStateException(
+                                            "agent stuck on Skip x"
+                                                    + skips
+                                                    + " (last: "
+                                                    + s.reason()
+                                                    + ")"),
+                                    "max-consecutive-skip exceeded"));
+                }
+                log.info(
+                        "react.skip iter={} consecutive={} reason={}",
+                        currentIteration.get(),
+                        skips,
+                        s.reason());
+                yield Mono.defer(this::runLoop);
+            }
+            case IterationSignal.Complete c -> {
+                consecutiveSkips.set(0);
+                yield firePreCompleteHook(c.finalAnswer());
+            }
+            case IterationSignal.LoopDetected ld -> {
+                consecutiveSkips.set(0);
+                yield Mono.error(new LoopDetectionException(ld.info().message()));
+            }
+            case IterationSignal.Abort a -> {
+                Throwable cause =
+                        a.cause() != null ? a.cause() : new IllegalStateException(a.reason());
+                yield Mono.error(cause);
+            }
+        };
+    }
+
+    /**
+     * Evaluate loop detection for the given tool calls (dispatcher preamble).
+     *
+     * <p>Runs Layer 0 (per-call repetition via {@link ToolCallHistory}) and Layers 1-3 (set-level
+     * hash/frequency via {@link LoopDetector}). Returns an {@link IterationSignal} if a loop
+     * condition was detected; {@code null} means execution should proceed normally.
+     */
+    IterationSignal evaluateLoopDetection(List<Content.ToolUseContent> toolCalls) {
+        // Layer 0: per-call repetition check (ToolCallHistory)
+        LoopDetector.DetectionResult.Level worstPerCall = LoopDetector.DetectionResult.Level.NONE;
+        String perCallMessage = null;
+        for (Content.ToolUseContent tc : toolCalls) {
+            String argsJson = tc.input() != null ? tc.input().toString() : "";
+            ToolCallHistory.Status status = toolCallHistory.record(tc.toolName(), argsJson);
+            if (status == ToolCallHistory.Status.ABORT) {
+                worstPerCall = LoopDetector.DetectionResult.Level.HARD_STOP;
+                perCallMessage =
+                        "Tool call loop detected: '"
+                                + tc.toolName()
+                                + "' called "
+                                + toolCallHistory.abortAt()
+                                + " consecutive times with same arguments \u2014 aborting";
+                break;
+            }
+            if (status == ToolCallHistory.Status.WARN
+                    && worstPerCall != LoopDetector.DetectionResult.Level.HARD_STOP) {
+                worstPerCall = LoopDetector.DetectionResult.Level.WARN;
+                perCallMessage =
+                        "Potential tool call loop: '"
+                                + tc.toolName()
+                                + "' called "
+                                + toolCallHistory.warnAt()
+                                + " consecutive times with same arguments";
+            }
+        }
+
+        if (worstPerCall == LoopDetector.DetectionResult.Level.HARD_STOP) {
+            if (!isRescueEnabled() || loopRescueAttempted.getAndSet(true)) {
+                return new IterationSignal.LoopDetected(
+                        new IterationSignal.LoopDetectionInfo(perCallMessage, "HARD_STOP"));
+            }
+            conversationHistory.add(Msg.of(MsgRole.USER, "[Loop Rescue] " + RESCUE_PROMPT));
+            log.warn("Tool call loop detected \u2014 injecting rescue prompt (attempt 1/1)");
+            return new IterationSignal.Skip("loop rescue: " + perCallMessage);
+        }
+        if (worstPerCall == LoopDetector.DetectionResult.Level.WARN) {
+            conversationHistory.add(
+                    Msg.of(
+                            MsgRole.USER,
+                            "[Loop Warning] " + (perCallMessage != null ? perCallMessage : "")));
+            return new IterationSignal.Skip("loop warn: " + perCallMessage);
+        }
+
+        // Layer 1-3: set-level hash/frequency/repetition check (LoopDetector)
+        var detection = loopDetector.check(toolCalls);
+        if (detection.level() == LoopDetector.DetectionResult.Level.HARD_STOP) {
+            if (!isRescueEnabled() || loopRescueAttempted.getAndSet(true)) {
+                return new IterationSignal.LoopDetected(
+                        new IterationSignal.LoopDetectionInfo(detection.message(), "HARD_STOP"));
+            }
+            conversationHistory.add(Msg.of(MsgRole.USER, "[Loop Rescue] " + RESCUE_PROMPT));
+            log.warn("Loop detected \u2014 injecting rescue prompt (attempt 1/1)");
+            return new IterationSignal.Skip("loop rescue: " + detection.message());
+        }
+        if (detection.level() == LoopDetector.DetectionResult.Level.WARN) {
+            conversationHistory.add(Msg.of(MsgRole.USER, "[Loop Warning] " + detection.message()));
+            return new IterationSignal.Skip("loop warn: " + detection.message());
+        }
+        return null;
+    }
+
+    /** Check whether loop rescue is enabled via environment flag. */
+    private static boolean isRescueEnabled() {
+        String env = System.getenv(LOOP_RESCUE_ENV);
+        return env == null || !env.equalsIgnoreCase("false");
+    }
+
+    /**
+     * Fire the pre-complete hook and return the final answer. Note: The PRE_COMPLETE hook is
+     * already fired by {@link ReasoningPhase} before producing the Complete signal. This method
+     * exists as a clean dispatcher exit point.
+     */
+    private Mono<Msg> firePreCompleteHook(Msg finalAnswer) {
+        return Mono.just(finalAnswer);
+    }
+
+    /** Extract a human-readable reason from the signal for structured logging. */
+    private String extractReason(IterationSignal sig) {
+        if (sig instanceof IterationSignal.Skip s) return s.reason();
+        if (sig instanceof IterationSignal.Abort a) return a.reason();
+        if (sig instanceof IterationSignal.CompactThenContinue c) return c.reason();
+        if (sig instanceof IterationSignal.ContinueWithNudge n) return n.reason();
+        if (sig instanceof IterationSignal.LoopDetected ld) return ld.info().message();
+        return "";
     }
 
     /**

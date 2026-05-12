@@ -1,0 +1,19 @@
+{
+  "executor": "qodercli",
+  "task_id": "211-kairo-spring-starter-observability-metrics-endpoint",
+  "date": "2026-04-30T08:17:38",
+  "branch": "feature/qodercli-211-kairo-spring-starter-observability-metrics-endpoint",
+  "sha": "bc7d4bf",
+  "diffstat": " 4 files changed, 206 insertions(+)",
+  "scores": {
+    "completion": 24,
+    "verify": 25,
+    "quality": 12,
+    "tests": 9,
+    "efficiency": 9,
+    "description": 3,
+    "bonus": 0
+  },
+  "total": 82,
+  "note": ""
+}
