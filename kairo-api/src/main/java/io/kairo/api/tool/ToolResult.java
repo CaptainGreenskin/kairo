@@ -33,7 +33,7 @@ import java.util.Map;
  * @param metadata additional metadata about the execution
  * @since 1.2.0
  */
-@Stable(value = "Tool execution result record; redesigned in v1.2", since = "1.0.0")
+@Stable(value = "Tool execution result record; BREAKING redesign in v1.2 from 1.0.0", since = "1.2.0")
 public record ToolResult(
         String toolUseId,
         ToolOutput output,

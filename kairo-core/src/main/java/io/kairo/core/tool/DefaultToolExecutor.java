@@ -26,12 +26,16 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -742,6 +746,7 @@ public class DefaultToolExecutor implements ToolExecutor {
         try {
             Path spillDir = Path.of(System.getProperty("user.dir"), ".kairo", "tool-output");
             Files.createDirectories(spillDir);
+            cleanupExpiredSpillsOnce(spillDir);
             String safeId =
                     toolUseId != null ? toolUseId.replaceAll("[^a-zA-Z0-9_\\-]", "_") : "unknown";
             String fileName = safeId + "_" + System.currentTimeMillis() + ".txt";
@@ -756,6 +761,57 @@ public class DefaultToolExecutor implements ToolExecutor {
                     e.getMessage());
             return null;
         }
+    }
+
+    /** One-shot guard so the cleanup pass runs at most once per executor instance. */
+    private final AtomicBoolean spillCleanupRan = new AtomicBoolean(false);
+
+    /**
+     * Best-effort cleanup of {@code .kairo/tool-output/} files older than the retention window.
+     * Runs at most once per executor instance to keep the on-disk footprint bounded without paying
+     * the cost on every persist. Retention is controlled by {@code KAIRO_TOOL_SPILL_RETENTION_DAYS}
+     * (default 7).
+     */
+    private void cleanupExpiredSpillsOnce(Path spillDir) {
+        if (!spillCleanupRan.compareAndSet(false, true)) return;
+        long retentionDays = resolveSpillRetentionDays();
+        if (retentionDays <= 0) return;
+        Instant cutoff = Instant.now().minus(Duration.ofDays(retentionDays));
+        try (Stream<Path> files = Files.list(spillDir)) {
+            int[] deleted = {0};
+            files.filter(Files::isRegularFile)
+                    .forEach(
+                            p -> {
+                                try {
+                                    FileTime mtime = Files.getLastModifiedTime(p);
+                                    if (mtime.toInstant().isBefore(cutoff)) {
+                                        Files.deleteIfExists(p);
+                                        deleted[0]++;
+                                    }
+                                } catch (Exception ignored) {
+                                }
+                            });
+            if (deleted[0] > 0) {
+                log.info(
+                        "Spill cleanup: removed {} files older than {} days from {}",
+                        deleted[0],
+                        retentionDays,
+                        spillDir);
+            }
+        } catch (Exception e) {
+            log.debug("Spill cleanup pass failed: {}", e.getMessage());
+        }
+    }
+
+    private static long resolveSpillRetentionDays() {
+        String env = System.getenv("KAIRO_TOOL_SPILL_RETENTION_DAYS");
+        if (env != null && !env.isBlank()) {
+            try {
+                return Long.parseLong(env.trim());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return 7L;
     }
 
     // ---- Guardrail helpers ----

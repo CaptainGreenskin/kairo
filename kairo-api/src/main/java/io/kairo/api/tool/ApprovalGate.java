@@ -15,6 +15,8 @@
  */
 package io.kairo.api.tool;
 
+import java.util.Map;
+import java.util.Optional;
 import reactor.core.publisher.Mono;
 
 /**
@@ -36,9 +38,40 @@ public interface ApprovalGate {
      */
     Mono<Decision> await(String description, String reason);
 
-    /** Approval decision. */
-    enum Decision {
-        APPROVED,
-        REJECTED
+    /**
+     * Approval decision. Sealed so callers can pattern-match exhaustively.
+     *
+     * <p>{@link Approved} may carry edited tool arguments — the user can tweak the proposed
+     * arguments before approving (M119 plan-edit flow). {@link Rejected} may carry textual
+     * feedback that gets surfaced back to the agent so it can revise its approach.
+     */
+    sealed interface Decision permits Approved, Rejected {}
+
+    /**
+     * Approved execution. {@code editedArgs} is empty when the user approved the original
+     * arguments verbatim, or a new map when the user edited the call before approving.
+     */
+    record Approved(Optional<Map<String, Object>> editedArgs) implements Decision {
+        public static Approved asIs() {
+            return new Approved(Optional.empty());
+        }
+
+        public static Approved withEdits(Map<String, Object> editedArgs) {
+            return new Approved(Optional.of(editedArgs));
+        }
+    }
+
+    /**
+     * Rejected execution. {@code feedback} is empty when the user rejected silently, or
+     * carries a message that should be surfaced back to the agent.
+     */
+    record Rejected(Optional<String> feedback) implements Decision {
+        public static Rejected silent() {
+            return new Rejected(Optional.empty());
+        }
+
+        public static Rejected with(String feedback) {
+            return new Rejected(Optional.of(feedback));
+        }
     }
 }
