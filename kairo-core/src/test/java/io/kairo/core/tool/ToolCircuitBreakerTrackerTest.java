@@ -17,7 +17,11 @@ package io.kairo.core.tool;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.kairo.api.tool.ToolOutcome;
+import io.kairo.api.tool.ToolOutput;
 import io.kairo.api.tool.ToolResult;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -28,6 +32,20 @@ class ToolCircuitBreakerTrackerTest {
     @BeforeEach
     void setUp() {
         tracker = new ToolCircuitBreakerTracker(3); // threshold = 3
+    }
+
+    private ToolResult timeoutResult() {
+        return new ToolResult(
+                "test", new ToolOutput.Text("timeout"), ToolOutcome.TIMEOUT, List.of(), Map.of());
+    }
+
+    private ToolResult cancelledResult() {
+        return new ToolResult(
+                "test",
+                new ToolOutput.Text("cancelled"),
+                ToolOutcome.CANCELLED,
+                List.of(),
+                Map.of());
     }
 
     private ToolResult errorResult() {
@@ -46,27 +64,47 @@ class ToolCircuitBreakerTrackerTest {
     }
 
     @Test
-    void allowCall_trueAfterFewerThanThresholdFailures() {
-        tracker.track("tool_a", errorResult());
-        tracker.track("tool_a", errorResult());
-        // 2 failures, threshold = 3
+    void allowCall_trueAfterFewerThanThresholdTimeouts() {
+        tracker.track("tool_a", timeoutResult());
+        tracker.track("tool_a", timeoutResult());
+        // 2 timeouts, threshold = 3
         assertTrue(tracker.allowCall("tool_a"));
     }
 
     @Test
     void allowCall_falseAtThreshold() {
-        tracker.track("tool_a", errorResult());
-        tracker.track("tool_a", errorResult());
-        tracker.track("tool_a", errorResult());
-        // 3 failures == threshold
+        tracker.track("tool_a", timeoutResult());
+        tracker.track("tool_a", timeoutResult());
+        tracker.track("tool_a", timeoutResult());
+        // 3 timeouts == threshold
         assertFalse(tracker.allowCall("tool_a"));
     }
 
     @Test
     void allowCall_falseAboveThreshold() {
         for (int i = 0; i < 5; i++) {
+            tracker.track("tool_a", timeoutResult());
+        }
+        assertFalse(tracker.allowCall("tool_a"));
+    }
+
+    // ===== Application errors do NOT trip breaker =====
+
+    @Test
+    void applicationErrors_doNotTripBreaker() {
+        for (int i = 0; i < 10; i++) {
             tracker.track("tool_a", errorResult());
         }
+        // Application errors should not count toward circuit breaker
+        assertTrue(tracker.allowCall("tool_a"));
+        assertEquals(0, tracker.getFailureCount("tool_a"));
+    }
+
+    @Test
+    void cancelledResults_tripBreaker() {
+        tracker.track("tool_a", cancelledResult());
+        tracker.track("tool_a", cancelledResult());
+        tracker.track("tool_a", cancelledResult());
         assertFalse(tracker.allowCall("tool_a"));
     }
 
@@ -74,8 +112,8 @@ class ToolCircuitBreakerTrackerTest {
 
     @Test
     void successfulResult_resetsFailureCount() {
-        tracker.track("tool_a", errorResult());
-        tracker.track("tool_a", errorResult());
+        tracker.track("tool_a", timeoutResult());
+        tracker.track("tool_a", timeoutResult());
         assertEquals(2, tracker.getFailureCount("tool_a"));
 
         tracker.track("tool_a", successResult());
@@ -87,9 +125,9 @@ class ToolCircuitBreakerTrackerTest {
 
     @Test
     void differentTools_trackedIndependently() {
-        tracker.track("tool_a", errorResult());
-        tracker.track("tool_a", errorResult());
-        tracker.track("tool_a", errorResult());
+        tracker.track("tool_a", timeoutResult());
+        tracker.track("tool_a", timeoutResult());
+        tracker.track("tool_a", timeoutResult());
 
         // tool_a is tripped, tool_b should be fine
         assertFalse(tracker.allowCall("tool_a"));
@@ -98,9 +136,9 @@ class ToolCircuitBreakerTrackerTest {
 
     @Test
     void sessionScopedKeys_trackedIndependently() {
-        tracker.track("tool_a::session1", errorResult());
-        tracker.track("tool_a::session1", errorResult());
-        tracker.track("tool_a::session1", errorResult());
+        tracker.track("tool_a::session1", timeoutResult());
+        tracker.track("tool_a::session1", timeoutResult());
+        tracker.track("tool_a::session1", timeoutResult());
 
         assertFalse(tracker.allowCall("tool_a::session1"));
         assertTrue(tracker.allowCall("tool_a::session2"));
@@ -110,14 +148,14 @@ class ToolCircuitBreakerTrackerTest {
 
     @Test
     void thresholdBoundary_nMinus1StillAllowed_nthBlocks() {
-        // N-1 failures: still allowed
+        // N-1 timeouts: still allowed
         for (int i = 0; i < 2; i++) {
-            tracker.track("tool_a", errorResult());
+            tracker.track("tool_a", timeoutResult());
         }
         assertTrue(tracker.allowCall("tool_a"));
 
-        // N-th failure: blocked
-        tracker.track("tool_a", errorResult());
+        // N-th timeout: blocked
+        tracker.track("tool_a", timeoutResult());
         assertFalse(tracker.allowCall("tool_a"));
     }
 
@@ -130,10 +168,10 @@ class ToolCircuitBreakerTrackerTest {
 
     @Test
     void getFailureCount_tracksIncrements() {
-        tracker.track("tool_a", errorResult());
+        tracker.track("tool_a", timeoutResult());
         assertEquals(1, tracker.getFailureCount("tool_a"));
 
-        tracker.track("tool_a", errorResult());
+        tracker.track("tool_a", timeoutResult());
         assertEquals(2, tracker.getFailureCount("tool_a"));
     }
 
@@ -141,8 +179,8 @@ class ToolCircuitBreakerTrackerTest {
 
     @Test
     void reset_clearsAllState() {
-        tracker.track("tool_a", errorResult());
-        tracker.track("tool_b", errorResult());
+        tracker.track("tool_a", timeoutResult());
+        tracker.track("tool_b", timeoutResult());
 
         tracker.reset();
 
@@ -152,9 +190,9 @@ class ToolCircuitBreakerTrackerTest {
 
     @Test
     void resetByToolName_clearsToolAndSessionKeys() {
-        tracker.track("tool_a", errorResult());
-        tracker.track("tool_a::session1", errorResult());
-        tracker.track("tool_b", errorResult());
+        tracker.track("tool_a", timeoutResult());
+        tracker.track("tool_a::session1", timeoutResult());
+        tracker.track("tool_b", timeoutResult());
 
         tracker.reset("tool_a");
 
@@ -169,11 +207,11 @@ class ToolCircuitBreakerTrackerTest {
     @Test
     void invalidThreshold_defaultsToThree() {
         ToolCircuitBreakerTracker zeroTracker = new ToolCircuitBreakerTracker(0);
-        zeroTracker.track("t", errorResult());
-        zeroTracker.track("t", errorResult());
+        zeroTracker.track("t", timeoutResult());
+        zeroTracker.track("t", timeoutResult());
         assertTrue(zeroTracker.allowCall("t")); // 2 < 3 (default)
 
-        zeroTracker.track("t", errorResult());
+        zeroTracker.track("t", timeoutResult());
         assertFalse(zeroTracker.allowCall("t")); // 3 == 3 (default)
     }
 }
