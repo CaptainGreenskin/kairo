@@ -40,6 +40,7 @@ import reactor.core.publisher.Mono;
                         + " todos have been written yet.",
         category = ToolCategory.AGENT_AND_TASK,
         sideEffect = ToolSideEffect.READ_ONLY)
+@Deprecated
 public class TodoReadTool implements SyncTool {
 
     private final Path overrideRoot;

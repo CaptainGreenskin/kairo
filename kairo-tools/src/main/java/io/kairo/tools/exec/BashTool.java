@@ -34,6 +34,7 @@ import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
 import io.kairo.api.workspace.Workspace;
+import io.kairo.core.tool.CommandSafetyPolicy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,7 +42,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -70,33 +70,10 @@ public class BashTool implements StreamingTool {
     private static final Logger log = LoggerFactory.getLogger(BashTool.class);
     private static final long MAX_OUTPUT_BYTES = 100_000L;
     private static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(5);
+    private static final long IDLE_TIMEOUT_SECONDS =
+            Long.parseLong(System.getenv().getOrDefault("KAIRO_BASH_IDLE_TIMEOUT_S", "60"));
 
-    /** Patterns that indicate a dangerous command requiring approval. */
-    private static final List<Pattern> DANGEROUS_PATTERNS =
-            List.of(
-                    // rm -rf with broad target paths (/, ~, /*, etc.)
-                    Pattern.compile(
-                            "\\brm\\s+(-[^\\s]*f[^\\s]*\\s+|.*--force\\s+)(/|~|/\\*|/home|/etc|/usr|/var|/boot|/sys|/proc)"),
-                    // sudo prefix
-                    Pattern.compile("^\\s*sudo\\b"),
-                    // chmod 777 on broad paths
-                    Pattern.compile("\\bchmod\\s+777\\s+/"),
-                    // mkfs (format filesystem)
-                    Pattern.compile("\\bmkfs\\b"),
-                    // dd targeting device files
-                    Pattern.compile("\\bdd\\s+.*\\bif=.*\\b(of=/dev/|of=\\s*/dev/)"),
-                    Pattern.compile("\\bdd\\s+.*\\bof=/dev/"),
-                    // fork bomb
-                    Pattern.compile(":\\(\\)\\{.*\\|.*&\\}.*;\\s*:"),
-                    // writing to block devices
-                    Pattern.compile(">\\s*/dev/[sh]d[a-z]"),
-                    // shutdown/reboot/halt
-                    Pattern.compile("\\b(shutdown|reboot|halt|poweroff)\\b"),
-                    // kill -9 targeting low PIDs (system processes)
-                    Pattern.compile("\\bkill\\s+(-9\\s+|.*-KILL\\s+)[01]\\b"));
-
-    /** Configurable blocklist pattern from environment. */
-    private static final Pattern CUSTOM_BLOCKLIST = loadCustomBlocklist();
+    private final CommandSafetyPolicy commandPolicy = CommandSafetyPolicy.instance();
 
     private final int defaultTimeoutMs =
             Integer.parseInt(System.getenv().getOrDefault("KAIRO_TOOL_TIMEOUT_MS", "120000"));
@@ -130,11 +107,17 @@ public class BashTool implements StreamingTool {
                                                         + args.get("workingDirectory"))));
                     }
 
-                    if (isDangerous(cmd)) {
+                    // Defense-in-depth: catastrophic check (also enforced by guardrail layer)
+                    Optional<String> catastrophic = commandPolicy.checkCatastrophic(cmd);
+                    if (catastrophic.isPresent()) {
+                        return Flux.just(new ToolEvent.Final(error(catastrophic.get())));
+                    }
+
+                    if (commandPolicy.isDangerous(cmd)) {
                         Optional<ApprovalGate> gate =
                                 ctx == null ? Optional.empty() : ctx.getBean(ApprovalGate.class);
                         if (gate.isPresent()) {
-                            String reason = buildDangerReason(cmd);
+                            String reason = commandPolicy.buildDangerReason(cmd);
                             return Flux.concat(
                                     Flux.just(new ToolEvent.NeedsApproval(cmd, reason)),
                                     gate.get()
@@ -272,6 +255,22 @@ public class BashTool implements StreamingTool {
                             ToolOutcome.TIMEOUT,
                             hints,
                             Map.of("exitCode", -1, "timedOut", true, "command", cmd));
+        } else if ("IDLE_TIMEOUT".equals(exit.signal())) {
+            String diagnostic =
+                    String.format(
+                            "Process killed: no stdout for %ds (likely stalled or waiting for"
+                                    + " interactive input).%n"
+                                    + "Hint: add --yes/--non-interactive flags, or increase"
+                                    + " KAIRO_BASH_IDLE_TIMEOUT_S.",
+                            IDLE_TIMEOUT_SECONDS);
+            String idleOutput = output.isEmpty() ? diagnostic : output + "\n\n" + diagnostic;
+            result =
+                    new ToolResult(
+                            "bash",
+                            new ToolOutput.Text(idleOutput),
+                            ToolOutcome.ERROR,
+                            hints,
+                            Map.of("exitCode", -1, "signal", "IDLE_TIMEOUT", "command", cmd));
         } else if (exitCode != 0) {
             result =
                     new ToolResult(
@@ -330,60 +329,5 @@ public class BashTool implements StreamingTool {
 
     private ToolResult error(String msg) {
         return ToolResult.error("bash", msg);
-    }
-
-    // ── Dangerous command detection ─────────────────────────────────────────────
-
-    /** Returns {@code true} if the command matches known dangerous patterns. */
-    private static boolean isDangerous(String cmd) {
-        for (Pattern p : DANGEROUS_PATTERNS) {
-            if (p.matcher(cmd).find()) {
-                return true;
-            }
-        }
-        return CUSTOM_BLOCKLIST != null && CUSTOM_BLOCKLIST.matcher(cmd).find();
-    }
-
-    /** Builds a human-readable explanation of why the command is considered dangerous. */
-    private static String buildDangerReason(String cmd) {
-        StringBuilder sb = new StringBuilder("Command is flagged as potentially dangerous: ");
-        if (cmd.matches("(?s).*\\brm\\s+.*-[^\\s]*f.*")) {
-            sb.append("recursive/forced file deletion targeting broad paths");
-        } else if (cmd.matches("(?s)^\\s*sudo\\b.*")) {
-            sb.append("elevated privileges via sudo");
-        } else if (cmd.contains("chmod 777")) {
-            sb.append("overly permissive file permissions (777)");
-        } else if (cmd.matches("(?s).*\\bmkfs\\b.*")) {
-            sb.append("filesystem format operation");
-        } else if (cmd.matches("(?s).*\\bdd\\s+.*of=/dev/.*")) {
-            sb.append("raw write to device file via dd");
-        } else if (cmd.contains(":()") || cmd.contains("|:&")) {
-            sb.append("fork bomb pattern detected");
-        } else if (cmd.matches("(?s).*>\\s*/dev/[sh]d[a-z].*")) {
-            sb.append("direct write to block device");
-        } else if (cmd.matches("(?s).*\\b(shutdown|reboot|halt|poweroff)\\b.*")) {
-            sb.append("system shutdown/reboot command");
-        } else if (cmd.matches("(?s).*\\bkill\\s+.*-9.*")) {
-            sb.append("forceful kill of system process");
-        } else {
-            sb.append("matched custom blocklist pattern");
-        }
-        return sb.toString();
-    }
-
-    /**
-     * Loads an optional custom blocklist regex from the {@code KAIRO_BASH_BLOCKLIST} env variable.
-     */
-    private static Pattern loadCustomBlocklist() {
-        String env = System.getenv("KAIRO_BASH_BLOCKLIST");
-        if (env == null || env.isBlank()) {
-            return null;
-        }
-        try {
-            return Pattern.compile(env);
-        } catch (Exception e) {
-            log.warn("Invalid KAIRO_BASH_BLOCKLIST pattern: {}", env, e);
-            return null;
-        }
     }
 }
