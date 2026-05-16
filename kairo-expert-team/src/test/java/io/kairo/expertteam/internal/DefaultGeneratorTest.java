@@ -25,15 +25,22 @@ import static org.mockito.Mockito.when;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
+import io.kairo.api.skill.SkillCategory;
+import io.kairo.api.skill.SkillDefinition;
+import io.kairo.api.skill.SkillRegistry;
 import io.kairo.api.team.EvaluationVerdict;
 import io.kairo.api.team.EvaluationVerdict.VerdictOutcome;
 import io.kairo.api.team.RoleDefinition;
 import io.kairo.api.team.TeamStep;
+import io.kairo.expertteam.role.ExpertProfile;
+import io.kairo.expertteam.role.ExpertRoleRegistry;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
@@ -186,5 +193,93 @@ class DefaultGeneratorTest {
                         generator.generate(step, Map.of("dev", agent), "goal", 1, List.of(verdict)))
                 .expectNext("output")
                 .verifyComplete();
+    }
+
+    // --- Skill injection tests ---
+
+    @Test
+    void generateInjectsSkillContentWhenMountedSkillsResolve() {
+        ExpertRoleRegistry roleRegistry = mock(ExpertRoleRegistry.class);
+        SkillRegistry skillRegistry = mock(SkillRegistry.class);
+        DefaultGenerator gen = new DefaultGenerator(roleRegistry, skillRegistry);
+
+        RoleDefinition roleDef = role("coder");
+        TeamStep step = step("step-skill", roleDef);
+
+        ExpertProfile profile =
+                new ExpertProfile(
+                        "coder", roleDef, "coding profile", List.of("code-review"), "coder", null);
+        when(roleRegistry.resolve("coder")).thenReturn(Optional.of(profile));
+
+        SkillDefinition skill =
+                new SkillDefinition(
+                        "code-review",
+                        "1.0",
+                        "Review code quality",
+                        "Always check for null safety and error handling.",
+                        List.of("review"),
+                        SkillCategory.CODE);
+        when(skillRegistry.get("code-review")).thenReturn(Optional.of(skill));
+
+        Agent agent = mock(Agent.class);
+        ArgumentCaptor<Msg> captor = ArgumentCaptor.forClass(Msg.class);
+        when(agent.call(any())).thenReturn(Mono.just(Msg.of(MsgRole.ASSISTANT, "done")));
+
+        gen.generate(step, Map.of("coder", agent), "Build feature", 1, List.of()).block();
+
+        verify(agent).call(captor.capture());
+        String prompt = captor.getValue().text();
+        assertThat(prompt).contains("## Skill: code-review");
+        assertThat(prompt).contains("Always check for null safety and error handling.");
+    }
+
+    @Test
+    void generateWorksWithoutSkillRegistryNull() {
+        // SkillRegistry is null — no skill injection, no error
+        DefaultGenerator gen = new DefaultGenerator(null, null);
+
+        RoleDefinition roleDef = role("coder");
+        TeamStep step = step("step-null", roleDef);
+
+        Agent agent = mock(Agent.class);
+        ArgumentCaptor<Msg> captor = ArgumentCaptor.forClass(Msg.class);
+        when(agent.call(any())).thenReturn(Mono.just(Msg.of(MsgRole.ASSISTANT, "ok")));
+
+        gen.generate(step, Map.of("coder", agent), "goal", 1, List.of()).block();
+
+        verify(agent).call(captor.capture());
+        String prompt = captor.getValue().text();
+        assertThat(prompt).doesNotContain("## Skill:");
+    }
+
+    @Test
+    void generateSkipsUnresolvedSkillIds() {
+        ExpertRoleRegistry roleRegistry = mock(ExpertRoleRegistry.class);
+        SkillRegistry skillRegistry = mock(SkillRegistry.class);
+        DefaultGenerator gen = new DefaultGenerator(roleRegistry, skillRegistry);
+
+        RoleDefinition roleDef = role("coder");
+        TeamStep step = step("step-miss", roleDef);
+
+        ExpertProfile profile =
+                new ExpertProfile(
+                        "coder",
+                        roleDef,
+                        "coding profile",
+                        List.of("nonexistent-skill"),
+                        "coder",
+                        null);
+        when(roleRegistry.resolve("coder")).thenReturn(Optional.of(profile));
+        when(skillRegistry.get("nonexistent-skill")).thenReturn(Optional.empty());
+
+        Agent agent = mock(Agent.class);
+        ArgumentCaptor<Msg> captor = ArgumentCaptor.forClass(Msg.class);
+        when(agent.call(any())).thenReturn(Mono.just(Msg.of(MsgRole.ASSISTANT, "ok")));
+
+        gen.generate(step, Map.of("coder", agent), "goal", 1, List.of()).block();
+
+        verify(agent).call(captor.capture());
+        String prompt = captor.getValue().text();
+        assertThat(prompt).doesNotContain("## Skill:");
     }
 }
