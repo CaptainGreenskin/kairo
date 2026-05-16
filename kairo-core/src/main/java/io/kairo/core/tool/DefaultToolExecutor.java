@@ -22,6 +22,8 @@ import io.kairo.api.tool.*;
 import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
 import io.kairo.core.shutdown.GracefulShutdownManager;
+import io.kairo.core.tool.permission.PermissionMode;
+import io.kairo.core.tool.permission.PermissionSettings;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -30,6 +32,7 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -289,6 +292,31 @@ public class DefaultToolExecutor implements ToolExecutor {
      */
     public void setDefaultPermission(ToolSideEffect sideEffect, ToolPermission permission) {
         permissionResolver.setDefaultPermission(sideEffect, permission);
+    }
+
+    /**
+     * Set the permission mode.
+     *
+     * @param mode the permission mode
+     */
+    public void setPermissionMode(PermissionMode mode) {
+        permissionResolver.setMode(mode);
+    }
+
+    /**
+     * @return the current permission mode
+     */
+    public PermissionMode getPermissionMode() {
+        return permissionResolver.getMode();
+    }
+
+    /**
+     * Apply permission settings (mode + rules) loaded from config files.
+     *
+     * @param settings the settings to apply
+     */
+    public void loadPermissionSettings(PermissionSettings settings) {
+        permissionResolver.applySettings(settings);
     }
 
     @Override
@@ -827,10 +855,18 @@ public class DefaultToolExecutor implements ToolExecutor {
             }
             return Mono.just(GuardrailDecision.allow("no-guardrail"));
         }
-        Map<String, Object> metadata = registry.getToolMetadata(toolName);
+        Map<String, Object> staticMeta = registry.getToolMetadata(toolName);
         return Mono.deferContextual(
                 contextView -> {
                     String agentName = resolveAgentName(contextView);
+                    // Enrich metadata with runtime workspace root for safety guardrails
+                    Map<String, Object> metadata = new HashMap<>(staticMeta);
+                    if (contextView.hasKey(CONTEXT_KEY)) {
+                        ToolContext toolCtx = contextView.get(CONTEXT_KEY);
+                        if (toolCtx.workspace() != null) {
+                            metadata.put("workspace.root", toolCtx.workspace().root());
+                        }
+                    }
                     return guardrailChain.evaluate(
                             new GuardrailContext(
                                     GuardrailPhase.PRE_TOOL,

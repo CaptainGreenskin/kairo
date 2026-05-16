@@ -388,7 +388,34 @@ class ToolPhase {
                             .doOnNext(r -> finalResults.set(idx, r))
                             .then();
         }
-        return chain.thenReturn(finalResults);
+        return chain.then(
+                        Mono.defer(
+                                () -> {
+                                    if (toolCalls.size() > 1) {
+                                        List<String> toolNames =
+                                                toolCalls.stream()
+                                                        .map(Content.ToolUseContent::toolName)
+                                                        .toList();
+                                        PostToolBatchEvent batchEvent =
+                                                new PostToolBatchEvent(
+                                                        ctx.agentName(),
+                                                        toolNames,
+                                                        toolCalls.size());
+                                        return ctx.hookChain()
+                                                .firePhase(HookPhase.POST_TOOL_BATCH, batchEvent)
+                                                .onErrorResume(
+                                                        e -> {
+                                                            log.warn(
+                                                                    "POST_TOOL_BATCH hook failed:"
+                                                                            + " {}",
+                                                                    e.getMessage());
+                                                            return Mono.just(batchEvent);
+                                                        })
+                                                .then();
+                                    }
+                                    return Mono.empty();
+                                }))
+                .thenReturn(finalResults);
     }
 
     /** Indexed plan: associates a tool call with its execution plan and original position. */
@@ -475,7 +502,31 @@ class ToolPhase {
     private Mono<ToolResult> finishToolExecutionPipeline(
             String toolName, ToolResult result, Instant toolStart) {
         return emitToolResultEvent(toolName, result, toolStart)
-                .flatMap(emitted -> firePostActingAndReturn(toolName, emitted));
+                .flatMap(emitted -> firePostActingAndReturn(toolName, emitted))
+                .flatMap(
+                        finalResult -> {
+                            if (finalResult.isError()) {
+                                return firePostToolFailure(toolName, finalResult);
+                            }
+                            return Mono.just(finalResult);
+                        });
+    }
+
+    private Mono<ToolResult> firePostToolFailure(String toolName, ToolResult result) {
+        PostToolFailureEvent event =
+                new PostToolFailureEvent(
+                        ctx.agentName(),
+                        toolName,
+                        Map.of(),
+                        result.content() != null ? result.content() : "unknown error");
+        return ctx.hookChain()
+                .firePhase(HookPhase.POST_TOOL_FAILURE, event)
+                .onErrorResume(
+                        e -> {
+                            log.warn("POST_TOOL_FAILURE hook failed: {}", e.getMessage());
+                            return Mono.just(event);
+                        })
+                .thenReturn(result);
     }
 
     private ToolExecutionPlan planToolExecution(

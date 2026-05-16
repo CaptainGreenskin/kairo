@@ -245,6 +245,38 @@ public class SystemPromptBuilder {
     }
 
     /**
+     * Add a filtered tool overview, selecting only the tools most relevant to the user prompt.
+     * Baseline tools (FILE_AND_CODE, EXECUTION) are always included.
+     *
+     * @param registry the tool registry to read from
+     * @param userPrompt the user's message for relevance scoring
+     * @param maxTools maximum non-baseline tools to include
+     * @return this builder
+     */
+    public SystemPromptBuilder addToolOverview(
+            ToolRegistry registry, String userPrompt, int maxTools) {
+        if (registry == null) {
+            return this;
+        }
+        if (userPrompt == null || userPrompt.isBlank()) {
+            return addToolOverview(registry);
+        }
+
+        io.kairo.core.tool.LazyToolSelector selector =
+                new io.kairo.core.tool.LazyToolSelector(registry);
+        List<ToolDefinition> selected = selector.select(userPrompt, maxTools);
+        String overview = buildToolOverviewText(selected);
+        if (overview != null && !overview.isBlank()) {
+            if (!sections.isEmpty() || dynamicBoundaryIndex >= 0) {
+                return section("tools", overview);
+            } else {
+                legacyToolDescriptions.add(overview);
+            }
+        }
+        return this;
+    }
+
+    /**
      * Add a custom context section.
      *
      * <p>When using the new section-based API, adds a "context" section. When using the legacy API,
@@ -347,13 +379,17 @@ public class SystemPromptBuilder {
 
     /** Build the tool overview text from a registry, grouped by category. */
     private String buildToolOverviewText(ToolRegistry registry) {
-        List<ToolDefinition> allTools = registry.getAll();
-        if (allTools.isEmpty()) {
+        return buildToolOverviewText(registry.getAll());
+    }
+
+    /** Build the tool overview text from a list of tools, grouped by category. */
+    private String buildToolOverviewText(List<ToolDefinition> tools) {
+        if (tools.isEmpty()) {
             return null;
         }
 
         Map<ToolCategory, List<ToolDefinition>> grouped =
-                allTools.stream().collect(Collectors.groupingBy(ToolDefinition::category));
+                tools.stream().collect(Collectors.groupingBy(ToolDefinition::category));
 
         StringBuilder sb = new StringBuilder();
         sb.append("## Available Tools\n\n");

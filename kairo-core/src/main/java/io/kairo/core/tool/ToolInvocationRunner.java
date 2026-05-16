@@ -24,14 +24,17 @@ import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolEvent;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tracing.Tracer;
+import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import java.time.Duration;
 import java.util.Map;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
+import reactor.util.context.ContextView;
 
 /**
  * Executes a single tool handler with timeout, cooperative cancellation, and shutdown guard.
@@ -139,20 +142,49 @@ public final class ToolInvocationRunner {
             return syncTool.execute(input, ctx);
         }
         if (handler instanceof StreamingTool streamingTool) {
-            // Collect streaming events and extract the Final result
-            return streamingTool.stream(input, ctx)
-                    .filter(event -> event instanceof ToolEvent.Final)
-                    .cast(ToolEvent.Final.class)
-                    .map(ToolEvent.Final::result)
-                    .next()
-                    .switchIfEmpty(
-                            Mono.just(ToolResult.error("stream", "No final result from stream")));
+            // Collect streaming events and extract the Final result.
+            // Progress/Chunk events record a diagnostics heartbeat to reset the stall timer.
+            return Mono.deferContextual(
+                    ctxView -> {
+                        Consumer<String> recorder = extractDiagnosticsRecorder(ctxView);
+                        return streamingTool.stream(input, ctx)
+                                .doOnNext(
+                                        event -> {
+                                            if (recorder != null
+                                                    && (event instanceof ToolEvent.Progress
+                                                            || event instanceof ToolEvent.Chunk)) {
+                                                try {
+                                                    recorder.accept("TOOL_PROGRESS");
+                                                } catch (Exception e) {
+                                                    // Best-effort — must not break tool stream
+                                                }
+                                            }
+                                        })
+                                .filter(event -> event instanceof ToolEvent.Final)
+                                .cast(ToolEvent.Final.class)
+                                .map(ToolEvent.Final::result)
+                                .next()
+                                .switchIfEmpty(
+                                        Mono.just(
+                                                ToolResult.error(
+                                                        "stream", "No final result from stream")));
+                    });
         }
         return Mono.error(
                 new IllegalArgumentException(
                         "Tool handler "
                                 + handler.getClass().getName()
                                 + " does not implement SyncTool or StreamingTool"));
+    }
+
+    /** Extract the diagnostics recorder from the Reactor context, or null if not present. */
+    @SuppressWarnings("unchecked")
+    private static Consumer<String> extractDiagnosticsRecorder(ContextView ctxView) {
+        Object recorder = ctxView.getOrDefault(DefaultHookChain.DIAGNOSTICS_RECORDER_KEY, null);
+        if (recorder instanceof Consumer<?>) {
+            return (Consumer<String>) recorder;
+        }
+        return null;
     }
 
     private <T> Mono<T> withCooperativeCancellation(Mono<T> source) {

@@ -63,7 +63,9 @@ public final class ToolApprovalFlow {
      */
     public Mono<ToolResult> approveIfNeeded(ToolInvocation invocation) {
         var sideEffect = permissionResolver.resolveSideEffect(invocation.toolName());
-        var permission = permissionResolver.resolvePermission(invocation.toolName(), sideEffect);
+        var permission =
+                permissionResolver.resolvePermission(
+                        invocation.toolName(), sideEffect, invocation.input());
 
         return switch (permission) {
             case ALLOWED -> executor.execute(invocation.toolName(), invocation.input());

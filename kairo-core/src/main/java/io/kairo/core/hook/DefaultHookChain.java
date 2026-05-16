@@ -26,8 +26,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
@@ -49,6 +51,8 @@ public class DefaultHookChain implements HookChain {
     public static final String DIAGNOSTICS_RECORDER_KEY = "kairo.diagnostics.recorder";
 
     private final List<Object> handlers = new CopyOnWriteArrayList<>();
+    private final List<ExternalHookExecutor> externalExecutors = new CopyOnWriteArrayList<>();
+    private final List<ExternalHookBinding> externalBindings = new CopyOnWriteArrayList<>();
 
     @Override
     public void register(Object hookHandler) {
@@ -147,7 +151,7 @@ public class DefaultHookChain implements HookChain {
 
     @Override
     public <T> Mono<T> fireOnToolResult(T event) {
-        return fireEvent(event, OnToolResult.class);
+        return withDiagnosticsRecording(fireEvent(event, OnToolResult.class), "TOOL_RESULT");
     }
 
     @Override
@@ -167,6 +171,310 @@ public class DefaultHookChain implements HookChain {
      */
     public Mono<Void> fireOnError(AgentErrorEvent event) {
         return fireEvent(event, OnError.class).then();
+    }
+
+    // ── External hook executor management ───────────────────────────────────
+
+    /**
+     * Register an external hook executor (command, http, etc.).
+     *
+     * @param executor the executor to register
+     */
+    public void registerExecutor(ExternalHookExecutor executor) {
+        if (executor != null) {
+            externalExecutors.add(executor);
+            log.debug("Registered external hook executor: {}", executor.type());
+        }
+    }
+
+    /**
+     * Register an external hook binding (phase + config from settings file).
+     *
+     * @param binding the binding to register
+     */
+    public void registerExternalBinding(ExternalHookBinding binding) {
+        if (binding != null) {
+            externalBindings.add(binding);
+            log.debug(
+                    "Registered external hook binding: {} → {}",
+                    binding.phase(),
+                    binding.config().type());
+        }
+    }
+
+    /** Remove all external bindings (used when config is reloaded). */
+    public void clearExternalBindings() {
+        externalBindings.clear();
+    }
+
+    // ── Generic phase dispatch (v0.11+) ─────────────────────────────────────
+
+    @Override
+    public <T extends HookEvent> Mono<T> firePhase(HookPhase phase, T event) {
+        return Mono.defer(
+                () -> {
+                    // 1. Fire in-process @HookHandler(phase) methods
+                    Mono<T> inProcessMono = firePhaseInProcess(phase, event);
+
+                    // 2. Fire matching external hooks
+                    String matcherTarget = extractMatcherTarget(event);
+                    List<ExternalHookBinding> matching = findMatchingBindings(phase, matcherTarget);
+                    if (matching.isEmpty()) {
+                        return withDiagnosticsRecording(inProcessMono, phase.name());
+                    }
+
+                    // Chain: in-process first, then external hooks in parallel
+                    return withDiagnosticsRecording(
+                            inProcessMono.flatMap(
+                                    updatedEvent -> fireExternalHooks(updatedEvent, matching)),
+                            phase.name());
+                });
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T extends HookEvent> Mono<HookResult<T>> firePhaseWithResult(HookPhase phase, T event) {
+        return Mono.defer(
+                () -> {
+                    // 1. Fire in-process handlers with result
+                    Mono<HookResult<T>> inProcessMono = firePhaseInProcessWithResult(phase, event);
+
+                    // 2. Fire matching external hooks
+                    String matcherTarget = extractMatcherTarget(event);
+                    List<ExternalHookBinding> matching = findMatchingBindings(phase, matcherTarget);
+                    if (matching.isEmpty()) {
+                        return inProcessMono;
+                    }
+
+                    return inProcessMono.flatMap(
+                            inResult -> {
+                                if (inResult.decision() == HookResult.Decision.ABORT) {
+                                    return Mono.just(inResult);
+                                }
+                                return fireExternalHooksWithResult(
+                                                inResult.event(), matching, inResult)
+                                        .map(
+                                                extResult ->
+                                                        mergeResults(
+                                                                inResult,
+                                                                (HookResult<T>) extResult));
+                            });
+                });
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T extends HookEvent> Mono<T> firePhaseInProcess(HookPhase phase, T event) {
+        List<AnnotatedMethod> methods = findMethodsForPhase(phase);
+        if (methods.isEmpty()) {
+            return Mono.just(event);
+        }
+
+        T current = event;
+        for (AnnotatedMethod am : methods) {
+            if (isCancelled(current)) break;
+            try {
+                Object result = am.method().invoke(am.handler(), current);
+                if (result != null && event.getClass().isInstance(result)) {
+                    current = (T) result;
+                }
+            } catch (InvocationTargetException e) {
+                Throwable cause = e.getCause();
+                log.error(
+                        "Hook method {}#{} threw exception",
+                        am.handler().getClass().getSimpleName(),
+                        am.method().getName(),
+                        cause);
+                return Mono.error(cause != null ? cause : e);
+            } catch (IllegalAccessException e) {
+                log.error(
+                        "Hook method {}#{} is not accessible",
+                        am.handler().getClass().getSimpleName(),
+                        am.method().getName(),
+                        e);
+                return Mono.error(e);
+            }
+        }
+        return Mono.just(current);
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T extends HookEvent> Mono<HookResult<T>> firePhaseInProcessWithResult(
+            HookPhase phase, T event) {
+        List<AnnotatedMethod> methods = findMethodsForPhase(phase);
+        if (methods.isEmpty()) {
+            return Mono.just(HookResult.proceed(event));
+        }
+
+        T current = event;
+        HookResult.Decision winningDecision = HookResult.Decision.CONTINUE;
+        String winningReason = null;
+
+        for (AnnotatedMethod am : methods) {
+            if (isCancelled(current)) break;
+            try {
+                Object result = am.method().invoke(am.handler(), current);
+                if (result instanceof HookResult<?> hr) {
+                    HookResult<T> typed = (HookResult<T>) hr;
+                    current = typed.event();
+                    if (typed.decision() == HookResult.Decision.ABORT) {
+                        return Mono.just(typed);
+                    }
+                    if (typed.decision().priority() > winningDecision.priority()) {
+                        winningDecision = typed.decision();
+                        if (typed.reason() != null) winningReason = typed.reason();
+                    }
+                } else if (result != null && event.getClass().isInstance(result)) {
+                    current = (T) result;
+                }
+            } catch (InvocationTargetException e) {
+                Throwable cause = e.getCause();
+                log.error("Hook threw exception", cause);
+                return Mono.error(cause != null ? cause : e);
+            } catch (IllegalAccessException e) {
+                return Mono.error(e);
+            }
+        }
+
+        return Mono.just(
+                new HookResult<>(current, winningDecision, null, null, winningReason, null, null));
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T extends HookEvent> Mono<T> fireExternalHooks(
+            T event, List<ExternalHookBinding> bindings) {
+        return Flux.fromIterable(bindings)
+                .flatMap(
+                        binding -> {
+                            ExternalHookExecutor executor = findExecutor(binding.config().type());
+                            if (executor == null) {
+                                log.warn("No executor for hook type: {}", binding.config().type());
+                                return Mono.just(HookResult.proceed(event));
+                            }
+                            return executor.execute(event, binding.config())
+                                    .onErrorResume(
+                                            e -> {
+                                                log.warn(
+                                                        "External hook failed: {}", e.getMessage());
+                                                return Mono.just(HookResult.proceed(event));
+                                            });
+                        })
+                .reduce(
+                        event,
+                        (acc, result) -> {
+                            if (result.decision() == HookResult.Decision.ABORT) {
+                                return acc; // ABORT handled at WithResult level
+                            }
+                            return result.event() != null ? (T) result.event() : acc;
+                        });
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T extends HookEvent> Mono<HookResult<T>> fireExternalHooksWithResult(
+            T event, List<ExternalHookBinding> bindings, HookResult<T> baseline) {
+        return Flux.fromIterable(bindings)
+                .flatMap(
+                        binding -> {
+                            ExternalHookExecutor executor = findExecutor(binding.config().type());
+                            if (executor == null) {
+                                return Mono.just(HookResult.proceed(event));
+                            }
+                            return executor.<T>execute(event, binding.config())
+                                    .onErrorResume(
+                                            e -> {
+                                                log.warn(
+                                                        "External hook failed: {}", e.getMessage());
+                                                return Mono.just(HookResult.proceed(event));
+                                            });
+                        })
+                .reduce(baseline, (acc, result) -> mergeResults(acc, (HookResult<T>) result));
+    }
+
+    private <T> HookResult<T> mergeResults(HookResult<T> a, HookResult<T> b) {
+        HookResult.Decision winner =
+                a.decision().priority() >= b.decision().priority() ? a.decision() : b.decision();
+        String reason = b.reason() != null ? b.reason() : a.reason();
+        T event = b.event() != null ? b.event() : a.event();
+        String context = b.hasInjectedContext() ? b.injectedContext() : a.injectedContext();
+        java.util.Map<String, Object> input =
+                b.hasModifiedInput() ? b.modifiedInput() : a.modifiedInput();
+        Msg msg = b.hasInjectedMessage() ? b.injectedMessage() : a.injectedMessage();
+        String source = b.hookSource() != null ? b.hookSource() : a.hookSource();
+
+        if (a.decision() == HookResult.Decision.ABORT) return a;
+        if (b.decision() == HookResult.Decision.ABORT) return b;
+
+        return new HookResult<>(event, winner, context, input, reason, msg, source);
+    }
+
+    // ── Matcher filtering ───────────────────────────────────────────────────
+
+    private List<ExternalHookBinding> findMatchingBindings(HookPhase phase, String matcherTarget) {
+        List<ExternalHookBinding> result = new ArrayList<>();
+        for (ExternalHookBinding binding : externalBindings) {
+            if (binding.phase() != phase) continue;
+            String matcher = binding.config().matcher();
+            if (matcher == null || matcher.isEmpty() || matchesMatcher(matcher, matcherTarget)) {
+                result.add(binding);
+            }
+        }
+        return result;
+    }
+
+    static boolean matchesMatcher(String matcher, String target) {
+        if (target == null || target.isEmpty()) return true;
+        for (String part : matcher.split("\\|")) {
+            String trimmed = part.trim();
+            if (trimmed.isEmpty()) continue;
+            if (trimmed.equals(target)) return true;
+            try {
+                if (Pattern.matches(trimmed, target)) return true;
+            } catch (Exception ignored) {
+                // invalid regex, treat as literal
+            }
+        }
+        return false;
+    }
+
+    private String extractMatcherTarget(HookEvent event) {
+        if (event instanceof PreActingEvent e) return e.toolName();
+        if (event instanceof PostActingEvent e) return e.toolName();
+        if (event instanceof PostToolFailureEvent e) return e.toolName();
+        if (event instanceof PermissionRequestEvent e) return e.toolName();
+        if (event instanceof PermissionDeniedEvent e) return e.toolName();
+        if (event instanceof ToolResultEvent e) return e.toolName();
+        if (event instanceof SessionStartEvent) return "startup";
+        if (event instanceof SetupEvent e) return e.mode();
+        if (event instanceof NotificationEvent e) return e.notificationType();
+        if (event instanceof SubagentStartEvent e) return e.agentType();
+        if (event instanceof SubagentStopEvent e) return e.agentType();
+        if (event instanceof ConfigChangeEvent e) return e.source();
+        if (event instanceof StopFailureEvent e) return e.errorType();
+        if (event instanceof InstructionsLoadedEvent e) return e.source();
+        if (event instanceof FileChangedEvent e) return e.filePath();
+        return null;
+    }
+
+    private ExternalHookExecutor findExecutor(String type) {
+        for (ExternalHookExecutor executor : externalExecutors) {
+            if (executor.type().equals(type)) return executor;
+        }
+        return null;
+    }
+
+    private List<AnnotatedMethod> findMethodsForPhase(HookPhase phase) {
+        List<AnnotatedMethod> result = new ArrayList<>();
+        for (Object handler : handlers) {
+            for (Method method : handler.getClass().getMethods()) {
+                if (method.getParameterCount() != 1) continue;
+                HookHandler unified = method.getAnnotation(HookHandler.class);
+                if (unified != null && unified.value() == phase) {
+                    method.setAccessible(true);
+                    result.add(new AnnotatedMethod(handler, method, unified.order()));
+                }
+            }
+        }
+        result.sort(Comparator.comparingInt(AnnotatedMethod::order));
+        return result;
     }
 
     /**
