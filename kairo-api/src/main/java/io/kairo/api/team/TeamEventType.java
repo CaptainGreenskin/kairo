@@ -55,5 +55,19 @@ public enum TeamEventType {
     TEAM_COMPLETED,
 
     /** The team reached a failed terminal state. */
-    TEAM_FAILED
+    TEAM_FAILED,
+
+    /** The plan has been generated and is awaiting user confirmation (plan-preview). */
+    PLAN_READY,
+
+    // --- High-frequency streaming events (>100/sec during LLM streaming) ---
+
+    /** Streaming reasoning chunks from a step's LLM call. */
+    STEP_THINKING,
+
+    /** A step invoked a tool. */
+    STEP_TOOL_CALL,
+
+    /** Incremental artifact output from a step. */
+    STEP_ARTIFACT_CHUNK
 }
