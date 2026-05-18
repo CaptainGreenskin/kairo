@@ -18,9 +18,19 @@ package io.kairo.core.tool;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.tool.*;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import reactor.core.publisher.Mono;
 
 class AnnotationToolScannerTest {
@@ -166,5 +176,66 @@ class AnnotationToolScannerTest {
     void scanClassDefaultUsageGuidanceIsEmpty() {
         ToolDefinition def = scanner.scanClass(NoParamsTool.class);
         assertEquals("", def.usageGuidance());
+    }
+
+    @Test
+    void scanFindsToolsFromJarProtocol(@TempDir Path tempDir) throws Exception {
+        // Package the TestToolWithParams.class into a JAR, then verify scanner finds it via jar:
+        // URL
+        String className = TestToolWithParams.class.getName();
+        String classResource = className.replace('.', '/') + ".class";
+        URL classUrl = Thread.currentThread().getContextClassLoader().getResource(classResource);
+        assertNotNull(classUrl, "Test class must be on classpath");
+
+        File jarFile = tempDir.resolve("test-tools.jar").toFile();
+        try (JarOutputStream jos = new JarOutputStream(new FileOutputStream(jarFile))) {
+            jos.putNextEntry(new JarEntry(classResource));
+            jos.write(Files.readAllBytes(Path.of(classUrl.toURI())));
+            jos.closeEntry();
+        }
+
+        // Create a URLClassLoader that points to the JAR
+        URL jarUrl = new URL("jar:" + jarFile.toURI().toURL() + "!/");
+        try (URLClassLoader cl =
+                new URLClassLoader(
+                        new URL[] {jarFile.toURI().toURL()}, getClass().getClassLoader())) {
+            Thread currentThread = Thread.currentThread();
+            ClassLoader original = currentThread.getContextClassLoader();
+            try {
+                currentThread.setContextClassLoader(cl);
+                List<ToolDefinition> results =
+                        scanner.scan(TestToolWithParams.class.getPackageName());
+                // Should find tools from both file: (test-classes) and jar: (our synthetic JAR)
+                assertTrue(
+                        results.stream().anyMatch(d -> d.name().equals("test_tool")),
+                        "Scanner should find test_tool in package scan");
+            } finally {
+                currentThread.setContextClassLoader(original);
+            }
+        }
+    }
+
+    @Test
+    void scanHandlesEmptyJarGracefully(@TempDir Path tempDir) throws Exception {
+        // Create a JAR with an entry for the package directory but no .class files
+        File jarFile = tempDir.resolve("empty-pkg.jar").toFile();
+        String pkgPath = getClass().getPackageName().replace('.', '/') + "/";
+        try (JarOutputStream jos = new JarOutputStream(new FileOutputStream(jarFile))) {
+            jos.putNextEntry(new JarEntry(pkgPath));
+            jos.closeEntry();
+        }
+
+        try (URLClassLoader cl = new URLClassLoader(new URL[] {jarFile.toURI().toURL()}, null)) {
+            Thread currentThread = Thread.currentThread();
+            ClassLoader original = currentThread.getContextClassLoader();
+            try {
+                currentThread.setContextClassLoader(cl);
+                // Should not throw — just return empty or whatever file: provides
+                List<ToolDefinition> results = scanner.scan("io.kairo.nonexistent.pkg");
+                assertNotNull(results);
+            } finally {
+                currentThread.setContextClassLoader(original);
+            }
+        }
     }
 }

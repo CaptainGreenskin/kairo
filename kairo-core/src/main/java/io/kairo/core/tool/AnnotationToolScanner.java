@@ -22,10 +22,17 @@ import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolParam;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.net.JarURLConnection;
 import java.net.URL;
+import java.net.URLClassLoader;
 import java.time.Duration;
 import java.util.*;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -182,12 +189,136 @@ public class AnnotationToolScanner {
 
         while (resources.hasMoreElements()) {
             URL resource = resources.nextElement();
-            if ("file".equals(resource.getProtocol())) {
+            String protocol = resource.getProtocol();
+            if ("file".equals(protocol)) {
                 File directory = new File(resource.getFile());
                 classes.addAll(findClassesInDirectory(directory, packageName));
+            } else if ("jar".equals(protocol)) {
+                classes.addAll(findClassesInJar(resource, path));
+            } else {
+                log.debug("Unsupported URL protocol '{}' for resource: {}", protocol, resource);
+            }
+        }
+
+        // Fallback for environments where getResources() doesn't return package directories.
+        if (classes.isEmpty()) {
+            if (classLoader instanceof URLClassLoader urlCl) {
+                classes.addAll(findClassesFromUrls(urlCl.getURLs(), path));
+            }
+            if (classes.isEmpty()) {
+                classes.addAll(findClassesFromSystemClasspath(path));
+            }
+        }
+
+        return classes;
+    }
+
+    /** Find classes inside a JAR via standard jar: URL connection. */
+    private List<Class<?>> findClassesInJar(URL jarUrl, String packagePath)
+            throws IOException, ClassNotFoundException {
+        List<Class<?>> classes = new ArrayList<>();
+        JarURLConnection connection = (JarURLConnection) jarUrl.openConnection();
+        try (JarFile jarFile = connection.getJarFile()) {
+            Enumeration<JarEntry> entries = jarFile.entries();
+            String prefix = packagePath.endsWith("/") ? packagePath : packagePath + "/";
+            while (entries.hasMoreElements()) {
+                JarEntry entry = entries.nextElement();
+                String entryName = entry.getName();
+                if (entryName.startsWith(prefix) && entryName.endsWith(".class")) {
+                    String className =
+                            entryName.substring(0, entryName.length() - 6).replace('/', '.');
+                    try {
+                        classes.add(Class.forName(className));
+                    } catch (ClassNotFoundException | NoClassDefFoundError e) {
+                        log.debug("Skipped unloadable class in JAR: {}", className);
+                    }
+                }
             }
         }
         return classes;
+    }
+
+    /** Scan an array of classpath URLs for classes matching the package path. */
+    private List<Class<?>> findClassesFromUrls(URL[] urls, String packagePath) {
+        List<Class<?>> classes = new ArrayList<>();
+        String prefix = packagePath.endsWith("/") ? packagePath : packagePath + "/";
+        for (URL url : urls) {
+            try {
+                String urlStr = url.toString();
+                if (urlStr.endsWith(".jar") || urlStr.endsWith(".jar!/")) {
+                    try (InputStream is = url.openStream();
+                            ZipInputStream zis = new ZipInputStream(is)) {
+                        ZipEntry entry;
+                        while ((entry = zis.getNextEntry()) != null) {
+                            String name = entry.getName();
+                            if (name.startsWith(prefix) && name.endsWith(".class")) {
+                                String className =
+                                        name.substring(0, name.length() - 6).replace('/', '.');
+                                tryLoadClass(className, classes);
+                            }
+                        }
+                    }
+                } else {
+                    File dir = new File(url.toURI().getPath(), packagePath);
+                    if (dir.isDirectory()) {
+                        String packageName = packagePath.replace('/', '.');
+                        classes.addAll(findClassesInDirectory(dir, packageName));
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("Skipped classpath entry {}: {}", url, e.getMessage());
+            }
+        }
+        return classes;
+    }
+
+    /** Fallback: scan java.class.path system property for JARs containing the package. */
+    private List<Class<?>> findClassesFromSystemClasspath(String packagePath) {
+        List<Class<?>> classes = new ArrayList<>();
+        String classpath = System.getProperty("java.class.path", "");
+        if (classpath.isEmpty()) {
+            return classes;
+        }
+        String prefix = packagePath.endsWith("/") ? packagePath : packagePath + "/";
+        for (String entry : classpath.split(File.pathSeparator)) {
+            File file = new File(entry);
+            if (!file.exists()) {
+                continue;
+            }
+            try {
+                if (file.isDirectory()) {
+                    File pkgDir = new File(file, packagePath);
+                    if (pkgDir.isDirectory()) {
+                        String packageName = packagePath.replace('/', '.');
+                        classes.addAll(findClassesInDirectory(pkgDir, packageName));
+                    }
+                } else if (file.getName().endsWith(".jar")) {
+                    try (JarFile jf = new JarFile(file)) {
+                        Enumeration<JarEntry> entries = jf.entries();
+                        while (entries.hasMoreElements()) {
+                            JarEntry je = entries.nextElement();
+                            String name = je.getName();
+                            if (name.startsWith(prefix) && name.endsWith(".class")) {
+                                String className =
+                                        name.substring(0, name.length() - 6).replace('/', '.');
+                                tryLoadClass(className, classes);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("Skipped classpath entry {}: {}", entry, e.getMessage());
+            }
+        }
+        return classes;
+    }
+
+    private void tryLoadClass(String className, List<Class<?>> classes) {
+        try {
+            classes.add(Class.forName(className));
+        } catch (ClassNotFoundException | NoClassDefFoundError e) {
+            log.debug("Skipped unloadable class: {}", className);
+        }
     }
 
     /** Recursively find classes in a filesystem directory. */
