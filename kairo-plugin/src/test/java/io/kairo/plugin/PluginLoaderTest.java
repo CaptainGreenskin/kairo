@@ -44,6 +44,7 @@ class PluginLoaderTest {
                         "SkillComponent",
                         "CommandComponent",
                         "AgentComponent",
+                        "HookComponent",
                         "OutputStyleComponent",
                         "BinComponent");
     }

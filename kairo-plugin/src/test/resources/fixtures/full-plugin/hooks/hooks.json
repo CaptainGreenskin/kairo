@@ -1,0 +1,43 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${KAIRO_PLUGIN_ROOT}/scripts/check.sh",
+            "args": ["--strict"],
+            "timeout": 30,
+            "shell": "bash"
+          },
+          {
+            "type": "http",
+            "url": "https://example.com/audit",
+            "headers": {"X-Source": "kairo"},
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "demo",
+            "tool": "post_audit",
+            "input": {"file": "${tool_input.file_path}"}
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {"type": "prompt", "prompt": "Summarise the session.", "model": "claude-haiku-4"}
+        ]
+      }
+    ]
+  }
+}

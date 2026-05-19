@@ -17,9 +17,9 @@ import java.util.Map;
 /**
  * One concrete contribution from a plugin to a Kairo registry.
  *
- * <p>A single plugin can contribute many components of multiple types. The {@code
- * PluginLoader} translates the plugin's on-disk files into instances of these records and the
- * {@code PluginManager} routes each to the matching Kairo registry in this fixed order:
+ * <p>A single plugin can contribute many components of multiple types. The {@code PluginLoader}
+ * translates the plugin's on-disk files into instances of these records and the {@code
+ * PluginManager} routes each to the matching Kairo registry in this fixed order:
  *
  * <pre>tools → skills → agents → hooks → mcp → bin → outputStyles → themes</pre>
  *
@@ -72,14 +72,31 @@ public sealed interface PluginComponent {
     /** Hook binding contributed via {@code hooks/hooks.json}. */
     record HookComponent(String event, String matcher, List<HookAction> actions)
             implements PluginComponent {
+        public HookComponent {
+            if (event == null || event.isBlank()) {
+                throw new IllegalArgumentException("Hook event must not be blank");
+            }
+            actions = actions == null ? List.of() : List.copyOf(actions);
+        }
+
         @Override
         public int order() {
             return 30;
         }
 
-        /** One executable action for a hook event. */
-        public record HookAction(String type, String command, Map<String, Object> config) {
+        /**
+         * One executable action attached to a hook event. The discriminator is {@link #type()} —
+         * one of {@code command}, {@code http}, {@code mcp_tool}, {@code prompt}, {@code agent} —
+         * and {@link #config()} carries the type-specific fields verbatim from {@code hooks.json}
+         * (e.g. {@code command}/{@code args}/{@code shell}/{@code timeout} for {@code command};
+         * {@code url}/{@code headers} for {@code http}; {@code server}/{@code tool}/{@code input}
+         * for {@code mcp_tool}; etc.).
+         */
+        public record HookAction(String type, Map<String, Object> config) {
             public HookAction {
+                if (type == null || type.isBlank()) {
+                    throw new IllegalArgumentException("Hook action type must not be blank");
+                }
                 config = config == null ? Map.of() : Map.copyOf(config);
             }
         }

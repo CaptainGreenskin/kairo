@@ -15,6 +15,7 @@ import io.kairo.api.plugin.PluginMetadata;
 import io.kairo.plugin.component.AgentComponentLoader;
 import io.kairo.plugin.component.BinComponentLoader;
 import io.kairo.plugin.component.CommandComponentLoader;
+import io.kairo.plugin.component.HookComponentLoader;
 import io.kairo.plugin.component.OutputStyleComponentLoader;
 import io.kairo.plugin.component.SkillComponentLoader;
 import io.kairo.plugin.manifest.PluginManifestParser;
@@ -44,6 +45,7 @@ public final class PluginLoader {
     private final SkillComponentLoader skillLoader = new SkillComponentLoader();
     private final CommandComponentLoader commandLoader = new CommandComponentLoader();
     private final AgentComponentLoader agentLoader = new AgentComponentLoader();
+    private final HookComponentLoader hookLoader = new HookComponentLoader();
     private final OutputStyleComponentLoader outputStyleLoader = new OutputStyleComponentLoader();
     private final BinComponentLoader binLoader = new BinComponentLoader();
 
@@ -68,9 +70,10 @@ public final class PluginLoader {
         components.addAll(skillLoader.load(pluginRoot, namespace));
         components.addAll(commandLoader.load(pluginRoot, namespace));
         components.addAll(agentLoader.load(pluginRoot, namespace));
+        components.addAll(hookLoader.load(pluginRoot));
         components.addAll(outputStyleLoader.load(pluginRoot));
         components.addAll(binLoader.load(pluginRoot));
-        // hook + mcp components are handled by Phase B loaders, not here.
+        // mcp components are produced by McpComponentLoader (Phase B.4), wired separately.
         components.sort(Comparator.comparingInt(PluginComponent::order));
 
         Map<String, Object> mcpServers =
