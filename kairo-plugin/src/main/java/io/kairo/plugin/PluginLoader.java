@@ -16,9 +16,11 @@ import io.kairo.plugin.component.AgentComponentLoader;
 import io.kairo.plugin.component.BinComponentLoader;
 import io.kairo.plugin.component.CommandComponentLoader;
 import io.kairo.plugin.component.HookComponentLoader;
+import io.kairo.plugin.component.McpComponentLoader;
 import io.kairo.plugin.component.OutputStyleComponentLoader;
 import io.kairo.plugin.component.SkillComponentLoader;
 import io.kairo.plugin.manifest.PluginManifestParser;
+import io.kairo.plugin.variable.PluginVariableResolver;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,6 +48,7 @@ public final class PluginLoader {
     private final CommandComponentLoader commandLoader = new CommandComponentLoader();
     private final AgentComponentLoader agentLoader = new AgentComponentLoader();
     private final HookComponentLoader hookLoader = new HookComponentLoader();
+    private final McpComponentLoader mcpLoader = new McpComponentLoader();
     private final OutputStyleComponentLoader outputStyleLoader = new OutputStyleComponentLoader();
     private final BinComponentLoader binLoader = new BinComponentLoader();
 
@@ -71,13 +74,17 @@ public final class PluginLoader {
         components.addAll(commandLoader.load(pluginRoot, namespace));
         components.addAll(agentLoader.load(pluginRoot, namespace));
         components.addAll(hookLoader.load(pluginRoot));
-        components.addAll(outputStyleLoader.load(pluginRoot));
-        components.addAll(binLoader.load(pluginRoot));
-        // mcp components are produced by McpComponentLoader (Phase B.4), wired separately.
-        components.sort(Comparator.comparingInt(PluginComponent::order));
 
         Map<String, Object> mcpServers =
                 manifestPath == null ? Map.of() : manifestParser.readMcpServers(manifestPath);
+        // Variable resolver scoped to plugin root so .mcp.json can reference ${KAIRO_PLUGIN_ROOT}.
+        // Data dir is resolved at install time, not here, so we pass null.
+        PluginVariableResolver loaderVars = new PluginVariableResolver(pluginRoot, null, null);
+        components.addAll(mcpLoader.load(pluginRoot, mcpServers, loaderVars));
+
+        components.addAll(outputStyleLoader.load(pluginRoot));
+        components.addAll(binLoader.load(pluginRoot));
+        components.sort(Comparator.comparingInt(PluginComponent::order));
 
         log.info(
                 "Loaded plugin '{}' v{} from {} with {} component(s)",
