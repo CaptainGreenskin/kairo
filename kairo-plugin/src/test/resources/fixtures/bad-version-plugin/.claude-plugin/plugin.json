@@ -1,0 +1,5 @@
+{
+  "name": "bad-version",
+  "version": "^1.2.0",
+  "description": "Range version, should be rejected by v1.2 enforcement"
+}
