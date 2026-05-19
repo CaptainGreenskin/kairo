@@ -30,8 +30,7 @@ class DefaultPluginManagerTest {
     void installEnableDisableUninstallEmitsLifecycleEvents(@TempDir Path tmp) throws Exception {
         Path root = Fixtures.copyToTemp("full-plugin");
         var manager =
-                new DefaultPluginManager(
-                        new DefaultPluginRegistry(), new ClaudePluginLoader(), tmp);
+                new DefaultPluginManager(new DefaultPluginRegistry(), new PluginLoader(), tmp);
 
         List<PluginEvent> events = new ArrayList<>();
         var subscription = manager.events().subscribe(events::add);
@@ -62,8 +61,7 @@ class DefaultPluginManagerTest {
     @Test
     void rejectsRemoteSourcesInPhaseA(@TempDir Path tmp) {
         var manager =
-                new DefaultPluginManager(
-                        new DefaultPluginRegistry(), new ClaudePluginLoader(), tmp);
+                new DefaultPluginManager(new DefaultPluginRegistry(), new PluginLoader(), tmp);
         assertThatThrownBy(
                         () ->
                                 manager.install(
@@ -76,8 +74,7 @@ class DefaultPluginManagerTest {
     @Test
     void enableUnknownIdFails(@TempDir Path tmp) {
         var manager =
-                new DefaultPluginManager(
-                        new DefaultPluginRegistry(), new ClaudePluginLoader(), tmp);
+                new DefaultPluginManager(new DefaultPluginRegistry(), new PluginLoader(), tmp);
         assertThatThrownBy(() -> manager.enable("local:nope:xxx").block(Duration.ofSeconds(5)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
@@ -86,8 +83,7 @@ class DefaultPluginManagerTest {
     void doubleEnableIsIdempotent(@TempDir Path tmp) throws Exception {
         Path root = Fixtures.copyToTemp("minimal-plugin");
         var manager =
-                new DefaultPluginManager(
-                        new DefaultPluginRegistry(), new ClaudePluginLoader(), tmp);
+                new DefaultPluginManager(new DefaultPluginRegistry(), new PluginLoader(), tmp);
         PluginInstallation i =
                 manager.install(new PluginSource.LocalPath(root), PluginScope.USER)
                         .block(Duration.ofSeconds(5));
@@ -105,15 +101,14 @@ class DefaultPluginManagerTest {
     void updateRereadsManifest(@TempDir Path tmp) throws Exception {
         Path root = Fixtures.copyToTemp("minimal-plugin");
         var manager =
-                new DefaultPluginManager(
-                        new DefaultPluginRegistry(), new ClaudePluginLoader(), tmp);
+                new DefaultPluginManager(new DefaultPluginRegistry(), new PluginLoader(), tmp);
         PluginInstallation i =
                 manager.install(new PluginSource.LocalPath(root), PluginScope.USER)
                         .block(Duration.ofSeconds(5));
 
         // Bump on-disk version then update — should re-parse and emit Updated.
         java.nio.file.Files.writeString(
-                root.resolve(".claude-plugin/plugin.json"),
+                root.resolve(".kairo-plugin/plugin.json"),
                 "{\"name\":\"minimal\",\"version\":\"1.1.0\"}");
 
         List<PluginEvent> seen = new ArrayList<>();

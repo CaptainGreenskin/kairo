@@ -36,9 +36,9 @@ import org.slf4j.LoggerFactory;
  * is {@code DefaultPluginManager}'s job. Keeping the two phases separate makes it possible to
  * preview a plugin's contributions before enabling it.
  */
-public final class ClaudePluginLoader {
+public final class PluginLoader {
 
-    private static final Logger log = LoggerFactory.getLogger(ClaudePluginLoader.class);
+    private static final Logger log = LoggerFactory.getLogger(PluginLoader.class);
 
     private final PluginManifestParser manifestParser = new PluginManifestParser();
     private final SkillComponentLoader skillLoader = new SkillComponentLoader();

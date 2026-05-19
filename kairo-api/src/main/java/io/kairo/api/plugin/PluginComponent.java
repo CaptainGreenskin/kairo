@@ -18,7 +18,7 @@ import java.util.Map;
  * One concrete contribution from a plugin to a Kairo registry.
  *
  * <p>A single plugin can contribute many components of multiple types. The {@code
- * ClaudePluginLoader} translates the plugin's on-disk files into instances of these records and the
+ * PluginLoader} translates the plugin's on-disk files into instances of these records and the
  * {@code PluginManager} routes each to the matching Kairo registry in this fixed order:
  *
  * <pre>tools → skills → agents → hooks → mcp → bin → outputStyles → themes</pre>

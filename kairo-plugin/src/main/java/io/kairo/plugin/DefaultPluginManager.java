@@ -39,11 +39,11 @@ public final class DefaultPluginManager implements PluginManager {
     private static final Logger log = LoggerFactory.getLogger(DefaultPluginManager.class);
 
     private final PluginRegistry registry;
-    private final ClaudePluginLoader loader;
+    private final PluginLoader loader;
     private final Path dataRoot;
     private final Sinks.Many<PluginEvent> events = Sinks.many().multicast().directBestEffort();
 
-    public DefaultPluginManager(PluginRegistry registry, ClaudePluginLoader loader, Path dataRoot) {
+    public DefaultPluginManager(PluginRegistry registry, PluginLoader loader, Path dataRoot) {
         this.registry = registry;
         this.loader = loader;
         this.dataRoot = dataRoot;

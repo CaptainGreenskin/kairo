@@ -20,9 +20,9 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-class ClaudePluginLoaderTest {
+class PluginLoaderTest {
 
-    private final ClaudePluginLoader loader = new ClaudePluginLoader();
+    private final PluginLoader loader = new PluginLoader();
 
     @Test
     void loadsMinimalPlugin() throws Exception {

@@ -71,26 +71,26 @@ class PluginManifestParserTest {
     }
 
     @Test
-    void prefersClaudePluginDirOverKairoPluginDir(@TempDir Path tmp) throws Exception {
-        Path root = tmp.resolve("dual");
-        Files.createDirectories(root.resolve(".claude-plugin"));
-        Files.createDirectories(root.resolve(".kairo-plugin"));
-        Files.writeString(
-                root.resolve(".claude-plugin/plugin.json"),
-                "{\"name\":\"claude-wins\",\"version\":\"1.0.0\"}");
-        Files.writeString(
-                root.resolve(".kairo-plugin/plugin.json"),
-                "{\"name\":\"kairo-wins\",\"version\":\"1.0.0\"}");
-        assertThat(parser.parse(root).name()).isEqualTo("claude-wins");
-    }
-
-    @Test
-    void fallsBackToKairoPluginDir(@TempDir Path tmp) throws Exception {
+    void readsKairoPluginDir(@TempDir Path tmp) throws Exception {
         Path root = tmp.resolve("kairo-only");
         Files.createDirectories(root.resolve(".kairo-plugin"));
         Files.writeString(
                 root.resolve(".kairo-plugin/plugin.json"),
                 "{\"name\":\"kairo-only\",\"version\":\"1.0.0\"}");
         assertThat(parser.parse(root).name()).isEqualTo("kairo-only");
+    }
+
+    @Test
+    void ignoresClaudePluginDir(@TempDir Path tmp) throws Exception {
+        // A directory that still has Claude Code's .claude-plugin/ layout MUST be migrated to
+        // .kairo-plugin/ before Kairo can load it. Plugin schema is shared; directory namespace
+        // is not.
+        Path root = tmp.resolve("claude-only");
+        Files.createDirectories(root.resolve(".claude-plugin"));
+        Files.writeString(
+                root.resolve(".claude-plugin/plugin.json"),
+                "{\"name\":\"should-be-ignored\",\"version\":\"1.0.0\"}");
+        // No .kairo-plugin/ → falls through to synthesised manifest using the directory name.
+        assertThat(parser.parse(root).name()).isEqualTo("claude-only");
     }
 }

@@ -21,8 +21,13 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * Parses {@code plugin.json} manifests. Accepts both Claude Code format (under {@code
- * .claude-plugin/}) and the Kairo alias (under {@code .kairo-plugin/}).
+ * Parses {@code .kairo-plugin/plugin.json} manifests.
+ *
+ * <p>The {@code plugin.json} schema is deliberately compatible with Claude Code's manifest format
+ * (same fields: name, version, description, author, license, mcpServers, etc.), so the contents of
+ * a Claude Code plugin can be migrated into a Kairo plugin by copying its files into a directory
+ * with a {@code .kairo-plugin/} folder. Kairo does not load {@code .claude-plugin/} directly —
+ * Kairo plugins live under their own namespace.
  *
  * <p>v1.2 enforces exact-version policy: {@code version} must look like {@code
  * "MAJOR.MINOR.PATCH"}; range expressions ({@code "^1.2.0"}, {@code "~1.2"}, {@code "1.x"}, {@code
@@ -42,20 +47,16 @@ public final class PluginManifestParser {
         return parseManifestFile(manifestPath, pluginRoot.getFileName().toString());
     }
 
-    /**
-     * Looks up {@code .claude-plugin/plugin.json} first, then {@code .kairo-plugin/plugin.json}.
-     */
+    /** Returns the {@code .kairo-plugin/plugin.json} path if present, else null. */
     public Path locateManifest(Path pluginRoot) {
-        Path claude = pluginRoot.resolve(".claude-plugin").resolve("plugin.json");
-        if (Files.isRegularFile(claude)) return claude;
-        Path kairo = pluginRoot.resolve(".kairo-plugin").resolve("plugin.json");
-        if (Files.isRegularFile(kairo)) return kairo;
-        return null;
+        Path manifest = pluginRoot.resolve(".kairo-plugin").resolve("plugin.json");
+        return Files.isRegularFile(manifest) ? manifest : null;
     }
 
     /**
      * Parses a manifest file. If {@code manifestPath} is null, synthesises a minimal manifest from
-     * {@code defaultName} (matches Claude Code's "no manifest" behaviour).
+     * {@code defaultName} so directories without an explicit manifest still load (the plugin will
+     * have no metadata-driven components but its skills/commands/agents folders are still scanned).
      */
     public PluginMetadata parseManifestFile(Path manifestPath, String defaultName)
             throws IOException {
