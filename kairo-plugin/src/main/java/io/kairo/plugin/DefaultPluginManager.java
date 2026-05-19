@@ -16,6 +16,8 @@ import io.kairo.api.plugin.PluginManifest;
 import io.kairo.api.plugin.PluginRegistry;
 import io.kairo.api.plugin.PluginScope;
 import io.kairo.api.plugin.PluginSource;
+import io.kairo.plugin.source.LocalPathSourceFetcher;
+import io.kairo.plugin.source.SourceFetcherRegistry;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
@@ -42,60 +44,96 @@ public final class DefaultPluginManager implements PluginManager {
     private final PluginLoader loader;
     private final Path dataRoot;
     private final ComponentRegistrar componentRegistrar;
+    private final SourceFetcherRegistry sourceFetchers;
     private final Sinks.Many<PluginEvent> events = Sinks.many().multicast().directBestEffort();
 
     /**
-     * Convenience constructor — no real component binding (uses {@link ComponentRegistrar#noOp()}).
+     * Convenience constructor — no real component binding (uses {@link ComponentRegistrar#noOp()})
+     * and only the {@link LocalPathSourceFetcher} for sources. Mostly for tests.
      */
     public DefaultPluginManager(PluginRegistry registry, PluginLoader loader, Path dataRoot) {
-        this(registry, loader, dataRoot, ComponentRegistrar.noOp());
+        this(
+                registry,
+                loader,
+                dataRoot,
+                ComponentRegistrar.noOp(),
+                new SourceFetcherRegistry().register(new LocalPathSourceFetcher()));
     }
 
+    /** Convenience: keep custom registrar but default source fetchers to LocalPath only. */
     public DefaultPluginManager(
             PluginRegistry registry,
             PluginLoader loader,
             Path dataRoot,
             ComponentRegistrar componentRegistrar) {
+        this(
+                registry,
+                loader,
+                dataRoot,
+                componentRegistrar,
+                new SourceFetcherRegistry().register(new LocalPathSourceFetcher()));
+    }
+
+    /**
+     * Full constructor — host application supplies its own component registrar + source fetchers.
+     */
+    public DefaultPluginManager(
+            PluginRegistry registry,
+            PluginLoader loader,
+            Path dataRoot,
+            ComponentRegistrar componentRegistrar,
+            SourceFetcherRegistry sourceFetchers) {
         this.registry = registry;
         this.loader = loader;
         this.dataRoot = dataRoot;
         this.componentRegistrar =
                 componentRegistrar == null ? ComponentRegistrar.noOp() : componentRegistrar;
+        this.sourceFetchers =
+                sourceFetchers == null
+                        ? new SourceFetcherRegistry().register(new LocalPathSourceFetcher())
+                        : sourceFetchers;
     }
 
     @Override
     public Mono<PluginInstallation> install(PluginSource source, PluginScope scope) {
-        return Mono.fromCallable(
-                        () -> {
-                            if (!(source instanceof PluginSource.LocalPath local)) {
-                                throw new UnsupportedOperationException(
-                                        "Phase A only supports LocalPath sources; got "
-                                                + source.type());
-                            }
-                            PluginManifest manifest = loader.load(local.path(), null);
-                            String id =
-                                    "local:" + manifest.metadata().name() + ":" + UUID.randomUUID();
-                            Path data = dataRoot.resolve(manifest.metadata().name());
-                            PluginInstallation installation =
-                                    new PluginInstallation(
-                                            id,
-                                            manifest.metadata(),
-                                            source,
-                                            scope == null ? PluginScope.USER : scope,
-                                            false,
-                                            local.path(),
-                                            data,
-                                            Instant.now());
-                            registry.put(installation);
-                            emit(new PluginEvent.Installed(installation, Instant.now()));
-                            log.info(
-                                    "Installed plugin '{}' v{} (id={})",
-                                    installation.metadata().name(),
-                                    installation.metadata().version(),
-                                    id);
-                            return installation;
-                        })
-                .subscribeOn(Schedulers.boundedElastic());
+        return sourceFetchers
+                .fetch(source)
+                .flatMap(
+                        rootPath ->
+                                Mono.fromCallable(
+                                        () -> {
+                                            PluginManifest manifest = loader.load(rootPath, null);
+                                            String id = generateId(manifest, source);
+                                            Path data =
+                                                    dataRoot.resolve(manifest.metadata().name());
+                                            PluginInstallation installation =
+                                                    new PluginInstallation(
+                                                            id,
+                                                            manifest.metadata(),
+                                                            source,
+                                                            scope == null
+                                                                    ? PluginScope.USER
+                                                                    : scope,
+                                                            false,
+                                                            rootPath,
+                                                            data,
+                                                            Instant.now());
+                                            registry.put(installation);
+                                            emit(
+                                                    new PluginEvent.Installed(
+                                                            installation, Instant.now()));
+                                            log.info(
+                                                    "Installed plugin '{}' v{} (id={}, source={})",
+                                                    installation.metadata().name(),
+                                                    installation.metadata().version(),
+                                                    id,
+                                                    source.type());
+                                            return installation;
+                                        }));
+    }
+
+    private static String generateId(PluginManifest manifest, PluginSource source) {
+        return source.type() + ":" + manifest.metadata().name() + ":" + UUID.randomUUID();
     }
 
     @Override

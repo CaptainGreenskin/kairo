@@ -59,7 +59,8 @@ class DefaultPluginManagerTest {
     }
 
     @Test
-    void rejectsRemoteSourcesInPhaseA(@TempDir Path tmp) {
+    void rejectsSourceWithoutRegisteredFetcher(@TempDir Path tmp) {
+        // Default constructor only wires LocalPathSourceFetcher; a GitHub source has no fetcher.
         var manager =
                 new DefaultPluginManager(new DefaultPluginRegistry(), new PluginLoader(), tmp);
         assertThatThrownBy(
@@ -68,7 +69,8 @@ class DefaultPluginManagerTest {
                                                 new PluginSource.GitHub("foo/bar", "main", null),
                                                 PluginScope.USER)
                                         .block(Duration.ofSeconds(5)))
-                .isInstanceOf(UnsupportedOperationException.class);
+                .isInstanceOf(UnsupportedOperationException.class)
+                .hasMessageContaining("No fetcher registered");
     }
 
     @Test
