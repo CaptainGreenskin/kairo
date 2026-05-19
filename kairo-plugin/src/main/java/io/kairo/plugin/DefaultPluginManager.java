@@ -41,12 +41,26 @@ public final class DefaultPluginManager implements PluginManager {
     private final PluginRegistry registry;
     private final PluginLoader loader;
     private final Path dataRoot;
+    private final ComponentRegistrar componentRegistrar;
     private final Sinks.Many<PluginEvent> events = Sinks.many().multicast().directBestEffort();
 
+    /**
+     * Convenience constructor — no real component binding (uses {@link ComponentRegistrar#noOp()}).
+     */
     public DefaultPluginManager(PluginRegistry registry, PluginLoader loader, Path dataRoot) {
+        this(registry, loader, dataRoot, ComponentRegistrar.noOp());
+    }
+
+    public DefaultPluginManager(
+            PluginRegistry registry,
+            PluginLoader loader,
+            Path dataRoot,
+            ComponentRegistrar componentRegistrar) {
         this.registry = registry;
         this.loader = loader;
         this.dataRoot = dataRoot;
+        this.componentRegistrar =
+                componentRegistrar == null ? ComponentRegistrar.noOp() : componentRegistrar;
     }
 
     @Override
@@ -102,7 +116,7 @@ public final class DefaultPluginManager implements PluginManager {
 
     @Override
     public Mono<Void> enable(String id) {
-        return Mono.fromRunnable(
+        return Mono.<Void>defer(
                 () -> {
                     PluginInstallation existing =
                             registry.get(id)
@@ -110,24 +124,69 @@ public final class DefaultPluginManager implements PluginManager {
                                             () ->
                                                     new IllegalArgumentException(
                                                             "No plugin installed with id: " + id));
-                    if (existing.enabled()) return;
-                    PluginInstallation enabled = existing.withEnabled(true);
-                    registry.put(enabled);
-                    emit(new PluginEvent.Enabled(enabled, Instant.now()));
-                    log.info("Enabled plugin '{}' (id={})", enabled.metadata().name(), id);
+                    if (existing.enabled()) return Mono.<Void>empty();
+
+                    // Re-load manifest from disk so component list reflects current state.
+                    PluginManifest manifest;
+                    try {
+                        manifest = loader.load(existing.rootPath(), null);
+                    } catch (Exception e) {
+                        return Mono.<Void>error(e);
+                    }
+
+                    return componentRegistrar
+                            .registerAll(id, manifest.components())
+                            .then(
+                                    Mono.<Void>fromRunnable(
+                                            () -> {
+                                                PluginInstallation enabled =
+                                                        existing.withEnabled(true);
+                                                registry.put(enabled);
+                                                emit(
+                                                        new PluginEvent.Enabled(
+                                                                enabled, Instant.now()));
+                                                log.info(
+                                                        "Enabled plugin '{}' (id={}) with {}"
+                                                                + " component(s)",
+                                                        enabled.metadata().name(),
+                                                        id,
+                                                        manifest.components().size());
+                                            }))
+                            .onErrorResume(
+                                    err -> {
+                                        emit(
+                                                new PluginEvent.EnableFailed(
+                                                        existing,
+                                                        "components",
+                                                        err.getMessage(),
+                                                        Instant.now()));
+                                        return Mono.<Void>error(err);
+                                    });
                 });
     }
 
     @Override
     public Mono<Void> disable(String id) {
-        return Mono.fromRunnable(
+        return Mono.<Void>defer(
                 () -> {
                     PluginInstallation existing = registry.get(id).orElse(null);
-                    if (existing == null || !existing.enabled()) return;
-                    PluginInstallation disabled = existing.withEnabled(false);
-                    registry.put(disabled);
-                    emit(new PluginEvent.Disabled(disabled, Instant.now()));
-                    log.info("Disabled plugin '{}' (id={})", disabled.metadata().name(), id);
+                    if (existing == null || !existing.enabled()) return Mono.<Void>empty();
+                    return componentRegistrar
+                            .unregisterAll(id)
+                            .then(
+                                    Mono.<Void>fromRunnable(
+                                            () -> {
+                                                PluginInstallation disabled =
+                                                        existing.withEnabled(false);
+                                                registry.put(disabled);
+                                                emit(
+                                                        new PluginEvent.Disabled(
+                                                                disabled, Instant.now()));
+                                                log.info(
+                                                        "Disabled plugin '{}' (id={})",
+                                                        disabled.metadata().name(),
+                                                        id);
+                                            }));
                 });
     }
 
