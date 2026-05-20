@@ -100,6 +100,23 @@ public final class McpComponentLoader {
             return null;
         }
 
+        String url = stringOrNull(mapSpec, "url");
+        if (url != null && url.isBlank()) url = null;
+
+        Map<String, String> env = readStringMap(mapSpec.get("env"), resolver);
+        Map<String, String> headers = readStringMap(mapSpec.get("headers"), resolver);
+
+        if (url != null) {
+            // HTTP / SSE remote server. The `type` field (Claude Code) disambiguates SSE vs
+            // Streamable HTTP; default to STREAMABLE_HTTP when absent.
+            String typeText = stringOrNull(mapSpec, "type");
+            PluginComponent.McpComponent.Transport transport =
+                    transportFromString(
+                            typeText, PluginComponent.McpComponent.Transport.STREAMABLE_HTTP);
+            return new PluginComponent.McpComponent(
+                    serverName, "", List.of(), env, transport, resolve(url, resolver), headers);
+        }
+
         String command = stringOrNull(mapSpec, "command");
         if (command == null || command.isBlank()) return null;
         command = resolve(command, resolver);
@@ -112,17 +129,35 @@ public final class McpComponentLoader {
             }
         }
 
-        Map<String, String> env = new HashMap<>();
-        Object envRaw = mapSpec.get("env");
-        if (envRaw instanceof Map<?, ?> envMap) {
-            for (Map.Entry<?, ?> e : envMap.entrySet()) {
-                env.put(
-                        String.valueOf(e.getKey()),
-                        resolve(String.valueOf(e.getValue()), resolver));
-            }
-        }
+        return new PluginComponent.McpComponent(
+                serverName,
+                command,
+                args,
+                env,
+                PluginComponent.McpComponent.Transport.STDIO,
+                null,
+                Map.of());
+    }
 
-        return new PluginComponent.McpComponent(serverName, command, args, env);
+    private Map<String, String> readStringMap(Object raw, PluginVariableResolver resolver) {
+        if (!(raw instanceof Map<?, ?> map)) return Map.of();
+        Map<String, String> out = new HashMap<>();
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            out.put(String.valueOf(e.getKey()), resolve(String.valueOf(e.getValue()), resolver));
+        }
+        return out;
+    }
+
+    private PluginComponent.McpComponent.Transport transportFromString(
+            String type, PluginComponent.McpComponent.Transport fallback) {
+        if (type == null) return fallback;
+        return switch (type.toLowerCase(java.util.Locale.ROOT)) {
+            case "sse" -> PluginComponent.McpComponent.Transport.SSE;
+            case "http", "streamable_http", "streamable-http", "streamablehttp" ->
+                    PluginComponent.McpComponent.Transport.STREAMABLE_HTTP;
+            case "stdio" -> PluginComponent.McpComponent.Transport.STDIO;
+            default -> fallback;
+        };
     }
 
     private String stringOrNull(Map<?, ?> map, String key) {

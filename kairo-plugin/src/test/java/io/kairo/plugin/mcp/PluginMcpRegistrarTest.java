@@ -184,6 +184,41 @@ class PluginMcpRegistrarTest {
     }
 
     @Test
+    void toServerConfigRoutesStreamableHttpByUrl() {
+        var c =
+                new PluginComponent.McpComponent(
+                        "remote",
+                        "",
+                        List.of(),
+                        Map.of(),
+                        PluginComponent.McpComponent.Transport.STREAMABLE_HTTP,
+                        "https://api.example.com/mcp",
+                        Map.of("Authorization", "Bearer xyz"));
+        var cfg = PluginMcpRegistrar.toServerConfig(c);
+        assertThat(cfg.transportType())
+                .isEqualTo(io.kairo.mcp.McpServerConfig.TransportType.STREAMABLE_HTTP);
+        assertThat(cfg.url()).isEqualTo("https://api.example.com/mcp");
+        assertThat(cfg.headers()).containsEntry("Authorization", "Bearer xyz");
+        assertThat(cfg.command()).isEmpty();
+    }
+
+    @Test
+    void toServerConfigRoutesSse() {
+        var c =
+                new PluginComponent.McpComponent(
+                        "events",
+                        "",
+                        List.of(),
+                        Map.of(),
+                        PluginComponent.McpComponent.Transport.SSE,
+                        "https://api.example.com/events",
+                        Map.of());
+        var cfg = PluginMcpRegistrar.toServerConfig(c);
+        assertThat(cfg.transportType()).isEqualTo(io.kairo.mcp.McpServerConfig.TransportType.SSE);
+        assertThat(cfg.url()).isEqualTo("https://api.example.com/events");
+    }
+
+    @Test
     void disablePluginIsIdempotentForUnknownPluginId() {
         var stub = new StubMcpPlugin(cfg -> Mono.just(reg(cfg.name())), new ArrayList<>());
         var registrar = new PluginMcpRegistrar(stub);

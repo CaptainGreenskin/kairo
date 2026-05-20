@@ -135,6 +135,74 @@ class McpComponentLoaderTest {
     }
 
     @Test
+    void loadsStreamableHttpFromUrlEntry(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("http"));
+        // No explicit "type" → defaults to STREAMABLE_HTTP.
+        var inline =
+                Map.<String, Object>of(
+                        "remote",
+                        Map.of(
+                                "url",
+                                "https://api.example.com/mcp",
+                                "headers",
+                                Map.of("Authorization", "Bearer xyz")));
+        var components = loader.load(root, inline, null);
+        assertThat(components).hasSize(1);
+        var remote = components.get(0);
+        assertThat(remote.transport())
+                .isEqualTo(PluginComponent.McpComponent.Transport.STREAMABLE_HTTP);
+        assertThat(remote.url()).isEqualTo("https://api.example.com/mcp");
+        assertThat(remote.headers()).containsEntry("Authorization", "Bearer xyz");
+        assertThat(remote.command()).isEmpty();
+        assertThat(remote.args()).isEmpty();
+    }
+
+    @Test
+    void loadsSseWhenTypeIsSse(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("sse"));
+        var inline =
+                Map.<String, Object>of(
+                        "events",
+                        Map.of(
+                                "type", "sse",
+                                "url", "https://api.example.com/events"));
+        var components = loader.load(root, inline, null);
+        assertThat(components.get(0).transport())
+                .isEqualTo(PluginComponent.McpComponent.Transport.SSE);
+        assertThat(components.get(0).url()).isEqualTo("https://api.example.com/events");
+    }
+
+    @Test
+    void loadsStreamableHttpWhenTypeExplicit(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("explicit-http"));
+        var inline =
+                Map.<String, Object>of(
+                        "remote",
+                        Map.of(
+                                "type", "http",
+                                "url", "https://api.example.com/mcp"));
+        assertThat(loader.load(root, inline, null).get(0).transport())
+                .isEqualTo(PluginComponent.McpComponent.Transport.STREAMABLE_HTTP);
+    }
+
+    @Test
+    void resolvesVariablesInUrlAndHeaders(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("vars-url"));
+        var resolver = new PluginVariableResolver(root, null, null);
+        var inline =
+                Map.<String, Object>of(
+                        "remote",
+                        Map.of(
+                                "url",
+                                "https://api.example.com/${KAIRO_PLUGIN_ROOT}",
+                                "headers",
+                                Map.of("X-Plugin-Path", "${KAIRO_PLUGIN_ROOT}")));
+        var c = loader.load(root, inline, resolver).get(0);
+        assertThat(c.url()).contains(root.toAbsolutePath().toString());
+        assertThat(c.headers().get("X-Plugin-Path")).isEqualTo(root.toAbsolutePath().toString());
+    }
+
+    @Test
     void jsonNodeFromMcpJsonGetsConvertedProperly() throws Exception {
         // Sanity: ensure JsonNode → Map conversion path in parseEntry handles nested structures
         Path root = Fixtures.copyToTemp("full-plugin");
