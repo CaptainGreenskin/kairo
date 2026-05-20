@@ -66,6 +66,11 @@
                 <artifactId>kairo-plugin</artifactId>
                 <version>${revision}</version>
             </dependency>
+            <dependency>
+                <groupId>io.github.captaingreenskin</groupId>
+                <artifactId>kairo-cron</artifactId>
+                <version>${revision}</version>
+            </dependency>
             <!-- Transitive deps surfaced by kairo-plugin (so consumers can rely on the BOM
                  instead of pinning versions themselves). -->
             <dependency>

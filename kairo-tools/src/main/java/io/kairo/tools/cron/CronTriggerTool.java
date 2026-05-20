@@ -6,12 +6,6 @@
  * You may obtain a copy of the License at
  *
  *     https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
 package io.kairo.tools.cron;
 
@@ -27,15 +21,17 @@ import java.util.Map;
 import reactor.core.publisher.Mono;
 
 @Tool(
-        name = "CronDelete",
-        description = "Cancel a cron job previously scheduled with CronCreate.",
+        name = "CronTrigger",
+        description =
+                "Fire a cron job immediately, outside its normal schedule. The job's normal"
+                        + " cadence is unchanged.",
         category = ToolCategory.SCHEDULING,
         sideEffect = ToolSideEffect.WRITE)
-public class CronDeleteTool implements SyncTool {
+public class CronTriggerTool implements SyncTool {
 
     private final CronScheduler scheduler;
 
-    public CronDeleteTool(CronScheduler scheduler) {
+    public CronTriggerTool(CronScheduler scheduler) {
         this.scheduler = scheduler;
     }
 
@@ -50,14 +46,10 @@ public class CronDeleteTool implements SyncTool {
     private ToolResult doExecute(Map<String, Object> args) {
         String taskId = (String) args.get("id");
         if (taskId == null || taskId.isBlank()) {
-            return ToolResult.error("CronDelete", "Parameter 'id' is required");
+            return ToolResult.error("CronTrigger", "Parameter 'id' is required");
         }
-
-        boolean deleted = scheduler.delete(taskId);
-        if (deleted) {
-            return ToolResult.success("CronDelete", "Deleted cron job " + taskId);
-        } else {
-            return ToolResult.error("CronDelete", "No cron job found with id '" + taskId + "'");
-        }
+        return scheduler.trigger(taskId)
+                ? ToolResult.success("CronTrigger", "Triggered cron job " + taskId)
+                : ToolResult.error("CronTrigger", "No cron job found with id '" + taskId + "'");
     }
 }

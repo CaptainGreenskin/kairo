@@ -13,25 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.kairo.core.cron;
+package io.kairo.api.cron;
 
-import io.kairo.api.cron.CronTask;
-import java.util.List;
+import io.kairo.api.Experimental;
 
 /**
- * Manages cron-scheduled tasks: creation, deletion, listing, and a tick-based execution loop.
+ * Callback invoked when a cron task fires. The implementation is responsible for injecting the
+ * task's prompt into the agent loop (or, in {@code no-agent} mode, executing the script).
  *
- * <p>Implementations are expected to be thread-safe.
+ * @since 0.4
  */
-public interface CronScheduler {
+@Experimental("Cron SPI promoted to kairo-api in v1.2")
+@FunctionalInterface
+public interface CronFireCallback {
 
-    CronTask create(String cron, String prompt, boolean recurring, boolean durable);
-
-    boolean delete(String taskId);
-
-    List<CronTask> list();
-
-    void start();
-
-    void stop();
+    void onFire(CronTask task);
 }

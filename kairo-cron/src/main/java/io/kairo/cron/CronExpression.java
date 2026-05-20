@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.kairo.core.cron;
+package io.kairo.cron;
 
 import java.time.DayOfWeek;
 import java.time.ZonedDateTime;

@@ -17,6 +17,7 @@ package io.kairo.api.cron;
 
 import io.kairo.api.Experimental;
 import java.time.Instant;
+import java.util.List;
 import javax.annotation.Nullable;
 
 /**
@@ -29,6 +30,10 @@ import javax.annotation.Nullable;
  * @param lastFiredAt when the task last fired, or {@code null} if never fired
  * @param recurring {@code true} for repeating tasks, {@code false} for one-shot
  * @param durable {@code true} to persist across sessions, {@code false} for session-only
+ * @param paused {@code true} when the task is suspended (next tick won't fire it)
+ * @param consecutiveFailures count of back-to-back failures since the last success
+ * @param lastError last error message (truncated), or {@code null}
+ * @param nextRunAt next scheduled fire instant, or {@code null} when unknown / paused
  */
 @Experimental("Cron task record — contract may change")
 public record CronTask(
@@ -38,9 +43,178 @@ public record CronTask(
         Instant createdAt,
         @Nullable Instant lastFiredAt,
         boolean recurring,
-        boolean durable) {
+        boolean durable,
+        boolean paused,
+        int consecutiveFailures,
+        @Nullable String lastError,
+        @Nullable Instant nextRunAt,
+        List<String> skills,
+        @Nullable String workdir,
+        boolean noAgent,
+        @Nullable String script,
+        @Nullable String contextFromTaskId) {
+
+    public CronTask {
+        skills = skills == null ? List.of() : List.copyOf(skills);
+    }
+
+    /** Backwards-compatible 7-arg constructor — defaults the new fields. */
+    public CronTask(
+            String id,
+            String cron,
+            String prompt,
+            Instant createdAt,
+            @Nullable Instant lastFiredAt,
+            boolean recurring,
+            boolean durable) {
+        this(
+                id,
+                cron,
+                prompt,
+                createdAt,
+                lastFiredAt,
+                recurring,
+                durable,
+                false,
+                0,
+                null,
+                null,
+                List.of(),
+                null,
+                false,
+                null,
+                null);
+    }
+
+    /** 11-arg constructor used in M1 — keeps M1 callers compiling. */
+    public CronTask(
+            String id,
+            String cron,
+            String prompt,
+            Instant createdAt,
+            @Nullable Instant lastFiredAt,
+            boolean recurring,
+            boolean durable,
+            boolean paused,
+            int consecutiveFailures,
+            @Nullable String lastError,
+            @Nullable Instant nextRunAt) {
+        this(
+                id,
+                cron,
+                prompt,
+                createdAt,
+                lastFiredAt,
+                recurring,
+                durable,
+                paused,
+                consecutiveFailures,
+                lastError,
+                nextRunAt,
+                List.of(),
+                null,
+                false,
+                null,
+                null);
+    }
 
     public CronTask withLastFiredAt(Instant lastFiredAt) {
-        return new CronTask(id, cron, prompt, createdAt, lastFiredAt, recurring, durable);
+        return new CronTask(
+                id,
+                cron,
+                prompt,
+                createdAt,
+                lastFiredAt,
+                recurring,
+                durable,
+                paused,
+                consecutiveFailures,
+                lastError,
+                nextRunAt,
+                skills,
+                workdir,
+                noAgent,
+                script,
+                contextFromTaskId);
+    }
+
+    public CronTask withPaused(boolean paused) {
+        return new CronTask(
+                id,
+                cron,
+                prompt,
+                createdAt,
+                lastFiredAt,
+                recurring,
+                durable,
+                paused,
+                consecutiveFailures,
+                lastError,
+                nextRunAt,
+                skills,
+                workdir,
+                noAgent,
+                script,
+                contextFromTaskId);
+    }
+
+    public CronTask withCronAndPrompt(String newCron, String newPrompt) {
+        return new CronTask(
+                id,
+                newCron == null ? cron : newCron,
+                newPrompt == null ? prompt : newPrompt,
+                createdAt,
+                lastFiredAt,
+                recurring,
+                durable,
+                paused,
+                consecutiveFailures,
+                lastError,
+                nextRunAt,
+                skills,
+                workdir,
+                noAgent,
+                script,
+                contextFromTaskId);
+    }
+
+    public CronTask withStatus(int newConsecutiveFailures, @Nullable String newLastError) {
+        return new CronTask(
+                id,
+                cron,
+                prompt,
+                createdAt,
+                lastFiredAt,
+                recurring,
+                durable,
+                paused,
+                newConsecutiveFailures,
+                newLastError,
+                nextRunAt,
+                skills,
+                workdir,
+                noAgent,
+                script,
+                contextFromTaskId);
+    }
+
+    public CronTask withNextRunAt(@Nullable Instant when) {
+        return new CronTask(
+                id,
+                cron,
+                prompt,
+                createdAt,
+                lastFiredAt,
+                recurring,
+                durable,
+                paused,
+                consecutiveFailures,
+                lastError,
+                when,
+                skills,
+                workdir,
+                noAgent,
+                script,
+                contextFromTaskId);
     }
 }
