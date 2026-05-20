@@ -38,17 +38,19 @@ import reactor.core.scheduler.Schedulers;
 /**
  * Executes one {@link HookAction} produced by the {@link HookComponentLoader}.
  *
- * <p>Phase B coverage:
+ * <p>Built-in handlers:
  *
  * <ul>
  *   <li>{@code command} — fork a child process, send the event payload as JSON on stdin, read
  *       stdout. Honours {@code shell}, {@code args}, {@code env}, {@code timeout}.
  *   <li>{@code http} — POST the event JSON to the configured URL; honours {@code headers} and
  *       {@code timeout}.
- *   <li>{@code prompt} / {@code agent} / {@code mcp_tool} — emit a placeholder result and a
- *       warning. Real wiring lands in Phase B.7 once the kairo-core ModelProvider and McpPlugin
- *       hand-offs are integrated.
  * </ul>
+ *
+ * <p>Other action types ({@code prompt}, {@code agent}, {@code mcp_tool}, or any custom string) are
+ * dispatched through {@link HookActionHandler}s registered via {@link #withHandler}. The host
+ * application supplies these — kairo-plugin doesn't bind to a model provider or MCP runtime
+ * directly; that coupling lives at the assembly layer ({@code AssistantAgentFactory}).
  *
  * <p>The returned {@link HookResult#decision()} carries the JSON object the action emitted on
  * stdout (or http body) — callers can read fields like {@code continue}, {@code stopReason}, {@code
@@ -70,6 +72,33 @@ public final class HookExecutor {
     private final ObjectMapper json = new ObjectMapper();
     private final HttpClient httpClient =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+    private final java.util.concurrent.ConcurrentHashMap<String, HookActionHandler> extraHandlers =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Registers a {@link HookActionHandler} for a non-builtin action type ({@code prompt}, {@code
+     * agent}, {@code mcp_tool}, or any custom string). Returns this executor for chaining.
+     *
+     * <p>Handlers for {@code command} or {@code http} are ignored — those types are always handled
+     * by the built-in implementations. Re-registering the same {@code handler.type()} replaces the
+     * previous handler.
+     */
+    public HookExecutor withHandler(HookActionHandler handler) {
+        Objects.requireNonNull(handler, "handler");
+        if ("command".equals(handler.type()) || "http".equals(handler.type())) {
+            log.warn(
+                    "Refusing to register custom handler for built-in action type '{}'",
+                    handler.type());
+            return this;
+        }
+        extraHandlers.put(handler.type(), handler);
+        return this;
+    }
+
+    /** Whether a handler for the given action type is registered (or is built-in). */
+    public boolean hasHandler(String type) {
+        return "command".equals(type) || "http".equals(type) || extraHandlers.containsKey(type);
+    }
 
     /**
      * Executes one action.
@@ -82,21 +111,32 @@ public final class HookExecutor {
             HookAction action, Map<String, Object> eventPayload, PluginVariableResolver resolver) {
         Objects.requireNonNull(action, "action");
         Map<String, Object> payload = eventPayload == null ? Map.of() : eventPayload;
-        return Mono.fromCallable(() -> dispatch(action, payload, resolver))
-                .subscribeOn(Schedulers.boundedElastic());
+
+        // Built-in types run synchronously on boundedElastic so the IO blocks are isolated.
+        if ("command".equals(action.type()) || "http".equals(action.type())) {
+            return Mono.fromCallable(() -> dispatchBuiltin(action, payload, resolver))
+                    .subscribeOn(Schedulers.boundedElastic());
+        }
+        // Custom handlers manage their own scheduling.
+        HookActionHandler handler = extraHandlers.get(action.type());
+        if (handler != null) {
+            return handler.execute(action, payload, resolver);
+        }
+        log.warn(
+                "No handler registered for hook action type '{}'; treating as no-op",
+                action.type());
+        return Mono.just(HookResult.empty());
     }
 
-    private HookResult dispatch(
+    private HookResult dispatchBuiltin(
             HookAction action, Map<String, Object> payload, PluginVariableResolver resolver)
             throws IOException, InterruptedException {
         return switch (action.type()) {
             case "command" -> runCommand(action, payload, resolver);
             case "http" -> runHttp(action, payload, resolver);
-            case "prompt", "agent", "mcp_tool" -> runStubbed(action);
-            default -> {
-                log.warn("Unknown hook action type '{}'; treating as no-op", action.type());
-                yield HookResult.empty();
-            }
+            default ->
+                    throw new IllegalStateException(
+                            "dispatchBuiltin called with non-builtin type: " + action.type());
         };
     }
 
@@ -188,16 +228,6 @@ public final class HookExecutor {
         } catch (IOException e) {
             return HookResult.error("http call failed: " + e.getMessage());
         }
-    }
-
-    // ── stub for prompt / agent / mcp_tool ────────────────────────────────
-
-    private HookResult runStubbed(HookAction action) {
-        log.warn(
-                "Hook action type '{}' is parsed but execution is not yet wired to the model/mcp"
-                        + " runtime — Phase B.7 will land it. Returning no-op result.",
-                action.type());
-        return HookResult.empty();
     }
 
     // ── helpers ───────────────────────────────────────────────────────────

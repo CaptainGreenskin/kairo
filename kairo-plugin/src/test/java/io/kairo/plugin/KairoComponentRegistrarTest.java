@@ -160,18 +160,61 @@ class KairoComponentRegistrarTest {
 
     @Test
     void unknownComponentTypesAreIgnoredButCounted() throws Exception {
-        // Agent/Hook/OutputStyle currently have no binding — ensure they don't crash.
+        // Hook/OutputStyle/Theme currently have no binding — ensure they don't crash.
+        var registrar = new KairoComponentRegistrar(null, null, null);
+        Path root = Fixtures.copyToTemp("full-plugin");
+        var components =
+                List.<PluginComponent>of(
+                        new PluginComponent.OutputStyleComponent(
+                                "concise", root.resolve("output-styles/concise.md")),
+                        new PluginComponent.ThemeComponent("any", root.resolve("themes/any.md")));
+        registrar.registerAll("p1", components).block(Duration.ofSeconds(2));
+        assertThat(registrar.registeredCount("p1")).isEqualTo(2);
+    }
+
+    @Test
+    void registersAgentToSubagentRegistryWhenWired() throws Exception {
+        var subagentRegistry = new DefaultSubagentRegistry();
+        var registrar = new KairoComponentRegistrar(null, null, null, subagentRegistry);
+
+        Path root = Fixtures.copyToTemp("full-plugin");
+        var components =
+                List.<PluginComponent>of(
+                        new PluginComponent.AgentComponent(
+                                "rev", root.resolve("agents/reviewer.md"), "ns"));
+        registrar.registerAll("p1", components).block(Duration.ofSeconds(2));
+
+        // Subagent should be registered using its qualified name.
+        assertThat(subagentRegistry.get("ns:reviewer")).isPresent();
+        assertThat(registrar.registeredCount("p1")).isEqualTo(1);
+    }
+
+    @Test
+    void unregisterAgentRemovesFromSubagentRegistry() throws Exception {
+        var subagentRegistry = new DefaultSubagentRegistry();
+        var registrar = new KairoComponentRegistrar(null, null, null, subagentRegistry);
+
+        Path root = Fixtures.copyToTemp("full-plugin");
+        var components =
+                List.<PluginComponent>of(
+                        new PluginComponent.AgentComponent(
+                                "rev", root.resolve("agents/reviewer.md"), "ns"));
+        registrar.registerAll("p1", components).block(Duration.ofSeconds(2));
+        registrar.unregisterAll("p1").block(Duration.ofSeconds(2));
+        assertThat(subagentRegistry.size()).isZero();
+    }
+
+    @Test
+    void agentComponentsAreCapturedWhenSubagentRegistryIsNull() throws Exception {
+        // 3-arg constructor → no subagent binding; should not throw.
         var registrar = new KairoComponentRegistrar(null, null, null);
         Path root = Fixtures.copyToTemp("full-plugin");
         var components =
                 List.<PluginComponent>of(
                         new PluginComponent.AgentComponent(
-                                "rev", root.resolve("agents/reviewer.md"), "ns"),
-                        new PluginComponent.OutputStyleComponent(
-                                "concise", root.resolve("output-styles/concise.md")),
-                        new PluginComponent.ThemeComponent("any", root.resolve("themes/any.md")));
+                                "rev", root.resolve("agents/reviewer.md"), "ns"));
         registrar.registerAll("p1", components).block(Duration.ofSeconds(2));
-        assertThat(registrar.registeredCount("p1")).isEqualTo(3);
+        assertThat(registrar.registeredCount("p1")).isEqualTo(1);
     }
 
     @Test

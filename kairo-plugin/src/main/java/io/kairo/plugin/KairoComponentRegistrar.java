@@ -9,8 +9,11 @@
  */
 package io.kairo.plugin;
 
+import io.kairo.api.agent.SubagentDefinition;
+import io.kairo.api.agent.SubagentRegistry;
 import io.kairo.api.plugin.PluginComponent;
 import io.kairo.api.skill.SkillRegistry;
+import io.kairo.plugin.component.SubagentMarkdownParser;
 import io.kairo.plugin.mcp.PluginMcpRegistrar;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -49,23 +52,39 @@ public final class KairoComponentRegistrar implements ComponentRegistrar {
     private final SkillRegistry skillRegistry;
     private final PluginMcpRegistrar mcpRegistrar;
     private final PluginEnvironment environment;
+    private final SubagentRegistry subagentRegistry;
+    private final SubagentMarkdownParser subagentParser = new SubagentMarkdownParser();
 
     private final ConcurrentHashMap<String, Deque<Runnable>> undoByPlugin =
             new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Integer> countByPlugin = new ConcurrentHashMap<>();
 
     /**
-     * @param skillRegistry kairo skill registry; may be null to skip skill/command binding
-     * @param mcpRegistrar MCP bridge; may be null to skip MCP binding
-     * @param environment plugin PATH aggregator; may be null to skip bin/ binding
+     * 3-arg convenience constructor: no SubagentRegistry binding (agent components are captured but
+     * not registered). Provided for backwards compatibility with existing wiring.
      */
     public KairoComponentRegistrar(
             SkillRegistry skillRegistry,
             PluginMcpRegistrar mcpRegistrar,
             PluginEnvironment environment) {
+        this(skillRegistry, mcpRegistrar, environment, null);
+    }
+
+    /**
+     * @param skillRegistry kairo skill registry; may be null to skip skill/command binding
+     * @param mcpRegistrar MCP bridge; may be null to skip MCP binding
+     * @param environment plugin PATH aggregator; may be null to skip bin/ binding
+     * @param subagentRegistry subagent catalog; may be null to skip agent binding
+     */
+    public KairoComponentRegistrar(
+            SkillRegistry skillRegistry,
+            PluginMcpRegistrar mcpRegistrar,
+            PluginEnvironment environment,
+            SubagentRegistry subagentRegistry) {
         this.skillRegistry = skillRegistry;
         this.mcpRegistrar = mcpRegistrar;
         this.environment = environment;
+        this.subagentRegistry = subagentRegistry;
     }
 
     @Override
@@ -123,13 +142,16 @@ public final class KairoComponentRegistrar implements ComponentRegistrar {
             // Commands are flat skills — same loader path.
             return registerSkill(pluginId, cmd.commandFile(), cmd.name(), undos);
         }
+        if (c instanceof PluginComponent.AgentComponent agent) {
+            return registerAgent(pluginId, agent, undos);
+        }
         if (c instanceof PluginComponent.McpComponent mcp) {
             return registerMcp(pluginId, mcp, undos);
         }
         if (c instanceof PluginComponent.BinComponent bin) {
             return registerBin(pluginId, bin, undos);
         }
-        // Agent/Hook/OutputStyle/Theme: captured but not yet bound. Push a no-op undo so
+        // Hook/OutputStyle/Theme: captured but not yet bound. Push a no-op undo so
         // unregisterAll's count remains accurate.
         undos.push(() -> {});
         log.debug(
@@ -137,6 +159,41 @@ public final class KairoComponentRegistrar implements ComponentRegistrar {
                 c.getClass().getSimpleName(),
                 pluginId);
         return Mono.empty();
+    }
+
+    private Mono<Void> registerAgent(
+            String pluginId, PluginComponent.AgentComponent agent, Deque<Runnable> undos) {
+        if (subagentRegistry == null) {
+            undos.push(() -> {});
+            return Mono.empty();
+        }
+        return Mono.fromRunnable(
+                () -> {
+                    try {
+                        SubagentDefinition def =
+                                subagentParser.parse(agent.agentFile(), agent.namespace());
+                        subagentRegistry.register(def);
+                        String qualifiedName = def.qualifiedName();
+                        undos.push(
+                                () -> {
+                                    try {
+                                        subagentRegistry.unregister(qualifiedName);
+                                    } catch (Exception e) {
+                                        log.debug(
+                                                "Subagent unregister of '{}' failed: {}",
+                                                qualifiedName,
+                                                e.getMessage());
+                                    }
+                                });
+                    } catch (Exception e) {
+                        throw new RuntimeException(
+                                "Failed to register subagent from "
+                                        + agent.agentFile()
+                                        + ": "
+                                        + e.getMessage(),
+                                e);
+                    }
+                });
     }
 
     private Mono<Void> registerSkill(

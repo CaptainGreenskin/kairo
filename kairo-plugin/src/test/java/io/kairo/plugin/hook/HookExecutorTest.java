@@ -122,7 +122,8 @@ class HookExecutorTest {
     }
 
     @Test
-    void promptActionStubReturnsEmpty() {
+    void unregisteredCustomActionTypeReturnsNoOpResult() {
+        // No handler registered for prompt — should return empty without crashing.
         var action = new HookAction("prompt", Map.of("prompt", "ok?"));
         var result = executor.execute(action, Map.of(), null).block(Duration.ofSeconds(5));
         assertThat(result.exitCode()).isZero();
@@ -130,17 +131,68 @@ class HookExecutorTest {
     }
 
     @Test
-    void agentActionStubReturnsEmpty() {
-        var action = new HookAction("agent", Map.of("prompt", "verify"));
+    void registeredCustomHandlerIsInvoked() {
+        var calls = new java.util.concurrent.atomic.AtomicInteger(0);
+        executor.withHandler(
+                new HookActionHandler() {
+                    @Override
+                    public String type() {
+                        return "prompt";
+                    }
+
+                    @Override
+                    public reactor.core.publisher.Mono<HookExecutor.HookResult> execute(
+                            HookAction action,
+                            Map<String, Object> payload,
+                            io.kairo.plugin.variable.PluginVariableResolver resolver) {
+                        calls.incrementAndGet();
+                        return reactor.core.publisher.Mono.just(
+                                new HookExecutor.HookResult(0, "ok", "", Map.of("ok", true)));
+                    }
+                });
+
+        var action = new HookAction("prompt", Map.of("prompt", "ok?"));
         var result = executor.execute(action, Map.of(), null).block(Duration.ofSeconds(5));
-        assertThat(result.exitCode()).isZero();
+        assertThat(calls.get()).isEqualTo(1);
+        assertThat(result.rawOutput()).isEqualTo("ok");
+        assertThat(result.decision()).containsEntry("ok", true);
     }
 
     @Test
-    void mcpToolActionStubReturnsEmpty() {
-        var action = new HookAction("mcp_tool", Map.of("server", "x", "tool", "y"));
+    void hasHandlerReportsBuiltinAndCustomTypes() {
+        assertThat(executor.hasHandler("command")).isTrue();
+        assertThat(executor.hasHandler("http")).isTrue();
+        assertThat(executor.hasHandler("prompt")).isFalse();
+        executor.withHandler(stubHandler("prompt"));
+        assertThat(executor.hasHandler("prompt")).isTrue();
+    }
+
+    @Test
+    void cannotOverrideBuiltinTypesViaWithHandler() {
+        // Attempting to register a handler for "command" is silently ignored — the built-in wins.
+        executor.withHandler(stubHandler("command"));
+        // The actual command path still runs via the built-in (it would fail on the missing
+        // 'command' field, not be replaced by the stub).
+        var action = new HookAction("command", Map.of());
         var result = executor.execute(action, Map.of(), null).block(Duration.ofSeconds(5));
-        assertThat(result.exitCode()).isZero();
+        assertThat(result.errorOutput()).contains("missing 'command'");
+    }
+
+    private static HookActionHandler stubHandler(String type) {
+        return new HookActionHandler() {
+            @Override
+            public String type() {
+                return type;
+            }
+
+            @Override
+            public reactor.core.publisher.Mono<HookExecutor.HookResult> execute(
+                    HookAction action,
+                    Map<String, Object> payload,
+                    io.kairo.plugin.variable.PluginVariableResolver resolver) {
+                return reactor.core.publisher.Mono.just(HookExecutor.HookResult.empty());
+            }
+        };
     }
 
     @Test
