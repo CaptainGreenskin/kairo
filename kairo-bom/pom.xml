@@ -71,6 +71,26 @@
                 <artifactId>kairo-cron</artifactId>
                 <version>${revision}</version>
             </dependency>
+            <dependency>
+                <groupId>io.github.captaingreenskin</groupId>
+                <artifactId>kairo-event-stream</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captaingreenskin</groupId>
+                <artifactId>kairo-event-stream-sse</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captaingreenskin</groupId>
+                <artifactId>kairo-event-stream-ws</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captaingreenskin</groupId>
+                <artifactId>kairo-spring-boot-starter-event-stream</artifactId>
+                <version>${revision}</version>
+            </dependency>
             <!-- Transitive deps surfaced by kairo-plugin (so consumers can rely on the BOM
                  instead of pinning versions themselves). -->
             <dependency>
