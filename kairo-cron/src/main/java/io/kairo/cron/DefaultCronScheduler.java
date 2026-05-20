@@ -124,9 +124,12 @@ public class DefaultCronScheduler implements CronScheduler {
             throw new IllegalStateException(
                     "Maximum number of cron jobs (" + MAX_JOBS + ") reached");
         }
-        CronExpression expr = CronExpression.parse(cron);
+        // Accept Hermes-style "every Nm" / "every 1d at 09:00" alongside 5-field cron.
+        String normalisedCron = ScheduleSyntax.toCron(cron);
+        CronExpression expr = CronExpression.parse(normalisedCron);
         String id = generateId();
-        CronTask task = new CronTask(id, cron, prompt, Instant.now(), null, recurring, durable);
+        CronTask task =
+                new CronTask(id, normalisedCron, prompt, Instant.now(), null, recurring, durable);
         tasks.put(id, new TaskEntry(task, expr));
         if (durable) {
             persistDurableTasks();
@@ -373,10 +376,12 @@ public class DefaultCronScheduler implements CronScheduler {
         TaskEntry te = tasks.get(taskId);
         if (te == null) return Optional.empty();
         CronExpression newExpr = te.expression;
+        String resolvedCron = newCron;
         if (newCron != null && !newCron.isBlank()) {
-            newExpr = CronExpression.parse(newCron); // throws on invalid — preserved
+            resolvedCron = ScheduleSyntax.toCron(newCron);
+            newExpr = CronExpression.parse(resolvedCron); // throws on invalid — preserved
         }
-        CronTask updated = te.task.withCronAndPrompt(newCron, newPrompt);
+        CronTask updated = te.task.withCronAndPrompt(resolvedCron, newPrompt);
         te.task = updated;
         te.expression = newExpr;
         tasks.put(taskId, te);
