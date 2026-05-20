@@ -105,6 +105,8 @@
         <netty.version>4.1.132.Final</netty.version>
         <mockwebserver.version>5.3.2</mockwebserver.version>
         <assertj.version>3.27.7</assertj.version>
+        <commons-compress.version>1.27.1</commons-compress.version>
+        <jgit.version>7.1.0.202411261347-r</jgit.version>
         <jacoco.line.threshold>0</jacoco.line.threshold>
     </properties>
 
@@ -187,6 +189,16 @@
                 <artifactId>mockwebserver</artifactId>
                 <version>${mockwebserver.version}</version>
                 <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-compress</artifactId>
+                <version>${commons-compress.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.jgit</groupId>
+                <artifactId>org.eclipse.jgit</artifactId>
+                <version>${jgit.version}</version>
             </dependency>
             <!-- MCP SDK (split into core + jackson2 for Jackson 2.x compatibility) -->
             <dependency>

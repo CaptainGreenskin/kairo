@@ -23,6 +23,7 @@ import io.kairo.api.sandbox.SandboxRequest;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executors;
@@ -30,6 +31,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -68,6 +70,22 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
     /** Maximum bytes read per pump iteration; small enough to keep memory bounded. */
     private static final int READ_BUFFER_SIZE = 4 * 1024;
 
+    private final Duration idleTimeout;
+
+    /** Public no-arg constructor uses the environment-derived default idle timeout. */
+    public LocalProcessSandbox() {
+        this(null);
+    }
+
+    /**
+     * Package-private constructor for testing with a custom idle timeout.
+     *
+     * @param idleTimeout custom idle timeout, or {@code null} to use the environment default
+     */
+    LocalProcessSandbox(Duration idleTimeout) {
+        this.idleTimeout = idleTimeout;
+    }
+
     @Override
     public SandboxHandle start(SandboxRequest request) {
         Objects.requireNonNull(request, "request");
@@ -84,7 +102,7 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
                 environment.putAll(request.env());
             }
             Process process = pb.start();
-            return new LocalHandle(process, request);
+            return new LocalHandle(process, request, idleTimeout);
         } catch (IOException e) {
             throw new IllegalStateException(
                     "Failed to start sandbox process: " + e.getMessage(), e);
@@ -93,21 +111,31 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
 
     private static final class LocalHandle implements SandboxHandle {
 
+        static final Duration DEFAULT_IDLE_TIMEOUT =
+                Duration.ofSeconds(
+                        Long.parseLong(
+                                System.getenv().getOrDefault("KAIRO_BASH_IDLE_TIMEOUT_S", "60")));
+
         private final Process process;
         private final SandboxRequest request;
+        private final Duration idleTimeout;
         private final Sinks.Many<SandboxOutputChunk> outputSink;
         private final Sinks.One<SandboxExit> exitSink;
         private final ScheduledExecutorService scheduler;
         private final ScheduledFuture<?> watchdog;
+        private final ScheduledFuture<?> idleWatchdog;
         private final Thread reader;
         private final AtomicBoolean timedOut = new AtomicBoolean(false);
+        private final AtomicBoolean idleTimedOut = new AtomicBoolean(false);
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
         private final AtomicBoolean truncated = new AtomicBoolean(false);
         private final AtomicBoolean closed = new AtomicBoolean(false);
+        private final AtomicLong lastOutputTime = new AtomicLong(System.nanoTime());
 
-        LocalHandle(Process process, SandboxRequest request) {
+        LocalHandle(Process process, SandboxRequest request, Duration customIdleTimeout) {
             this.process = process;
             this.request = request;
+            this.idleTimeout = customIdleTimeout != null ? customIdleTimeout : DEFAULT_IDLE_TIMEOUT;
             this.outputSink = Sinks.many().multicast().onBackpressureBuffer();
             this.exitSink = Sinks.one();
             this.scheduler =
@@ -120,6 +148,9 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
             this.watchdog =
                     scheduler.schedule(
                             this::onTimeout, request.timeout().toMillis(), TimeUnit.MILLISECONDS);
+            this.idleWatchdog =
+                    scheduler.scheduleAtFixedRate(
+                            this::checkIdle, idleTimeout.toMillis(), 5_000, TimeUnit.MILLISECONDS);
             this.reader = new Thread(this::pumpAndComplete, "kairo-sandbox-reader");
             this.reader.setDaemon(true);
             this.reader.start();
@@ -149,6 +180,7 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
             }
             cancel();
             watchdog.cancel(true);
+            if (idleWatchdog != null) idleWatchdog.cancel(false);
             scheduler.shutdownNow();
         }
 
@@ -159,12 +191,21 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
             }
         }
 
+        private void checkIdle() {
+            long elapsed = System.nanoTime() - lastOutputTime.get();
+            if (elapsed > idleTimeout.toNanos() && process.isAlive()) {
+                idleTimedOut.set(true);
+                process.destroyForcibly();
+            }
+        }
+
         private void pumpAndComplete() {
             long emitted = 0L;
             try (InputStream in = process.getInputStream()) {
                 byte[] buf = new byte[READ_BUFFER_SIZE];
                 int n;
                 while ((n = in.read(buf)) != -1) {
+                    lastOutputTime.set(System.nanoTime());
                     long remaining = request.maxOutputBytes() - emitted;
                     if (remaining <= 0) {
                         truncated.set(true);
@@ -199,6 +240,9 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
             if (timedOut.get()) {
                 signal = "TIMEOUT";
                 code = -1;
+            } else if (idleTimedOut.get()) {
+                signal = "IDLE_TIMEOUT";
+                code = -1;
             } else if (cancelled.get()) {
                 signal = "CANCELLED";
                 code = -1;
@@ -206,6 +250,7 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
             outputSink.tryEmitComplete();
             exitSink.tryEmitValue(new SandboxExit(code, signal, timedOut.get(), truncated.get()));
             watchdog.cancel(true);
+            if (idleWatchdog != null) idleWatchdog.cancel(false);
             scheduler.shutdownNow();
         }
     }

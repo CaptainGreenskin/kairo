@@ -48,5 +48,69 @@ public enum HookPhase {
      * Fired when the model response contains no tool calls (agent about to return a final answer).
      * Hooks returning INJECT force another iteration; analogous to claude-code preventContinuation.
      */
-    PRE_COMPLETE
+    PRE_COMPLETE,
+
+    // ── User interaction domain ─────────────────────────────────────────────
+
+    /** Fired when the user submits a prompt, before the agent processes it. */
+    USER_PROMPT_SUBMIT,
+    /** Fired when a user-typed command expands into a prompt, before it reaches the agent. */
+    USER_PROMPT_EXPANSION,
+    /** Fired when the agent sends a notification (e.g. idle prompt, permission prompt). */
+    NOTIFICATION,
+
+    // ── Permission domain ───────────────────────────────────────────────────
+
+    /** Fired when a permission dialog appears (tool needs user approval). */
+    PERMISSION_REQUEST,
+    /** Fired when a tool call is denied by the approval classifier. */
+    PERMISSION_DENIED,
+
+    // ── Tool domain (extended) ──────────────────────────────────────────────
+
+    /** Fired after a tool call fails (distinct from POST_ACTING which fires on success). */
+    POST_TOOL_FAILURE,
+    /** Fired after a full batch of parallel tool calls resolves. */
+    POST_TOOL_BATCH,
+
+    // ── Sub-agent domain ────────────────────────────────────────────────────
+
+    /** Fired when a sub-agent is spawned. */
+    SUBAGENT_START,
+    /** Fired when a sub-agent finishes. */
+    SUBAGENT_STOP,
+
+    // ── Multi-agent collaboration domain ────────────────────────────────────
+
+    /** Fired when a teammate agent goes idle between turns. */
+    TEAMMATE_IDLE,
+    /** Fired when a task is being created. */
+    TASK_CREATED,
+    /** Fired when a task is being marked as completed. */
+    TASK_COMPLETED,
+
+    // ── Environment domain ──────────────────────────────────────────────────
+
+    /** Fired during initialization or maintenance setup. */
+    SETUP,
+    /** Fired when a configuration file changes during a session. */
+    CONFIG_CHANGE,
+    /** Fired when the working directory changes. */
+    CWD_CHANGED,
+    /** Fired when a watched file changes on disk. */
+    FILE_CHANGED,
+
+    // ── Lifecycle (extended) ────────────────────────────────────────────────
+
+    /** Fired when system instructions (e.g. CLAUDE.md) are loaded into context. */
+    INSTRUCTIONS_LOADED,
+    /** Fired when the turn ends due to an API error. */
+    STOP_FAILURE,
+
+    // ── Worktree domain ─────────────────────────────────────────────────────
+
+    /** Fired when a worktree is being created. */
+    WORKTREE_CREATE,
+    /** Fired when a worktree is being removed. */
+    WORKTREE_REMOVE
 }

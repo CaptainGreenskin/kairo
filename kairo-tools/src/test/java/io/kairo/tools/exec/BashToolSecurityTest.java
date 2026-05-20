@@ -27,6 +27,7 @@ import io.kairo.api.sandbox.SandboxOutputChunk;
 import io.kairo.api.sandbox.SandboxRequest;
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolEvent;
+import io.kairo.api.tool.ToolOutcome;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.workspace.Workspace;
 import java.nio.charset.StandardCharsets;
@@ -34,15 +35,24 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
  * Security-focused tests for {@link BashTool}.
  *
- * <p>These tests validate injection protection, sandbox boundaries, timeout enforcement, and output
- * safety. They mock the {@link ExecutionSandbox} SPI to verify BashTool's handling of adversarial
- * inputs without depending on a specific sandbox backend.
+ * <p>These tests validate the 3-tier command safety model:
+ *
+ * <ul>
+ *   <li>Tier 1 (Catastrophic) — hard-blocked by {@code checkCatastrophic()}
+ *   <li>Tier 2 (Dangerous) — approval-gated via {@code isDangerous()} + ApprovalGate
+ *   <li>Tier 3 (Safe) — executed normally
+ * </ul>
+ *
+ * <p>Also validates injection protection, sandbox boundaries, timeout enforcement, and output
+ * safety. Mocks the {@link ExecutionSandbox} SPI where needed.
  */
 class BashToolSecurityTest {
 
@@ -52,12 +62,10 @@ class BashToolSecurityTest {
 
     private static final ToolContext CTX = new ToolContext("agent-1", "sess-1", Map.of());
 
-    /** Helper to stream and extract final result using default CTX. */
     private ToolResult exec(Map<String, Object> args) {
         return exec(args, CTX);
     }
 
-    /** Helper to stream and extract final result using provided context. */
     private ToolResult exec(Map<String, Object> args, ToolContext ctx) {
         return tool.stream(args, ctx)
                 .filter(e -> e instanceof ToolEvent.Final)
@@ -75,30 +83,153 @@ class BashToolSecurityTest {
         when(mockContext.workspace()).thenReturn(Workspace.cwd());
     }
 
+    // --- Tier 1: Catastrophic commands (hard-blocked) ---
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "rm -rf /",
+                "rm -rf /*",
+                "rm -rf ~/",
+                "rm -rf .git",
+                "mkfs /dev/sda",
+                "dd if=/dev/zero of=/dev/sda",
+                "shred /dev/sda",
+                "wipefs /dev/sda"
+            })
+    void catastrophicCommandsAreHardBlocked(String cmd) {
+        ToolResult result = exec(Map.of("command", cmd));
+        assertTrue(result.isError(), "Should block catastrophic: " + cmd);
+        assertTrue(
+                result.content().contains("Blocked"),
+                "Error should contain 'Blocked': " + result.content());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"sudo apt-get install vim", "su - root", "doas reboot"})
+    void blockedElevatedPrivilegeCommands(String cmd) {
+        ToolResult result = exec(Map.of("command", cmd));
+        assertTrue(result.isError(), "Should block: " + cmd);
+        assertTrue(result.content().contains("elevated privileges"));
+    }
+
+    @Test
+    void catastrophicCommandInChainWithSemicolon() {
+        ToolResult result = exec(Map.of("command", "echo safe; rm -rf /"));
+        assertTrue(result.isError());
+        assertTrue(result.content().contains("Blocked"));
+    }
+
+    @Test
+    void sudoInChainWithSemicolon() {
+        ToolResult result = exec(Map.of("command", "echo safe; sudo reboot"));
+        assertTrue(result.isError());
+        assertTrue(result.content().contains("Blocked"));
+    }
+
+    @Test
+    void catastrophicCommandOutcomeIsError() {
+        ToolResult result = exec(Map.of("command", "rm -rf /"));
+        assertTrue(result.isError());
+        assertEquals(ToolOutcome.ERROR, result.outcome());
+    }
+
+    // --- Tier 2: Dangerous commands (approval-gated, not hard-blocked) ---
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "rm -rf /etc/nginx",
+                "chmod 777 /var/www",
+                "shutdown -h now",
+                "git push --force origin main"
+            })
+    void dangerousCommandsAreNotHardBlocked(String cmd) {
+        ToolResult result = exec(Map.of("command", cmd));
+        assertFalse(
+                result.content().contains("Blocked"),
+                "Dangerous command should not be hard-blocked: " + cmd);
+    }
+
+    // --- Tier 3: Safe commands (no longer blocked) ---
+    // NOTE: paths use /tmp/nonexist_ prefix to avoid harming the build during test execution
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "rm /tmp/nonexist_file.java",
+                "rm -rf /tmp/nonexist_target/",
+                "rm -rf /tmp/nonexist_node_modules/",
+                "rmdir /tmp/nonexist_empty_dir",
+                "chmod +x /tmp/nonexist_script.sh",
+                "chmod 644 /tmp/nonexist_file.txt",
+                "chown user:group /tmp/nonexist_file.txt",
+                "find /tmp/nonexist_dir -name '*.class' -delete",
+                "find /tmp/nonexist_dir -exec rm {} \\;",
+                "echo safe | xargs echo rm",
+                "mv /tmp/nonexist_file1 /tmp/nonexist_file2",
+                "echo hello && rm -rf /tmp/nonexist_data"
+            })
+    void previouslyOverBlockedCommandsAreNowAllowed(String cmd) {
+        ToolResult result = exec(Map.of("command", cmd));
+        assertFalse(
+                result.content().contains("Blocked"),
+                "Should NOT be blocked (was over-blocked before): "
+                        + cmd
+                        + ", got: "
+                        + result.content());
+    }
+
+    @Test
+    void rmFileIsNotBlocked() {
+        ToolResult result = exec(Map.of("command", "rm /tmp/nonexist_file.java"));
+        assertFalse(
+                result.content().contains("Blocked"),
+                "rm file.java must not be blocked — this is the original bug");
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "ls -la",
+                "cat /dev/null",
+                "echo hello world",
+                "git rm --dry-run file.txt",
+                "grep -r 'pattern' /dev/null",
+                "find /tmp -maxdepth 0 -name '*.java' -type f",
+                "ps aux",
+                "pwd"
+            })
+    void allowedSafeCommands(String cmd) {
+        ToolResult result = exec(Map.of("command", cmd));
+        assertFalse(
+                result.content().contains("Blocked"),
+                "Should not block: " + cmd + ", got: " + result.content());
+    }
+
+    @Test
+    void gitRmIsNotBlocked() {
+        ToolResult result = exec(Map.of("command", "git rm --dry-run file.txt"));
+        assertFalse(result.content().contains("Blocked"));
+    }
+
     // --- Shell injection attempts ---
 
     @Test
-    void shellInjectionWithSemicolonProducesOutputFromBothCommands() {
-        // Semicolon injection: /bin/sh -c runs the entire string as one script.
-        // `rm -rf /` fails without root, so exit code is non-zero, but echo output
-        // is still captured — confirming the sandbox executes the full string safely.
+    void shellInjectionWithSemicolonAndCatastrophicIsBlocked() {
         ToolResult result = exec(Map.of("command", "echo safe; rm -rf /"));
-        assertTrue(result.isError(), "rm -rf / fails without root, so exit code is non-zero");
-        assertTrue(result.content().contains("safe"));
+        assertTrue(result.isError(), "Command should be blocked by catastrophic check");
+        assertTrue(result.content().contains("Blocked"));
     }
 
     @Test
     void shellInjectionWithBackticksIsContained() {
-        // Backtick injection — the inner command runs as part of the shell string
         ToolResult result = exec(Map.of("command", "echo `whoami`"));
-        // This is expected behaviour: /bin/sh -c evaluates the full string.
-        // The test confirms no crash and that output is captured.
         assertFalse(result.isError());
     }
 
     @Test
     void shellInjectionWithDollarParenthesisIsContained() {
-        // $(cmd) injection — same containment via /bin/sh -c
         ToolResult result = exec(Map.of("command", "echo $(date)"));
         assertFalse(result.isError());
     }
@@ -107,7 +238,6 @@ class BashToolSecurityTest {
 
     @Test
     void commandWithNewlineRunsBothLines() {
-        // /bin/sh -c treats \n as a command separator, both lines execute
         ToolResult result = exec(Map.of("command", "echo first\necho second"));
         assertFalse(result.isError());
         assertTrue(result.content().contains("first"));
@@ -127,22 +257,16 @@ class BashToolSecurityTest {
 
     @Test
     void timeoutLeavesNoZombieProcess() {
-        // After timeout, verify the sandbox handle is properly closed
-        // by running multiple slow commands and checking they don't accumulate
         for (int i = 0; i < 3; i++) {
             ToolResult result = exec(Map.of("command", "sleep 60", "timeout", 1));
             assertTrue(result.isError());
         }
-        // If processes leaked, system load would be abnormal; the test passing
-        // means handles were closed properly
     }
 
     // --- Sandbox switching consistency ---
 
     @Test
     void mockDockerSandboxProducesSameResultShape() {
-        // Verify BashTool handles any ExecutionSandbox implementation identically
-        // by mocking a sandbox that simulates Docker-like behaviour
         SandboxHandle mockHandle = createSuccessfulHandle("docker-output", 0);
         when(mockSandbox.start(any(SandboxRequest.class))).thenReturn(mockHandle);
 
@@ -154,7 +278,6 @@ class BashToolSecurityTest {
 
     @Test
     void mockSandboxTimeoutProducesConsistentError() {
-        // Simulate a sandbox (e.g. DockerSandbox) that times out
         SandboxHandle mockHandle = createTimedOutHandle();
         when(mockSandbox.start(any(SandboxRequest.class))).thenReturn(mockHandle);
 
@@ -183,7 +306,6 @@ class BashToolSecurityTest {
 
     @Test
     void largeOutputIsTruncatedAtThreshold() {
-        // Generate >100KB of output using a shell loop
         ToolResult result =
                 exec(Map.of("command", "for i in $(seq 1 2000); do printf '%0100d' 0; done"));
         assertFalse(result.isError());
@@ -236,6 +358,37 @@ class BashToolSecurityTest {
         assertEquals(127, result.metadata().get("exitCode"));
     }
 
+    // --- IDLE_TIMEOUT diagnostic ---
+
+    @Test
+    void idleTimeoutSignalProducesDiagnosticMessage() {
+        SandboxHandle mockHandle = createIdleTimeoutHandle("partial-output");
+        when(mockSandbox.start(any(SandboxRequest.class))).thenReturn(mockHandle);
+
+        ToolResult result = exec(Map.of("command", "cat"), mockContext);
+        assertTrue(result.isError(), "IDLE_TIMEOUT should be an error");
+        assertEquals(ToolOutcome.ERROR, result.outcome());
+        assertTrue(
+                result.content().contains("no stdout for"),
+                "Should contain 'no stdout for' diagnostic: " + result.content());
+        assertTrue(
+                result.content().contains("KAIRO_BASH_IDLE_TIMEOUT_S"),
+                "Should mention KAIRO_BASH_IDLE_TIMEOUT_S env var: " + result.content());
+        assertEquals("IDLE_TIMEOUT", result.metadata().get("signal"));
+        assertEquals(-1, result.metadata().get("exitCode"));
+    }
+
+    @Test
+    void idleTimeoutWithNoOutputShowsDiagnosticOnly() {
+        SandboxHandle mockHandle = createIdleTimeoutHandle("");
+        when(mockSandbox.start(any(SandboxRequest.class))).thenReturn(mockHandle);
+
+        ToolResult result = exec(Map.of("command", "stalled-cmd"), mockContext);
+        assertTrue(result.isError());
+        assertTrue(result.content().contains("no stdout for"));
+        assertTrue(result.content().contains("KAIRO_BASH_IDLE_TIMEOUT_S"));
+    }
+
     // --- Helper factories for mock handles ---
 
     private SandboxHandle createSuccessfulHandle(String output, int exitCode) {
@@ -269,6 +422,30 @@ class BashToolSecurityTest {
             @Override
             public Mono<SandboxExit> exit() {
                 return Mono.just(new SandboxExit(-1, "TIMEOUT", true, false));
+            }
+
+            @Override
+            public void cancel() {}
+
+            @Override
+            public void close() {}
+        };
+    }
+
+    private SandboxHandle createIdleTimeoutHandle(String output) {
+        return new SandboxHandle() {
+            @Override
+            public Flux<SandboxOutputChunk> output() {
+                if (output.isEmpty()) {
+                    return Flux.empty();
+                }
+                return Flux.just(
+                        new SandboxOutputChunk.Stdout(output.getBytes(StandardCharsets.UTF_8)));
+            }
+
+            @Override
+            public Mono<SandboxExit> exit() {
+                return Mono.just(new SandboxExit(-1, "IDLE_TIMEOUT", false, false));
             }
 
             @Override

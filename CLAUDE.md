@@ -59,6 +59,8 @@ io.kairo.evolution.*← 进化机制
 | `Channel` | `io.kairo.api.channel.Channel` | 消息频道集成 |
 | `TeamCoordinator` | `io.kairo.api.team.TeamCoordinator` | 多智能体编排 |
 | `WorkspaceProvider` | `io.kairo.api.workspace.WorkspaceProvider` | 工作空间管理 |
+| `PluginManager` | `io.kairo.api.plugin.PluginManager` | Plugin install/enable/disable/uninstall（v1.2 @Experimental） |
+| `SubagentRegistry` | `io.kairo.api.agent.SubagentRegistry` | Subagent 注册（agents/*.md 目标）|
 
 ### Hook 生命周期（10个点）
 
@@ -67,6 +69,25 @@ PreToolExecute → PostToolExecute → PreModelCall → PostModelCall →
 OnLoopDetected → OnError
 
 Hook 决策值：CONTINUE / MODIFY / SKIP / ABORT / INJECT
+
+### Plugin 体系（v1.2，@Experimental）
+
+Kairo 读 **Claude Code 的 plugin 文件格式**（`plugin.json` / `SKILL.md` /
+`hooks.json` / `.mcp.json` / `marketplace.json`）— schema 共享，目录命名空间是 Kairo
+自己的（`.kairo-plugin/`）。详见 [ADR-029](docs/adr/ADR-029-plugin-spi-claude-code-compat.md)
+和 [docs/en/guide/plugins.md](docs/en/guide/plugins.md)。
+
+- **5 种 source**: LocalPath / GitHub / GitUrl / GitSubdir / Npm（全部 5 种已实装）
+- **组件类型**: skills / commands / agents / hooks / mcp / bin / output-styles
+- **注册顺序**（原子）: tools → skills → agents → hooks → mcp → bin → outputStyles
+- **缓存**: `~/.kairo/plugins/cache/<type>/<sha8>/`
+- **数据**: `~/.kairo/plugins/data/<plugin-name>/`
+- **变量**: `${KAIRO_PLUGIN_ROOT}` canonical，`${CLAUDE_PLUGIN_ROOT}` compat alias
+- **关键类**:
+  - 入口: `io.kairo.plugin.DefaultPluginManager`
+  - 加载器: `io.kairo.plugin.PluginLoader`
+  - Hook 桥接: `io.kairo.plugin.hook.HookEventMapper` / `HookExecutor`
+  - MCP 桥接: `io.kairo.plugin.mcp.PluginMcpRegistrar`
 
 ### 上下文压缩阶段
 

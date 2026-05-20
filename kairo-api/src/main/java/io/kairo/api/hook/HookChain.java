@@ -246,4 +246,36 @@ public interface HookChain {
     default <T> Mono<HookResult<T>> firePreCompleteWithResult(T event) {
         return firePreComplete(event).map(HookResult::proceed);
     }
+
+    // ── Generic phase dispatch (v0.11+) ─────────────────────────────────────
+
+    /**
+     * Fire any {@link HookPhase} generically. Dispatches to both in-process {@link HookHandler}
+     * methods and file-configured external hooks (command/http) that match the phase.
+     *
+     * <p>This is the primary entry point for phases added in v0.11+ that don't have dedicated
+     * fire-methods. Legacy phases (PRE_ACTING, POST_ACTING, etc.) can also be fired via this
+     * method.
+     *
+     * @param phase the lifecycle phase to fire
+     * @param event the event to fire
+     * @param <T> the event type (must implement {@link HookEvent})
+     * @return a Mono emitting the (possibly modified) event
+     */
+    default <T extends HookEvent> Mono<T> firePhase(HookPhase phase, T event) {
+        return Mono.just(event);
+    }
+
+    /**
+     * Fire any {@link HookPhase} generically and return a structured result.
+     *
+     * @param phase the lifecycle phase to fire
+     * @param event the event to fire
+     * @param <T> the event type (must implement {@link HookEvent})
+     * @return a Mono emitting the structured hook result
+     */
+    default <T extends HookEvent> Mono<HookResult<T>> firePhaseWithResult(
+            HookPhase phase, T event) {
+        return firePhase(phase, event).map(HookResult::proceed);
+    }
 }

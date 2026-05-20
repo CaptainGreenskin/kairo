@@ -51,6 +51,9 @@ public final class ExpertTeamStateMachine {
         /** Producing a {@link io.kairo.api.team.TeamExecutionPlan} from the request. */
         PLANNING,
 
+        /** Plan produced and awaiting user confirmation (plan-preview mode). */
+        PLAN_READY,
+
         /** Dispatching the current step to its role-bound agent. */
         GENERATING,
 
@@ -72,22 +75,28 @@ public final class ExpertTeamStateMachine {
         TIMEOUT
     }
 
-    private static final Map<State, EnumSet<State>> ALLOWED =
-            Map.of(
-                    State.IDLE, EnumSet.of(State.PLANNING),
-                    State.PLANNING, EnumSet.of(State.GENERATING, State.FAILED),
-                    State.GENERATING, EnumSet.of(State.EVALUATING, State.FAILED, State.TIMEOUT),
-                    State.EVALUATING,
-                            EnumSet.of(
-                                    State.GENERATING,
-                                    State.COMPLETED,
-                                    State.FAILED,
-                                    State.DEGRADED,
-                                    State.TIMEOUT),
-                    State.COMPLETED, EnumSet.noneOf(State.class),
-                    State.FAILED, EnumSet.noneOf(State.class),
-                    State.DEGRADED, EnumSet.noneOf(State.class),
-                    State.TIMEOUT, EnumSet.noneOf(State.class));
+    private static final Map<State, EnumSet<State>> ALLOWED;
+
+    static {
+        Map<State, EnumSet<State>> map = new java.util.EnumMap<>(State.class);
+        map.put(State.IDLE, EnumSet.of(State.PLANNING));
+        map.put(State.PLANNING, EnumSet.of(State.GENERATING, State.PLAN_READY, State.FAILED));
+        map.put(State.PLAN_READY, EnumSet.of(State.GENERATING, State.FAILED));
+        map.put(State.GENERATING, EnumSet.of(State.EVALUATING, State.FAILED, State.TIMEOUT));
+        map.put(
+                State.EVALUATING,
+                EnumSet.of(
+                        State.GENERATING,
+                        State.COMPLETED,
+                        State.FAILED,
+                        State.DEGRADED,
+                        State.TIMEOUT));
+        map.put(State.COMPLETED, EnumSet.noneOf(State.class));
+        map.put(State.FAILED, EnumSet.noneOf(State.class));
+        map.put(State.DEGRADED, EnumSet.noneOf(State.class));
+        map.put(State.TIMEOUT, EnumSet.noneOf(State.class));
+        ALLOWED = java.util.Collections.unmodifiableMap(map);
+    }
 
     /** Whether {@code from -> to} is a legal transition. */
     public boolean canTransition(State from, State to) {

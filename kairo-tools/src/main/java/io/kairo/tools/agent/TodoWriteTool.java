@@ -54,6 +54,7 @@ import reactor.core.publisher.Mono;
                         + " on the first todo right away in the same turn.",
         category = ToolCategory.AGENT_AND_TASK,
         sideEffect = ToolSideEffect.WRITE)
+@Deprecated
 public class TodoWriteTool implements SyncTool {
 
     static final String TODO_FILE = ".kairo/todos.json";

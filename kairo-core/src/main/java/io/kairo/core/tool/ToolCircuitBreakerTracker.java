@@ -87,18 +87,22 @@ public final class ToolCircuitBreakerTracker {
     /**
      * Track a tool execution result for circuit breaker logic.
      *
+     * <p>Only infrastructure-level failures (TIMEOUT, CANCELLED) count toward the circuit breaker
+     * threshold. Application-level errors (e.g., bash returning non-zero) are expected during
+     * normal debugging and do not trip the breaker.
+     *
      * @param cbKey the composite circuit-breaker key
      * @param result the tool result to evaluate
      */
     public void track(String cbKey, ToolResult result) {
-        if (result.isError()) {
+        if (isInfrastructureFailure(result)) {
             AtomicInteger counter =
                     consecutiveFailures.computeIfAbsent(cbKey, k -> new AtomicInteger());
             int count = counter.incrementAndGet();
             if (count == threshold) {
                 log.warn(
                         "Circuit breaker for tool '{}' tripped OPEN"
-                                + " (consecutive failures >= threshold {})",
+                                + " (consecutive infrastructure failures >= threshold {})",
                         cbKey,
                         threshold);
                 publish(cbKey, CircuitBreakerEvent.State.CLOSED, CircuitBreakerEvent.State.OPEN);
@@ -110,6 +114,13 @@ public final class ToolCircuitBreakerTracker {
                 publish(cbKey, CircuitBreakerEvent.State.OPEN, CircuitBreakerEvent.State.CLOSED);
             }
         }
+    }
+
+    private static boolean isInfrastructureFailure(ToolResult result) {
+        if (result == null) return false;
+        var outcome = result.outcome();
+        return outcome == io.kairo.api.tool.ToolOutcome.TIMEOUT
+                || outcome == io.kairo.api.tool.ToolOutcome.CANCELLED;
     }
 
     private void publish(

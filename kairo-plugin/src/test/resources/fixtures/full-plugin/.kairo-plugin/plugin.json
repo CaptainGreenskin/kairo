@@ -1,0 +1,15 @@
+{
+  "name": "full-fixture",
+  "version": "1.2.3",
+  "description": "Plugin exercising every component type",
+  "author": { "name": "Kairo Team", "email": "team@kairo.io" },
+  "license": "Apache-2.0",
+  "homepage": "https://kairo.io",
+  "keywords": ["test", "fixture"],
+  "mcpServers": {
+    "demo": {
+      "command": "echo",
+      "args": ["hello-from-mcp"]
+    }
+  }
+}

@@ -19,6 +19,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.kairo.api.skill.SkillCategory;
 import io.kairo.api.skill.SkillDefinition;
+import io.kairo.api.skill.SkillMetadata;
+import io.kairo.api.skill.SkillVisibility;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -139,6 +141,53 @@ public class SkillMarkdownParser {
                     platform,
                     matchScore,
                     allowedTools.isEmpty() ? null : allowedTools);
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Invalid YAML front-matter: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Parse a Markdown string with YAML front-matter into a {@link SkillMetadata}, which includes
+     * visibility and model-invocation control.
+     *
+     * <p>Recognized front-matter fields beyond the base {@link SkillDefinition}:
+     *
+     * <ul>
+     *   <li>{@code visibility: VISIBLE|USER_ONLY|HIDDEN}
+     *   <li>{@code disable_model_invocation: true|false}
+     * </ul>
+     *
+     * @param markdown the raw Markdown content
+     * @return the parsed skill metadata
+     * @throws IllegalArgumentException if the format is invalid
+     */
+    public SkillMetadata parseWithMetadata(String markdown) {
+        if (markdown == null || markdown.isBlank()) {
+            throw new IllegalArgumentException("Markdown content is empty");
+        }
+
+        String trimmed = markdown.strip();
+        if (!trimmed.startsWith(FRONT_MATTER_DELIMITER)) {
+            throw new IllegalArgumentException("Missing YAML front-matter delimiter '---'");
+        }
+
+        int secondDelimiter =
+                trimmed.indexOf(FRONT_MATTER_DELIMITER, FRONT_MATTER_DELIMITER.length());
+        if (secondDelimiter < 0) {
+            throw new IllegalArgumentException("Missing closing YAML front-matter delimiter '---'");
+        }
+
+        String yamlBlock =
+                trimmed.substring(FRONT_MATTER_DELIMITER.length(), secondDelimiter).strip();
+
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> frontMatter = yamlMapper.readValue(yamlBlock, Map.class);
+            SkillVisibility visibility = parseVisibility(frontMatter);
+            boolean disableModelInvocation =
+                    getBooleanOrDefault(frontMatter, "disable_model_invocation", false);
+            SkillDefinition definition = parse(markdown);
+            return new SkillMetadata(definition, visibility, disableModelInvocation);
         } catch (IOException e) {
             throw new IllegalArgumentException("Invalid YAML front-matter: " + e.getMessage(), e);
         }
@@ -308,5 +357,29 @@ public class SkillMarkdownParser {
         } catch (IllegalArgumentException e) {
             return SkillCategory.GENERAL;
         }
+    }
+
+    private SkillVisibility parseVisibility(Map<String, Object> frontMatter) {
+        String value = getStringOrDefault(frontMatter, "visibility", null);
+        if (value == null) {
+            return SkillVisibility.VISIBLE;
+        }
+        try {
+            return SkillVisibility.valueOf(value.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("Unknown visibility '{}', defaulting to VISIBLE", value);
+            return SkillVisibility.VISIBLE;
+        }
+    }
+
+    private boolean getBooleanOrDefault(Map<String, Object> map, String key, boolean defaultValue) {
+        Object value = map.get(key);
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        return Boolean.parseBoolean(value.toString());
     }
 }

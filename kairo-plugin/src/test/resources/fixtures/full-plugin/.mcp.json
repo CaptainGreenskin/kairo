@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "secondary": {
+      "command": "${KAIRO_PLUGIN_ROOT}/bin/extra-mcp",
+      "args": ["--stdio"],
+      "env": {"DEBUG": "1"}
+    }
+  }
+}

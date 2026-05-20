@@ -30,5 +30,6 @@
         <module>../kairo-evolution</module>
         <module>../kairo-expert-team</module>
         <module>../kairo-security-pii</module>
+        <module>../kairo-plugin</module>
     </modules>
 </project>

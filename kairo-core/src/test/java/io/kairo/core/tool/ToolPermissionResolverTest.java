@@ -24,6 +24,11 @@ import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolPermission;
 import io.kairo.api.tool.ToolSideEffect;
+import io.kairo.core.tool.permission.PermissionMode;
+import io.kairo.core.tool.permission.PermissionRule;
+import io.kairo.core.tool.permission.PermissionSettings;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -228,5 +233,164 @@ class ToolPermissionResolverTest {
     @Test
     void getPermissionGuard_returnsConfiguredGuard() {
         assertSame(guard, resolver.getPermissionGuard());
+    }
+
+    // ===== Permission mode =====
+
+    @Test
+    void defaultMode_isDefault() {
+        assertEquals(PermissionMode.DEFAULT, resolver.getMode());
+    }
+
+    @Test
+    void setMode_strictChangesDefaults() {
+        resolver.setMode(PermissionMode.STRICT);
+        assertEquals(PermissionMode.STRICT, resolver.getMode());
+        assertEquals(
+                ToolPermission.ASK, resolver.resolvePermission("write_file", ToolSideEffect.WRITE));
+    }
+
+    @Test
+    void setMode_bypassAllowsAll() {
+        resolver.setMode(PermissionMode.BYPASS);
+        assertEquals(
+                ToolPermission.ALLOWED,
+                resolver.resolvePermission("bash", ToolSideEffect.SYSTEM_CHANGE));
+    }
+
+    @Test
+    void setPlanMode_setsModeToPlan() {
+        resolver.setPlanMode(true);
+        assertTrue(resolver.isPlanMode());
+        assertEquals(PermissionMode.PLAN, resolver.getMode());
+    }
+
+    @Test
+    void setPlanMode_restoresPreviousMode() {
+        resolver.setMode(PermissionMode.STRICT);
+        resolver.setPlanMode(true);
+        assertEquals(PermissionMode.PLAN, resolver.getMode());
+
+        resolver.setPlanMode(false);
+        assertEquals(PermissionMode.STRICT, resolver.getMode());
+    }
+
+    @Test
+    void setPlanMode_restoresDefaultWhenNoPrevious() {
+        resolver.setPlanMode(true);
+        resolver.setPlanMode(false);
+        assertEquals(PermissionMode.DEFAULT, resolver.getMode());
+    }
+
+    // ===== Rule engine integration =====
+
+    @Test
+    void rulesMatchBeforeCategoryDefault() {
+        resolver.setRules(List.of(PermissionRule.parse("Bash(npm test*)", ToolPermission.ALLOWED)));
+
+        assertEquals(
+                ToolPermission.ALLOWED,
+                resolver.resolvePermission(
+                        "bash",
+                        ToolSideEffect.SYSTEM_CHANGE,
+                        Map.of("command", "npm test --verbose")));
+    }
+
+    @Test
+    void rulesNoMatchFallsToModeDefault() {
+        resolver.setRules(List.of(PermissionRule.parse("Bash(npm test*)", ToolPermission.ALLOWED)));
+
+        assertEquals(
+                ToolPermission.ASK,
+                resolver.resolvePermission(
+                        "bash", ToolSideEffect.SYSTEM_CHANGE, Map.of("command", "rm -rf /")));
+    }
+
+    @Test
+    void toolSpecificOverrideBeatRules() {
+        resolver.setToolPermission("bash", ToolPermission.DENIED);
+        resolver.setRules(List.of(PermissionRule.parse("Bash", ToolPermission.ALLOWED)));
+
+        assertEquals(
+                ToolPermission.DENIED,
+                resolver.resolvePermission("bash", ToolSideEffect.SYSTEM_CHANGE, Map.of()));
+    }
+
+    @Test
+    void rulesBeatCategoryOverride() {
+        resolver.setDefaultPermission(ToolSideEffect.SYSTEM_CHANGE, ToolPermission.DENIED);
+        resolver.setRules(List.of(PermissionRule.parse("Bash", ToolPermission.ALLOWED)));
+
+        assertEquals(
+                ToolPermission.ALLOWED,
+                resolver.resolvePermission("bash", ToolSideEffect.SYSTEM_CHANGE, Map.of()));
+    }
+
+    @Test
+    void applySettings_setsModePlusRules() {
+        PermissionSettings settings =
+                new PermissionSettings(
+                        PermissionMode.STRICT,
+                        List.of(PermissionRule.parse("Read", ToolPermission.ALLOWED)));
+
+        resolver.applySettings(settings);
+
+        assertEquals(PermissionMode.STRICT, resolver.getMode());
+        assertEquals(
+                ToolPermission.ALLOWED,
+                resolver.resolvePermission("read", ToolSideEffect.READ_ONLY, Map.of()));
+    }
+
+    @Test
+    void applySettings_nullModeKeepsExisting() {
+        resolver.setMode(PermissionMode.BYPASS);
+        PermissionSettings settings =
+                new PermissionSettings(
+                        null, List.of(PermissionRule.parse("Read", ToolPermission.ALLOWED)));
+
+        resolver.applySettings(settings);
+        assertEquals(PermissionMode.BYPASS, resolver.getMode());
+    }
+
+    // ===== Full 4-tier resolution chain =====
+
+    @Test
+    void fourTierResolution() {
+        resolver.setMode(PermissionMode.STRICT);
+        resolver.setRules(
+                List.of(
+                        PermissionRule.parse("Bash(npm *)", ToolPermission.ALLOWED),
+                        PermissionRule.parse("Bash(git push*)", ToolPermission.ASK)));
+        resolver.setDefaultPermission(ToolSideEffect.WRITE, ToolPermission.DENIED);
+        resolver.setToolPermission("monitor", ToolPermission.ALLOWED);
+
+        // Tier 1: tool-specific override wins
+        assertEquals(
+                ToolPermission.ALLOWED,
+                resolver.resolvePermission("monitor", ToolSideEffect.SYSTEM_CHANGE, Map.of()));
+
+        // Tier 2: rule match
+        assertEquals(
+                ToolPermission.ALLOWED,
+                resolver.resolvePermission(
+                        "bash", ToolSideEffect.SYSTEM_CHANGE, Map.of("command", "npm test")));
+
+        // Tier 2: different rule match
+        assertEquals(
+                ToolPermission.ASK,
+                resolver.resolvePermission(
+                        "bash",
+                        ToolSideEffect.SYSTEM_CHANGE,
+                        Map.of("command", "git push origin main")));
+
+        // Tier 3: category override
+        assertEquals(
+                ToolPermission.DENIED,
+                resolver.resolvePermission("write", ToolSideEffect.WRITE, Map.of()));
+
+        // Tier 4: mode default (STRICT: READ_ONLY → ALLOWED)
+        assertEquals(
+                ToolPermission.ALLOWED,
+                resolver.resolvePermission("read", ToolSideEffect.READ_ONLY, Map.of()));
     }
 }

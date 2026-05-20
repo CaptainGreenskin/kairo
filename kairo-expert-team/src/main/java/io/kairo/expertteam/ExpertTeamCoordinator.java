@@ -17,11 +17,15 @@ package io.kairo.expertteam;
 
 import io.kairo.api.agent.Agent;
 import io.kairo.api.event.KairoEventBus;
+import io.kairo.api.message.Content;
+import io.kairo.api.message.Msg;
+import io.kairo.api.message.MsgRole;
 import io.kairo.api.team.EvaluationContext;
 import io.kairo.api.team.EvaluationStrategy;
 import io.kairo.api.team.EvaluationVerdict;
 import io.kairo.api.team.EvaluationVerdict.VerdictOutcome;
 import io.kairo.api.team.EvaluatorPreference;
+import io.kairo.api.team.MessageBus;
 import io.kairo.api.team.PlannerFailureMode;
 import io.kairo.api.team.RiskProfile;
 import io.kairo.api.team.Team;
@@ -38,16 +42,27 @@ import io.kairo.api.team.TeamStep;
 import io.kairo.expertteam.ExpertTeamStateMachine.State;
 import io.kairo.expertteam.internal.DefaultGenerator;
 import io.kairo.expertteam.internal.DefaultPlanner;
+import io.kairo.expertteam.role.ExpertProfile;
+import io.kairo.expertteam.role.ExpertRoleRegistry;
+import io.kairo.expertteam.strategy.ArbitrationDecision;
+import io.kairo.expertteam.strategy.ArbitrationResult;
+import io.kairo.expertteam.strategy.ArchitectArbitrator;
+import io.kairo.expertteam.strategy.PlanVerificationStrategy;
+import io.kairo.expertteam.strategy.PlanVerificationVerdict;
+import io.kairo.expertteam.strategy.SynthesizerStep;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.annotation.Nullable;
 import org.slf4j.Logger;
@@ -91,6 +106,19 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
     private final DefaultPlanner planner;
     private final DefaultGenerator generator;
     private final ExpertTeamStateMachine stateMachine;
+    @Nullable private final ExpertRoleRegistry roleRegistry;
+    @Nullable private final MessageBus messageBus;
+    @Nullable private final ArchitectArbitrator arbitrator;
+    @Nullable private final SynthesizerStep synthesizer;
+    @Nullable private volatile PlanVerificationStrategy planVerifier;
+    private final AtomicLong eventSeq = new AtomicLong(0);
+
+    /**
+     * Holds pending plans for teams executing in planOnly mode. Key: teamId (team.name()), Value:
+     * the execution context needed to resume.
+     */
+    private final ConcurrentHashMap<String, PendingPlanContext> pendingPlans =
+            new ConcurrentHashMap<>();
 
     /**
      * Minimal coordinator with the built-in simple strategy.
@@ -98,7 +126,7 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
      * @param eventBus optional event bus for lifecycle telemetry (may be {@code null})
      */
     public ExpertTeamCoordinator(@Nullable KairoEventBus eventBus) {
-        this(eventBus, new SimpleEvaluationStrategy(), null, new DefaultPlanner());
+        this(eventBus, new SimpleEvaluationStrategy(), null, new DefaultPlanner(), null, null);
     }
 
     /**
@@ -116,6 +144,117 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             EvaluationStrategy simpleStrategy,
             @Nullable EvaluationStrategy agentStrategy,
             DefaultPlanner planner) {
+        this(eventBus, simpleStrategy, agentStrategy, planner, null, null);
+    }
+
+    /**
+     * Full-featured coordinator with role registry for self-correction escalation.
+     *
+     * @param eventBus optional event bus (may be {@code null})
+     * @param simpleStrategy deterministic rubric evaluator; never {@code null}
+     * @param agentStrategy optional LLM-judge evaluator ({@code null} disables {@link
+     *     EvaluatorPreference#AGENT} requests by downgrading to the simple strategy)
+     * @param planner deterministic planner used to produce {@link TeamExecutionPlan}; never {@code
+     *     null}
+     * @param roleRegistry optional expert role registry for model escalation; {@code null} disables
+     *     senior-model retry
+     */
+    public ExpertTeamCoordinator(
+            @Nullable KairoEventBus eventBus,
+            EvaluationStrategy simpleStrategy,
+            @Nullable EvaluationStrategy agentStrategy,
+            DefaultPlanner planner,
+            @Nullable ExpertRoleRegistry roleRegistry) {
+        this(eventBus, simpleStrategy, agentStrategy, planner, roleRegistry, null);
+    }
+
+    /**
+     * Full-featured coordinator with role registry and message bus for observable feedback loops.
+     *
+     * @param eventBus optional event bus (may be {@code null})
+     * @param simpleStrategy deterministic rubric evaluator; never {@code null}
+     * @param agentStrategy optional LLM-judge evaluator ({@code null} disables {@link
+     *     EvaluatorPreference#AGENT} requests by downgrading to the simple strategy)
+     * @param planner deterministic planner used to produce {@link TeamExecutionPlan}; never {@code
+     *     null}
+     * @param roleRegistry optional expert role registry for model escalation; {@code null} disables
+     *     senior-model retry
+     * @param messageBus optional message bus for inter-agent feedback routing; {@code null} skips
+     *     feedback message delivery but events are still emitted
+     */
+    public ExpertTeamCoordinator(
+            @Nullable KairoEventBus eventBus,
+            EvaluationStrategy simpleStrategy,
+            @Nullable EvaluationStrategy agentStrategy,
+            DefaultPlanner planner,
+            @Nullable ExpertRoleRegistry roleRegistry,
+            @Nullable MessageBus messageBus) {
+        this(eventBus, simpleStrategy, agentStrategy, planner, roleRegistry, messageBus, null);
+    }
+
+    /**
+     * Full-featured coordinator with role registry, message bus, and architect arbitrator.
+     *
+     * @param eventBus optional event bus (may be {@code null})
+     * @param simpleStrategy deterministic rubric evaluator; never {@code null}
+     * @param agentStrategy optional LLM-judge evaluator ({@code null} disables {@link
+     *     EvaluatorPreference#AGENT} requests by downgrading to the simple strategy)
+     * @param planner deterministic planner used to produce {@link TeamExecutionPlan}; never {@code
+     *     null}
+     * @param roleRegistry optional expert role registry for model escalation; {@code null} disables
+     *     senior-model retry
+     * @param messageBus optional message bus for inter-agent feedback routing; {@code null} skips
+     *     feedback message delivery but events are still emitted
+     * @param arbitrator optional architect arbitrator for resolving exhausted feedback loops;
+     *     {@code null} disables architect escalation
+     */
+    public ExpertTeamCoordinator(
+            @Nullable KairoEventBus eventBus,
+            EvaluationStrategy simpleStrategy,
+            @Nullable EvaluationStrategy agentStrategy,
+            DefaultPlanner planner,
+            @Nullable ExpertRoleRegistry roleRegistry,
+            @Nullable MessageBus messageBus,
+            @Nullable ArchitectArbitrator arbitrator) {
+        this(
+                eventBus,
+                simpleStrategy,
+                agentStrategy,
+                planner,
+                roleRegistry,
+                messageBus,
+                arbitrator,
+                null);
+    }
+
+    /**
+     * Full-featured coordinator with role registry, message bus, architect arbitrator, and
+     * synthesizer.
+     *
+     * @param eventBus optional event bus (may be {@code null})
+     * @param simpleStrategy deterministic rubric evaluator; never {@code null}
+     * @param agentStrategy optional LLM-judge evaluator ({@code null} disables {@link
+     *     EvaluatorPreference#AGENT} requests by downgrading to the simple strategy)
+     * @param planner deterministic planner used to produce {@link TeamExecutionPlan}; never {@code
+     *     null}
+     * @param roleRegistry optional expert role registry for model escalation; {@code null} disables
+     *     senior-model retry
+     * @param messageBus optional message bus for inter-agent feedback routing; {@code null} skips
+     *     feedback message delivery but events are still emitted
+     * @param arbitrator optional architect arbitrator for resolving exhausted feedback loops;
+     *     {@code null} disables architect escalation
+     * @param synthesizer optional synthesizer for producing a final integrated output; {@code null}
+     *     falls back to simple concatenation of step outputs
+     */
+    public ExpertTeamCoordinator(
+            @Nullable KairoEventBus eventBus,
+            EvaluationStrategy simpleStrategy,
+            @Nullable EvaluationStrategy agentStrategy,
+            DefaultPlanner planner,
+            @Nullable ExpertRoleRegistry roleRegistry,
+            @Nullable MessageBus messageBus,
+            @Nullable ArchitectArbitrator arbitrator,
+            @Nullable SynthesizerStep synthesizer) {
         this.eventBus = eventBus;
         this.simpleStrategy =
                 Objects.requireNonNull(simpleStrategy, "simpleStrategy must not be null");
@@ -123,10 +262,40 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
         this.planner = Objects.requireNonNull(planner, "planner must not be null");
         this.generator = new DefaultGenerator();
         this.stateMachine = new ExpertTeamStateMachine();
+        this.roleRegistry = roleRegistry;
+        this.messageBus = messageBus;
+        this.arbitrator = arbitrator;
+        this.synthesizer = synthesizer;
+    }
+
+    /**
+     * Set an optional plan verifier that runs after all steps complete. When set, the verifier
+     * checks structural correctness and appends warnings/issues to the result.
+     *
+     * @param verifier the verification strategy, or null to disable
+     * @return this coordinator for chaining
+     */
+    public ExpertTeamCoordinator withPlanVerifier(@Nullable PlanVerificationStrategy verifier) {
+        this.planVerifier = verifier;
+        return this;
     }
 
     @Override
     public Mono<TeamResult> execute(TeamExecutionRequest request, Team team) {
+        return execute(request, team, false);
+    }
+
+    /**
+     * Execute a team request. When {@code planOnly} is true, the coordinator runs only the planner
+     * step, emits a {@link TeamEventType#PLAN_READY} event with the DAG, and stops without
+     * executing steps. Call {@link #confirmAndExecute(String)} to resume.
+     *
+     * @param request the execution request
+     * @param team the team of agents
+     * @param planOnly if true, stop after planning and emit PLAN_READY
+     * @return the team result (immediate if planOnly; full result if not)
+     */
+    public Mono<TeamResult> execute(TeamExecutionRequest request, Team team, boolean planOnly) {
         Objects.requireNonNull(request, "request must not be null");
         Objects.requireNonNull(team, "team must not be null");
 
@@ -149,7 +318,8 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                                 outcomes,
                                                 warnings,
                                                 started,
-                                                terminalEmitted))
+                                                terminalEmitted,
+                                                planOnly))
                         .timeout(
                                 request.config().teamTimeout(),
                                 Mono.defer(
@@ -176,6 +346,92 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                 ex));
     }
 
+    /**
+     * Resume execution of a previously planned team (planOnly mode). Retrieves the pending plan
+     * context and runs the DAG steps.
+     *
+     * @param teamId the team ID returned from the planOnly execution
+     * @return the team result after full execution
+     */
+    public Mono<TeamResult> confirmAndExecute(String teamId) {
+        Objects.requireNonNull(teamId, "teamId must not be null");
+        PendingPlanContext ctx = pendingPlans.remove(teamId);
+        if (ctx == null) {
+            return Mono.error(
+                    new IllegalStateException("No pending plan found for teamId '" + teamId + "'"));
+        }
+
+        Instant started = Instant.now();
+        AtomicReference<State> currentState = new AtomicReference<>(State.PLAN_READY);
+        List<StepOutcome> outcomes = Collections.synchronizedList(new ArrayList<>());
+        List<String> warnings = Collections.synchronizedList(new ArrayList<>());
+        AtomicReference<Boolean> terminalEmitted = new AtomicReference<>(Boolean.FALSE);
+
+        transitionTo(currentState, State.GENERATING);
+
+        EvaluationStrategy strategy = selectStrategy(ctx.request().config());
+
+        Mono<Void> chain = Mono.empty();
+        for (TeamStep step : ctx.plan().steps()) {
+            chain =
+                    chain.then(
+                            Mono.defer(
+                                    () ->
+                                            executeStep(
+                                                    ctx.request(),
+                                                    ctx.team(),
+                                                    step,
+                                                    ctx.bindings(),
+                                                    strategy,
+                                                    currentState,
+                                                    outcomes,
+                                                    warnings)));
+        }
+
+        Mono<TeamResult> pipeline =
+                chain.then(
+                        Mono.defer(
+                                () ->
+                                        completeSuccessfully(
+                                                ctx.request(),
+                                                ctx.team(),
+                                                currentState,
+                                                outcomes,
+                                                warnings,
+                                                started,
+                                                terminalEmitted,
+                                                ctx.plan())));
+
+        return pipeline.timeout(
+                        ctx.request().config().teamTimeout(),
+                        Mono.defer(
+                                () ->
+                                        onTimeout(
+                                                ctx.request(),
+                                                ctx.team(),
+                                                currentState,
+                                                outcomes,
+                                                warnings,
+                                                started,
+                                                terminalEmitted)))
+                .onErrorResume(
+                        ex ->
+                                onFailure(
+                                        ctx.request(),
+                                        ctx.team(),
+                                        currentState,
+                                        outcomes,
+                                        warnings,
+                                        started,
+                                        terminalEmitted,
+                                        ex));
+    }
+
+    /** Check if a pending plan exists for the given team ID. */
+    public boolean hasPendingPlan(String teamId) {
+        return pendingPlans.containsKey(teamId);
+    }
+
     // ------------------------------------------------------------------ pipeline
 
     private Mono<TeamResult> runPlanAndSteps(
@@ -185,7 +441,8 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             List<StepOutcome> outcomes,
             List<String> warnings,
             Instant started,
-            AtomicReference<Boolean> terminalEmitted) {
+            AtomicReference<Boolean> terminalEmitted,
+            boolean planOnly) {
         TeamExecutionPlan plan;
         try {
             plan = planner.plan(request, team);
@@ -238,6 +495,43 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                     bindEx);
         }
 
+        // ── planOnly: emit PLAN_READY, store context, return immediately ──
+        if (planOnly) {
+            transitionTo(currentState, State.PLAN_READY);
+
+            // Build DAG JSON payload for the event
+            List<Map<String, Object>> dagPayload = new ArrayList<>();
+            for (TeamStep step : plan.steps()) {
+                Map<String, Object> stepMap = new LinkedHashMap<>();
+                stepMap.put("stepId", step.stepId());
+                stepMap.put("roleId", step.assignedRole().roleId());
+                stepMap.put("roleName", step.assignedRole().roleName());
+                stepMap.put("instruction", step.description());
+                stepMap.put("dependsOn", step.dependsOn());
+                stepMap.put("stepIndex", step.stepIndex());
+                dagPayload.add(stepMap);
+            }
+
+            Map<String, Object> planReadyAttrs = new LinkedHashMap<>();
+            planReadyAttrs.put("mode", "dag");
+            planReadyAttrs.put("planId", plan.planId());
+            planReadyAttrs.put("steps", dagPayload);
+            planReadyAttrs.put("totalSteps", plan.totalSteps());
+            publish(team, request, TeamEventType.PLAN_READY, planReadyAttrs);
+
+            // Store the pending plan so confirmAndExecute can resume
+            pendingPlans.put(team.name(), new PendingPlanContext(request, team, plan, bindings));
+
+            // Return a "plan-ready" result indicating the plan is awaiting confirmation
+            return Mono.just(
+                    TeamResult.withoutOutput(
+                            request.requestId(),
+                            TeamStatus.COMPLETED,
+                            List.of(),
+                            Duration.between(started, Instant.now()),
+                            List.of("Plan generated; awaiting confirmation")));
+        }
+
         transitionTo(currentState, State.GENERATING);
 
         EvaluationStrategy strategy = selectStrategy(request.config());
@@ -259,8 +553,9 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                                     warnings)));
         }
 
+        TeamExecutionPlan finalPlan = plan;
         return chain.then(
-                Mono.fromSupplier(
+                Mono.defer(
                         () ->
                                 completeSuccessfully(
                                         request,
@@ -269,7 +564,8 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                         outcomes,
                                         warnings,
                                         started,
-                                        terminalEmitted)));
+                                        terminalEmitted,
+                                        finalPlan)));
     }
 
     private Mono<Void> executeStep(
@@ -325,34 +621,112 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                 return Mono.empty();
                             }
 
-                            // REVIEW_EXCEEDED — translate per risk profile.
+                            // REVIEW_EXCEEDED — attempt escalation, then translate per risk
+                            // profile.
                             if (verdict.outcome() == VerdictOutcome.REVIEW_EXCEEDED) {
-                                RiskProfile risk = request.config().riskProfile();
-                                if (risk == RiskProfile.LOW) {
-                                    // LOW-risk opt-in: record warning, mark DEGRADED but proceed.
-                                    warnings.add(
-                                            "Step '"
-                                                    + step.stepId()
-                                                    + "' exceeded review budget ("
-                                                    + maxRounds
-                                                    + " rounds); LOW-risk auto-pass with warning");
-                                    publish(
-                                            team,
-                                            request,
-                                            TeamEventType.STEP_COMPLETED,
-                                            Map.of(
-                                                    "stepId",
-                                                    step.stepId(),
-                                                    "attempts",
-                                                    result.attempt(),
-                                                    "degraded",
-                                                    Boolean.TRUE));
-                                    return Mono.empty();
-                                }
-                                // MEDIUM / HIGH: hard failure.
-                                return Mono.error(
-                                        new StepReviewExceededException(
-                                                step.stepId(), result.attempt(), verdict));
+                                return attemptEscalation(
+                                                request,
+                                                team,
+                                                step,
+                                                bindings,
+                                                strategy,
+                                                result,
+                                                currentState)
+                                        .flatMap(
+                                                escalationResult -> {
+                                                    if (escalationResult.resolved()) {
+                                                        // Senior model succeeded — update outcome
+                                                        // and complete step.
+                                                        StepOutcome successOutcome =
+                                                                new StepOutcome(
+                                                                        step.stepId(),
+                                                                        escalationResult.artifact(),
+                                                                        escalationResult.verdict(),
+                                                                        escalationResult.attempt());
+                                                        outcomes.set(
+                                                                outcomes.size() - 1,
+                                                                successOutcome);
+                                                        publish(
+                                                                team,
+                                                                request,
+                                                                TeamEventType.STEP_COMPLETED,
+                                                                Map.of(
+                                                                        "stepId",
+                                                                        step.stepId(),
+                                                                        "attempts",
+                                                                        escalationResult.attempt(),
+                                                                        "escalated",
+                                                                        Boolean.TRUE));
+                                                        return Mono.<Void>empty();
+                                                    }
+
+                                                    // Escalation did not resolve — try
+                                                    // architect arbitration if available.
+                                                    if (arbitrator != null) {
+                                                        StepOutcome failedOutcome =
+                                                                new StepOutcome(
+                                                                        step.stepId(),
+                                                                        escalationResult.artifact(),
+                                                                        escalationResult.verdict(),
+                                                                        escalationResult.attempt());
+                                                        return arbitrator
+                                                                .arbitrateFeedbackExhaustion(
+                                                                        request.goal(),
+                                                                        failedOutcome,
+                                                                        escalationResult.verdict(),
+                                                                        escalationResult
+                                                                                .verdict()
+                                                                                .feedback())
+                                                                .flatMap(
+                                                                        arbResult ->
+                                                                                handleArbitrationResult(
+                                                                                        arbResult,
+                                                                                        step,
+                                                                                        bindings,
+                                                                                        request,
+                                                                                        team,
+                                                                                        outcomes,
+                                                                                        warnings,
+                                                                                        result,
+                                                                                        escalationResult,
+                                                                                        currentState,
+                                                                                        strategy));
+                                                    }
+
+                                                    // No arbitrator — apply existing
+                                                    // risk semantics.
+                                                    RiskProfile risk =
+                                                            request.config().riskProfile();
+                                                    if (risk == RiskProfile.LOW) {
+                                                        warnings.add(
+                                                                "Step '"
+                                                                        + step.stepId()
+                                                                        + "' exceeded review"
+                                                                        + " budget ("
+                                                                        + maxRounds
+                                                                        + " rounds);"
+                                                                        + " LOW-risk auto-pass"
+                                                                        + " with warning");
+                                                        publish(
+                                                                team,
+                                                                request,
+                                                                TeamEventType.STEP_COMPLETED,
+                                                                Map.of(
+                                                                        "stepId",
+                                                                        step.stepId(),
+                                                                        "attempts",
+                                                                        result.attempt(),
+                                                                        "degraded",
+                                                                        Boolean.TRUE));
+                                                        return Mono.<Void>empty();
+                                                    }
+                                                    // MEDIUM / HIGH: hard failure.
+                                                    return Mono.error(
+                                                            new StepReviewExceededException(
+                                                                    step.stepId(),
+                                                                    result.attempt(),
+                                                                    verdict));
+                                                });
                             }
 
                             // Defensive: any other terminal outcome is treated as failure.
@@ -381,6 +755,28 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
 
         return generator
                 .generate(step, bindings, request.goal(), attemptNumber, priorVerdicts)
+                .doOnNext(
+                        artifact -> {
+                            // Emit high-frequency streaming events after generation completes.
+                            publish(
+                                    team,
+                                    request,
+                                    TeamEventType.STEP_THINKING,
+                                    Map.of("stepId", step.stepId(), "text", artifact));
+                            publish(
+                                    team,
+                                    request,
+                                    TeamEventType.STEP_TOOL_CALL,
+                                    Map.of(
+                                            "stepId", step.stepId(),
+                                            "toolName", "agent.call",
+                                            "args", step.description()));
+                            publish(
+                                    team,
+                                    request,
+                                    TeamEventType.STEP_ARTIFACT_CHUNK,
+                                    Map.of("stepId", step.stepId(), "chunk", artifact));
+                        })
                 .flatMap(
                         artifact -> {
                             transitionIfNeeded(currentState, State.EVALUATING);
@@ -400,15 +796,28 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                     .defaultIfEmpty(nullVerdict())
                                     .map(
                                             verdict -> {
+                                                Map<String, Object> evalAttrs = new HashMap<>();
+                                                evalAttrs.put("stepId", step.stepId());
+                                                evalAttrs.put("attempt", attemptNumber);
+                                                evalAttrs.put("outcome", verdict.outcome().name());
+                                                evalAttrs.put("score", verdict.score());
+                                                evalAttrs.put("round", attemptNumber);
+                                                evalAttrs.put("maxRounds", maxRounds);
+                                                evalAttrs.put("verdict", verdict.outcome().name());
+                                                if (verdict.feedback() != null
+                                                        && !verdict.feedback().isBlank()) {
+                                                    evalAttrs.put("feedback", verdict.feedback());
+                                                }
+                                                if (verdict.suggestions() != null
+                                                        && !verdict.suggestions().isEmpty()) {
+                                                    evalAttrs.put(
+                                                            "suggestions", verdict.suggestions());
+                                                }
                                                 publish(
                                                         team,
                                                         request,
                                                         TeamEventType.EVALUATION_RESULT,
-                                                        Map.of(
-                                                                "stepId", step.stepId(),
-                                                                "attempt", attemptNumber,
-                                                                "outcome", verdict.outcome().name(),
-                                                                "score", verdict.score()));
+                                                        evalAttrs);
                                                 return new StepAttemptResult(
                                                         artifact, verdict, attemptNumber);
                                             });
@@ -419,6 +828,8 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                             if (verdict.outcome() != VerdictOutcome.REVISE) {
                                 return Mono.just(result);
                             }
+                            // Route feedback through MessageBus (fire-and-forget)
+                            sendFeedbackViaMessageBus(step, verdict, attemptNumber, maxRounds);
                             if (attemptNumber >= maxRounds) {
                                 // Review budget exhausted: synthesise a REVIEW_EXCEEDED verdict.
                                 EvaluationVerdict exceeded =
@@ -450,9 +861,328 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                         });
     }
 
+    // ------------------------------------------------------------------ escalation
+
+    /**
+     * Handles the result of architect arbitration after feedback loop exhaustion.
+     *
+     * <p>If the architect decides REVISED_INSTRUCTION, one final generation attempt is made with
+     * the architect's revised instructions. Otherwise (ACCEPT_WITH_CAVEATS), the current output is
+     * accepted with a warning added.
+     */
+    private Mono<Void> handleArbitrationResult(
+            ArbitrationResult arbResult,
+            TeamStep step,
+            Map<String, Agent> bindings,
+            TeamExecutionRequest request,
+            Team team,
+            List<StepOutcome> outcomes,
+            List<String> warnings,
+            StepAttemptResult originalResult,
+            EscalationResult escalationResult,
+            AtomicReference<State> currentState,
+            EvaluationStrategy strategy) {
+
+        if (arbResult.decision() == ArbitrationDecision.REVISED_INSTRUCTION) {
+            // One more attempt with architect's revised instruction
+            int finalAttempt = escalationResult.attempt() + 1;
+            List<EvaluationVerdict> priorVerdicts = List.of(escalationResult.verdict());
+
+            transitionIfNeeded(currentState, State.GENERATING);
+
+            return generator
+                    .generate(step, bindings, request.goal(), finalAttempt, priorVerdicts)
+                    .flatMap(
+                            artifact -> {
+                                transitionIfNeeded(currentState, State.EVALUATING);
+                                EvaluationContext ctx =
+                                        new EvaluationContext(
+                                                step,
+                                                artifact,
+                                                finalAttempt,
+                                                priorVerdicts,
+                                                request.config());
+                                return strategy.evaluate(ctx)
+                                        .defaultIfEmpty(nullVerdict())
+                                        .flatMap(
+                                                finalVerdict -> {
+                                                    StepOutcome finalOutcome =
+                                                            new StepOutcome(
+                                                                    step.stepId(),
+                                                                    artifact,
+                                                                    finalVerdict,
+                                                                    finalAttempt);
+                                                    outcomes.set(outcomes.size() - 1, finalOutcome);
+                                                    warnings.add(
+                                                            "Step '"
+                                                                    + step.stepId()
+                                                                    + "' resolved via architect"
+                                                                    + " arbitration"
+                                                                    + " (REVISED_INSTRUCTION)");
+                                                    publish(
+                                                            team,
+                                                            request,
+                                                            TeamEventType.STEP_COMPLETED,
+                                                            Map.of(
+                                                                    "stepId",
+                                                                    step.stepId(),
+                                                                    "attempts",
+                                                                    finalAttempt,
+                                                                    "arbitrated",
+                                                                    Boolean.TRUE));
+                                                    return Mono.<Void>empty();
+                                                });
+                            })
+                    .onErrorResume(
+                            ex -> {
+                                // If the final attempt fails, accept with caveats
+                                log.warn(
+                                        "Architect REVISED_INSTRUCTION final attempt failed for"
+                                                + " step '{}': {}",
+                                        step.stepId(),
+                                        ex.toString());
+                                warnings.add(
+                                        "Step '"
+                                                + step.stepId()
+                                                + "' architect-revised attempt failed;"
+                                                + " accepting prior output with caveats");
+                                publish(
+                                        team,
+                                        request,
+                                        TeamEventType.STEP_COMPLETED,
+                                        Map.of(
+                                                "stepId",
+                                                step.stepId(),
+                                                "attempts",
+                                                originalResult.attempt(),
+                                                "degraded",
+                                                Boolean.TRUE,
+                                                "arbitrated",
+                                                Boolean.TRUE));
+                                return Mono.empty();
+                            });
+        }
+
+        // ACCEPT_WITH_CAVEATS: accept current output, add warning
+        warnings.add(
+                "Step '"
+                        + step.stepId()
+                        + "' accepted via architect arbitration: "
+                        + arbResult.rationale());
+        publish(
+                team,
+                request,
+                TeamEventType.STEP_COMPLETED,
+                Map.of(
+                        "stepId",
+                        step.stepId(),
+                        "attempts",
+                        originalResult.attempt(),
+                        "degraded",
+                        Boolean.TRUE,
+                        "arbitrated",
+                        Boolean.TRUE));
+        return Mono.empty();
+    }
+
+    /**
+     * Sends evaluation feedback to the step's agent via MessageBus (fire-and-forget).
+     *
+     * <p>If {@link #messageBus} is {@code null}, this method is a no-op.
+     */
+    private void sendFeedbackViaMessageBus(
+            TeamStep step, EvaluationVerdict verdict, int round, int maxRounds) {
+        if (messageBus == null) {
+            return;
+        }
+        try {
+            String evaluatorId = "evaluator";
+            String stepAgentId = step.assignedRole().roleId();
+            String feedbackText =
+                    String.format(
+                            "[REVISE round %d/%d] %s",
+                            round, maxRounds, verdict.feedback() != null ? verdict.feedback() : "");
+            Msg feedbackMsg =
+                    Msg.builder()
+                            .role(MsgRole.USER)
+                            .addContent(new Content.TextContent(feedbackText))
+                            .sourceAgentId(evaluatorId)
+                            .metadata("feedbackType", "evaluation_revise")
+                            .metadata("round", round)
+                            .metadata("maxRounds", maxRounds)
+                            .metadata("verdict", verdict.outcome().name())
+                            .build();
+            // Fire-and-forget: subscribe but don't block
+            messageBus.send(evaluatorId, stepAgentId, feedbackMsg).subscribe();
+        } catch (RuntimeException ex) {
+            log.debug(
+                    "MessageBus feedback send failed for step '{}': {}",
+                    step.stepId(),
+                    ex.toString());
+        }
+    }
+
+    /**
+     * Attempts senior-model escalation when the feedback loop is exhausted.
+     *
+     * <p>If a model override is configured for the step's role, one bonus attempt is made with the
+     * senior model. If the senior model produces a PASS verdict, the escalation is considered
+     * resolved. Otherwise (REVISE, error, or no model override), a HANDOFF event is emitted and the
+     * escalation is marked unresolved.
+     */
+    private Mono<EscalationResult> attemptEscalation(
+            TeamExecutionRequest request,
+            Team team,
+            TeamStep step,
+            Map<String, Agent> bindings,
+            EvaluationStrategy strategy,
+            StepAttemptResult failedResult,
+            AtomicReference<State> currentState) {
+
+        String roleId = step.assignedRole().roleId();
+        String modelOverride = resolveModelOverride(roleId);
+
+        if (modelOverride == null) {
+            // No senior model configured — emit HANDOFF immediately.
+            log.info(
+                    "Step '{}' exhausted review budget; no model override configured, emitting"
+                            + " HANDOFF",
+                    step.stepId());
+            emitHandoff(
+                    team, request, step, failedResult.verdict().feedback(), failedResult.attempt());
+            return Mono.just(
+                    new EscalationResult(
+                            false,
+                            failedResult.artifact(),
+                            failedResult.verdict(),
+                            failedResult.attempt()));
+        }
+
+        // Senior model bonus round.
+        log.info(
+                "Step '{}' exhausted review budget; attempting senior model escalation with '{}'",
+                step.stepId(),
+                modelOverride);
+
+        int seniorAttempt = failedResult.attempt() + 1;
+        List<EvaluationVerdict> priorVerdicts = List.of(failedResult.verdict());
+
+        transitionIfNeeded(currentState, State.GENERATING);
+
+        return generator
+                .generateWithModelOverride(
+                        step, bindings, request.goal(), seniorAttempt, priorVerdicts, modelOverride)
+                .flatMap(
+                        artifact -> {
+                            transitionIfNeeded(currentState, State.EVALUATING);
+                            publish(
+                                    team,
+                                    request,
+                                    TeamEventType.EVALUATION_STARTED,
+                                    Map.of(
+                                            "stepId",
+                                            step.stepId(),
+                                            "attempt",
+                                            seniorAttempt,
+                                            "escalated",
+                                            Boolean.TRUE));
+                            EvaluationContext ctx =
+                                    new EvaluationContext(
+                                            step,
+                                            artifact,
+                                            seniorAttempt,
+                                            priorVerdicts,
+                                            request.config());
+                            return strategy.evaluate(ctx)
+                                    .defaultIfEmpty(nullVerdict())
+                                    .map(
+                                            seniorVerdict -> {
+                                                publish(
+                                                        team,
+                                                        request,
+                                                        TeamEventType.EVALUATION_RESULT,
+                                                        Map.of(
+                                                                "stepId", step.stepId(),
+                                                                "attempt", seniorAttempt,
+                                                                "outcome",
+                                                                        seniorVerdict
+                                                                                .outcome()
+                                                                                .name(),
+                                                                "score", seniorVerdict.score(),
+                                                                "escalated", Boolean.TRUE));
+                                                if (seniorVerdict.outcome() == VerdictOutcome.PASS
+                                                        || seniorVerdict.outcome()
+                                                                == VerdictOutcome
+                                                                        .AUTO_PASS_WITH_WARNING) {
+                                                    return new EscalationResult(
+                                                            true,
+                                                            artifact,
+                                                            seniorVerdict,
+                                                            seniorAttempt);
+                                                }
+                                                // Senior model also failed.
+                                                emitHandoff(
+                                                        team,
+                                                        request,
+                                                        step,
+                                                        seniorVerdict.feedback(),
+                                                        seniorAttempt);
+                                                return new EscalationResult(
+                                                        false,
+                                                        artifact,
+                                                        seniorVerdict,
+                                                        seniorAttempt);
+                                            });
+                        })
+                .onErrorResume(
+                        ex -> {
+                            log.warn(
+                                    "Senior model escalation failed for step '{}': {}",
+                                    step.stepId(),
+                                    ex.toString());
+                            emitHandoff(
+                                    team,
+                                    request,
+                                    step,
+                                    "Senior model error: " + ex.getMessage(),
+                                    seniorAttempt);
+                            return Mono.just(
+                                    new EscalationResult(
+                                            false,
+                                            failedResult.artifact(),
+                                            failedResult.verdict(),
+                                            failedResult.attempt()));
+                        });
+    }
+
+    @Nullable
+    private String resolveModelOverride(String roleId) {
+        if (roleRegistry == null) {
+            return null;
+        }
+        return roleRegistry.resolve(roleId).map(ExpertProfile::modelOverride).orElse(null);
+    }
+
+    private void emitHandoff(
+            Team team,
+            TeamExecutionRequest request,
+            TeamStep step,
+            String feedback,
+            int totalAttempts) {
+        Map<String, Object> handoffAttrs = new HashMap<>();
+        handoffAttrs.put("requiresHuman", Boolean.TRUE);
+        handoffAttrs.put("feedback", feedback != null ? feedback : "");
+        handoffAttrs.put("stepId", step.stepId());
+        handoffAttrs.put("roleId", step.assignedRole().roleId());
+        handoffAttrs.put("attempts", totalAttempts);
+        handoffAttrs.put("reason", "feedback_loop_exhausted");
+        handoffAttrs.put("lastFeedback", feedback != null ? feedback : "");
+        publish(team, request, TeamEventType.HANDOFF, handoffAttrs);
+    }
+
     // ------------------------------------------------------------------ terminal paths
 
-    private TeamResult completeSuccessfully(
+    private Mono<TeamResult> completeSuccessfully(
             TeamExecutionRequest request,
             Team team,
             AtomicReference<State> currentState,
@@ -460,23 +1190,70 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             List<String> warnings,
             Instant started,
             AtomicReference<Boolean> terminalEmitted) {
+        return completeSuccessfully(
+                request, team, currentState, outcomes, warnings, started, terminalEmitted, null);
+    }
+
+    private Mono<TeamResult> completeSuccessfully(
+            TeamExecutionRequest request,
+            Team team,
+            AtomicReference<State> currentState,
+            List<StepOutcome> outcomes,
+            List<String> warnings,
+            Instant started,
+            AtomicReference<Boolean> terminalEmitted,
+            @Nullable TeamExecutionPlan plan) {
         boolean degraded = !warnings.isEmpty();
         State terminal = degraded ? State.DEGRADED : State.COMPLETED;
         transitionTo(currentState, terminal);
 
         TeamStatus status = degraded ? TeamStatus.DEGRADED : TeamStatus.COMPLETED;
-        String finalOutput = assembleFinalOutput(outcomes);
-        TeamResult result =
-                TeamResult.of(
-                        request.requestId(),
-                        status,
-                        List.copyOf(outcomes),
-                        finalOutput,
-                        Duration.between(started, Instant.now()),
-                        List.copyOf(warnings));
 
-        emitTerminalOnce(team, request, TeamEventType.TEAM_COMPLETED, terminalEmitted);
-        return result;
+        Mono<String> finalOutputMono;
+        if (synthesizer != null) {
+            finalOutputMono = synthesizer.synthesize(request.goal(), List.copyOf(outcomes));
+        } else {
+            finalOutputMono = Mono.just(assembleFinalOutput(outcomes));
+        }
+
+        return finalOutputMono.map(
+                finalOutput -> {
+                    List<String> allWarnings = new ArrayList<>(warnings);
+
+                    if (planVerifier != null && plan != null) {
+                        TeamResult preVerifyResult =
+                                TeamResult.of(
+                                        request.requestId(),
+                                        status,
+                                        List.copyOf(outcomes),
+                                        finalOutput,
+                                        Duration.between(started, Instant.now()),
+                                        List.copyOf(allWarnings));
+                        PlanVerificationVerdict verdict =
+                                planVerifier.verify(plan, preVerifyResult, request.goal());
+                        if (!verdict.isSuccess()) {
+                            allWarnings.add(
+                                    "Plan verification "
+                                            + verdict.outcome().name()
+                                            + ": "
+                                            + verdict.reason());
+                            for (String issue : verdict.issues()) {
+                                allWarnings.add("  - " + issue);
+                            }
+                        }
+                    }
+
+                    TeamResult result =
+                            TeamResult.of(
+                                    request.requestId(),
+                                    status,
+                                    List.copyOf(outcomes),
+                                    finalOutput,
+                                    Duration.between(started, Instant.now()),
+                                    List.copyOf(allWarnings));
+                    emitTerminalOnce(team, request, TeamEventType.TEAM_COMPLETED, terminalEmitted);
+                    return result;
+                });
     }
 
     private Mono<TeamResult> onTimeout(
@@ -612,6 +1389,12 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
         return sb.toString();
     }
 
+    private Map<String, Object> withSeq(Map<String, Object> attrs) {
+        Map<String, Object> result = new LinkedHashMap<>(attrs);
+        result.put("seq", eventSeq.incrementAndGet());
+        return result;
+    }
+
     private void publish(
             Team team,
             TeamExecutionRequest request,
@@ -621,6 +1404,7 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             return;
         }
         Map<String, Object> attrs = attributes == null ? Map.of() : new HashMap<>(attributes);
+        attrs = withSeq(attrs);
         TeamEvent event =
                 new TeamEvent(
                         type, team.name(), request.requestId(), Instant.now(), Map.copyOf(attrs));
@@ -652,9 +1436,39 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
 
     // ------------------------------------------------------------------ internal types
 
+    /** Holds the execution context for a team whose plan is pending user confirmation. */
+    private record PendingPlanContext(
+            TeamExecutionRequest request,
+            Team team,
+            TeamExecutionPlan plan,
+            Map<String, Agent> bindings) {
+        PendingPlanContext {
+            Objects.requireNonNull(request, "request must not be null");
+            Objects.requireNonNull(team, "team must not be null");
+            Objects.requireNonNull(plan, "plan must not be null");
+            Objects.requireNonNull(bindings, "bindings must not be null");
+        }
+    }
+
     /** Result of a single generate + evaluate pass. */
     private record StepAttemptResult(String artifact, EvaluationVerdict verdict, int attempt) {
         StepAttemptResult {
+            Objects.requireNonNull(artifact, "artifact must not be null");
+            Objects.requireNonNull(verdict, "verdict must not be null");
+        }
+    }
+
+    /**
+     * Outcome of the escalation attempt (senior model retry or immediate handoff).
+     *
+     * @param resolved {@code true} if the senior model produced a passing verdict
+     * @param artifact the artifact produced (may be from the original attempt if unresolved)
+     * @param verdict the final verdict from the escalation
+     * @param attempt the attempt number at which the escalation concluded
+     */
+    private record EscalationResult(
+            boolean resolved, String artifact, EvaluationVerdict verdict, int attempt) {
+        EscalationResult {
             Objects.requireNonNull(artifact, "artifact must not be null");
             Objects.requireNonNull(verdict, "verdict must not be null");
         }

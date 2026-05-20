@@ -18,11 +18,17 @@ package io.kairo.expertteam.internal;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
+import io.kairo.api.skill.SkillDefinition;
+import io.kairo.api.skill.SkillRegistry;
 import io.kairo.api.team.EvaluationVerdict;
 import io.kairo.api.team.TeamStep;
+import io.kairo.expertteam.role.ExpertProfile;
+import io.kairo.expertteam.role.ExpertRoleRegistry;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import javax.annotation.Nullable;
 import reactor.core.publisher.Mono;
 
 /**
@@ -38,6 +44,25 @@ import reactor.core.publisher.Mono;
  */
 public final class DefaultGenerator {
 
+    private final ExpertRoleRegistry roleRegistry;
+    private final SkillRegistry skillRegistry; // nullable — works without skills
+
+    /** Create a generator without skill injection support. */
+    public DefaultGenerator() {
+        this(null, null);
+    }
+
+    /**
+     * Create a generator with optional skill injection.
+     *
+     * @param roleRegistry the expert role registry (nullable)
+     * @param skillRegistry the skill registry (nullable — system works without skills)
+     */
+    public DefaultGenerator(ExpertRoleRegistry roleRegistry, SkillRegistry skillRegistry) {
+        this.roleRegistry = roleRegistry;
+        this.skillRegistry = skillRegistry;
+    }
+
     /** Produce an artifact for the given step using the role-bound agent. */
     public Mono<String> generate(
             TeamStep step,
@@ -45,6 +70,26 @@ public final class DefaultGenerator {
             String goal,
             int attemptNumber,
             List<EvaluationVerdict> priorVerdicts) {
+        return generateWithModelOverride(
+                step, roleBindings, goal, attemptNumber, priorVerdicts, null);
+    }
+
+    /**
+     * Produce an artifact for the given step, optionally overriding the model used by the agent.
+     *
+     * <p>When {@code modelOverride} is non-null, the message metadata carries a {@code
+     * kairo.modelOverride} hint that downstream agent implementations may honour to escalate to a
+     * senior model.
+     *
+     * @param modelOverride nullable model identifier for escalation; {@code null} uses the default
+     */
+    public Mono<String> generateWithModelOverride(
+            TeamStep step,
+            Map<String, Agent> roleBindings,
+            String goal,
+            int attemptNumber,
+            List<EvaluationVerdict> priorVerdicts,
+            @Nullable String modelOverride) {
         Objects.requireNonNull(step, "step must not be null");
         Objects.requireNonNull(roleBindings, "roleBindings must not be null");
         Objects.requireNonNull(goal, "goal must not be null");
@@ -62,11 +107,21 @@ public final class DefaultGenerator {
         }
 
         String prompt = buildPrompt(step, goal, attemptNumber, priorVerdicts);
-        Msg input = Msg.of(MsgRole.USER, prompt);
+        Msg input;
+        if (modelOverride != null) {
+            input =
+                    Msg.builder()
+                            .role(MsgRole.USER)
+                            .addContent(new io.kairo.api.message.Content.TextContent(prompt))
+                            .metadata("kairo.modelOverride", modelOverride)
+                            .build();
+        } else {
+            input = Msg.of(MsgRole.USER, prompt);
+        }
         return agent.call(input).map(Msg::text);
     }
 
-    private static String buildPrompt(
+    private String buildPrompt(
             TeamStep step, String goal, int attemptNumber, List<EvaluationVerdict> priorVerdicts) {
         StringBuilder sb = new StringBuilder();
         sb.append("[Goal] ").append(goal).append('\n');
@@ -80,6 +135,10 @@ public final class DefaultGenerator {
                 .append("\n[Instructions]\n")
                 .append(step.assignedRole().instructions())
                 .append('\n');
+
+        // Inject mounted skill content if available
+        appendMountedSkills(sb, step.assignedRole().roleId());
+
         if (attemptNumber > 1 && !priorVerdicts.isEmpty()) {
             sb.append("[Revision attempt ").append(attemptNumber).append("]\n");
             EvaluationVerdict last = priorVerdicts.get(priorVerdicts.size() - 1);
@@ -94,5 +153,36 @@ public final class DefaultGenerator {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * Appends mounted skill content from the expert profile into the prompt. Silently skips if
+     * registries are unavailable or a skill ID does not resolve.
+     */
+    private void appendMountedSkills(StringBuilder sb, String roleId) {
+        if (roleRegistry == null || skillRegistry == null) {
+            return;
+        }
+        Optional<ExpertProfile> profileOpt = roleRegistry.resolve(roleId);
+        if (profileOpt.isEmpty()) {
+            return;
+        }
+        ExpertProfile profile = profileOpt.get();
+        if (profile.mountedSkills().isEmpty()) {
+            return;
+        }
+        for (String skillId : profile.mountedSkills()) {
+            Optional<SkillDefinition> skillOpt = skillRegistry.get(skillId);
+            if (skillOpt.isPresent()) {
+                SkillDefinition skill = skillOpt.get();
+                if (skill.hasInstructions()) {
+                    sb.append("\n## Skill: ")
+                            .append(skill.name())
+                            .append('\n')
+                            .append(skill.instructions())
+                            .append('\n');
+                }
+            }
+        }
     }
 }

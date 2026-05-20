@@ -19,7 +19,13 @@ import io.kairo.api.exception.PlanModeViolationException;
 import io.kairo.api.tool.PermissionGuard;
 import io.kairo.api.tool.ToolPermission;
 import io.kairo.api.tool.ToolSideEffect;
+import io.kairo.core.tool.permission.PermissionMode;
+import io.kairo.core.tool.permission.PermissionRule;
+import io.kairo.core.tool.permission.PermissionRuleEngine;
+import io.kairo.core.tool.permission.PermissionSettings;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
@@ -36,7 +42,9 @@ public final class ToolPermissionResolver {
 
     private final PermissionGuard permissionGuard;
     private final DefaultToolRegistry registry;
-    private volatile boolean planMode = false;
+    private volatile PermissionMode mode = PermissionMode.DEFAULT;
+    private volatile PermissionMode previousMode = null;
+    private volatile PermissionRuleEngine ruleEngine = new PermissionRuleEngine(List.of());
     private final Map<String, ToolPermission> toolPermissions = new ConcurrentHashMap<>();
     private volatile Set<String> activeToolConstraints = null; // null = no restriction
 
@@ -59,12 +67,55 @@ public final class ToolPermissionResolver {
     }
 
     /**
-     * Set plan mode on or off.
+     * Set the permission mode.
+     *
+     * @param mode the new permission mode
+     */
+    public void setMode(PermissionMode mode) {
+        this.mode = mode;
+    }
+
+    /**
+     * @return the current permission mode
+     */
+    public PermissionMode getMode() {
+        return mode;
+    }
+
+    /**
+     * Set the permission rules for the rule engine.
+     *
+     * @param rules the ordered list of rules
+     */
+    public void setRules(List<PermissionRule> rules) {
+        this.ruleEngine = new PermissionRuleEngine(rules);
+    }
+
+    /**
+     * Apply a complete permission settings configuration.
+     *
+     * @param settings the settings to apply
+     */
+    public void applySettings(PermissionSettings settings) {
+        if (settings.mode() != null) {
+            this.mode = settings.mode();
+        }
+        this.ruleEngine = new PermissionRuleEngine(settings.rules());
+    }
+
+    /**
+     * Set plan mode on or off (backward-compatible convenience method).
      *
      * @param planMode true to enter plan mode, false to exit
      */
     public void setPlanMode(boolean planMode) {
-        this.planMode = planMode;
+        if (planMode) {
+            this.previousMode = this.mode;
+            this.mode = PermissionMode.PLAN;
+        } else {
+            this.mode = previousMode != null ? previousMode : PermissionMode.DEFAULT;
+            this.previousMode = null;
+        }
     }
 
     /**
@@ -73,7 +124,7 @@ public final class ToolPermissionResolver {
      * @return true if in plan mode
      */
     public boolean isPlanMode() {
-        return planMode;
+        return mode == PermissionMode.PLAN;
     }
 
     /**
@@ -117,7 +168,7 @@ public final class ToolPermissionResolver {
      * @throws PlanModeViolationException if the tool is blocked in plan mode
      */
     public void checkPlanModeRestriction(String toolName) {
-        if (planMode) {
+        if (mode == PermissionMode.PLAN) {
             var sideEffect = resolveSideEffect(toolName);
             if (sideEffect == ToolSideEffect.WRITE || sideEffect == ToolSideEffect.SYSTEM_CHANGE) {
                 throw new PlanModeViolationException(
@@ -172,27 +223,48 @@ public final class ToolPermissionResolver {
     }
 
     /**
-     * Resolve the permission level for a tool.
-     *
-     * <p>Resolution order: tool-specific override → category-level (by SideEffect) → default.
-     * Defaults: READ_ONLY and WRITE → ALLOWED, SYSTEM_CHANGE → ASK.
+     * Resolve the permission level for a tool (backward-compatible, no arg matching).
      *
      * @param toolName the tool name
      * @param sideEffect the side-effect classification
      * @return the resolved permission
      */
     public ToolPermission resolvePermission(String toolName, ToolSideEffect sideEffect) {
-        // 1. Tool-specific override
+        return resolvePermission(toolName, sideEffect, Map.of());
+    }
+
+    /**
+     * Resolve the permission level for a tool with argument-level matching.
+     *
+     * <p>Resolution order:
+     *
+     * <ol>
+     *   <li>Programmatic tool-specific override ({@link #setToolPermission})
+     *   <li>File-based rule engine ({@link PermissionRuleEngine})
+     *   <li>Programmatic category override ({@link #setDefaultPermission})
+     *   <li>Mode-based default ({@link PermissionMode#defaultPermission})
+     * </ol>
+     *
+     * @param toolName the tool name
+     * @param sideEffect the side-effect classification
+     * @param args the tool arguments for rule matching
+     * @return the resolved permission
+     */
+    public ToolPermission resolvePermission(
+            String toolName, ToolSideEffect sideEffect, Map<String, Object> args) {
+        // 1. Programmatic tool-specific override
         var toolPerm = toolPermissions.get(toolName);
         if (toolPerm != null) return toolPerm;
 
-        // 2. Category-level (by SideEffect)
+        // 2. File-based rule engine
+        Optional<ToolPermission> rulePerm = ruleEngine.resolve(toolName, args);
+        if (rulePerm.isPresent()) return rulePerm.get();
+
+        // 3. Programmatic category override
         var categoryPerm = toolPermissions.get("__category__" + sideEffect.name());
         if (categoryPerm != null) return categoryPerm;
 
-        // 3. Default: READ_ONLY → ALLOWED, WRITE → ALLOWED, SYSTEM_CHANGE → ASK
-        return sideEffect == ToolSideEffect.SYSTEM_CHANGE
-                ? ToolPermission.ASK
-                : ToolPermission.ALLOWED;
+        // 4. Mode-based default
+        return mode.defaultPermission(sideEffect);
     }
 }
