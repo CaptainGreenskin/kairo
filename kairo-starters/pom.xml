@@ -25,6 +25,7 @@
     <modules>
         <module>../kairo-spring-boot-starter-core</module>
         <module>../kairo-spring-boot-starter-mcp</module>
+        <module>../kairo-spring-boot-starter-plugin</module>
         <module>../kairo-spring-boot-starter-multi-agent</module>
         <module>../kairo-spring-boot-starter-evolution</module>
         <module>../kairo-spring-boot-starter-expert-team</module>

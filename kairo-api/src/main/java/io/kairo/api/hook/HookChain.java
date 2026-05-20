@@ -248,6 +248,30 @@ public interface HookChain {
     }
 
     /**
+     * Fire the sub-agent start event through all registered handlers. Concrete chains scan {@link
+     * OnSubagentStart @OnSubagentStart} methods.
+     *
+     * @param event the event to fire
+     * @param <T> the event type
+     * @return a Mono emitting the (possibly modified) event
+     */
+    default <T> Mono<T> fireOnSubagentStart(T event) {
+        return Mono.just(event);
+    }
+
+    /**
+     * Fire the sub-agent stop event through all registered handlers. Concrete chains scan {@link
+     * OnSubagentStop @OnSubagentStop} methods.
+     *
+     * @param event the event to fire
+     * @param <T> the event type
+     * @return a Mono emitting the (possibly modified) event
+     */
+    default <T> Mono<T> fireOnSubagentStop(T event) {
+        return Mono.just(event);
+    }
+
+    /**
      * Fire the pre-complete event through all registered handlers.
      *
      * <p>Fired when the model response contains no tool calls (agent about to return a final

@@ -21,7 +21,10 @@ import io.kairo.api.tool.JsonSchema;
 import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolDefinition;
+import io.kairo.api.tool.ToolOutcome;
+import io.kairo.api.tool.ToolOutput;
 import io.kairo.api.tool.ToolResult;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +45,16 @@ class CircuitBreakerTest {
 
     private DefaultToolExecutor executorWithThreshold(int threshold) {
         return new DefaultToolExecutor(registry, guard, null, null, threshold);
+    }
+
+    /**
+     * The circuit breaker only counts {@code TIMEOUT}/{@code CANCELLED} outcomes — generic ERROR is
+     * treated as "application-level failure" and ignored. So these tests need to return
+     * timeout-classified results to actually trip the breaker.
+     */
+    private static ToolResult timeoutResult(String toolName, String message) {
+        return new ToolResult(
+                toolName, new ToolOutput.Text(message), ToolOutcome.TIMEOUT, List.of(), Map.of());
     }
 
     private void registerToolHandler(String name, SyncTool handler) {
@@ -66,7 +79,7 @@ class CircuitBreakerTest {
                 (input, ctx) -> {
                     int n = callCount.incrementAndGet();
                     if (n <= 2) {
-                        return Mono.just(ToolResult.error("flaky", "Error: failed"));
+                        return Mono.just(timeoutResult("flaky", "Error: failed"));
                     }
                     return Mono.just(ToolResult.success("flaky", "success"));
                 });
@@ -85,12 +98,12 @@ class CircuitBreakerTest {
                 .verifyComplete();
 
         // Next failure should NOT trigger circuit breaker (counter was reset)
-        callCount.set(0); // reset so it fails again
+        callCount.set(0); // reset so it fails again — back to TIMEOUT path
         StepVerifier.create(executor.execute("flaky", Map.of()))
                 .assertNext(r -> assertTrue(r.isError()))
                 .verifyComplete();
 
-        // Should still execute (only 1 failure since reset)
+        // Should still execute (only 1 timeout since reset)
         StepVerifier.create(executor.execute("flaky", Map.of()))
                 .assertNext(
                         r -> {
@@ -105,7 +118,7 @@ class CircuitBreakerTest {
         DefaultToolExecutor executor = executorWithThreshold(3);
         registerToolHandler(
                 "bad_tool",
-                (input, ctx) -> Mono.just(ToolResult.error("bad_tool", "Error: always fails")));
+                (input, ctx) -> Mono.just(timeoutResult("bad_tool", "Error: always fails")));
 
         // 3 consecutive failures
         for (int i = 0; i < 3; i++) {
@@ -134,7 +147,7 @@ class CircuitBreakerTest {
                 "tracked",
                 (input, ctx) -> {
                     callCount.incrementAndGet();
-                    return Mono.just(ToolResult.error("tracked", "Error: fail"));
+                    return Mono.just(timeoutResult("tracked", "Error: fail"));
                 });
 
         // Trigger circuit breaker with 2 failures
@@ -162,7 +175,7 @@ class CircuitBreakerTest {
                 "resettable",
                 (input, ctx) -> {
                     callCount.incrementAndGet();
-                    return Mono.just(ToolResult.error("resettable", "Error: fail"));
+                    return Mono.just(timeoutResult("resettable", "Error: fail"));
                 });
 
         // Trigger circuit breaker
@@ -195,9 +208,9 @@ class CircuitBreakerTest {
         DefaultToolExecutor executor = executorWithThreshold(2);
 
         registerToolHandler(
-                "tool_a", (input, ctx) -> Mono.just(ToolResult.error("tool_a", "Error: fail a")));
+                "tool_a", (input, ctx) -> Mono.just(timeoutResult("tool_a", "Error: fail a")));
         registerToolHandler(
-                "tool_b", (input, ctx) -> Mono.just(ToolResult.error("tool_b", "Error: fail b")));
+                "tool_b", (input, ctx) -> Mono.just(timeoutResult("tool_b", "Error: fail b")));
 
         // Trigger circuit breaker for both tools
         for (int i = 0; i < 2; i++) {
@@ -233,7 +246,7 @@ class CircuitBreakerTest {
     void customThresholdWorks() {
         DefaultToolExecutor executor = executorWithThreshold(5);
         registerToolHandler(
-                "custom", (input, ctx) -> Mono.just(ToolResult.error("custom", "Error: fail")));
+                "custom", (input, ctx) -> Mono.just(timeoutResult("custom", "Error: fail")));
 
         // 4 failures should NOT trigger circuit breaker
         for (int i = 0; i < 4; i++) {
@@ -271,7 +284,7 @@ class CircuitBreakerTest {
         DefaultToolExecutor executor = executorWithThreshold(2);
 
         registerToolHandler(
-                "tool_x", (input, ctx) -> Mono.just(ToolResult.error("tool_x", "Error: fail x")));
+                "tool_x", (input, ctx) -> Mono.just(timeoutResult("tool_x", "Error: fail x")));
         registerToolHandler(
                 "tool_y", (input, ctx) -> Mono.just(ToolResult.success("tool_y", "success y")));
 
@@ -303,7 +316,7 @@ class CircuitBreakerTest {
                         // Simulate tools returning invocation-scoped IDs instead of static tool
                         // names
                         Mono.just(
-                                ToolResult.error(
+                                timeoutResult(
                                         "invocation-" + System.nanoTime(), "Error: transient")));
 
         StepVerifier.create(executor.execute("unstable_tool", Map.of()))
@@ -325,7 +338,7 @@ class CircuitBreakerTest {
 
         registerToolHandler(
                 "default_thresh",
-                (input, ctx) -> Mono.just(ToolResult.error("default_thresh", "Error: fail")));
+                (input, ctx) -> Mono.just(timeoutResult("default_thresh", "Error: fail")));
 
         // 3 failures should NOT be circuit-broken (they execute normally)
         for (int i = 0; i < 3; i++) {
