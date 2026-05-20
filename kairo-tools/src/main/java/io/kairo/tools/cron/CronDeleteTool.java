@@ -15,6 +15,7 @@
  */
 package io.kairo.tools.cron;
 
+import io.kairo.api.cron.CronScheduler;
 import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
@@ -22,7 +23,6 @@ import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
 import io.kairo.api.tool.ToolSideEffect;
-import io.kairo.core.cron.CronScheduler;
 import java.util.Map;
 import reactor.core.publisher.Mono;
 

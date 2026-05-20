@@ -19,8 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
-import io.kairo.core.cron.CronTaskStore;
-import io.kairo.core.cron.DefaultCronScheduler;
+import io.kairo.cron.CronTaskStore;
+import io.kairo.cron.DefaultCronScheduler;
 import java.nio.file.Path;
 import java.time.ZoneId;
 import java.util.Map;

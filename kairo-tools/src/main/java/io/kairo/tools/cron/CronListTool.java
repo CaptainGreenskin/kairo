@@ -15,14 +15,14 @@
  */
 package io.kairo.tools.cron;
 
+import io.kairo.api.cron.CronScheduler;
 import io.kairo.api.cron.CronTask;
 import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
-import io.kairo.core.cron.CronExpression;
-import io.kairo.core.cron.CronScheduler;
+import io.kairo.cron.CronExpression;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;

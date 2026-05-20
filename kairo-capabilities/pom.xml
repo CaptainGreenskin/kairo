@@ -31,5 +31,6 @@
         <module>../kairo-expert-team</module>
         <module>../kairo-security-pii</module>
         <module>../kairo-plugin</module>
+        <module>../kairo-cron</module>
     </modules>
 </project>
