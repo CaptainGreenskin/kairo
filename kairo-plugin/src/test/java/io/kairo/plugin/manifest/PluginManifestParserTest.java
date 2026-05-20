@@ -55,6 +55,59 @@ class PluginManifestParserTest {
     }
 
     @Test
+    void readsMcpServersFromExternalRelativeFile(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectory(tmp.resolve("ext-rel"));
+        Files.createDirectories(root.resolve(".kairo-plugin"));
+        Files.writeString(
+                root.resolve(".kairo-plugin/plugin.json"),
+                "{\"name\":\"ext-rel\",\"version\":\"1.0.0\","
+                        + "\"mcpServers\":\"./external-mcp.json\"}");
+        Files.writeString(
+                root.resolve("external-mcp.json"),
+                "{\"mcpServers\":{\"github\":{\"command\":\"node\",\"args\":[\"x.js\"]}}}");
+        var servers = parser.readMcpServers(parser.locateManifest(root));
+        assertThat(servers).containsKey("github");
+    }
+
+    @Test
+    void readsMcpServersFromExternalFileWithBareTopLevel(@TempDir Path tmp) throws Exception {
+        // Plugin author dropped the `mcpServers` wrapper in the external file — we tolerate it.
+        Path root = Files.createDirectory(tmp.resolve("ext-bare"));
+        Files.createDirectories(root.resolve(".kairo-plugin"));
+        Files.writeString(
+                root.resolve(".kairo-plugin/plugin.json"),
+                "{\"name\":\"ext-bare\",\"version\":\"1.0.0\","
+                        + "\"mcpServers\":\"./external-mcp.json\"}");
+        Files.writeString(
+                root.resolve("external-mcp.json"), "{\"weather\":{\"command\":\"weather-mcp\"}}");
+        var servers = parser.readMcpServers(parser.locateManifest(root));
+        assertThat(servers).containsKey("weather");
+    }
+
+    @Test
+    void mcpServersStringPointingAtMissingFileThrows(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectory(tmp.resolve("ext-missing"));
+        Files.createDirectories(root.resolve(".kairo-plugin"));
+        Files.writeString(
+                root.resolve(".kairo-plugin/plugin.json"),
+                "{\"name\":\"ext-missing\",\"version\":\"1.0.0\","
+                        + "\"mcpServers\":\"./does-not-exist.json\"}");
+        assertThatThrownBy(() -> parser.readMcpServers(parser.locateManifest(root)))
+                .isInstanceOf(java.io.IOException.class)
+                .hasMessageContaining("does-not-exist.json");
+    }
+
+    @Test
+    void mcpServersStringEmptyIsTreatedAsAbsent(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectory(tmp.resolve("ext-empty"));
+        Files.createDirectories(root.resolve(".kairo-plugin"));
+        Files.writeString(
+                root.resolve(".kairo-plugin/plugin.json"),
+                "{\"name\":\"ext-empty\",\"version\":\"1.0.0\",\"mcpServers\":\"\"}");
+        assertThat(parser.readMcpServers(parser.locateManifest(root))).isEmpty();
+    }
+
+    @Test
     void rejectsRangeVersion() throws Exception {
         Path root = Fixtures.copyToTemp("bad-version-plugin");
         assertThatThrownBy(() -> parser.parse(root))

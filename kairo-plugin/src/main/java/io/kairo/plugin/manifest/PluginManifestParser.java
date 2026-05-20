@@ -79,13 +79,73 @@ public final class PluginManifestParser {
                 name, version, description, author, license, homepage, keywords, deps);
     }
 
-    /** Reads {@code mcpServers} as a raw object map for downstream consumers (.mcp.json loader). */
+    /**
+     * Reads {@code mcpServers} as a raw object map for downstream consumers (.mcp.json loader).
+     *
+     * <p>Two upstream-compatible shapes are supported:
+     *
+     * <ul>
+     *   <li>Inline object — {@code "mcpServers": { "<name>": {...} }} returned directly
+     *   <li>External-file pointer — {@code "mcpServers": "./relative-or-absolute.json"} causes the
+     *       referenced file to be read; we accept either {@code {"mcpServers": {...}}} or a bare
+     *       {@code {"<name>": {...}}} top-level object so plugin authors can use either layout
+     * </ul>
+     *
+     * <p>If the pointer resolves to a missing file we throw — silently dropping the field would
+     * mask a config error during {@code enable} where the operator expects every declared server to
+     * actually start.
+     */
     public Map<String, Object> readMcpServers(Path manifestPath) throws IOException {
         if (manifestPath == null) return Map.of();
         JsonNode root = mapper.readTree(Files.newBufferedReader(manifestPath));
         JsonNode node = root.get("mcpServers");
-        if (node == null || !node.isObject()) return Map.of();
-        return mapper.convertValue(node, Map.class);
+        if (node == null) return Map.of();
+        if (node.isObject()) {
+            return mapper.convertValue(node, Map.class);
+        }
+        if (node.isTextual()) {
+            String raw = node.asText();
+            if (raw == null || raw.isBlank()) return Map.of();
+            // Match upstream semantics: the relative path is plugin-root-relative, not
+            // manifest-file-parent-relative. Manifests sit at `<root>/.kairo-plugin/plugin.json`,
+            // so the plugin root is the manifest's grandparent. If the path is absolute, use it
+            // verbatim.
+            Path candidate = Path.of(raw);
+            Path target;
+            if (candidate.isAbsolute()) {
+                target = candidate.normalize();
+            } else {
+                Path manifestParent = manifestPath.getParent();
+                Path pluginRoot =
+                        manifestParent == null
+                                ? Path.of(".")
+                                : (manifestParent.getParent() != null
+                                        ? manifestParent.getParent()
+                                        : manifestParent);
+                target = pluginRoot.resolve(raw).normalize();
+            }
+            if (!Files.isRegularFile(target)) {
+                throw new IOException(
+                        "Plugin manifest at "
+                                + manifestPath
+                                + " points 'mcpServers' at '"
+                                + raw
+                                + "' but the resolved file does not exist: "
+                                + target);
+            }
+            JsonNode external = mapper.readTree(Files.newBufferedReader(target));
+            if (external == null) return Map.of();
+            JsonNode wrapped = external.get("mcpServers");
+            if (wrapped != null && wrapped.isObject()) {
+                return mapper.convertValue(wrapped, Map.class);
+            }
+            // Tolerate a bare top-level object — plugin authors sometimes drop the wrapper.
+            if (external.isObject()) {
+                return mapper.convertValue(external, Map.class);
+            }
+            return Map.of();
+        }
+        return Map.of();
     }
 
     private String requireExactVersion(String version, Path manifestPath) {
