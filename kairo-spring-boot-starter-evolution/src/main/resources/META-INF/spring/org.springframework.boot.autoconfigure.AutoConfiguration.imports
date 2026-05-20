@@ -1,1 +1,2 @@
 io.kairo.spring.evolution.EvolutionAutoConfiguration
+io.kairo.spring.evolution.CuratorAutoConfiguration

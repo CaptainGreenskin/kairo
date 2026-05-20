@@ -73,6 +73,17 @@ public class EvolutionProperties {
 
     private Governance governance = new Governance();
 
+    /** Curator (skill telemetry + umbrella consolidation) settings. */
+    private Curator curator = new Curator();
+
+    public Curator getCurator() {
+        return curator;
+    }
+
+    public void setCurator(Curator curator) {
+        this.curator = curator;
+    }
+
     public boolean isEnabled() {
         return enabled;
     }
@@ -167,6 +178,118 @@ public class EvolutionProperties {
 
         public void setScanRequired(boolean scanRequired) {
             this.scanRequired = scanRequired;
+        }
+    }
+
+    /**
+     * Configuration for the lifecycle curator + LLM-driven umbrella consolidation. Mirrors Hermes'
+     * defaults: 7-day review interval, 2-hour idle gate, 30-day stale, 90-day archive.
+     */
+    public static class Curator {
+
+        /** Master switch for the curator daemon. Default: false. */
+        private boolean enabled = false;
+
+        /** Auto-start the daemon at application startup. Default: false. */
+        private boolean autoStart = false;
+
+        /** Background review interval in minutes. Default: 10080 (7 days). */
+        @Min(1)
+        private long reviewIntervalMinutes = 60L * 24L * 7L;
+
+        /**
+         * Skip a review tick if the host has not been idle for at least this many minutes. Default:
+         * 120 (2 hours). Set to 0 to disable the idle gate.
+         */
+        @Min(0)
+        private long idleThresholdMinutes = 120L;
+
+        /** Days an unused skill stays in ACTIVE before transitioning to STALE. Default: 30. */
+        @Min(1)
+        private int staleAfterDays = 30;
+
+        /**
+         * Days an unused skill stays in STALE before transitioning to ARCHIVED. Default: 90.
+         * Archive is reversible — skills are not deleted.
+         */
+        @Min(1)
+        private int archiveAfterDays = 90;
+
+        /**
+         * Filesystem directory for the file-backed {@code SkillTelemetryStore}. Defaults to {@code
+         * ~/.kairo/evolution/}.
+         */
+        private String telemetryDirectory;
+
+        /**
+         * Filesystem root for {@link io.kairo.evolution.curator.CuratorAction.DemoteToSupport}
+         * actions ({@code references/}, {@code templates/}, {@code scripts/}). Defaults to the
+         * skill store directory if available.
+         */
+        private String supportDirectory;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public boolean isAutoStart() {
+            return autoStart;
+        }
+
+        public void setAutoStart(boolean autoStart) {
+            this.autoStart = autoStart;
+        }
+
+        public long getReviewIntervalMinutes() {
+            return reviewIntervalMinutes;
+        }
+
+        public void setReviewIntervalMinutes(long reviewIntervalMinutes) {
+            this.reviewIntervalMinutes = reviewIntervalMinutes;
+        }
+
+        public long getIdleThresholdMinutes() {
+            return idleThresholdMinutes;
+        }
+
+        public void setIdleThresholdMinutes(long idleThresholdMinutes) {
+            this.idleThresholdMinutes = idleThresholdMinutes;
+        }
+
+        public int getStaleAfterDays() {
+            return staleAfterDays;
+        }
+
+        public void setStaleAfterDays(int staleAfterDays) {
+            this.staleAfterDays = staleAfterDays;
+        }
+
+        public int getArchiveAfterDays() {
+            return archiveAfterDays;
+        }
+
+        public void setArchiveAfterDays(int archiveAfterDays) {
+            this.archiveAfterDays = archiveAfterDays;
+        }
+
+        public String getTelemetryDirectory() {
+            return telemetryDirectory;
+        }
+
+        public void setTelemetryDirectory(String telemetryDirectory) {
+            this.telemetryDirectory = telemetryDirectory;
+        }
+
+        public String getSupportDirectory() {
+            return supportDirectory;
+        }
+
+        public void setSupportDirectory(String supportDirectory) {
+            this.supportDirectory = supportDirectory;
         }
     }
 }
