@@ -104,14 +104,54 @@ public sealed interface PluginComponent {
 
     /**
      * MCP server contributed via {@code .mcp.json} or inline in {@code plugin.json#mcpServers}.
-     * Started as a stdio subprocess when the plugin is enabled.
+     *
+     * <p>Three transports are supported, mirroring Claude Code's mcpServers schema:
+     *
+     * <ul>
+     *   <li>{@link Transport#STDIO} — {@code command} + {@code args} + {@code env} fork a stdio
+     *       subprocess
+     *   <li>{@link Transport#STREAMABLE_HTTP} — {@code url} points at an HTTP server using the
+     *       Streamable HTTP transport
+     *   <li>{@link Transport#SSE} — {@code url} points at an SSE endpoint
+     * </ul>
+     *
+     * <p>For HTTP/SSE entries {@code command}/{@code args} are typically empty; for stdio entries
+     * {@code url} is null. {@code headers} carries HTTP-only options (Authorization, custom
+     * headers) and is ignored for stdio.
      */
     record McpComponent(
-            String serverName, String command, List<String> args, Map<String, String> env)
+            String serverName,
+            String command,
+            List<String> args,
+            Map<String, String> env,
+            Transport transport,
+            String url,
+            Map<String, String> headers)
             implements PluginComponent {
+
+        /** MCP transport types supported by the loader. */
+        public enum Transport {
+            STDIO,
+            STREAMABLE_HTTP,
+            SSE
+        }
+
         public McpComponent {
             args = args == null ? List.of() : List.copyOf(args);
             env = env == null ? Map.of() : Map.copyOf(env);
+            headers = headers == null ? Map.of() : Map.copyOf(headers);
+            if (transport == null) {
+                transport =
+                        (url != null && !url.isBlank())
+                                ? Transport.STREAMABLE_HTTP
+                                : Transport.STDIO;
+            }
+        }
+
+        /** Backwards-compatible stdio-only constructor — kept for existing callers/tests. */
+        public McpComponent(
+                String serverName, String command, List<String> args, Map<String, String> env) {
+            this(serverName, command, args, env, Transport.STDIO, null, Map.of());
         }
 
         @Override

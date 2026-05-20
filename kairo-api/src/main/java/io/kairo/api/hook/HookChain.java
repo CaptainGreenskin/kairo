@@ -222,6 +222,32 @@ public interface HookChain {
     }
 
     /**
+     * Fire the user-prompt-submit event through all registered handlers. Handlers may return a
+     * modified event (enriched/redacted prompt) before the agent processes it.
+     *
+     * @param event the event to fire
+     * @param <T> the event type
+     * @return a Mono emitting the (possibly modified) event
+     */
+    default <T> Mono<T> fireOnUserPromptSubmit(T event) {
+        return Mono.just(event);
+    }
+
+    /**
+     * Fire the notification event through all registered handlers — fire-and-forget channel for
+     * out-of-band events (long-running task progress, permission prompts, etc.). Default
+     * implementation is a no-op; concrete chains scan {@link OnNotification @OnNotification}
+     * methods.
+     *
+     * @param event the event to fire
+     * @param <T> the event type
+     * @return a Mono emitting the (possibly modified) event
+     */
+    default <T> Mono<T> fireOnNotification(T event) {
+        return Mono.just(event);
+    }
+
+    /**
      * Fire the pre-complete event through all registered handlers.
      *
      * <p>Fired when the model response contains no tool calls (agent about to return a final

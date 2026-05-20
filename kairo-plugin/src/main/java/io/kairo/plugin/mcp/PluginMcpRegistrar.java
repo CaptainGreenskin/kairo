@@ -122,17 +122,38 @@ public final class PluginMcpRegistrar {
         return ai == null ? 0 : ai.get();
     }
 
-    /** Translates a plugin's {@link PluginComponent.McpComponent} into a kairo-mcp config. */
+    /**
+     * Translates a plugin's {@link PluginComponent.McpComponent} into a kairo-mcp config, routing
+     * by the component's {@link PluginComponent.McpComponent.Transport}.
+     */
     static McpServerConfig toServerConfig(PluginComponent.McpComponent comp) {
-        List<String> argv = new ArrayList<>(comp.args().size() + 1);
-        argv.add(comp.command());
-        argv.addAll(comp.args());
-        return McpServerConfig.builder()
-                .name(comp.serverName())
-                .transportType(McpServerConfig.TransportType.STDIO)
-                .command(argv)
-                .env(comp.env())
-                .build();
+        switch (comp.transport()) {
+            case STREAMABLE_HTTP:
+                return McpServerConfig.builder()
+                        .name(comp.serverName())
+                        .transportType(McpServerConfig.TransportType.STREAMABLE_HTTP)
+                        .url(comp.url())
+                        .headers(comp.headers())
+                        .build();
+            case SSE:
+                return McpServerConfig.builder()
+                        .name(comp.serverName())
+                        .transportType(McpServerConfig.TransportType.SSE)
+                        .url(comp.url())
+                        .headers(comp.headers())
+                        .build();
+            case STDIO:
+            default:
+                List<String> argv = new ArrayList<>(comp.args().size() + 1);
+                argv.add(comp.command());
+                argv.addAll(comp.args());
+                return McpServerConfig.builder()
+                        .name(comp.serverName())
+                        .transportType(McpServerConfig.TransportType.STDIO)
+                        .command(argv)
+                        .env(comp.env())
+                        .build();
+        }
     }
 
     private void recordSuccess(

@@ -155,6 +155,17 @@ public class DefaultHookChain implements HookChain {
     }
 
     @Override
+    public <T> Mono<T> fireOnUserPromptSubmit(T event) {
+        return withDiagnosticsRecording(
+                fireEvent(event, OnUserPromptSubmit.class), "USER_PROMPT_SUBMIT");
+    }
+
+    @Override
+    public <T> Mono<T> fireOnNotification(T event) {
+        return withDiagnosticsRecording(fireEvent(event, OnNotification.class), "NOTIFICATION");
+    }
+
+    @Override
     public <T> Mono<T> firePreComplete(T event) {
         return fireEvent(event, PreComplete.class);
     }
@@ -717,6 +728,8 @@ public class DefaultHookChain implements HookChain {
         if (annotationType == OnSessionEnd.class) return HookPhase.SESSION_END;
         if (annotationType == OnToolResult.class) return HookPhase.TOOL_RESULT;
         if (annotationType == PreComplete.class) return HookPhase.PRE_COMPLETE;
+        if (annotationType == OnUserPromptSubmit.class) return HookPhase.USER_PROMPT_SUBMIT;
+        if (annotationType == OnNotification.class) return HookPhase.NOTIFICATION;
         return null;
     }
 
