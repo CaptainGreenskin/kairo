@@ -16,6 +16,7 @@ import io.kairo.api.plugin.PluginManifest;
 import io.kairo.api.plugin.PluginRegistry;
 import io.kairo.api.plugin.PluginScope;
 import io.kairo.api.plugin.PluginSource;
+import io.kairo.plugin.installer.DependencyResolver;
 import io.kairo.plugin.source.LocalPathSourceFetcher;
 import io.kairo.plugin.source.SourceFetcherRegistry;
 import java.nio.file.Path;
@@ -152,19 +153,41 @@ public final class DefaultPluginManager implements PluginManager {
                 });
     }
 
+    private final DependencyResolver dependencyResolver = new DependencyResolver();
+
     @Override
     public Mono<Void> enable(String id) {
         return Mono.<Void>defer(
                 () -> {
-                    PluginInstallation existing =
-                            registry.get(id)
-                                    .orElseThrow(
-                                            () ->
-                                                    new IllegalArgumentException(
-                                                            "No plugin installed with id: " + id));
+                    if (registry.get(id).isEmpty()) {
+                        return Mono.error(
+                                new IllegalArgumentException("No plugin installed with id: " + id));
+                    }
+                    // Resolve dependency order (transitive deps first, target last).
+                    List<String> order;
+                    try {
+                        order = dependencyResolver.enableOrder(registry.list(), id);
+                    } catch (DependencyResolver.UnresolvableDependencyException e) {
+                        emit(
+                                new PluginEvent.EnableFailed(
+                                        registry.get(id).orElseThrow(),
+                                        "dependencies",
+                                        e.getMessage(),
+                                        Instant.now()));
+                        return Mono.<Void>error(e);
+                    }
+                    return Flux.fromIterable(order).concatMap(this::enableSingle).then();
+                });
+    }
+
+    /** Enable just one plugin (no dependency resolution). No-op if already enabled. */
+    private Mono<Void> enableSingle(String id) {
+        return Mono.<Void>defer(
+                () -> {
+                    PluginInstallation existing = registry.get(id).orElse(null);
+                    if (existing == null) return Mono.<Void>empty();
                     if (existing.enabled()) return Mono.<Void>empty();
 
-                    // Re-load manifest from disk so component list reflects current state.
                     PluginManifest manifest;
                     try {
                         manifest = loader.load(existing.rootPath(), null);
@@ -205,6 +228,18 @@ public final class DefaultPluginManager implements PluginManager {
 
     @Override
     public Mono<Void> disable(String id) {
+        return Mono.<Void>defer(
+                () -> {
+                    PluginInstallation existing = registry.get(id).orElse(null);
+                    if (existing == null || !existing.enabled()) return Mono.<Void>empty();
+                    // Cascade: disable any dependents that are currently enabled, in reverse
+                    // dependency order, before disabling the target itself.
+                    List<String> order = dependencyResolver.disableCascade(registry.list(), id);
+                    return Flux.fromIterable(order).concatMap(this::disableSingle).then();
+                });
+    }
+
+    private Mono<Void> disableSingle(String id) {
         return Mono.<Void>defer(
                 () -> {
                     PluginInstallation existing = registry.get(id).orElse(null);
