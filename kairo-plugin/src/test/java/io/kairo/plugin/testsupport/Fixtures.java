@@ -40,7 +40,16 @@ public final class Fixtures {
         } catch (URISyntaxException e) {
             throw new IOException("Cannot resolve fixture URL: " + url, e);
         }
-        Path target = Files.createTempDirectory("kairo-plugin-fixture-" + name + "-");
+        // Sanitise: temp-dir prefix cannot contain path separators (`name` may be
+        // "claude-code-samples/commit-commands" for nested fixture trees).
+        String sanitised = name.replaceAll("[^A-Za-z0-9_-]", "-");
+        Path tempRoot = Files.createTempDirectory("kairo-plugin-fixture-" + sanitised + "-");
+        // Land the copy inside a child dir whose name matches the original plugin folder, so
+        // PluginLoader's manifest synthesis ({@code pluginRoot.getFileName()}) sees the real
+        // plugin name instead of the random temp prefix.
+        String leafName = name.contains("/") ? name.substring(name.lastIndexOf('/') + 1) : name;
+        Path target = tempRoot.resolve(leafName);
+        Files.createDirectory(target);
         copyTree(source, target);
         return target;
     }
