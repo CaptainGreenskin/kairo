@@ -60,7 +60,8 @@ public final class ExceptionMapper {
         if (e instanceof TimeoutException) {
             return new ModelTimeoutException(e.getMessage(), e);
         }
-        return new KairoException("Unexpected error", e);
+        return new KairoException(
+                "Unexpected error: " + e.getClass().getSimpleName() + " - " + e.getMessage(), e);
     }
 
     /**

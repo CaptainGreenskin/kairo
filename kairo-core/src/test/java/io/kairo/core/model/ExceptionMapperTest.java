@@ -81,7 +81,10 @@ class ExceptionMapperTest {
         Throwable mapped = ExceptionMapper.toApiException(cause);
 
         assertInstanceOf(KairoException.class, mapped);
-        assertEquals("Unexpected error", mapped.getMessage());
+        // Mapper now prefixes with exception class + message for diagnosability.
+        assertTrue(mapped.getMessage().contains("Unexpected error"));
+        assertTrue(mapped.getMessage().contains("RuntimeException"));
+        assertTrue(mapped.getMessage().contains("unexpected"));
         assertSame(cause, mapped.getCause());
     }
 

@@ -55,6 +55,9 @@ public final class GracefulShutdownManager {
         TERMINATED
     }
 
+    private static final AtomicBoolean shutdownInitiatedLogged = new AtomicBoolean(false);
+    private static final AtomicBoolean shutdownCompleteLogged = new AtomicBoolean(false);
+
     private final AtomicReference<ShutdownState> state =
             new AtomicReference<>(ShutdownState.RUNNING);
     private final Set<String> activeAgentIds = ConcurrentHashMap.newKeySet();
@@ -182,10 +185,12 @@ public final class GracefulShutdownManager {
         }
 
         shutdownStartedAt.set(Instant.now());
-        log.info(
-                "Graceful shutdown initiated, {} active agent(s), timeout={}",
-                activeAgentIds.size(),
-                shutdownTimeout);
+        if (shutdownInitiatedLogged.compareAndSet(false, true)) {
+            log.info(
+                    "Graceful shutdown initiated, {} active agent(s), timeout={}",
+                    activeAgentIds.size(),
+                    shutdownTimeout);
+        }
 
         // Run cleanup functions first (like claude-code-best)
         for (Runnable cleanup : cleanupFunctions) {
@@ -236,7 +241,9 @@ public final class GracefulShutdownManager {
         synchronized (terminationLock) {
             if (state.get() == ShutdownState.SHUTTING_DOWN && activeAgentIds.isEmpty()) {
                 if (state.compareAndSet(ShutdownState.SHUTTING_DOWN, ShutdownState.TERMINATED)) {
-                    log.info("All agents terminated, shutdown complete");
+                    if (shutdownCompleteLogged.compareAndSet(false, true)) {
+                        log.info("All agents terminated, shutdown complete");
+                    }
                     if (monitorFuture != null) monitorFuture.cancel(false);
                     terminationLock.notifyAll();
                 }
@@ -271,6 +278,8 @@ public final class GracefulShutdownManager {
     /** Reset for testing. */
     public void resetForTesting() {
         if (monitorFuture != null) monitorFuture.cancel(false);
+        shutdownInitiatedLogged.set(false);
+        shutdownCompleteLogged.set(false);
         state.set(ShutdownState.RUNNING);
         activeAgentIds.clear();
         activeAgents.clear();

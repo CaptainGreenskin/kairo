@@ -417,9 +417,15 @@ class ToolContextInjectionTest {
                 "flaky",
                 (input, ctx) -> {
                     boolean fail = Boolean.TRUE.equals(input.get("fail"));
+                    // Circuit breaker only counts TIMEOUT/CANCELLED — build the right outcome.
                     return Mono.just(
                             fail
-                                    ? ToolResult.error("flaky", "Error: boom")
+                                    ? new io.kairo.api.tool.ToolResult(
+                                            "flaky",
+                                            new io.kairo.api.tool.ToolOutput.Text("Error: boom"),
+                                            io.kairo.api.tool.ToolOutcome.TIMEOUT,
+                                            java.util.List.of(),
+                                            Map.of())
                                     : ToolResult.success("flaky", "ok"));
                 });
 

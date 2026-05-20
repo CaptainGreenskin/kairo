@@ -166,6 +166,16 @@ public class DefaultHookChain implements HookChain {
     }
 
     @Override
+    public <T> Mono<T> fireOnSubagentStart(T event) {
+        return withDiagnosticsRecording(fireEvent(event, OnSubagentStart.class), "SUBAGENT_START");
+    }
+
+    @Override
+    public <T> Mono<T> fireOnSubagentStop(T event) {
+        return withDiagnosticsRecording(fireEvent(event, OnSubagentStop.class), "SUBAGENT_STOP");
+    }
+
+    @Override
     public <T> Mono<T> firePreComplete(T event) {
         return fireEvent(event, PreComplete.class);
     }
@@ -730,6 +740,8 @@ public class DefaultHookChain implements HookChain {
         if (annotationType == PreComplete.class) return HookPhase.PRE_COMPLETE;
         if (annotationType == OnUserPromptSubmit.class) return HookPhase.USER_PROMPT_SUBMIT;
         if (annotationType == OnNotification.class) return HookPhase.NOTIFICATION;
+        if (annotationType == OnSubagentStart.class) return HookPhase.SUBAGENT_START;
+        if (annotationType == OnSubagentStop.class) return HookPhase.SUBAGENT_STOP;
         return null;
     }
 
