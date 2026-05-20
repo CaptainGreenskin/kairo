@@ -17,8 +17,8 @@ import java.util.Map;
 /**
  * Full parsed view of a plugin on disk: resolved metadata + all component contributions.
  *
- * <p>This is the result of running {@code PluginLoader.load(rootPath)}. Once a manifest is
- * built, {@link PluginManager#enable} can register all components atomically.
+ * <p>This is the result of running {@code PluginLoader.load(rootPath)}. Once a manifest is built,
+ * {@link PluginManager#enable} can register all components atomically.
  *
  * @param metadata parsed {@code plugin.json}
  * @param rootPath plugin root directory (where {@code .claude-plugin/} lives)
