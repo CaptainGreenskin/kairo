@@ -1,0 +1,15 @@
+{
+  "name": "stdio-mcp-plugin",
+  "version": "1.0.0",
+  "description": "Fixture plugin shipping a bin/ script + inline mcpServers config so we can prove the full PluginMcpRegistrar → ProcessBuilder pipeline really spawns a stdio subprocess.",
+  "mcpServers": {
+    "echo-mcp": {
+      "command": "${KAIRO_PLUGIN_ROOT}/scripts/echo-mcp.sh",
+      "args": ["--plugin-root=${KAIRO_PLUGIN_ROOT}"],
+      "env": {
+        "KAIRO_TEST_VAR": "fixture-value",
+        "PLUGIN_ROOT_ECHO": "${KAIRO_PLUGIN_ROOT}"
+      }
+    }
+  }
+}

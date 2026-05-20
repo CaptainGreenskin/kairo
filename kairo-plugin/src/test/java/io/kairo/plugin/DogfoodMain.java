@@ -51,7 +51,10 @@ public final class DogfoodMain {
     private DogfoodMain() {}
 
     public static void main(String[] args) throws Exception {
-        Path tmp = Files.createTempDirectory("kairo-dogfood-");
+        // Stable cache root so re-runs are quick — first run primes from network, subsequent
+        // runs read cached worktrees. Override with -Dkairo.dogfood.workdir=/path or
+        // KAIRO_DOGFOOD_WORKDIR if you want a one-shot temp dir.
+        Path tmp = workdir();
         Path cacheRoot = Files.createDirectories(tmp.resolve("cache"));
         Path dataRoot = Files.createDirectories(tmp.resolve("data"));
 
@@ -75,7 +78,7 @@ public final class DogfoodMain {
                         manager.install(
                                         new PluginSource.GitSubdir(REPO, "main", subdir),
                                         PluginScope.USER)
-                                .block(Duration.ofMinutes(2));
+                                .block(Duration.ofMinutes(8));
                 manager.enable(inst.id()).block(Duration.ofSeconds(30));
 
                 PluginManifest manifest = new PluginLoader().load(inst.rootPath(), null);
@@ -96,6 +99,17 @@ public final class DogfoodMain {
 
         System.out.printf("Manager has %d plugin(s) installed%n", manager.list().size());
         System.out.println("Done.");
+    }
+
+    private static Path workdir() throws java.io.IOException {
+        String fromProp = System.getProperty("kairo.dogfood.workdir");
+        String fromEnv = System.getenv("KAIRO_DOGFOOD_WORKDIR");
+        String chosen = fromProp != null ? fromProp : fromEnv;
+        if (chosen != null && !chosen.isBlank()) {
+            return Files.createDirectories(Path.of(chosen));
+        }
+        return Files.createDirectories(
+                Path.of(System.getProperty("java.io.tmpdir"), "kairo-dogfood-stable"));
     }
 
     private static Map<String, Integer> countByType(List<PluginComponent> components) {

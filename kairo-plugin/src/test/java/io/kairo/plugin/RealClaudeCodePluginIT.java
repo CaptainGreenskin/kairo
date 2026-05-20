@@ -23,7 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -35,25 +35,14 @@ import org.junit.jupiter.api.io.TempDir;
  * pipeline (install → enable → disable → uninstall), and verify every expected component reaches
  * the plugin manifest.
  *
- * <p>Disabled by default. The {@code anthropics/claude-code} monorepo is large (~3 minutes for a
- * native shallow clone over a fast connection), so this IT is wallclock-expensive and depends on
- * upstream availability. Two ways to run:
- *
- * <ul>
- *   <li>Remove {@code @Disabled} locally and run {@code mvn -pl kairo-plugin verify
- *       -Pintegration-tests}, OR
- *   <li>Use the lighter human-friendly {@link DogfoodMain} runner and read the printed report.
- * </ul>
- *
- * <p>Even in disabled state these tests serve as executable documentation for what shape we expect
- * each upstream plugin to have. Each test uses a {@link PluginSource.GitSubdir} pointing at a real
- * plugin in the {@code anthropics/claude-code} monorepo on {@code main}.
+ * <p>Lives in the {@code integration} JUnit tag — only fires when {@code -Pintegration-tests} is
+ * active and won't slow down the default suite. Sharing a single static cache directory across all
+ * tests in this class means we hit the network with a full {@code claude-code} monorepo clone
+ * exactly once per JVM (≈ 3 min on a fast connection); subsequent tests resolve from local cache in
+ * milliseconds. For human-driven sign-off you can also run {@link DogfoodMain}, which reuses the
+ * same cache directory.
  */
 @Tag("integration")
-@Disabled(
-        "Requires network access + ~3 min full-clone of anthropics/claude-code per test. Run"
-                + " manually: remove @Disabled and `mvn -pl kairo-plugin verify"
-                + " -Pintegration-tests`. For quicker live verification use DogfoodMain.")
 class RealClaudeCodePluginIT {
 
     private static final String REPO = "https://github.com/anthropics/claude-code.git";
@@ -61,6 +50,21 @@ class RealClaudeCodePluginIT {
 
     /** Generous: the monorepo full-clone takes ~3 min on a fast home connection. */
     private static final Duration FETCH_TIMEOUT = Duration.ofMinutes(8);
+
+    /**
+     * Shared across the whole test class so we clone the {@code claude-code} monorepo only once.
+     * Created lazily in {@link #primeSharedCache()} and reused by {@link #newManager(Path, Path)}.
+     */
+    private static Path SHARED_CACHE_ROOT;
+
+    @BeforeAll
+    static void primeSharedCache() throws Exception {
+        SHARED_CACHE_ROOT =
+                Files.createDirectories(
+                        Path.of(
+                                System.getProperty("java.io.tmpdir"),
+                                "kairo-RealClaudeCodePluginIT-cache"));
+    }
 
     @Test
     @DisplayName("commit-commands: 3 flat commands fetched from anthropics/claude-code")
@@ -169,8 +173,9 @@ class RealClaudeCodePluginIT {
 
     private static DefaultPluginManager newManager(Path cacheParent, Path dataRoot)
             throws Exception {
-        Path cacheRoot = Files.createDirectories(cacheParent.resolve("cache"));
-        var cache = new PluginCacheManager(cacheRoot);
+        // Use the class-shared cache root so the monorepo is cloned once and reused across all
+        // tests; cacheParent is unused here but retained for backwards-compat with the helper.
+        var cache = new PluginCacheManager(SHARED_CACHE_ROOT);
         var fetchers = new SourceFetcherRegistry().register(new GitSubdirSourceFetcher(cache));
         return new DefaultPluginManager(
                 new DefaultPluginRegistry(),
