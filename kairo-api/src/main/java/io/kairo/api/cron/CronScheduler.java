@@ -31,8 +31,18 @@ import java.util.Optional;
 @Experimental("Cron SPI promoted to kairo-api in v1.2 — shape may change")
 public interface CronScheduler {
 
-    /** Create a new task. */
+    /** Create a new task with default options (recurring=true|false, durable=true|false). */
     CronTask create(String cron, String prompt, boolean recurring, boolean durable);
+
+    /**
+     * Create a new task with the full option set: skills to pre-load, workdir, no-agent / script
+     * mode, and task chaining. Default implementation falls through to the simpler 4-arg form
+     * (drops the extras) so existing impls keep compiling — concrete schedulers should override.
+     */
+    default CronTask create(String cron, String prompt, CronTaskOptions options) {
+        if (options == null) options = CronTaskOptions.defaults();
+        return create(cron, prompt, options.recurring(), options.durable());
+    }
 
     /** Delete a task by id. Returns whether one was removed. */
     boolean delete(String taskId);

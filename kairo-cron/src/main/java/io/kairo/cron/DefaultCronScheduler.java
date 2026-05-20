@@ -120,26 +120,55 @@ public class DefaultCronScheduler implements CronScheduler {
 
     @Override
     public CronTask create(String cron, String prompt, boolean recurring, boolean durable) {
+        return create(cron, prompt, io.kairo.api.cron.CronTaskOptions.of(recurring, durable));
+    }
+
+    @Override
+    public CronTask create(String cron, String prompt, io.kairo.api.cron.CronTaskOptions options) {
         if (tasks.size() >= MAX_JOBS) {
             throw new IllegalStateException(
                     "Maximum number of cron jobs (" + MAX_JOBS + ") reached");
+        }
+        if (options == null) options = io.kairo.api.cron.CronTaskOptions.defaults();
+        if (options.noAgent() && (options.script() == null || options.script().isBlank())) {
+            throw new IllegalArgumentException("noAgent=true requires a non-blank script");
         }
         // Accept Hermes-style "every Nm" / "every 1d at 09:00" alongside 5-field cron.
         String normalisedCron = ScheduleSyntax.toCron(cron);
         CronExpression expr = CronExpression.parse(normalisedCron);
         String id = generateId();
         CronTask task =
-                new CronTask(id, normalisedCron, prompt, Instant.now(), null, recurring, durable);
+                new CronTask(
+                        id,
+                        normalisedCron,
+                        prompt,
+                        Instant.now(),
+                        null,
+                        options.recurring(),
+                        options.durable(),
+                        false,
+                        0,
+                        null,
+                        null,
+                        options.skills(),
+                        options.workdir(),
+                        options.noAgent(),
+                        options.script(),
+                        options.contextFromTaskId());
         tasks.put(id, new TaskEntry(task, expr));
-        if (durable) {
+        if (options.durable()) {
             persistDurableTasks();
         }
         log.info(
-                "Created cron task {} [cron={}, recurring={}, durable={}]",
+                "Created cron task {} [cron={}, recurring={}, durable={}, skills={}, workdir={},"
+                        + " noAgent={}]",
                 id,
-                cron,
-                recurring,
-                durable);
+                normalisedCron,
+                options.recurring(),
+                options.durable(),
+                options.skills(),
+                options.workdir(),
+                options.noAgent());
         return task;
     }
 
