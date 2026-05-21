@@ -30,6 +30,7 @@ import java.time.Duration;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -55,9 +56,22 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "kairo.evolution.curator.enabled", havingValue = "true")
+@EnableConfigurationProperties(EvolutionProperties.class)
 public class CuratorAutoConfiguration {
 
     @Autowired private EvolutionProperties properties;
+
+    /**
+     * Provide an in-memory {@link EvolvedSkillStore} when the user enabled the curator but did NOT
+     * enable the full evolution pipeline ({@code kairo.evolution.enabled}). That way the curator
+     * stays independently runnable — its lifecycle pass and umbrella consolidation don't need a
+     * {@code ModelProvider} or any of the heavier evolution beans.
+     */
+    @Bean
+    @ConditionalOnMissingBean(EvolvedSkillStore.class)
+    EvolvedSkillStore curatorEvolvedSkillStore() {
+        return new io.kairo.skill.InMemoryEvolvedSkillStore();
+    }
 
     @Bean
     @ConditionalOnMissingBean(SkillTelemetryStore.class)
@@ -102,6 +116,16 @@ public class CuratorAutoConfiguration {
             EvolvedSkillStore skillStore, SkillTelemetryStore telemetryStore) {
         Path supportDir = resolveSupportDir();
         return new CuratorActionExecutor(skillStore, telemetryStore, supportDir);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    EvolutionController evolutionController(
+            EvolvedSkillStore skillStore,
+            io.kairo.api.evolution.SkillTelemetryStore telemetryStore,
+            LifecycleCuratorDaemon daemon,
+            UmbrellaConsolidationPlanner planner) {
+        return new EvolutionController(skillStore, telemetryStore, daemon, planner);
     }
 
     @Bean
