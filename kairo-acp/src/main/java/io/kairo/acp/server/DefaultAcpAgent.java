@@ -166,8 +166,11 @@ public final class DefaultAcpAgent implements AcpAgent {
                             sessionUpdater.accept(
                                     new AcpSessionUpdate.AgentMessageChunk(
                                             request.sessionId(), "[error] " + e.getMessage()));
+                            // Wire spec only allows end_turn / max_tokens / max_turn_requests /
+                            // refusal / cancelled; signal completion with END_TURN and let the
+                            // error text in the chunk speak for itself.
                             return Mono.just(
-                                    new AcpPromptResponse(AcpPromptResponse.StopReason.ERROR));
+                                    new AcpPromptResponse(AcpPromptResponse.StopReason.END_TURN));
                         })
                 .doFinally(
                         sig -> {
