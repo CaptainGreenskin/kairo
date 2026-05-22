@@ -16,6 +16,7 @@
 package io.kairo.core.model;
 
 import io.kairo.core.model.anthropic.AnthropicProvider;
+import io.kairo.core.model.gemini.GeminiProvider;
 import io.kairo.core.model.openai.OpenAIProvider;
 
 /**
@@ -24,6 +25,12 @@ import io.kairo.core.model.openai.OpenAIProvider;
  * <p>Each method returns a standard provider instance that users can further configure. This class
  * provides convenience, not lock-in.
  *
+ * <p>OpenAI-compatible backends (Qwen / GLM / DeepSeek / MiniMax / Groq / Kimi / xAI / OpenRouter /
+ * Ollama) all reuse {@link OpenAIProvider} with the appropriate base URL — they get full streaming
+ * + tool-calling support without a new transport. Use the dedicated {@link #anthropic} for Claude
+ * (native Messages API) and {@link #gemini} once the Gemini provider lands (native generateContent
+ * API).
+ *
  * <pre>{@code
  * // Quick start with Anthropic
  * ModelProvider claude = ProviderPresets.anthropic(System.getenv("ANTHROPIC_API_KEY"));
@@ -31,8 +38,8 @@ import io.kairo.core.model.openai.OpenAIProvider;
  * // Quick start with OpenAI
  * ModelProvider gpt = ProviderPresets.openai(System.getenv("OPENAI_API_KEY"));
  *
- * // Quick start with Qwen (DashScope)
- * ModelProvider qwen = ProviderPresets.qwen(System.getenv("DASHSCOPE_API_KEY"));
+ * // Local Ollama
+ * ModelProvider local = ProviderPresets.ollama();
  * }</pre>
  */
 public final class ProviderPresets {
@@ -40,6 +47,8 @@ public final class ProviderPresets {
     private ProviderPresets() {
         // utility class — no instances
     }
+
+    // ---- Native providers -----------------------------------------------------------------
 
     /**
      * Claude with sensible defaults.
@@ -62,10 +71,21 @@ public final class ProviderPresets {
     }
 
     /**
-     * Qwen (DashScope) — compatible OpenAI provider with Alibaba Cloud endpoint.
+     * Gemini (native generateContent API) with sensible defaults.
+     *
+     * @param apiKey the Google AI Studio API key
+     * @return a configured {@link GeminiProvider}
+     */
+    public static GeminiProvider gemini(String apiKey) {
+        return new GeminiProvider(apiKey);
+    }
+
+    // ---- OpenAI-compatible backends (Chinese) ---------------------------------------------
+
+    /**
+     * Qwen (DashScope) — Alibaba Cloud OpenAI-compatible endpoint.
      *
      * @param apiKey the DashScope API key
-     * @return a configured {@link OpenAIProvider} pointing to DashScope
      */
     public static OpenAIProvider qwen(String apiKey) {
         return new OpenAIProvider(
@@ -73,10 +93,9 @@ public final class ProviderPresets {
     }
 
     /**
-     * GLM (Zhipu AI) — compatible OpenAI provider with Zhipu endpoint.
+     * GLM (Zhipu AI) — OpenAI-compatible endpoint.
      *
      * @param apiKey the Zhipu AI API key
-     * @return a configured {@link OpenAIProvider} pointing to Zhipu AI
      */
     public static OpenAIProvider glm(String apiKey) {
         return new OpenAIProvider(
@@ -84,12 +103,89 @@ public final class ProviderPresets {
     }
 
     /**
-     * DeepSeek — compatible OpenAI provider with DeepSeek endpoint.
+     * DeepSeek — OpenAI-compatible endpoint.
      *
      * @param apiKey the DeepSeek API key
-     * @return a configured {@link OpenAIProvider} pointing to DeepSeek
      */
     public static OpenAIProvider deepseek(String apiKey) {
         return new OpenAIProvider(apiKey, "https://api.deepseek.com", "/v1/chat/completions");
+    }
+
+    /**
+     * MiniMax — OpenAI-compatible endpoint at {@code api.minimaxi.com/v1}. Supports the M2.7
+     * family.
+     *
+     * @param apiKey the MiniMax API key
+     */
+    public static OpenAIProvider minimax(String apiKey) {
+        return new OpenAIProvider(apiKey, "https://api.minimaxi.com", "/v1/chat/completions");
+    }
+
+    /**
+     * Moonshot / Kimi — OpenAI-compatible endpoint.
+     *
+     * @param apiKey the Moonshot API key
+     */
+    public static OpenAIProvider kimi(String apiKey) {
+        return new OpenAIProvider(apiKey, "https://api.moonshot.cn", "/v1/chat/completions");
+    }
+
+    // ---- OpenAI-compatible backends (Global) ----------------------------------------------
+
+    /**
+     * Groq — OpenAI-compatible endpoint, very low latency Llama / Mistral / Gemma hosting.
+     *
+     * @param apiKey the Groq API key
+     */
+    public static OpenAIProvider groq(String apiKey) {
+        return new OpenAIProvider(apiKey, "https://api.groq.com/openai", "/v1/chat/completions");
+    }
+
+    /**
+     * xAI Grok — OpenAI-compatible endpoint.
+     *
+     * @param apiKey the xAI API key
+     */
+    public static OpenAIProvider xai(String apiKey) {
+        return new OpenAIProvider(apiKey, "https://api.x.ai", "/v1/chat/completions");
+    }
+
+    /**
+     * OpenRouter — multi-model aggregator with one OpenAI-compatible endpoint.
+     *
+     * @param apiKey the OpenRouter API key
+     */
+    public static OpenAIProvider openrouter(String apiKey) {
+        return new OpenAIProvider(apiKey, "https://openrouter.ai/api", "/v1/chat/completions");
+    }
+
+    // ---- Local --------------------------------------------------------------------------
+
+    /**
+     * Local Ollama — no API key. Defaults to {@code http://localhost:11434}; override the URL with
+     * {@link #ollama(String)} if your Ollama listens elsewhere.
+     */
+    public static OpenAIProvider ollama() {
+        return ollama("http://localhost:11434");
+    }
+
+    /**
+     * Local Ollama at a custom base URL. Ollama accepts any non-empty string as the API key (Bearer
+     * token is ignored).
+     */
+    public static OpenAIProvider ollama(String baseUrl) {
+        return new OpenAIProvider("ollama", baseUrl, "/v1/chat/completions");
+    }
+
+    /**
+     * Local LM Studio — defaults to {@code http://localhost:1234}. Like Ollama, ignores the API
+     * key; we pass a placeholder.
+     */
+    public static OpenAIProvider lmStudio() {
+        return lmStudio("http://localhost:1234");
+    }
+
+    public static OpenAIProvider lmStudio(String baseUrl) {
+        return new OpenAIProvider("lm-studio", baseUrl, "/v1/chat/completions");
     }
 }

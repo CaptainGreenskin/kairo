@@ -26,6 +26,7 @@ kairo-capabilities/
   kairo-plugin/     ← Plugin SPI 实现（Claude Code 格式兼容）
   kairo-cron/       ← 定时任务调度器
   kairo-gateway/    ← 多 Channel 编排层（路由 / 会话 / 流式 / mirror）
+  kairo-lsp/        ← LSP 诊断子系统（write/patch 后 baseline diff，非 model-facing tool）
 kairo-transports/
   kairo-channel-dingtalk/ ← 钉钉集成（实现 kairo-api/gateway/Channel）
   kairo-event-stream/     ← 事件总线
@@ -64,6 +65,8 @@ io.kairo.evolution.*← 进化机制
 | `PluginManager` | `io.kairo.api.plugin.PluginManager` | Plugin install/enable/disable/uninstall（v1.2 @Experimental） |
 | `SubagentRegistry` | `io.kairo.api.agent.SubagentRegistry` | Subagent 注册（agents/*.md 目标）|
 | `Gateway` | `io.kairo.api.gateway.Gateway` | 多 Channel 之上的编排层（路由 / 会话 / 流式 / mirror / pairing），v1.2 @Experimental — 详见 [ADR-030](docs/adr/ADR-030-gateway-module.md) |
+| `LspService` | `io.kairo.api.lsp.LspService` | LSP 诊断子系统：snapshotBaseline + notifyChange + diagnosticsSince，让 tool impl 可挂载「这次编辑是否引入新错误」到结果，v1.3 @Experimental |
+| `LanguageServerRegistry` | `io.kairo.api.lsp.LanguageServerRegistry` | 语言服务器注册表，按扩展名路由 + workspace root 解析（marker → .git → file parent） |
 
 ### Hook 生命周期（10个点）
 
