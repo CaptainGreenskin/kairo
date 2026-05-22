@@ -15,6 +15,8 @@
  */
 package io.kairo.tools.file;
 
+import io.kairo.api.lsp.Diagnostic;
+import io.kairo.api.lsp.LspService;
 import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
@@ -27,6 +29,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import reactor.core.publisher.Mono;
 
@@ -35,6 +39,11 @@ import reactor.core.publisher.Mono;
  *
  * <p>Automatically creates parent directories if they do not exist. The file is written using UTF-8
  * encoding.
+ *
+ * <p>If an {@link LspService} is supplied and willing to run for the target path (see {@link
+ * LspService#enabledFor}), the tool snapshots diagnostics before the write, notifies the LSP server
+ * afterward, and includes any newly introduced diagnostics in the result metadata under the {@code
+ * "newDiagnostics"} key.
  */
 @Tool(
         name = "write",
@@ -45,19 +54,25 @@ import reactor.core.publisher.Mono;
 public class WriteTool implements SyncTool {
 
     private final FileAccessTracker fileTracker;
+    private final PostEditDiagnosticsHook lspHook;
 
-    /** Create a WriteTool without file access tracking. */
+    /** Create a WriteTool without file access tracking or LSP diagnostics. */
     public WriteTool() {
-        this(null);
+        this(null, null);
+    }
+
+    /** Create a WriteTool with file access tracking, no LSP diagnostics. */
+    public WriteTool(FileAccessTracker fileTracker) {
+        this(fileTracker, null);
     }
 
     /**
-     * Create a WriteTool with optional file access tracking.
-     *
-     * @param fileTracker the tracker to record file accesses (may be null)
+     * Create a WriteTool with optional file access tracking and optional LSP diagnostics. Either
+     * may be null.
      */
-    public WriteTool(FileAccessTracker fileTracker) {
+    public WriteTool(FileAccessTracker fileTracker, LspService lspService) {
         this.fileTracker = fileTracker;
+        this.lspHook = lspService == null ? null : new PostEditDiagnosticsHook(lspService);
     }
 
     @ToolParam(description = "The absolute path of the file to write", required = true)
@@ -90,6 +105,9 @@ public class WriteTool implements SyncTool {
                 Files.createDirectories(parent);
             }
 
+            PostEditDiagnosticsHook.Token lspToken =
+                    lspHook == null ? null : lspHook.beforeWrite(file);
+
             byte[] bytes = fileContent.getBytes(StandardCharsets.UTF_8);
             Files.write(file, bytes);
 
@@ -97,10 +115,20 @@ public class WriteTool implements SyncTool {
                 fileTracker.recordAccess(filePath);
             }
 
+            List<Diagnostic> introduced =
+                    lspHook == null ? List.of() : lspHook.afterWrite(lspToken, fileContent);
+
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("path", filePath);
+            metadata.put("bytesWritten", bytes.length);
+            if (!introduced.isEmpty()) {
+                metadata.put("newDiagnostics", PostEditDiagnosticsHook.toMetadata(introduced));
+            }
+
             return ToolResult.success(
                     "write",
                     "Successfully wrote " + bytes.length + " bytes to " + filePath,
-                    Map.of("path", filePath, "bytesWritten", bytes.length));
+                    metadata);
 
         } catch (IOException e) {
             return error("Failed to write file: " + e.getMessage());

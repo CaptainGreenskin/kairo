@@ -15,6 +15,8 @@
  */
 package io.kairo.tools.file;
 
+import io.kairo.api.lsp.Diagnostic;
+import io.kairo.api.lsp.LspService;
 import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
@@ -25,6 +27,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -36,6 +40,9 @@ import reactor.core.publisher.Mono;
  *
  * <p>Supports Java regex syntax including capture group back-references ($1, $2, …). Limits pattern
  * length to prevent ReDoS attacks.
+ *
+ * <p>When an {@link LspService} is supplied, post-edit diagnostics introduced by this change are
+ * attached to the result metadata under {@code "newDiagnostics"}.
  */
 @Tool(
         name = "search_replace",
@@ -48,6 +55,16 @@ public class SearchReplaceTool implements SyncTool {
 
     private static final int MAX_PATTERN_LENGTH = 1000;
     private static final long MAX_OUTPUT_BYTES = 10L * 1024 * 1024; // 10 MB
+
+    private final PostEditDiagnosticsHook lspHook;
+
+    public SearchReplaceTool() {
+        this(null);
+    }
+
+    public SearchReplaceTool(LspService lspService) {
+        this.lspHook = lspService == null ? null : new PostEditDiagnosticsHook(lspService);
+    }
 
     @ToolParam(description = "Absolute path of the file to modify", required = true)
     private String path;
@@ -133,16 +150,26 @@ public class SearchReplaceTool implements SyncTool {
 
         int matchCount = countMatches(pattern, content, doReplaceAll);
 
+        PostEditDiagnosticsHook.Token tok = lspHook == null ? null : lspHook.beforeWrite(file);
         try {
             Files.writeString(file, updated, StandardCharsets.UTF_8);
         } catch (IOException e) {
             return error("Failed to write file: " + e.getMessage());
         }
 
+        List<Diagnostic> introduced =
+                lspHook == null ? List.of() : lspHook.afterWrite(tok, updated);
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("path", filePath);
+        metadata.put("matchCount", matchCount);
+        if (!introduced.isEmpty()) {
+            metadata.put("newDiagnostics", PostEditDiagnosticsHook.toMetadata(introduced));
+        }
+
         return ToolResult.success(
                 "search_replace",
                 "Replaced " + matchCount + " occurrence(s) in " + filePath,
-                Map.of("path", filePath, "matchCount", matchCount));
+                metadata);
     }
 
     private int countMatches(Pattern pattern, String content, boolean all) {
