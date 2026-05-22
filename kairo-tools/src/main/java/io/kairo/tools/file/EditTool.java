@@ -15,6 +15,8 @@
  */
 package io.kairo.tools.file;
 
+import io.kairo.api.lsp.Diagnostic;
+import io.kairo.api.lsp.LspService;
 import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
@@ -27,6 +29,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import reactor.core.publisher.Mono;
 
@@ -35,6 +39,9 @@ import reactor.core.publisher.Mono;
  *
  * <p>The {@code originalText} must be unique within the file. If not found exactly, a trimmed
  * comparison is attempted as a fallback. Multiple matches cause an error to avoid ambiguous edits.
+ *
+ * <p>When an {@link LspService} is supplied, post-edit diagnostics introduced by this change are
+ * attached to the result metadata under {@code "newDiagnostics"}.
  */
 @Tool(
         name = "edit",
@@ -45,19 +52,21 @@ import reactor.core.publisher.Mono;
 public class EditTool implements SyncTool {
 
     private final FileAccessTracker fileTracker;
+    private final PostEditDiagnosticsHook lspHook;
 
-    /** Create an EditTool without file access tracking. */
+    /** Create an EditTool without file access tracking or LSP diagnostics. */
     public EditTool() {
-        this(null);
+        this(null, null);
     }
 
-    /**
-     * Create an EditTool with optional file access tracking.
-     *
-     * @param fileTracker the tracker to record file accesses (may be null)
-     */
     public EditTool(FileAccessTracker fileTracker) {
+        this(fileTracker, null);
+    }
+
+    /** Either argument may be null. */
+    public EditTool(FileAccessTracker fileTracker, LspService lspService) {
         this.fileTracker = fileTracker;
+        this.lspHook = lspService == null ? null : new PostEditDiagnosticsHook(lspService);
     }
 
     @ToolParam(description = "The absolute path of the file to edit", required = true)
@@ -100,13 +109,15 @@ public class EditTool implements SyncTool {
             // Exact match
             int count = countOccurrences(content, original);
             if (count == 1) {
+                PostEditDiagnosticsHook.Token tok =
+                        lspHook == null ? null : lspHook.beforeWrite(file);
                 String updated = content.replace(original, replacement);
                 Files.writeString(file, updated, StandardCharsets.UTF_8);
                 if (fileTracker != null) {
                     fileTracker.recordAccess(filePath);
                 }
-                return ToolResult.success(
-                        "edit", "Successfully edited " + filePath, Map.of("path", filePath));
+                return successWithDiagnostics(
+                        filePath, tok, updated, "Successfully edited " + filePath);
             }
 
             if (count > 1) {
@@ -123,17 +134,20 @@ public class EditTool implements SyncTool {
             if (trimmedContent.contains(trimmedOriginal)) {
                 int trimCount = countOccurrences(content, trimmedOriginal);
                 if (trimCount == 1) {
+                    PostEditDiagnosticsHook.Token tok =
+                            lspHook == null ? null : lspHook.beforeWrite(file);
                     String updated = content.replace(trimmedOriginal, replacement);
                     Files.writeString(file, updated, StandardCharsets.UTF_8);
                     if (fileTracker != null) {
                         fileTracker.recordAccess(filePath);
                     }
-                    return ToolResult.success(
-                            "edit",
+                    return successWithDiagnostics(
+                            filePath,
+                            tok,
+                            updated,
                             "Successfully edited "
                                     + filePath
-                                    + " (matched after trimming whitespace)",
-                            Map.of("path", filePath));
+                                    + " (matched after trimming whitespace)");
                 }
             }
 
@@ -145,6 +159,18 @@ public class EditTool implements SyncTool {
         } catch (IOException e) {
             return error("Failed to edit file: " + e.getMessage());
         }
+    }
+
+    private ToolResult successWithDiagnostics(
+            String filePath, PostEditDiagnosticsHook.Token tok, String newContent, String message) {
+        List<Diagnostic> introduced =
+                lspHook == null ? List.of() : lspHook.afterWrite(tok, newContent);
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("path", filePath);
+        if (!introduced.isEmpty()) {
+            metadata.put("newDiagnostics", PostEditDiagnosticsHook.toMetadata(introduced));
+        }
+        return ToolResult.success("edit", message, metadata);
     }
 
     private int countOccurrences(String text, String search) {

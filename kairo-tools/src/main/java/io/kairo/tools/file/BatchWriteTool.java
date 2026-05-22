@@ -15,6 +15,8 @@
  */
 package io.kairo.tools.file;
 
+import io.kairo.api.lsp.Diagnostic;
+import io.kairo.api.lsp.LspService;
 import io.kairo.api.tool.JsonSchema;
 import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
@@ -52,6 +54,16 @@ import reactor.core.publisher.Mono;
 public class BatchWriteTool implements SyncTool {
 
     private static final int MAX_FILES = 50;
+
+    private final PostEditDiagnosticsHook lspHook;
+
+    public BatchWriteTool() {
+        this(null);
+    }
+
+    public BatchWriteTool(LspService lspService) {
+        this.lspHook = lspService == null ? null : new PostEditDiagnosticsHook(lspService);
+    }
 
     @Override
     public JsonSchema inputSchema() {
@@ -195,6 +207,7 @@ public class BatchWriteTool implements SyncTool {
 
         // Phase 2: Write all files with rollback on failure
         List<Path> writtenFiles = new ArrayList<>();
+        List<PostEditDiagnosticsHook.Token> lspTokens = new ArrayList<>();
         boolean hasFailure = false;
         List<Map<String, Object>> results = new ArrayList<>();
 
@@ -207,6 +220,10 @@ public class BatchWriteTool implements SyncTool {
                     }
                 }
 
+                PostEditDiagnosticsHook.Token tok =
+                        lspHook == null ? null : lspHook.beforeWrite(entry.resolvedPath());
+                lspTokens.add(tok);
+
                 byte[] bytes = entry.content().getBytes(StandardCharsets.UTF_8);
                 Files.write(entry.resolvedPath(), bytes);
                 writtenFiles.add(entry.resolvedPath());
@@ -216,6 +233,7 @@ public class BatchWriteTool implements SyncTool {
             } catch (IOException e) {
                 hasFailure = true;
                 results.add(fileResult(entry.path(), false, e.getMessage()));
+                lspTokens.add(null);
                 break;
             }
         }
@@ -257,19 +275,27 @@ public class BatchWriteTool implements SyncTool {
                             rolledResults));
         }
 
+        Map<String, List<Map<String, Object>>> diagsByPath = new HashMap<>();
+        if (lspHook != null) {
+            for (int i = 0; i < entries.size(); i++) {
+                FileEntry e = entries.get(i);
+                PostEditDiagnosticsHook.Token tok = i < lspTokens.size() ? lspTokens.get(i) : null;
+                List<Diagnostic> introduced = lspHook.afterWrite(tok, e.content());
+                if (!introduced.isEmpty()) {
+                    diagsByPath.put(e.path(), PostEditDiagnosticsHook.toMetadata(introduced));
+                }
+            }
+        }
+
         int successCount = entries.size();
-        return ToolResult.success(
-                "batch_write",
-                buildContent(results),
-                Map.of(
-                        "successCount",
-                        successCount,
-                        "errorCount",
-                        0,
-                        "dryRun",
-                        false,
-                        "files",
-                        results));
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("successCount", successCount);
+        metadata.put("errorCount", 0);
+        metadata.put("dryRun", false);
+        metadata.put("files", results);
+        if (!diagsByPath.isEmpty()) metadata.put("newDiagnostics", diagsByPath);
+
+        return ToolResult.success("batch_write", buildContent(results), metadata);
     }
 
     private record FileEntry(String path, String content, boolean createDirs, Path resolvedPath) {}

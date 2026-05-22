@@ -15,6 +15,8 @@
  */
 package io.kairo.tools.file;
 
+import io.kairo.api.lsp.Diagnostic;
+import io.kairo.api.lsp.LspService;
 import io.kairo.api.tool.JsonSchema;
 import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
@@ -27,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import reactor.core.publisher.Mono;
@@ -45,6 +48,16 @@ import reactor.core.publisher.Mono;
         category = ToolCategory.FILE_AND_CODE,
         sideEffect = ToolSideEffect.WRITE)
 public class PatchApplyTool implements SyncTool {
+
+    private final PostEditDiagnosticsHook lspHook;
+
+    public PatchApplyTool() {
+        this(null);
+    }
+
+    public PatchApplyTool(LspService lspService) {
+        this.lspHook = lspService == null ? null : new PostEditDiagnosticsHook(lspService);
+    }
 
     @Override
     public JsonSchema inputSchema() {
@@ -125,20 +138,41 @@ public class PatchApplyTool implements SyncTool {
                                 "skippedHunks", totalSkipped));
             }
 
-            // Phase 2: write results
+            // Phase 2: snapshot LSP baselines, write, then collect introduced diagnostics
+            List<PostEditDiagnosticsHook.Token> tokens = new ArrayList<>();
+            if (lspHook != null) {
+                for (FilePatch p : patches) tokens.add(lspHook.beforeWrite(p.path()));
+            }
+
             for (int i = 0; i < patches.size(); i++) {
                 ApplyResult r = results.get(i);
                 String joined = String.join("\n", r.newLines()) + "\n";
                 Files.writeString(patches.get(i).path(), joined, StandardCharsets.UTF_8);
             }
 
+            Map<String, List<Map<String, Object>>> diagsByPath = new HashMap<>();
+            if (lspHook != null) {
+                for (int i = 0; i < patches.size(); i++) {
+                    String joined = String.join("\n", results.get(i).newLines()) + "\n";
+                    List<Diagnostic> introduced = lspHook.afterWrite(tokens.get(i), joined);
+                    if (!introduced.isEmpty()) {
+                        diagsByPath.put(
+                                patches.get(i).path().toString(),
+                                PostEditDiagnosticsHook.toMetadata(introduced));
+                    }
+                }
+            }
+
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("files", modifiedPaths);
+            metadata.put("appliedHunks", totalApplied);
+            metadata.put("skippedHunks", totalSkipped);
+            if (!diagsByPath.isEmpty()) metadata.put("newDiagnostics", diagsByPath);
+
             return ToolResult.success(
                     "patch_apply",
                     "Applied patch to " + modifiedPaths.size() + " file(s): " + modifiedPaths,
-                    Map.of(
-                            "files", modifiedPaths,
-                            "appliedHunks", totalApplied,
-                            "skippedHunks", totalSkipped));
+                    metadata);
 
         } catch (IOException e) {
             return error("IO error: " + e.getMessage());
