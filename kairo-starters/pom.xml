@@ -33,6 +33,7 @@
         <module>../kairo-spring-boot-starter-event-stream</module>
         <module>../kairo-spring-boot-starter-channel-dingtalk</module>
         <module>../kairo-spring-boot-starter-gateway</module>
+        <module>../kairo-spring-boot-starter-lsp</module>
         <module>../kairo-spring-boot-starter-observability</module>
     </modules>
 </project>
