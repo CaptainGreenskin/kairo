@@ -49,7 +49,8 @@ class AcpStdioServerTest {
         assertThat(result.path("protocolVersion").asInt())
                 .isEqualTo(AcpInitializeResponse.CURRENT_PROTOCOL_VERSION);
         assertThat(result.path("agentInfo").path("name").asText()).isEqualTo("test-agent");
-        assertThat(result.path("agentCapabilities").path("loadSession").asBoolean()).isFalse();
+        // textOnly() advertises loadSession=true so Zed's restore-last-chat flow doesn't error.
+        assertThat(result.path("agentCapabilities").path("loadSession").asBoolean()).isTrue();
     }
 
     @Test
