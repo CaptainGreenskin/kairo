@@ -30,16 +30,21 @@ import reactor.core.publisher.Mono;
  * <ul>
  *   <li>Concatenate every {@link AcpContentBlock.Text} in the prompt into a single user {@link
  *       Msg}.
- *   <li>Render {@link AcpContentBlock.ResourceLink} as a short {@code [resource: <uri>]} line
- *       appended to the text — MVP just surfaces the URI to the agent; full attachment fetch lands
- *       when ACP image / resource blocks are added.
- *   <li>Invoke {@link Agent#call(Msg)} and emit the response as ONE {@link
- *       AcpSessionUpdate.AgentMessageChunk}, then complete with {@code END_TURN}.
+ *   <li>{@link AcpContentBlock.ResourceLink} → {@code [resource: <uri>]} marker.
+ *   <li>{@link AcpContentBlock.Image} / {@link AcpContentBlock.Audio} → {@code [image: mimeType]} /
+ *       {@code [audio: mimeType]} markers (full base64 stays out of the conversation; agents
+ *       wanting the bytes can dereference via a workspace tool).
+ *   <li>{@link AcpContentBlock.EmbeddedResource} → text body inlined when present.
  * </ul>
  *
- * <p>Streaming of incremental text deltas is a planned follow-up — it requires either the agent
- * implementing a streaming surface or this bridge subscribing to a delta source like
- * kairo-assistant's {@code SessionAwareDeltaRouter}.
+ * <p><strong>Streaming.</strong> When constructed with a {@link StreamingAcpBridge}, that bridge
+ * subscribes a {@link Consumer Consumer&lt;AcpSessionUpdate&gt;} that forwards each delta into
+ * ACP's {@code agent_message_chunk} stream. Without a bridge, the full response is emitted as a
+ * single chunk on completion (the default for plain {@link Agent}s that don't expose a streaming
+ * surface).
+ *
+ * <p><strong>Cancellation.</strong> {@link #cancel(String)} calls {@link Agent#interrupt()} on the
+ * wrapped agent.
  */
 public final class DefaultAcpAgent implements AcpAgent {
 
@@ -49,13 +54,15 @@ public final class DefaultAcpAgent implements AcpAgent {
     private final AcpSessionManager sessions;
     private final AcpImplementation info;
     private final AcpCapabilities capabilities;
+    private final StreamingAcpBridge streamingBridge;
 
     public DefaultAcpAgent(Agent agent) {
         this(
                 agent,
                 new AcpSessionManager(),
                 new AcpImplementation("kairo", "0.0.0"),
-                AcpCapabilities.textOnly());
+                AcpCapabilities.textOnly(),
+                null);
     }
 
     public DefaultAcpAgent(
@@ -63,10 +70,20 @@ public final class DefaultAcpAgent implements AcpAgent {
             AcpSessionManager sessions,
             AcpImplementation info,
             AcpCapabilities capabilities) {
+        this(agent, sessions, info, capabilities, null);
+    }
+
+    public DefaultAcpAgent(
+            Agent agent,
+            AcpSessionManager sessions,
+            AcpImplementation info,
+            AcpCapabilities capabilities,
+            StreamingAcpBridge streamingBridge) {
         this.agent = agent;
         this.sessions = sessions;
         this.info = info;
         this.capabilities = capabilities;
+        this.streamingBridge = streamingBridge;
     }
 
     public AcpSessionManager sessions() {
@@ -92,6 +109,28 @@ public final class DefaultAcpAgent implements AcpAgent {
     }
 
     @Override
+    public Mono<AcpNewSessionResponse> loadSession(String sessionId) {
+        return sessions.get(sessionId)
+                .map(s -> Mono.just(new AcpNewSessionResponse(s.sessionId())))
+                .orElseGet(
+                        () -> {
+                            sessions.put(new AcpSessionManager.AcpSessionState(sessionId, null));
+                            return Mono.just(new AcpNewSessionResponse(sessionId));
+                        });
+    }
+
+    @Override
+    public Mono<Void> cancel(String sessionId) {
+        log.info("ACP cancel session {}", sessionId);
+        try {
+            agent.interrupt();
+        } catch (Exception e) {
+            log.debug("Agent.interrupt() threw: {}", e.getMessage());
+        }
+        return Mono.empty();
+    }
+
+    @Override
     public Mono<AcpPromptResponse> prompt(
             AcpPromptRequest request, Consumer<AcpSessionUpdate> sessionUpdater) {
         if (sessions.get(request.sessionId()).isEmpty()) {
@@ -104,12 +143,17 @@ public final class DefaultAcpAgent implements AcpAgent {
             return Mono.just(new AcpPromptResponse(AcpPromptResponse.StopReason.END_TURN));
         }
 
+        AutoCloseable streamHandle =
+                streamingBridge == null
+                        ? () -> {}
+                        : streamingBridge.subscribe(request.sessionId(), sessionUpdater);
+
         Msg userMsg = Msg.of(MsgRole.USER, userText);
         return agent.call(userMsg)
                 .map(
                         response -> {
                             String text = response == null ? "" : response.text();
-                            if (text != null && !text.isEmpty()) {
+                            if (streamingBridge == null && text != null && !text.isEmpty()) {
                                 sessionUpdater.accept(
                                         new AcpSessionUpdate.AgentMessageChunk(
                                                 request.sessionId(), text));
@@ -124,18 +168,33 @@ public final class DefaultAcpAgent implements AcpAgent {
                                             request.sessionId(), "[error] " + e.getMessage()));
                             return Mono.just(
                                     new AcpPromptResponse(AcpPromptResponse.StopReason.ERROR));
+                        })
+                .doFinally(
+                        sig -> {
+                            try {
+                                streamHandle.close();
+                            } catch (Exception ignore) {
+                            }
                         });
     }
 
     private static String renderPromptToText(AcpPromptRequest request) {
         StringBuilder sb = new StringBuilder();
         for (AcpContentBlock block : request.prompt()) {
+            if (sb.length() > 0) sb.append('\n');
             if (block instanceof AcpContentBlock.Text t) {
-                if (sb.length() > 0) sb.append('\n');
                 sb.append(t.text() == null ? "" : t.text());
             } else if (block instanceof AcpContentBlock.ResourceLink rl) {
-                if (sb.length() > 0) sb.append('\n');
                 sb.append("[resource: ").append(rl.uri()).append("]");
+            } else if (block instanceof AcpContentBlock.Image img) {
+                sb.append("[image: ").append(img.mimeType()).append("]");
+            } else if (block instanceof AcpContentBlock.Audio audio) {
+                sb.append("[audio: ").append(audio.mimeType()).append("]");
+            } else if (block instanceof AcpContentBlock.EmbeddedResource er) {
+                sb.append("[resource: ").append(er.uri()).append("]");
+                if (er.text() != null && !er.text().isBlank()) {
+                    sb.append('\n').append(er.text());
+                }
             }
         }
         return sb.toString();
