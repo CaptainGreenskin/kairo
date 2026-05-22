@@ -152,8 +152,17 @@ public final class DefaultAcpAgent implements AcpAgent {
         return agent.call(userMsg)
                 .map(
                         response -> {
+                            // Always emit the final assistant text — even when a
+                            // StreamingAcpBridge is supplied. Existing bridges (e.g. the
+                            // kairo-assistant tool-call bridge) only forward TOOL events; they
+                            // do not forward text deltas. Without this chunk the editor sees a
+                            // session/prompt completion with no message body.
+                            //
+                            // True streaming-text agents that emit partial deltas can dedupe
+                            // by accumulating chunks themselves — the final chunk is the full
+                            // response, identical to the concatenation of any preceding ones.
                             String text = response == null ? "" : response.text();
-                            if (streamingBridge == null && text != null && !text.isEmpty()) {
+                            if (text != null && !text.isEmpty()) {
                                 sessionUpdater.accept(
                                         new AcpSessionUpdate.AgentMessageChunk(
                                                 request.sessionId(), text));
