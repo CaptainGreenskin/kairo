@@ -100,7 +100,11 @@ class DefaultAcpAgentTest {
     }
 
     @Test
-    void agentExceptionMapsToErrorStopReasonAndChunk() {
+    void agentExceptionEmitsErrorChunkAndCompletesEndTurn() {
+        // ACP wire spec only allows end_turn / max_tokens / max_turn_requests / refusal /
+        // cancelled — there is no "error" stop reason. When the wrapped Agent throws, we
+        // surface the error as an AgentMessageChunk + complete with END_TURN so strict
+        // editors (Zed) accept the response.
         DefaultAcpAgent agent = new DefaultAcpAgent(new FailingAgent());
         var sess = agent.newSession(new AcpNewSessionRequest("/p", List.of())).block();
         assertThat(sess).isNotNull();
@@ -115,7 +119,7 @@ class DefaultAcpAgentTest {
                         .block();
 
         assertThat(resp).isNotNull();
-        assertThat(resp.stopReason()).isEqualTo(AcpPromptResponse.StopReason.ERROR);
+        assertThat(resp.stopReason()).isEqualTo(AcpPromptResponse.StopReason.END_TURN);
         var chunk = (AcpSessionUpdate.AgentMessageChunk) updates.get(0);
         assertThat(chunk.text()).startsWith("[error]");
     }

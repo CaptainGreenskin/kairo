@@ -355,10 +355,9 @@ public final class AcpStdioServer {
         return switch (reason) {
             case END_TURN -> "end_turn";
             case MAX_TOKENS -> "max_tokens";
-            case TOOL_USE -> "tool_use";
+            case MAX_TURN_REQUESTS -> "max_turn_requests";
             case REFUSAL -> "refusal";
             case CANCELLED -> "cancelled";
-            case ERROR -> "error";
         };
     }
 
