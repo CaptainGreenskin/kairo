@@ -208,8 +208,19 @@ public final class AcpStdioServer {
     private void handleNewSession(JsonRpcLineMessage.Request req) {
         AcpNewSessionRequest reqParams = parseNewSession(req.params());
         var resp = agent.newSession(reqParams).block();
-        ObjectNode result = codec.mapper().createObjectNode();
+        ObjectMapper m = codec.mapper();
+        ObjectNode result = m.createObjectNode();
         result.put("sessionId", resp == null ? "default" : resp.sessionId());
+        // Zed waits for `modes` after session/new before enabling the prompt button. Even when
+        // the agent doesn't really have multiple modes, we must advertise at least one.
+        ObjectNode modes = m.createObjectNode();
+        modes.put("currentModeId", "default");
+        ArrayNode available = modes.putArray("availableModes");
+        ObjectNode defaultMode = available.addObject();
+        defaultMode.put("id", "default");
+        defaultMode.put("name", "Default");
+        defaultMode.put("description", "Default agent mode");
+        result.set("modes", modes);
         writeFrame(codec.response(req.id(), result));
     }
 
