@@ -193,6 +193,9 @@ public final class AcpStdioServer {
                 "agentCapabilities",
                 capabilitiesToJson(
                         resp == null ? AcpCapabilities.textOnly() : resp.agentCapabilities()));
+        // Zed stalls waiting for `authMethods` even when no auth is needed — must include the
+        // field (empty array means "no auth required, proceed to session/new").
+        result.set("authMethods", m.createArrayNode());
         writeFrame(codec.response(req.id(), result));
     }
 
