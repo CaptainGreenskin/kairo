@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.captaingreenskin</groupId>
+        <artifactId>kairo-parent</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>kairo-gateway</artifactId>
+    <name>Kairo Gateway</name>
+    <description>
+        Orchestration layer above kairo-channel: cross-channel delivery routing, session
+        directory + pairing, token-stream → edit_message draft consumer, append-only
+        gateway-exchange mirror, slash command registry, and a richer platform-adapter
+        contract for IM platforms with media/typing/edit/draft semantics. Lets kairo-assistant
+        and kairo-code stop reimplementing the same plumbing in every channel runner.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-channel</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <!-- TCK depends on JUnit 5 + AssertJ at compile scope so adapter authors
+             can reuse the conformance scenarios from their own test suites without
+             redeclaring either. Matches the pattern used by kairo-channel's TCK. -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

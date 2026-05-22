@@ -21,7 +21,7 @@
         </dependency>
         <dependency>
             <groupId>io.github.captaingreenskin</groupId>
-            <artifactId>kairo-channel</artifactId>
+            <artifactId>kairo-gateway</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

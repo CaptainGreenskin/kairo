@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 /**
- * DingTalk transport adapter for the Kairo Channel SPI.
+ * DingTalk transport adapter for the Kairo Gateway Channel SPI.
  *
- * <p>Provides {@link io.kairo.channel.dingtalk.DingTalkChannel} — a first concrete {@link
- * io.kairo.api.channel.Channel} implementation backed by the DingTalk custom-bot webhook API. The
+ * <p>Provides {@link io.kairo.channel.dingtalk.DingTalkChannel} — a concrete {@link
+ * io.kairo.api.gateway.Channel} implementation backed by the DingTalk custom-bot webhook API. The
  * companion {@code kairo-spring-boot-starter-channel-dingtalk} wires this into Spring Boot with a
  * {@code POST /kairo/channel/dingtalk/callback} endpoint and an opt-in flag.
  *
- * @since v0.9.1 (Experimental)
+ * @since v1.2 (Experimental — migrated to gateway SPI)
  */
 package io.kairo.channel.dingtalk;

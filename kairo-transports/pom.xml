@@ -25,7 +25,6 @@
         <module>../kairo-event-stream</module>
         <module>../kairo-event-stream-sse</module>
         <module>../kairo-event-stream-ws</module>
-        <module>../kairo-channel</module>
         <module>../kairo-channel-dingtalk</module>
     </modules>
 </project>

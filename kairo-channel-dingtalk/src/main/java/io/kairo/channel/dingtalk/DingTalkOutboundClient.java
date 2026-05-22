@@ -18,8 +18,7 @@ package io.kairo.channel.dingtalk;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kairo.api.Experimental;
-import io.kairo.api.channel.ChannelAck;
-import io.kairo.api.channel.ChannelFailureMode;
+import io.kairo.api.gateway.SendResult;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -32,19 +31,19 @@ import reactor.core.publisher.Mono;
 
 /**
  * Thin JDK-HTTP client that POSTs a DingTalk text payload to the custom-bot webhook URL and maps
- * the response into a {@link ChannelAck}.
+ * the response into a {@link SendResult}.
  *
- * <p>Failure classification rules (aligned with {@link ChannelFailureMode}):
+ * <p>Failure classification rules (aligned with {@link SendResult.FailureMode}):
  *
  * <ul>
- *   <li>HTTP 2xx with {@code errcode == 0} → {@link ChannelAck#ok(String)} carrying no remote id
+ *   <li>HTTP 2xx with {@code errcode == 0} → {@link SendResult#ok(String)} carrying no remote id
  *       (DingTalk does not return one for bot messages).
  *   <li>HTTP 2xx with DingTalk errcode 130101 / 130102 / 130103 (rate-limit family) → {@link
- *       ChannelFailureMode#RATE_LIMITED}.
- *   <li>Any other HTTP 2xx with {@code errcode != 0} → {@link ChannelFailureMode#REJECTED}.
- *   <li>HTTP 429 → {@link ChannelFailureMode#RATE_LIMITED}.
- *   <li>HTTP 4xx / 5xx → {@link ChannelFailureMode#DELIVERY_FAILED}.
- *   <li>Transport/IO failure → {@link ChannelFailureMode#SEND_FAILED}.
+ *       SendResult.FailureMode#RATE_LIMITED}.
+ *   <li>Any other HTTP 2xx with {@code errcode != 0} → {@link SendResult.FailureMode#PERMANENT}.
+ *   <li>HTTP 429 → {@link SendResult.FailureMode#RATE_LIMITED}.
+ *   <li>HTTP 4xx / 5xx → {@link SendResult.FailureMode#TRANSIENT}.
+ *   <li>Transport/IO failure → {@link SendResult.FailureMode#TRANSIENT}.
  * </ul>
  *
  * @since v0.9.1 (Experimental)
@@ -74,17 +73,17 @@ public final class DingTalkOutboundClient {
     }
 
     /** Send {@code payload} as a DingTalk bot message; never throws across the {@link Mono}. */
-    public Mono<ChannelAck> send(Map<String, Object> payload) {
+    public Mono<SendResult> send(Map<String, Object> payload) {
         return Mono.fromCallable(() -> doSend(payload))
                 .onErrorResume(
                         e ->
                                 Mono.just(
-                                        ChannelAck.fail(
-                                                ChannelFailureMode.SEND_FAILED,
+                                        SendResult.fail(
+                                                SendResult.FailureMode.TRANSIENT,
                                                 "DingTalk send failed: " + e.getMessage())));
     }
 
-    private ChannelAck doSend(Map<String, Object> payload) throws Exception {
+    private SendResult doSend(Map<String, Object> payload) throws Exception {
         String body = objectMapper.writeValueAsString(payload);
         URI target = signer != null ? signedUri(webhookUri, signer) : webhookUri;
         HttpRequest request =
@@ -99,31 +98,32 @@ public final class DingTalkOutboundClient {
                         request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         int status = response.statusCode();
         if (status == 429) {
-            return ChannelAck.fail(ChannelFailureMode.RATE_LIMITED, "HTTP 429 from DingTalk");
+            return SendResult.fail(SendResult.FailureMode.RATE_LIMITED, "HTTP 429 from DingTalk");
         }
         if (status < 200 || status >= 300) {
-            return ChannelAck.fail(ChannelFailureMode.DELIVERY_FAILED, "DingTalk HTTP " + status);
+            return SendResult.fail(SendResult.FailureMode.TRANSIENT, "DingTalk HTTP " + status);
         }
         return classifyJsonBody(response.body());
     }
 
-    private ChannelAck classifyJsonBody(String body) {
+    private SendResult classifyJsonBody(String body) {
         try {
             JsonNode node = objectMapper.readTree(body);
             int errcode = node.path("errcode").asInt(-1);
             String errmsg = node.path("errmsg").asText("");
             if (errcode == 0) {
-                return ChannelAck.ok();
+                return SendResult.ok(null);
             }
             if (isRateLimitErrCode(errcode)) {
-                return ChannelAck.fail(
-                        ChannelFailureMode.RATE_LIMITED, "errcode=" + errcode + " " + errmsg);
+                return SendResult.fail(
+                        SendResult.FailureMode.RATE_LIMITED, "errcode=" + errcode + " " + errmsg);
             }
-            return ChannelAck.fail(
-                    ChannelFailureMode.REJECTED, "errcode=" + errcode + " " + errmsg);
+            return SendResult.fail(
+                    SendResult.FailureMode.PERMANENT, "errcode=" + errcode + " " + errmsg);
         } catch (Exception e) {
-            return ChannelAck.fail(
-                    ChannelFailureMode.UNKNOWN, "unparseable response body: " + e.getMessage());
+            return SendResult.fail(
+                    SendResult.FailureMode.TRANSIENT,
+                    "unparseable response body: " + e.getMessage());
         }
     }
 

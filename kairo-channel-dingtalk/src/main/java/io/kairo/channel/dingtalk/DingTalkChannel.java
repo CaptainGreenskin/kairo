@@ -6,48 +6,45 @@
  * You may obtain a copy of the License at
  *
  *     https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
 package io.kairo.channel.dingtalk;
 
 import io.kairo.api.Experimental;
-import io.kairo.api.channel.Channel;
-import io.kairo.api.channel.ChannelAck;
-import io.kairo.api.channel.ChannelFailureMode;
-import io.kairo.api.channel.ChannelInboundHandler;
-import io.kairo.api.channel.ChannelMessage;
-import io.kairo.api.channel.ChannelOutboundSender;
+import io.kairo.api.gateway.Channel;
+import io.kairo.api.gateway.ChannelMessage;
+import io.kairo.api.gateway.DeliveryTarget;
+import io.kairo.api.gateway.PlatformCapabilities;
+import io.kairo.api.gateway.SendResult;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 
 /**
- * {@link Channel} adapter for DingTalk custom bots.
+ * Gateway {@link Channel} adapter for DingTalk custom bots.
  *
  * <p>Inbound traffic arrives on the webhook endpoint owned by the starter's {@code
  * DingTalkWebhookController}; the controller dispatches verified messages through {@link
- * #dispatchInbound(ChannelMessage)}. Outbound replies flow through {@link #sender()}, which POSTs
- * to the bot's session webhook via {@link DingTalkOutboundClient}.
+ * #dispatchInbound(ChannelMessage)} which emits onto the multicast {@link #inbound()} flux that the
+ * gateway consumes.
+ *
+ * <p>Outbound replies route through {@link #send(DeliveryTarget, String, String, Map)}, which
+ * builds the DingTalk JSON payload via {@link DingTalkMessageMapper#toDingTalkPayload} and POSTs it
+ * through {@link DingTalkOutboundClient}.
  *
  * <p>Idempotency: repeated deliveries of the same DingTalk {@code msgId} (the adapter's de-dup key)
- * are dropped silently; the handler sees each id at most once per channel lifetime. Applications
- * that need a persisted de-dup store can inject one — the default is an in-memory {@link Set}
- * bounded only by channel lifetime.
+ * are dropped silently; the inbound flux sees each id at most once per channel lifetime.
  *
- * @since v0.9.1 (Experimental)
+ * @since v1.2 (Experimental, gateway-collapsed)
  */
-@Experimental("DingTalkChannel — contract may change in v0.10")
+@Experimental("DingTalkChannel — contract may change in v1.x")
 public final class DingTalkChannel implements Channel {
 
     private static final Logger log = LoggerFactory.getLogger(DingTalkChannel.class);
@@ -57,7 +54,8 @@ public final class DingTalkChannel implements Channel {
     private final List<String> atMobiles;
     private final DingTalkMessageMapper mapper;
 
-    private final AtomicReference<ChannelInboundHandler> handler = new AtomicReference<>();
+    private final Sinks.Many<ChannelMessage> inbound =
+            Sinks.many().multicast().onBackpressureBuffer();
     private final Set<String> seenMessageIds = ConcurrentHashMap.newKeySet();
     private volatile boolean running = false;
 
@@ -82,75 +80,91 @@ public final class DingTalkChannel implements Channel {
     }
 
     @Override
-    public Mono<Void> start(ChannelInboundHandler handler) {
-        Objects.requireNonNull(handler, "handler");
+    public PlatformCapabilities capabilities() {
+        // DingTalk custom bots accept text + markdown sends only; no edit, no draft, no typing
+        // indicator, no media uploads via custom-bot webhook. AI Card surfaces (separate API)
+        // would supply edit semantics — kept out of the default custom-bot adapter to avoid
+        // implying capabilities the webhook can't honour.
+        return PlatformCapabilities.textOnly();
+    }
+
+    @Override
+    public Mono<Void> connect() {
         return Mono.fromRunnable(
                 () -> {
-                    if (!this.handler.compareAndSet(null, handler)) {
-                        throw new IllegalStateException(
-                                "DingTalkChannel '" + id + "' is already started");
-                    }
                     running = true;
-                    log.debug("DingTalkChannel '{}' started", id);
+                    log.debug("DingTalkChannel '{}' connected", id);
                 });
     }
 
     @Override
-    public Mono<Void> stop() {
+    public Mono<Void> disconnect() {
         return Mono.fromRunnable(
                 () -> {
                     running = false;
-                    handler.set(null);
                     seenMessageIds.clear();
-                    log.debug("DingTalkChannel '{}' stopped", id);
+                    inbound.tryEmitComplete();
+                    log.debug("DingTalkChannel '{}' disconnected", id);
                 });
     }
 
     @Override
-    public ChannelOutboundSender sender() {
-        return message -> {
-            if (!running) {
-                return Mono.just(
-                        ChannelAck.fail(ChannelFailureMode.SEND_FAILED, "channel not running"));
-            }
-            return outboundClient.send(mapper.toDingTalkPayload(message, atMobiles));
-        };
+    public Flux<ChannelMessage> inbound() {
+        return inbound.asFlux();
+    }
+
+    @Override
+    public Mono<SendResult> send(
+            DeliveryTarget target,
+            String content,
+            String replyToMessageId,
+            Map<String, Object> metadata) {
+        if (!running) {
+            return Mono.just(
+                    SendResult.fail(SendResult.FailureMode.UNAVAILABLE, "channel not connected"));
+        }
+        @SuppressWarnings("unchecked")
+        List<String> mobiles =
+                metadata != null && metadata.get("atMobiles") instanceof List<?> list
+                        ? list.stream().map(String::valueOf).toList()
+                        : atMobiles;
+        return outboundClient.send(mapper.toDingTalkPayload(content, mobiles));
     }
 
     /**
-     * Drive a verified inbound message into the registered handler. Deduplicates by DingTalk {@code
-     * msgId} so replayed webhook deliveries are coalesced. Callers (the webhook controller) should
-     * only invoke this after signature verification succeeds.
-     *
-     * @return the handler's ack, or a synthetic success ack when the message was deduplicated, or
-     *     {@link ChannelFailureMode#REJECTED} when no handler is registered.
+     * Drive a verified inbound message into the multicast {@link #inbound()} flux. Deduplicates by
+     * DingTalk {@code msgId} so replayed webhook deliveries are coalesced. Callers (the webhook
+     * controller) should only invoke this after signature verification succeeds.
      */
-    public Mono<ChannelAck> dispatchInbound(ChannelMessage message) {
+    public void dispatchInbound(ChannelMessage message) {
         Objects.requireNonNull(message, "message");
-        ChannelInboundHandler h = handler.get();
-        if (h == null) {
-            return Mono.just(
-                    ChannelAck.fail(ChannelFailureMode.REJECTED, "no inbound handler registered"));
+        if (!running) {
+            log.debug("DingTalkChannel '{}' dropped inbound — channel not connected", id);
+            return;
         }
         String msgId =
-                message.attributes().getOrDefault(DingTalkMessageMapper.ATTR_MSG_ID, message.id());
+                String.valueOf(
+                        message.attributes()
+                                .getOrDefault(DingTalkMessageMapper.ATTR_MSG_ID, message.id()));
         if (!seenMessageIds.add(msgId)) {
             log.debug(
                     "DingTalkChannel '{}' dropped duplicate msgId {} (idempotency replay)",
                     id,
                     msgId);
-            return Mono.just(ChannelAck.ok(msgId));
+            return;
         }
-        return h.onInbound(message);
+        var emit = inbound.tryEmitNext(message);
+        if (emit.isFailure()) {
+            log.warn("DingTalkChannel '{}' dropped inbound msgId={} ({})", id, msgId, emit);
+        }
     }
 
     /**
-     * Convenience: parse {@code rawJson} using the channel's mapper and dispatch. Exposed primarily
-     * for the webhook controller and TCK.
+     * Convenience: parse {@code rawJson} via the mapper and dispatch. Used by the webhook
+     * controller and TCK.
      */
-    public Mono<ChannelAck> dispatchInbound(String rawJson) {
-        ChannelMessage message = mapper.fromDingTalkPayload(rawJson);
-        return dispatchInbound(message);
+    public void dispatchInbound(String rawJson) {
+        dispatchInbound(mapper.fromDingTalkPayload(rawJson));
     }
 
     public boolean isRunning() {
@@ -162,7 +176,7 @@ public final class DingTalkChannel implements Channel {
         return mapper;
     }
 
-    /** Backstop for leak tests; 0 when stopped. */
+    /** Backstop for leak tests; 0 when disconnected. */
     public int dedupSetSize() {
         return seenMessageIds.size();
     }

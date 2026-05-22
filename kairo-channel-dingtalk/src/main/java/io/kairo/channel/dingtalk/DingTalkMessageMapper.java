@@ -6,20 +6,15 @@
  * You may obtain a copy of the License at
  *
  *     https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
 package io.kairo.channel.dingtalk;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kairo.api.Experimental;
-import io.kairo.api.channel.ChannelIdentity;
-import io.kairo.api.channel.ChannelMessage;
+import io.kairo.api.gateway.ChannelMessage;
+import io.kairo.api.gateway.MessageType;
+import io.kairo.api.gateway.SessionSource;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.HashMap;
@@ -30,19 +25,20 @@ import java.util.UUID;
 
 /**
  * Maps between DingTalk custom-bot webhook JSON and {@link ChannelMessage}. Text content lands in
- * {@link ChannelMessage#content()}; routing metadata (conversation id, sender id, message id) is
- * preserved under {@link ChannelIdentity#attributes()} and {@link ChannelMessage#attributes()} so
- * round-tripping stays lossless.
+ * {@link ChannelMessage#text()}; routing metadata (conversation id, sender id, session webhook) is
+ * preserved both inside {@link SessionSource} (the typed fields) and {@link
+ * ChannelMessage#attributes()} (for round-trip).
  *
- * <p>Only the {@code text} message type is mapped verbatim — unsupported types round-trip an empty
- * {@code content} string but preserve their raw JSON under attribute {@code rawMsgType}.
+ * <p>Only DingTalk's {@code text} message type lands as {@link MessageType#TEXT}; other types (e.g.
+ * {@code richText}) are mapped to {@link MessageType#OTHER} with the raw type preserved under
+ * attribute {@link #ATTR_MSG_TYPE}.
  *
- * @since v0.9.1 (Experimental)
+ * @since v1.2 (Experimental, post-gateway-collapse)
  */
-@Experimental("DingTalk message mapper — contract may change in v0.10")
+@Experimental("DingTalk message mapper — contract may change in v1.x")
 public final class DingTalkMessageMapper {
 
-    /** Attribute key for the adapter-supplied DingTalk message id (used for idempotency). */
+    /** Attribute key for the DingTalk message id (used for idempotency). */
     public static final String ATTR_MSG_ID = "dingtalk.msgId";
 
     /** Attribute key for the raw DingTalk message type, e.g. {@code "text"}. */
@@ -50,9 +46,6 @@ public final class DingTalkMessageMapper {
 
     /** Attribute key for the DingTalk conversation id (group chat or 1:1). */
     public static final String ATTR_CONVERSATION_ID = "dingtalk.conversationId";
-
-    /** Attribute key for the sender's DingTalk userId. */
-    public static final String ATTR_SENDER_ID = "dingtalk.senderId";
 
     /** Attribute key for the sender's display nickname. */
     public static final String ATTR_SENDER_NICK = "dingtalk.senderNick";
@@ -84,7 +77,7 @@ public final class DingTalkMessageMapper {
     public ChannelMessage fromDingTalkPayload(String rawJson) {
         try {
             JsonNode root = objectMapper.readTree(rawJson);
-            String msgType = textOr(root, "msgtype", "text");
+            String rawType = textOr(root, "msgtype", "text");
             String text = root.path("text").path("content").asText("");
             String msgId =
                     textOr(
@@ -99,46 +92,50 @@ public final class DingTalkMessageMapper {
             long rawTs = root.path("createAt").asLong(0L);
             Instant timestamp = rawTs > 0 ? Instant.ofEpochMilli(rawTs) : Instant.now();
 
-            // Destination is the conversation id if present (so replies route to the chat);
-            // otherwise fall back to the sender id for 1:1 flows without a conversation id.
-            String destination = !conversationId.isBlank() ? conversationId : senderId;
-            if (destination.isBlank()) {
+            // chatId is the conversation when present (so replies route to the group);
+            // otherwise senderId for 1:1 flows without a conversation id.
+            String chatId = !conversationId.isBlank() ? conversationId : senderId;
+            if (chatId.isBlank()) {
                 throw new IllegalArgumentException(
                         "DingTalk payload missing both conversationId and senderId");
             }
+            String chatType = !conversationId.isBlank() ? "group" : "dm";
 
-            Map<String, String> identityAttrs = new LinkedHashMap<>();
-            putIfPresent(identityAttrs, ATTR_CONVERSATION_ID, conversationId);
-            putIfPresent(identityAttrs, ATTR_SENDER_ID, senderId);
-            putIfPresent(identityAttrs, ATTR_SENDER_NICK, senderNick);
-            putIfPresent(identityAttrs, ATTR_SESSION_WEBHOOK, sessionWebhook);
+            SessionSource source =
+                    new SessionSource(
+                            channelId,
+                            chatId,
+                            senderId.isBlank() ? null : senderId,
+                            null,
+                            chatType);
 
-            Map<String, String> messageAttrs = new LinkedHashMap<>();
-            messageAttrs.put(ATTR_MSG_ID, msgId);
-            messageAttrs.put(ATTR_MSG_TYPE, msgType);
+            Map<String, Object> attributes = new LinkedHashMap<>();
+            attributes.put(ATTR_MSG_ID, msgId);
+            attributes.put(ATTR_MSG_TYPE, rawType);
+            putIfPresent(attributes, ATTR_CONVERSATION_ID, conversationId);
+            putIfPresent(attributes, ATTR_SENDER_NICK, senderNick);
+            putIfPresent(attributes, ATTR_SESSION_WEBHOOK, sessionWebhook);
+
+            MessageType type = "text".equals(rawType) ? MessageType.TEXT : MessageType.OTHER;
 
             return new ChannelMessage(
-                    msgId,
-                    new ChannelIdentity(channelId, destination, identityAttrs),
-                    text,
-                    timestamp,
-                    messageAttrs);
+                    msgId, source, type, text, List.of(), msgId, null, null, timestamp, attributes);
         } catch (IOException e) {
             throw new IllegalArgumentException("Malformed DingTalk webhook payload", e);
         }
     }
 
     /**
-     * Render a {@link ChannelMessage} as the JSON payload DingTalk's bot API expects (a plain
-     * {@code text} message, optionally @-mentioning users). Mentions are read from {@code
-     * ChannelMessage#attributes()} under key {@code dingtalk.atMobiles} (comma-separated mobiles)
-     * when present.
+     * Render outbound text as the JSON payload DingTalk's bot API expects (a plain {@code text}
+     * message, optionally @-mentioning users). Adapters wire this from {@code Channel#send(target,
+     * content, replyToMessageId, metadata)}; mentions come from {@code metadata.get("atMobiles")}
+     * as a {@code List<String>}, or default to {@code atMobiles} configured on the channel.
      */
-    public Map<String, Object> toDingTalkPayload(ChannelMessage message, List<String> atMobiles) {
+    public Map<String, Object> toDingTalkPayload(String content, List<String> atMobiles) {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("msgtype", "text");
         Map<String, Object> text = new HashMap<>();
-        text.put("content", message.content());
+        text.put("content", content == null ? "" : content);
         root.put("text", text);
         if (atMobiles != null && !atMobiles.isEmpty()) {
             Map<String, Object> at = new LinkedHashMap<>();
@@ -154,7 +151,7 @@ public final class DingTalkMessageMapper {
         return n.isMissingNode() || n.isNull() ? fallback : n.asText(fallback);
     }
 
-    private static void putIfPresent(Map<String, String> target, String key, String value) {
+    private static void putIfPresent(Map<String, Object> target, String key, String value) {
         if (value != null && !value.isBlank()) {
             target.put(key, value);
         }

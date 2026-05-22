@@ -6,26 +6,17 @@
  * You may obtain a copy of the License at
  *
  *     https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
 package io.kairo.spring.channel.dingtalk;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.kairo.api.channel.Channel;
-import io.kairo.api.channel.ChannelInboundHandler;
+import io.kairo.api.gateway.Channel;
 import io.kairo.channel.dingtalk.DingTalkChannel;
 import io.kairo.channel.dingtalk.DingTalkMessageMapper;
 import io.kairo.channel.dingtalk.DingTalkOutboundClient;
 import io.kairo.channel.dingtalk.DingTalkSignatureVerifier;
-import io.kairo.spring.channel.ChannelAutoConfiguration;
 import java.net.http.HttpClient;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -34,17 +25,16 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 
 /**
- * Auto-configuration for the DingTalk channel starter. Opt-in via {@code
+ * Auto-configuration for the DingTalk gateway channel starter. Opt-in via {@code
  * kairo.channel.dingtalk.enabled=true}.
  *
- * <p>When enabled and a {@link ChannelInboundHandler} bean is present, registers a {@link
- * DingTalkChannel}, its signature verifier, and the webhook controller. Without a handler bean, no
- * channel is wired (deny-safe, mirrors the v0.9 {@link ChannelAutoConfiguration} pattern).
+ * <p>Registers {@link DingTalkChannel} as a {@link io.kairo.api.gateway.Channel} bean — the
+ * kairo-gateway starter then picks it up automatically and wires it into the single {@code Gateway}
+ * instance. No separate channel-handler wiring needed.
  *
- * @since v0.9.1
+ * @since v1.2 (post gateway collapse)
  */
 @AutoConfiguration
-@AutoConfigureAfter(ChannelAutoConfiguration.class)
 @ConditionalOnClass({DingTalkChannel.class, Channel.class})
 @ConditionalOnProperty(
         prefix = "kairo.channel.dingtalk",
@@ -105,9 +95,13 @@ public class DingTalkChannelAutoConfiguration {
                 props.getOutboundTimeout());
     }
 
+    /**
+     * The DingTalk channel itself — exposed as both {@link DingTalkChannel} (so the webhook
+     * controller can call {@code dispatchInbound}) and {@link Channel} (so the gateway picks it
+     * up). Spring resolves both injection points to the same bean.
+     */
     @Bean
     @ConditionalOnMissingBean
-    @ConditionalOnBean(ChannelInboundHandler.class)
     public DingTalkChannel kairoDingTalkChannel(
             DingTalkProperties props,
             DingTalkOutboundClient outboundClient,

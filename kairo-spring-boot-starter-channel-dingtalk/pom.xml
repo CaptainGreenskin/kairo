@@ -17,7 +17,7 @@
     <dependencies>
         <dependency>
             <groupId>io.github.captaingreenskin</groupId>
-            <artifactId>kairo-spring-boot-starter-channel</artifactId>
+            <artifactId>kairo-spring-boot-starter-gateway</artifactId>
             <version>${project.version}</version>
         </dependency>
 

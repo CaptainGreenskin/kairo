@@ -31,8 +31,8 @@
         <module>../kairo-spring-boot-starter-evolution</module>
         <module>../kairo-spring-boot-starter-expert-team</module>
         <module>../kairo-spring-boot-starter-event-stream</module>
-        <module>../kairo-spring-boot-starter-channel</module>
         <module>../kairo-spring-boot-starter-channel-dingtalk</module>
+        <module>../kairo-spring-boot-starter-gateway</module>
         <module>../kairo-spring-boot-starter-observability</module>
     </modules>
 </project>

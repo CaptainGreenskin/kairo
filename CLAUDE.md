@@ -23,9 +23,11 @@ kairo-capabilities/
   kairo-expert-team/← plan/generate/evaluate 协调
   kairo-observability/← OpenTelemetry
   kairo-security-pii/ ← PII 脱敏 + 审计
+  kairo-plugin/     ← Plugin SPI 实现（Claude Code 格式兼容）
+  kairo-cron/       ← 定时任务调度器
+  kairo-gateway/    ← 多 Channel 编排层（路由 / 会话 / 流式 / mirror）
 kairo-transports/
-  kairo-channel/    ← Channel SPI + TCK
-  kairo-channel-dingtalk/ ← 钉钉集成
+  kairo-channel-dingtalk/ ← 钉钉集成（实现 kairo-api/gateway/Channel）
   kairo-event-stream/     ← 事件总线
 kairo-starters/     ← 9 个 Spring Boot 自动配置
 kairo-examples/     ← 示例代码
@@ -56,11 +58,12 @@ io.kairo.evolution.*← 进化机制
 | `ContextManager` | `io.kairo.api.context.ContextManager` | 上下文生命周期 |
 | `MemoryStore` | `io.kairo.api.memory.MemoryStore` | 持久知识存储 |
 | `Middleware` | `io.kairo.api.middleware.Middleware` | 请求/响应拦截 |
-| `Channel` | `io.kairo.api.channel.Channel` | 消息频道集成 |
+| `Channel` | `io.kairo.api.gateway.Channel` | 单一 IM / webhook 适配器（v1.2 @Experimental，gateway 子契约） |
 | `TeamCoordinator` | `io.kairo.api.team.TeamCoordinator` | 多智能体编排 |
 | `WorkspaceProvider` | `io.kairo.api.workspace.WorkspaceProvider` | 工作空间管理 |
 | `PluginManager` | `io.kairo.api.plugin.PluginManager` | Plugin install/enable/disable/uninstall（v1.2 @Experimental） |
 | `SubagentRegistry` | `io.kairo.api.agent.SubagentRegistry` | Subagent 注册（agents/*.md 目标）|
+| `Gateway` | `io.kairo.api.gateway.Gateway` | 多 Channel 之上的编排层（路由 / 会话 / 流式 / mirror / pairing），v1.2 @Experimental — 详见 [ADR-030](docs/adr/ADR-030-gateway-module.md) |
 
 ### Hook 生命周期（10个点）
 

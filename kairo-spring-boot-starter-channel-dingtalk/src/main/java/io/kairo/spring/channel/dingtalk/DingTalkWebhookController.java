@@ -15,7 +15,6 @@
  */
 package io.kairo.spring.channel.dingtalk;
 
-import io.kairo.api.channel.ChannelAck;
 import io.kairo.channel.dingtalk.DingTalkChannel;
 import io.kairo.channel.dingtalk.DingTalkSignatureVerifier;
 import java.util.Map;
@@ -76,13 +75,17 @@ public class DingTalkWebhookController {
                     .body(Map.of("errcode", 401, "errmsg", "signature mismatch"));
         }
 
-        ChannelAck ack = channel.dispatchInbound(body).block();
-        if (ack != null && ack.success()) {
+        try {
+            channel.dispatchInbound(body);
+            // Gateway dispatch is fire-and-forget — the channel's inbound flux drops
+            // duplicate msgIds and the actual agent reply flows back via Gateway.deliver.
+            // We return 200 once the payload was accepted; downstream handler errors are
+            // not surfaced to the webhook caller (DingTalk would just retry on non-2xx).
             return ResponseEntity.ok(Map.of("errcode", 0, "errmsg", "ok"));
+        } catch (IllegalArgumentException e) {
+            log.debug("DingTalk webhook rejected: malformed payload: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(Map.of("errcode", 400, "errmsg", e.getMessage()));
         }
-        String detail = ack == null ? "no ack" : ack.detail();
-        log.debug("DingTalk webhook handler returned failure: {}", detail);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("errcode", 500, "errmsg", detail == null ? "handler failed" : detail));
     }
 }
