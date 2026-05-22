@@ -32,11 +32,21 @@ public final class AcpSessionManager {
         return Optional.ofNullable(sessions.get(sessionId));
     }
 
+    /** Explicitly register a session — used by {@code session/load} to resurrect ids. */
+    public void put(AcpSessionState state) {
+        sessions.put(state.sessionId(), state);
+    }
+
     public int sessionCount() {
         return sessions.size();
     }
 
     public void forget(String sessionId) {
         sessions.remove(sessionId);
+    }
+
+    /** All known session ids in registration order. Used to answer {@code session/list}. */
+    public Map<String, AcpSessionState> snapshot() {
+        return Map.copyOf(sessions);
     }
 }

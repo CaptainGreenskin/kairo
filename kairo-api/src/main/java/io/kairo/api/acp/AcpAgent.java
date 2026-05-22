@@ -11,12 +11,10 @@ import reactor.core.publisher.Mono;
  * Server-side handler an ACP host implements. The {@code kairo-acp} module routes incoming JSON-RPC
  * methods to the matching method on this interface.
  *
- * <p>MVP covers three methods: {@link #initialize}, {@link #newSession}, {@link #prompt}. ACP's
- * remaining surface ({@code authenticate}, {@code session/load}, {@code session/resume}, {@code
- * session/fork}, {@code session/list}, {@code session/cancel}, {@code session/set_mode}, {@code
- * session/set_model}, {@code session/set_config_option}, plus client-bound {@code fs/*}, {@code
- * terminal/*}, {@code session/request_permission}) gets stubbed-not-supported responses until a
- * follow-up.
+ * <p>v1.3 covers: {@link #initialize}, {@link #newSession}, {@link #prompt}, {@link #cancel},
+ * {@link #loadSession}. Optional methods ({@code resume}, {@code fork}, {@code list}, {@code
+ * set_model}, {@code set_mode}, {@code set_config_option}, plus client-bound {@code fs/*}, {@code
+ * terminal/*}, {@code session/request_permission}) are still stubbed.
  *
  * <p>Push-side: {@link #prompt} receives a {@code sessionUpdater} the implementation invokes for
  * every streaming event. The stdio server serializes those into {@code session/update}
@@ -34,10 +32,29 @@ public interface AcpAgent {
     Mono<AcpNewSessionResponse> newSession(AcpNewSessionRequest request);
 
     /**
-     * Run one user prompt to completion. Implementations push streaming text / thoughts through
-     * {@code sessionUpdater} as they generate, then complete the returned Mono with a terminal
-     * {@link AcpPromptResponse} carrying the stop reason.
+     * Run one user prompt to completion. Implementations push streaming text / thoughts / tool
+     * events through {@code sessionUpdater}, then complete the returned Mono with a terminal {@link
+     * AcpPromptResponse} carrying the stop reason.
      */
     Mono<AcpPromptResponse> prompt(
             AcpPromptRequest request, Consumer<AcpSessionUpdate> sessionUpdater);
+
+    /**
+     * Editor asks the agent to stop the in-flight prompt for {@code sessionId}. Implementations
+     * should signal cancellation to the underlying agent ASAP; the in-flight {@link #prompt} call
+     * should complete with {@link AcpPromptResponse.StopReason#CANCELLED}.
+     *
+     * <p>Default: no-op (agent ignores cancellation).
+     */
+    default Mono<Void> cancel(String sessionId) {
+        return Mono.empty();
+    }
+
+    /**
+     * Editor reopens a previously-stored session. Default: returns an empty session — agents that
+     * persist session state should override.
+     */
+    default Mono<AcpNewSessionResponse> loadSession(String sessionId) {
+        return Mono.just(new AcpNewSessionResponse(sessionId));
+    }
 }

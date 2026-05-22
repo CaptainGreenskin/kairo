@@ -139,17 +139,33 @@ public final class AcpStdioServer {
                 case "authenticate" -> handleAuthenticate(req);
                 case "session/new" -> handleNewSession(req);
                 case "session/prompt" -> handlePrompt(req);
+                case "session/load" -> handleLoadSession(req);
+                case "session/cancel" -> handleCancelSession(req);
                 default ->
                         writeFrame(
                                 codec.errorResponse(
                                         req.id(),
                                         Errors.METHOD_NOT_FOUND,
-                                        "method '" + req.method() + "' not implemented in MVP"));
+                                        "method '" + req.method() + "' not implemented yet"));
             }
         } catch (Exception e) {
             log.warn("ACP {} handler failed: {}", req.method(), e.getMessage(), e);
             writeFrame(codec.errorResponse(req.id(), Errors.INTERNAL_ERROR, e.getMessage()));
         }
+    }
+
+    private void handleLoadSession(JsonRpcLineMessage.Request req) {
+        String sessionId = req.params() == null ? "" : req.params().path("sessionId").asText("");
+        var resp = agent.loadSession(sessionId).block();
+        ObjectNode result = codec.mapper().createObjectNode();
+        result.put("sessionId", resp == null ? sessionId : resp.sessionId());
+        writeFrame(codec.response(req.id(), result));
+    }
+
+    private void handleCancelSession(JsonRpcLineMessage.Request req) {
+        String sessionId = req.params() == null ? "" : req.params().path("sessionId").asText("");
+        agent.cancel(sessionId).block();
+        writeFrame(codec.response(req.id(), codec.mapper().nullNode()));
     }
 
     private void handleNotification(JsonRpcLineMessage.Notification n) {
@@ -250,15 +266,31 @@ public final class AcpStdioServer {
                 String type = bn.path("type").asText();
                 switch (type) {
                     case "text" -> blocks.add(new AcpContentBlock.Text(bn.path("text").asText("")));
+                    case "image" ->
+                            blocks.add(
+                                    new AcpContentBlock.Image(
+                                            bn.path("mimeType").asText("image/png"),
+                                            bn.path("data").asText("")));
+                    case "audio" ->
+                            blocks.add(
+                                    new AcpContentBlock.Audio(
+                                            bn.path("mimeType").asText("audio/wav"),
+                                            bn.path("data").asText("")));
                     case "resource_link" ->
                             blocks.add(
                                     new AcpContentBlock.ResourceLink(
                                             bn.path("uri").asText(""),
                                             bn.path("mimeType").asText("")));
-                    default -> {
-                        // Unsupported block type in MVP — silently drop, log at debug.
-                        log.debug("ACP prompt: ignoring unsupported content block type '{}'", type);
-                    }
+                    case "resource" ->
+                            blocks.add(
+                                    new AcpContentBlock.EmbeddedResource(
+                                            bn.path("uri").asText(""),
+                                            bn.path("mimeType").asText("text/plain"),
+                                            bn.path("text").asText("")));
+                    default ->
+                            log.debug(
+                                    "ACP prompt: ignoring unsupported content block type '{}'",
+                                    type);
                 }
             }
         }
@@ -300,6 +332,20 @@ public final class AcpStdioServer {
             ObjectNode block = content.addObject();
             block.put("type", "text");
             block.put("text", atc.text());
+        } else if (update instanceof AcpSessionUpdate.ToolCallStart start) {
+            body.put("sessionUpdate", "tool_call_start");
+            body.put("toolCallId", start.toolCallId());
+            body.put("title", start.title());
+            body.set("input", m.valueToTree(start.input() == null ? Map.of() : start.input()));
+        } else if (update instanceof AcpSessionUpdate.ToolCallProgress prog) {
+            body.put("sessionUpdate", "tool_call_progress");
+            body.put("toolCallId", prog.toolCallId());
+            body.put("chunk", prog.chunk());
+        } else if (update instanceof AcpSessionUpdate.ToolCallComplete done) {
+            body.put("sessionUpdate", "tool_call_complete");
+            body.put("toolCallId", done.toolCallId());
+            body.put("success", done.success());
+            body.put("output", done.output());
         }
         params.set("update", body);
         return codec.notification("session/update", params);
