@@ -34,5 +34,6 @@
         <module>../kairo-cron</module>
         <module>../kairo-gateway</module>
         <module>../kairo-lsp</module>
+        <module>../kairo-acp</module>
     </modules>
 </project>
