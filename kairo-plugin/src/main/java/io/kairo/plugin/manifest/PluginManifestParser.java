@@ -47,10 +47,33 @@ public final class PluginManifestParser {
         return parseManifestFile(manifestPath, pluginRoot.getFileName().toString());
     }
 
-    /** Returns the {@code .kairo-plugin/plugin.json} path if present, else null. */
+    /**
+     * Returns the plugin manifest path if present, else null. Searches {@code
+     * .kairo-plugin/plugin.json} first (canonical), then falls back to {@code
+     * .claude-plugin/plugin.json} so Claude Code plugins (the entire upstream Anthropic ecosystem)
+     * install without rewriting their directory names. ADR-029 promises format compatibility with
+     * Claude Code.
+     */
     public Path locateManifest(Path pluginRoot) {
-        Path manifest = pluginRoot.resolve(".kairo-plugin").resolve("plugin.json");
-        return Files.isRegularFile(manifest) ? manifest : null;
+        Path kairo = pluginRoot.resolve(".kairo-plugin").resolve("plugin.json");
+        if (Files.isRegularFile(kairo)) return kairo;
+        Path claude = pluginRoot.resolve(".claude-plugin").resolve("plugin.json");
+        if (Files.isRegularFile(claude)) return claude;
+        return null;
+    }
+
+    /**
+     * Returns the marketplace manifest path ({@code .claude-plugin/marketplace.json} or {@code
+     * .kairo-plugin/marketplace.json}) if this directory is a plugin marketplace rather than a
+     * single plugin. Callers use this to reject plain {@link #load} attempts against marketplace
+     * repos with a clear error.
+     */
+    public Path locateMarketplaceManifest(Path pluginRoot) {
+        Path claude = pluginRoot.resolve(".claude-plugin").resolve("marketplace.json");
+        if (Files.isRegularFile(claude)) return claude;
+        Path kairo = pluginRoot.resolve(".kairo-plugin").resolve("marketplace.json");
+        if (Files.isRegularFile(kairo)) return kairo;
+        return null;
     }
 
     /**

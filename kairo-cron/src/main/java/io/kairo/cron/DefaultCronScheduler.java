@@ -137,6 +137,11 @@ public class DefaultCronScheduler implements CronScheduler {
         String normalisedCron = ScheduleSyntax.toCron(cron);
         CronExpression expr = CronExpression.parse(normalisedCron);
         String id = generateId();
+        // Compute the first nextRunAt so callers see when the task fires next
+        // even before it has fired once. Without this the field would be null
+        // until the first fire (and again afterwards if recurring — see fireTask).
+        Instant initialNextRun =
+                expr.nextFireTime(ZonedDateTime.now(zone).plusMinutes(1)).toInstant();
         CronTask task =
                 new CronTask(
                         id,
@@ -149,7 +154,7 @@ public class DefaultCronScheduler implements CronScheduler {
                         false,
                         0,
                         null,
-                        null,
+                        initialNextRun,
                         options.skills(),
                         options.workdir(),
                         options.noAgent(),
@@ -330,7 +335,19 @@ public class DefaultCronScheduler implements CronScheduler {
                 }
             }
             callback.onFire(entry.task);
-            CronTask updated = entry.task.withLastFiredAt(now.toInstant()).withStatus(0, null);
+            // Recompute the next fire instant so callers (REST list, dashboard
+            // "next run" column) see when the task fires again. Without this
+            // the field stays null after the first fire and the UI shows "—"
+            // forever even for healthy recurring tasks.
+            Instant nextRun =
+                    entry.task.recurring()
+                            ? entry.expression.nextFireTime(now.plusMinutes(1)).toInstant()
+                            : null;
+            CronTask updated =
+                    entry.task
+                            .withLastFiredAt(now.toInstant())
+                            .withStatus(0, null)
+                            .withNextRunAt(nextRun);
             entry.task = updated;
             tasks.put(updated.id(), entry);
             if (updated.durable()) {

@@ -65,6 +65,23 @@ public final class PluginLoader {
         }
 
         Path manifestPath = manifestParser.locateManifest(pluginRoot);
+        // Refuse to load a marketplace as a single plugin. Marketplace repos
+        // contain a directory of plugins under plugins/<name>/ — installing
+        // the root used to silently create a placeholder entry with no name,
+        // no version, no components. Force the caller to install individual
+        // plugins (via type:git-subdir, or by adding the marketplace and
+        // installing entries from it).
+        if (manifestPath == null) {
+            Path marketplacePath = manifestParser.locateMarketplaceManifest(pluginRoot);
+            if (marketplacePath != null) {
+                throw new IllegalArgumentException(
+                        "Source is a plugin marketplace ("
+                                + marketplacePath
+                                + "), not a single plugin. Install individual"
+                                + " plugins from it via type:git-subdir or"
+                                + " add it as a marketplace first.");
+            }
+        }
         PluginMetadata metadata =
                 manifestParser.parseManifestFile(manifestPath, pluginRoot.getFileName().toString());
         String namespace = namespaceOverride == null ? metadata.name() : namespaceOverride;

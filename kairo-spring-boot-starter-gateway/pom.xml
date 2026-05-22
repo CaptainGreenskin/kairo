@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.captaingreenskin</groupId>
+        <artifactId>kairo-parent</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>kairo-spring-boot-starter-gateway</artifactId>
+    <name>Kairo Spring Boot Starter — Gateway</name>
+    <description>
+        Auto-configures kairo-gateway from Spring bean wiring: every GatewayPlatformAdapter bean
+        is registered with a DefaultGateway, plus optional JSONL mirror, SessionDirectory,
+        PairingStore, SlashCommandRegistry, and GatewayHookRegistry.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-spring-boot-starter-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-gateway</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

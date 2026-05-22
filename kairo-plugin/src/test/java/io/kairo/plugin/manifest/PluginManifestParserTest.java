@@ -134,16 +134,51 @@ class PluginManifestParserTest {
     }
 
     @Test
-    void ignoresClaudePluginDir(@TempDir Path tmp) throws Exception {
-        // A directory that still has Claude Code's .claude-plugin/ layout MUST be migrated to
-        // .kairo-plugin/ before Kairo can load it. Plugin schema is shared; directory namespace
-        // is not.
+    void readsClaudePluginDirAsFallback(@TempDir Path tmp) throws Exception {
+        // ADR-029 promises format compat with Claude Code: every plugin in the
+        // upstream Anthropic ecosystem ships its manifest under .claude-plugin/.
+        // We accept that as a fallback so those plugins install as-is — no
+        // pre-install rewrite required.
         Path root = tmp.resolve("claude-only");
         Files.createDirectories(root.resolve(".claude-plugin"));
         Files.writeString(
                 root.resolve(".claude-plugin/plugin.json"),
-                "{\"name\":\"should-be-ignored\",\"version\":\"1.0.0\"}");
-        // No .kairo-plugin/ → falls through to synthesised manifest using the directory name.
-        assertThat(parser.parse(root).name()).isEqualTo("claude-only");
+                "{\"name\":\"claude-only\",\"version\":\"1.0.0\","
+                        + "\"description\":\"compat test\"}");
+        var metadata = parser.parse(root);
+        assertThat(metadata.name()).isEqualTo("claude-only");
+        assertThat(metadata.version()).isEqualTo("1.0.0");
+        assertThat(metadata.description()).isEqualTo("compat test");
+    }
+
+    @Test
+    void kairoPluginDirWinsOverClaudePluginDir(@TempDir Path tmp) throws Exception {
+        // When both manifests are present the canonical .kairo-plugin/ takes
+        // precedence — gives plugin authors an escape hatch to override
+        // upstream values without modifying the .claude-plugin/ copy.
+        Path root = tmp.resolve("both");
+        Files.createDirectories(root.resolve(".kairo-plugin"));
+        Files.createDirectories(root.resolve(".claude-plugin"));
+        Files.writeString(
+                root.resolve(".kairo-plugin/plugin.json"),
+                "{\"name\":\"kairo-wins\",\"version\":\"2.0.0\"}");
+        Files.writeString(
+                root.resolve(".claude-plugin/plugin.json"),
+                "{\"name\":\"loses\",\"version\":\"1.0.0\"}");
+        assertThat(parser.parse(root).name()).isEqualTo("kairo-wins");
+    }
+
+    @Test
+    void locatesMarketplaceManifest(@TempDir Path tmp) throws Exception {
+        // Marketplace repos must be detectable so callers can refuse to install
+        // them as single plugins.
+        Path root = tmp.resolve("market");
+        Files.createDirectories(root.resolve(".claude-plugin"));
+        Files.writeString(
+                root.resolve(".claude-plugin/marketplace.json"),
+                "{\"name\":\"test-market\",\"plugins\":[]}");
+        assertThat(parser.locateMarketplaceManifest(root))
+                .isEqualTo(root.resolve(".claude-plugin/marketplace.json"));
+        assertThat(parser.locateManifest(root)).isNull();
     }
 }
