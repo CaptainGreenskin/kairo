@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -39,8 +40,20 @@ final class DefaultAgentDiagnostics implements AgentDiagnostics, MutableDiagnost
     private final AtomicReference<ToolInvocationSnapshot> activeTool = new AtomicReference<>();
     private volatile String traceId;
     private volatile String currentSpanId;
-    private volatile long totalTokens;
-    private volatile int currentIteration;
+    // Token + iteration counters are owned by DefaultReActAgent / ReActLoop /
+    // ReasoningPhase — by delegating reads to those shared atomics we get live
+    // values without having to wire setX calls into every mutation site.
+    private final AtomicLong totalTokens;
+    private final AtomicInteger currentIteration;
+
+    DefaultAgentDiagnostics() {
+        this(new AtomicLong(0), new AtomicInteger(0));
+    }
+
+    DefaultAgentDiagnostics(AtomicLong totalTokens, AtomicInteger currentIteration) {
+        this.totalTokens = totalTokens;
+        this.currentIteration = currentIteration;
+    }
 
     // ---- AgentDiagnostics (read) ----
 
@@ -72,12 +85,12 @@ final class DefaultAgentDiagnostics implements AgentDiagnostics, MutableDiagnost
 
     @Override
     public long totalTokensConsumed() {
-        return totalTokens;
+        return totalTokens.get();
     }
 
     @Override
     public int currentIteration() {
-        return currentIteration;
+        return currentIteration.get();
     }
 
     @Override
@@ -125,11 +138,11 @@ final class DefaultAgentDiagnostics implements AgentDiagnostics, MutableDiagnost
 
     @Override
     public void setTotalTokens(long tokens) {
-        this.totalTokens = tokens;
+        this.totalTokens.set(tokens);
     }
 
     @Override
     public void setCurrentIteration(int iteration) {
-        this.currentIteration = iteration;
+        this.currentIteration.set(iteration);
     }
 }

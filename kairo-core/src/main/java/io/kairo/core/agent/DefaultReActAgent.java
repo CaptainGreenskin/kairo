@@ -458,8 +458,13 @@ public class DefaultReActAgent implements Agent {
                                     currentIteration.set(0);
                                     runStartMs = System.currentTimeMillis();
 
-                                    // Initialize per-session diagnostics
-                                    diagnostics = new DefaultAgentDiagnostics();
+                                    // Initialize per-session diagnostics. Share the agent's
+                                    // own iteration + token atomics so AgentDiagnostics returns
+                                    // live values — previously the diagnostics had its own
+                                    // counters that nobody ever wrote to (always 0).
+                                    diagnostics =
+                                            new DefaultAgentDiagnostics(
+                                                    this.totalTokensUsed, this.currentIteration);
 
                                     // Initialize terminal hook guard for exactly-once session-end
                                     // firing
