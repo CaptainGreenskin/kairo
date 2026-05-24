@@ -125,9 +125,9 @@ the surface.
 
 ## References
 
-- `kairo-security-pii/pom.xml` — module declaration
-- `kairo-security-pii/src/main/java/io/kairo/security/pii/PiiRedactionPolicy.java` — implementation
-- `kairo-security-pii/src/test/java/io/kairo/security/pii/PiiRedactionPolicyTest.java` — 15 unit tests
+- `kairo-capabilities/kairo-security-pii/pom.xml` — module declaration
+- `kairo-capabilities/kairo-security-pii/src/main/java/io/kairo/security/pii/PiiRedactionPolicy.java` — implementation
+- `kairo-capabilities/kairo-security-pii/src/test/java/io/kairo/security/pii/PiiRedactionPolicyTest.java` — 15 unit tests
 - ADR-007 — Guardrail SPI design (the host SPI this policy implements)
 - ADR-023 — SPI stability policy (the gate that motivated avoiding a new SPI)
 - Memory: `feedback_spi_design_philosophy.md` — "不新增抽象，用现有 SPI 覆盖需求"

@@ -23,7 +23,7 @@ now depends only on `kairo-api`, not `kairo-core`.
 Specifically:
 1. `ToolHandler` moved from `io.kairo.core.tool` → `io.kairo.api.tool`.
 2. All references across the codebase updated to the new package path.
-3. `kairo-mcp/pom.xml` dependency changed from `kairo-core` to `kairo-api`.
+3. `kairo-capabilities/kairo-mcp/pom.xml` dependency changed from `kairo-core` to `kairo-api`.
 4. 37 files updated for the import change across kairo-core, kairo-mcp, kairo-tools,
    kairo-examples, and kairo-spring-boot-starter.
 
@@ -43,5 +43,5 @@ Specifically:
 ## References
 
 - `ToolHandler.java` — `io.kairo.api.tool.ToolHandler` (new location)
-- `kairo-mcp/pom.xml` — dependency on `kairo-api` only
+- `kairo-capabilities/kairo-mcp/pom.xml` — dependency on `kairo-api` only
 - `docs/en/guide/spi-governance.md` — SPI registry and governance policy

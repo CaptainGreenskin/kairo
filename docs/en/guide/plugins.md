@@ -143,7 +143,7 @@ Kairo does not run a marketplace server — distribution rides on git.
 Hook events in `hooks.json` use Claude-Code-style names (`PreToolUse`, `SessionStart`,
 …) which map to Kairo `HookPhase` values via `HookEventMapper`. The full mapping
 table is in
-[`kairo-plugin/src/main/java/io/kairo/plugin/hook/HookEventMapper.java`](https://github.com/CaptainGreenskin/kairo/blob/main/kairo-plugin/src/main/java/io/kairo/plugin/hook/HookEventMapper.java).
+[`kairo-capabilities/kairo-plugin/src/main/java/io/kairo/plugin/hook/HookEventMapper.java`](https://github.com/CaptainGreenskin/kairo/blob/main/kairo-plugin/src/main/java/io/kairo/plugin/hook/HookEventMapper.java).
 
 Five action types are accepted: `command`, `http`, `prompt`, `agent`, `mcp_tool`.
 v1.2 wires `command` and `http` to real execution; `prompt` / `agent` / `mcp_tool` are
@@ -161,5 +161,5 @@ for a reference wiring.
 
 - [ADR-029 — Plugin SPI with Claude Code Format Compatibility](../../adr/ADR-029-plugin-spi-claude-code-compat.md)
 - Source: `kairo-api/src/main/java/io/kairo/api/plugin/`,
-  `kairo-plugin/src/main/java/io/kairo/plugin/`
+  `kairo-capabilities/kairo-plugin/src/main/java/io/kairo/plugin/`
 - Claude Code plugin reference (the format we read): <https://code.claude.com/docs/en/plugins-reference.md>

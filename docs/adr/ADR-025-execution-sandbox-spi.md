@@ -45,7 +45,7 @@ Default implementation `LocalProcessSandbox` (in `kairo-tools`):
 - Drops its inline `ProcessBuilder`. Drains the hot `Flux<SandboxOutputChunk>` into a single string for backward compatibility with the existing return shape.
 - Public method signatures unchanged.
 
-`ExecutionSandboxTCK` (`kairo-tools/src/main/java/io/kairo/tools/sandbox/tck/`) is an abstract JUnit 5 contract kit any backend must pass. Scenarios:
+`ExecutionSandboxTCK` (`kairo-capabilities/kairo-tools/src/main/java/io/kairo/tools/sandbox/tck/`) is an abstract JUnit 5 contract kit any backend must pass. Scenarios:
 
 1. Successful exit (exit code 0, full output captured).
 2. Non-zero exit code surfaced verbatim.

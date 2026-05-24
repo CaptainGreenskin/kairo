@@ -47,7 +47,11 @@ class LspAutoConfigurationTest {
                 .run(
                         ctx -> {
                             var registry = ctx.getBean(LanguageServerRegistry.class);
-                            assertThat(registry.all()).hasSize(5);
+                            // Floor, not exact equality — the built-in list grows over time
+                            // (JDT-LS added 2026-05). The actual per-language coverage is
+                            // covered in DefaultLanguageServerRegistryTest; this autoconfig
+                            // test only needs to prove the wiring registers SOMETHING.
+                            assertThat(registry.all()).hasSizeGreaterThanOrEqualTo(5);
                         });
     }
 }

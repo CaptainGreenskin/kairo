@@ -129,8 +129,8 @@ The `WebSocketBridgeServer.SERVER_STOPPED` close status (`4503` "bridge-stopped"
 
 - `.plans/V1.1-SPI-FOUNDATIONS.md` — F4 spec + op catalog + anti-goals
 - `kairo-api/src/main/java/io/kairo/api/bridge/package-info.java` — package-level Javadoc with op catalog table
-- `kairo-event-stream-ws/src/main/java/io/kairo/eventstream/ws/KairoBridgeWebSocketHandler.java` — default transport
-- `kairo-event-stream-ws/src/test/java/io/kairo/eventstream/ws/KairoBridgeWebSocketHandlerTest.java` — 8 integration tests (5 ops + 3 error paths)
+- `kairo-transports/kairo-event-stream-ws/src/main/java/io/kairo/eventstream/ws/KairoBridgeWebSocketHandler.java` — default transport
+- `kairo-transports/kairo-event-stream-ws/src/test/java/io/kairo/eventstream/ws/KairoBridgeWebSocketHandlerTest.java` — 8 integration tests (5 ops + 3 error paths)
 - `docs/roadmap/V1.1-verification.md` — release evidence
 - ADR-018 (Unified Event Bus) — server → client side of the conversation
 - ADR-023 (SPI Stability Policy) — additive evolution rules + dependency hygiene rationale

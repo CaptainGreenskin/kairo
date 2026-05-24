@@ -98,7 +98,7 @@ Rationale: extensibility's cost must not be "now every extension breaks an invar
 
 Every SPI ships a **TCK** — a JUnit 5 abstract test class that third-party implementors
 extend to validate contract compliance. Located at
-`kairo-expert-team/src/testFixtures/java/io/kairo/expertteam/tck/`:
+`kairo-capabilities/kairo-expert-team/src/testFixtures/java/io/kairo/expertteam/tck/`:
 
 - `TeamCoordinatorTCK`: asserts lifecycle invariants (state transitions, event emission
   order, partial result on timeout, failure semantics from ADR-015).

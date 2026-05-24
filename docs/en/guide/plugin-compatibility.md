@@ -124,7 +124,7 @@ These appear in the wild and should be considered for v1.3:
 If a real-world Claude Code plugin doesn't load cleanly under Kairo, please:
 
 1. Add the plugin's representative files (verbatim) under
-   `kairo-plugin/src/test/resources/fixtures/claude-code-samples/<plugin-name>/`
+   `kairo-capabilities/kairo-plugin/src/test/resources/fixtures/claude-code-samples/<plugin-name>/`
 2. Add a test method to `ClaudeCodeCompatTest` reproducing the failure
 3. Open an issue or PR — the test serves as the regression record
 
