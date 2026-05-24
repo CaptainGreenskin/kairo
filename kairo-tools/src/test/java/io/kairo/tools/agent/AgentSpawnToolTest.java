@@ -42,6 +42,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Mono;
 
 class AgentSpawnToolTest {
 
@@ -439,6 +440,52 @@ class AgentSpawnToolTest {
     }
 
     @Test
+    void parallelSpawnDoesNotBlockReactorThread() throws Exception {
+        // SA4 regression guard: two spawns running concurrently should both
+        // complete before the latches release in opposite order. The old
+        // .block() impl would deadlock because spawn 1 would hold the worker
+        // thread waiting for its agent, never letting spawn 2 even start.
+        java.util.concurrent.CountDownLatch agent1Started =
+                new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch agent2Started =
+                new java.util.concurrent.CountDownLatch(1);
+
+        StubAgentFactory factory1 = new StubAgentFactory();
+        factory1.gateLatch = agent2Started; // agent1 waits until agent2 has started
+        factory1.signalLatch = agent1Started;
+        factory1.response = Msg.of(MsgRole.ASSISTANT, "agent1 done");
+
+        StubAgentFactory factory2 = new StubAgentFactory();
+        factory2.gateLatch = agent1Started; // agent2 waits until agent1 has started
+        factory2.signalLatch = agent2Started;
+        factory2.response = Msg.of(MsgRole.ASSISTANT, "agent2 done");
+
+        AgentSpawnTool tool1 = new AgentSpawnTool(factory1, baseConfig, subagentRegistry);
+        AgentSpawnTool tool2 = new AgentSpawnTool(factory2, baseConfig, subagentRegistry);
+
+        // Subscribe on bounded-elastic so each agent.call() can park its
+        // thread without starving the other.
+        Mono<ToolResult> r1 =
+                tool1.execute(Map.of("name", "a1", "task", "do work"), CTX)
+                        .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
+        Mono<ToolResult> r2 =
+                tool2.execute(Map.of("name", "a2", "task", "do work"), CTX)
+                        .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
+
+        // mergeSequential subscribes to both immediately. With .block() in
+        // the old impl the second subscription would never get a turn.
+        List<ToolResult> results =
+                reactor.core.publisher.Flux.merge(r1, r2)
+                        .collectList()
+                        .block(java.time.Duration.ofSeconds(5));
+
+        assertNotNull(results);
+        assertEquals(2, results.size());
+        assertFalse(results.get(0).isError());
+        assertFalse(results.get(1).isError());
+    }
+
+    @Test
     void adhocModeMetadataReportsAdHoc() {
         // Regression guard: the mode metadata distinguishes the two paths so
         // observability/dashboards can tell registered subagent runs apart
@@ -458,6 +505,11 @@ class AgentSpawnToolTest {
         StubAgent lastStubAgent;
         boolean shouldThrow;
         boolean shouldFailCall;
+        // Concurrency hooks: signalLatch is counted down when call() starts;
+        // gateLatch is awaited before call() returns. Lets a test set up an
+        // interleaving that only completes if both spawns are running.
+        java.util.concurrent.CountDownLatch signalLatch;
+        java.util.concurrent.CountDownLatch gateLatch;
 
         @Override
         public Agent create(AgentConfig config) {
@@ -465,7 +517,7 @@ class AgentSpawnToolTest {
                 throw new RuntimeException("Factory failed");
             }
             this.lastConfig = config;
-            this.lastStubAgent = new StubAgent(response, shouldFailCall);
+            this.lastStubAgent = new StubAgent(response, shouldFailCall, signalLatch, gateLatch);
             return lastStubAgent;
         }
 
@@ -479,11 +531,23 @@ class AgentSpawnToolTest {
     private static class StubAgent implements Agent {
         private final Msg response;
         private final boolean shouldFail;
+        private final java.util.concurrent.CountDownLatch signalLatch;
+        private final java.util.concurrent.CountDownLatch gateLatch;
         String lastInputText;
 
         StubAgent(Msg response, boolean shouldFail) {
+            this(response, shouldFail, null, null);
+        }
+
+        StubAgent(
+                Msg response,
+                boolean shouldFail,
+                java.util.concurrent.CountDownLatch signalLatch,
+                java.util.concurrent.CountDownLatch gateLatch) {
             this.response = response;
             this.shouldFail = shouldFail;
+            this.signalLatch = signalLatch;
+            this.gateLatch = gateLatch;
         }
 
         @Override
@@ -492,7 +556,30 @@ class AgentSpawnToolTest {
             if (shouldFail) {
                 return reactor.core.publisher.Mono.error(new RuntimeException("Agent call failed"));
             }
-            return reactor.core.publisher.Mono.justOrEmpty(response);
+            if (signalLatch == null && gateLatch == null) {
+                return reactor.core.publisher.Mono.justOrEmpty(response);
+            }
+            // Concurrency-aware path: defer so the latch dance happens on
+            // subscription, not eagerly during call(). Without defer the
+            // await blocks the caller before the second spawn even subscribes.
+            return reactor.core.publisher.Mono.defer(
+                    () -> {
+                        if (signalLatch != null) {
+                            signalLatch.countDown();
+                        }
+                        if (gateLatch != null) {
+                            try {
+                                if (!gateLatch.await(3, java.util.concurrent.TimeUnit.SECONDS)) {
+                                    return reactor.core.publisher.Mono.error(
+                                            new RuntimeException("gate latch timeout"));
+                                }
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                return reactor.core.publisher.Mono.error(e);
+                            }
+                        }
+                        return reactor.core.publisher.Mono.justOrEmpty(response);
+                    });
         }
 
         @Override

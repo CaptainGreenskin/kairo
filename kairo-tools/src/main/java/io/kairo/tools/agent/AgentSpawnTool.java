@@ -114,81 +114,102 @@ public class AgentSpawnTool implements SyncTool {
 
     @Override
     public Mono<ToolResult> execute(Map<String, Object> args, ToolContext ctx) {
-        return Mono.fromCallable(() -> executeSync(args, ctx));
-    }
-
-    private ToolResult executeSync(Map<String, Object> input, ToolContext ctx) {
-        String subagentType = (String) input.get("subagent_type");
-        String adhocName = (String) input.get("name");
-        String taskText = (String) input.get("task");
+        String subagentType = (String) args.get("subagent_type");
+        String adhocName = (String) args.get("name");
+        String taskText = (String) args.get("task");
 
         if (taskText == null || taskText.isBlank()) {
-            return ToolResult.error(null, "Parameter 'task' is required");
+            return Mono.just(ToolResult.error(null, "Parameter 'task' is required"));
         }
 
+        // Resolve the subagent definition synchronously — cheap registry
+        // lookup + arg validation. Failures here short-circuit to a Mono.just
+        // error so concurrent spawns don't all wedge on the same bad input.
         ResolvedSubagent resolved;
         if (subagentType != null && !subagentType.isBlank()) {
             if (subagentRegistry == null) {
-                return ToolResult.error(
-                        null,
-                        "subagent_type='"
-                                + subagentType
-                                + "' but no SubagentRegistry is wired into this AgentSpawnTool —"
-                                + " pass one to the 3-arg constructor or use the ad-hoc"
-                                + " name/systemPrompt parameters instead.");
+                return Mono.just(
+                        ToolResult.error(
+                                null,
+                                "subagent_type='"
+                                        + subagentType
+                                        + "' but no SubagentRegistry is wired into this"
+                                        + " AgentSpawnTool — pass one to the 3-arg constructor or"
+                                        + " use the ad-hoc name/systemPrompt parameters instead."));
             }
             Optional<SubagentDefinition> def = subagentRegistry.get(subagentType);
             if (def.isEmpty()) {
-                return ToolResult.error(
-                        null,
-                        "subagent_type='"
-                                + subagentType
-                                + "' not found in SubagentRegistry. Registered: "
-                                + subagentRegistry.list().stream()
-                                        .map(SubagentDefinition::qualifiedName)
-                                        .toList());
+                return Mono.just(
+                        ToolResult.error(
+                                null,
+                                "subagent_type='"
+                                        + subagentType
+                                        + "' not found in SubagentRegistry. Registered: "
+                                        + subagentRegistry.list().stream()
+                                                .map(SubagentDefinition::qualifiedName)
+                                                .toList()));
             }
             resolved = ResolvedSubagent.fromDefinition(def.get());
         } else {
             String prompt =
-                    (String) input.getOrDefault("systemPrompt", "You are a helpful sub-agent.");
+                    (String) args.getOrDefault("systemPrompt", "You are a helpful sub-agent.");
             if (adhocName == null || adhocName.isBlank()) {
-                return ToolResult.error(
-                        null, "Either 'subagent_type' or 'name' parameter is required");
+                return Mono.just(
+                        ToolResult.error(
+                                null, "Either 'subagent_type' or 'name' parameter is required"));
             }
             resolved = new ResolvedSubagent(adhocName, prompt, List.of(), null);
         }
 
-        try {
-            AgentConfig subConfig = buildSubagentConfig(resolved);
-            Agent subAgent = agentFactory.create(subConfig);
-            log.info(
-                    "Spawned sub-agent '{}' (mode={}) for task: {}",
-                    resolved.name(),
-                    subagentType != null ? "registered:" + subagentType : "ad-hoc",
-                    taskText);
+        final ResolvedSubagent r = resolved;
+        final String mode = subagentType != null ? "registered" : "ad-hoc";
+        final String modeLog = subagentType != null ? "registered:" + subagentType : "ad-hoc";
 
-            Msg taskMsg = Msg.of(MsgRole.USER, taskText);
-            Msg result = subAgent.call(taskMsg).block();
+        // Fully reactive pipeline — no .block(). When ToolExecutor.executeParallel
+        // fan-outs multiple spawns, each subAgent.call() runs concurrently on
+        // its own subscription rather than serializing on this thread.
+        return Mono.fromCallable(
+                        () -> {
+                            AgentConfig subConfig = buildSubagentConfig(r);
+                            Agent subAgent = agentFactory.create(subConfig);
+                            log.info(
+                                    "Spawned sub-agent '{}' (mode={}) for task: {}",
+                                    r.name(),
+                                    modeLog,
+                                    taskText);
+                            return subAgent;
+                        })
+                .flatMap(
+                        subAgent -> {
+                            Msg taskMsg = Msg.of(MsgRole.USER, taskText);
+                            return subAgent.call(taskMsg)
+                                    .map(result -> successResult(r, result, mode))
+                                    .switchIfEmpty(Mono.fromSupplier(() -> emptyResult(r, mode)));
+                        })
+                .onErrorResume(e -> Mono.just(failureResult(r, e)));
+    }
 
-            String resultText =
-                    result != null ? extractText(result) : "Sub-agent completed with no output";
-            log.info("Sub-agent '{}' completed", resolved.name());
-            return ToolResult.success(
-                    null,
-                    String.format("Sub-agent '%s' result:\n%s", resolved.name(), resultText),
-                    Map.of(
-                            "subAgentName",
-                            resolved.name(),
-                            "mode",
-                            subagentType != null ? "registered" : "ad-hoc"));
+    private ToolResult successResult(ResolvedSubagent r, Msg result, String mode) {
+        log.info("Sub-agent '{}' completed", r.name());
+        return ToolResult.success(
+                null,
+                String.format("Sub-agent '%s' result:\n%s", r.name(), extractText(result)),
+                Map.of("subAgentName", r.name(), "mode", mode));
+    }
 
-        } catch (Exception e) {
-            log.error("Sub-agent '{}' failed: {}", resolved.name(), e.getMessage(), e);
-            return ToolResult.error(
-                    null,
-                    String.format("Sub-agent '%s' failed: %s", resolved.name(), e.getMessage()));
-        }
+    private ToolResult emptyResult(ResolvedSubagent r, String mode) {
+        log.info("Sub-agent '{}' completed", r.name());
+        return ToolResult.success(
+                null,
+                String.format(
+                        "Sub-agent '%s' result:\nSub-agent completed with no output", r.name()),
+                Map.of("subAgentName", r.name(), "mode", mode));
+    }
+
+    private ToolResult failureResult(ResolvedSubagent r, Throwable e) {
+        log.error("Sub-agent '{}' failed: {}", r.name(), e.getMessage(), e);
+        return ToolResult.error(
+                null, String.format("Sub-agent '%s' failed: %s", r.name(), e.getMessage()));
     }
 
     /** Build the sub-agent's {@link AgentConfig} with tool whitelist + model pinning applied. */
