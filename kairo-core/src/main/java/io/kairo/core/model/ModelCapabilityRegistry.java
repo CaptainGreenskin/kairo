@@ -145,6 +145,35 @@ public class ModelCapabilityRegistry {
                 new ModelCapability(
                         "glm", "4-plus", 128_000, 4096, false, false, ToolVerbosity.CONCISE, null));
         register(
+                "glm-4-flash",
+                new ModelCapability(
+                        "glm",
+                        "4-flash",
+                        128_000,
+                        4096,
+                        false,
+                        false,
+                        ToolVerbosity.CONCISE,
+                        null));
+        // glm-4-long has a 1M context window — without this entry, prefix
+        // fallback to "glm-4" reported 128K and triggered premature context
+        // compaction. Explicit entry is what unblocks long-doc reasoning.
+        register(
+                "glm-4-long",
+                new ModelCapability(
+                        "glm",
+                        "4-long",
+                        1_000_000,
+                        4096,
+                        false,
+                        false,
+                        ToolVerbosity.STANDARD,
+                        null));
+        register(
+                "glm-5.1",
+                new ModelCapability(
+                        "glm", "5.1", 128_000, 8192, false, false, ToolVerbosity.STANDARD, null));
+        register(
                 "glm-4",
                 new ModelCapability(
                         "glm", "4", 128_000, 4096, false, false, ToolVerbosity.CONCISE, null));

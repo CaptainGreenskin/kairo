@@ -15,48 +15,42 @@
  */
 package io.kairo.core.model;
 
-import java.util.HashMap;
-import java.util.Map;
+import io.kairo.api.model.IntRange;
+import io.kairo.api.model.ModelCapability;
+import io.kairo.api.model.ToolVerbosity;
 
 /**
- * Registry of known model specifications (context window size, max output tokens).
+ * Token-window facade over {@link ModelCapabilityRegistry}.
  *
- * <p>Provides static lookup by exact model ID with prefix-matching fallback. Unknown models fall
- * back to sensible defaults (128K context, 8192 max output).
+ * <p>Historically maintained its own static table of {@code modelId → (contextWindow,
+ * maxOutputTokens)} that drifted from {@link ModelCapabilityRegistry}'s richer table —
+ * claude-sonnet-4-20250514 reported 20000 max output here but 16384 there, and glm-4-long's 1M
+ * context was missing entirely so prefix fallback reported 128K and triggered premature context
+ * compaction. Now delegates so there's one source of truth: add a model to {@code
+ * ModelCapabilityRegistry} and both this class's callers (TokenBudgetManager,
+ * ContextCompactionEngine, kairo-code's CodeAgentFactory) and the per-provider RequestBuilder
+ * callers see it.
  *
- * <p>Thread-safe: the underlying map is populated in a static initializer and additional
- * registrations are synchronized on the map instance.
+ * <p>The narrow surface — context window and max output only — is what {@code TokenBudgetManager} /
+ * {@code CompactionPipeline} have always cared about; exposing it via a separate facade lets those
+ * modules stay decoupled from the full {@code ModelCapability} record (which carries
+ * thinking-budget / caching / verbosity that the budget code has no use for).
+ *
+ * <p>Backward-compatible: same public method signatures + {@link ModelSpec} record.
  */
 public class ModelRegistry {
 
-    private static final Map<String, ModelSpec> MODELS = new HashMap<>();
-
-    /** Default context window for unknown models. */
+    /**
+     * Default context window for unknown models. Matches the universal default in {@link
+     * ModelCapabilityRegistry}.
+     */
     private static final int DEFAULT_CONTEXT_WINDOW = 128_000;
 
-    /** Default max output tokens for unknown models. */
+    /**
+     * Default max output tokens for unknown models. Matches the universal default in {@link
+     * ModelCapabilityRegistry}.
+     */
     private static final int DEFAULT_MAX_OUTPUT = 8_192;
-
-    static {
-        // Claude models
-        register("claude-sonnet-4-20250514", 200_000, 20_000);
-        register("claude-opus-4-20250514", 200_000, 20_000);
-        register("claude-3-5-sonnet-20241022", 200_000, 8_192);
-        register("claude-3-5-haiku-20241022", 200_000, 8_192);
-        register("claude-3-haiku-20240307", 200_000, 4_096);
-        // OpenAI models
-        register("gpt-4o", 128_000, 16_384);
-        register("gpt-4o-mini", 128_000, 16_384);
-        register("gpt-4-turbo", 128_000, 4_096);
-        // GLM models
-        register("glm-5.1", 128_000, 8_192);
-        register("glm-4-plus", 128_000, 4_096);
-        register("glm-4-flash", 128_000, 4_096);
-        register("glm-4-long", 1_000_000, 4_096);
-        // DeepSeek
-        register("deepseek-chat", 64_000, 8_192);
-        register("deepseek-coder", 64_000, 8_192);
-    }
 
     /**
      * Specification of a model's token limits.
@@ -91,8 +85,8 @@ public class ModelRegistry {
     /**
      * Get the full specification for a model.
      *
-     * <p>Tries exact match first, then prefix matching (longest prefix wins). Falls back to
-     * defaults for completely unknown models.
+     * <p>Looks up via {@link ModelCapabilityRegistry#lookup(String)}, which does exact → prefix →
+     * family-default → universal-default fallback. Always non-null.
      *
      * @param modelId the model identifier
      * @return the model spec (never null)
@@ -101,51 +95,43 @@ public class ModelRegistry {
         if (modelId == null) {
             return new ModelSpec(DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_OUTPUT);
         }
-
-        // Exact match
-        synchronized (MODELS) {
-            ModelSpec exact = MODELS.get(modelId);
-            if (exact != null) {
-                return exact;
-            }
-
-            // Prefix matching: find the longest registered key that is a prefix of modelId,
-            // or the longest modelId prefix that matches a registered key
-            ModelSpec best = null;
-            int bestLen = 0;
-            for (Map.Entry<String, ModelSpec> entry : MODELS.entrySet()) {
-                String key = entry.getKey();
-                // Check if registered key starts with modelId (e.g. "claude-sonnet-4" matches
-                // "claude-sonnet-4-20250514")
-                if (key.startsWith(modelId) && modelId.length() > bestLen) {
-                    best = entry.getValue();
-                    bestLen = modelId.length();
-                }
-                // Check if modelId starts with registered key
-                if (modelId.startsWith(key) && key.length() > bestLen) {
-                    best = entry.getValue();
-                    bestLen = key.length();
-                }
-            }
-
-            if (best != null) {
-                return best;
-            }
-        }
-
-        return new ModelSpec(DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_OUTPUT);
+        ModelCapability cap = ModelCapabilityRegistry.lookup(modelId);
+        return new ModelSpec(cap.contextWindow(), cap.maxOutputTokens());
     }
 
     /**
-     * Register a model specification.
+     * Register a model specification. Persists into the underlying {@link ModelCapabilityRegistry}
+     * with sensible capability defaults (no thinking, no caching, STANDARD tool verbosity) so
+     * future {@code lookup()} calls from request builders also see it.
+     *
+     * <p>Mainly used by tests + embedders that need to teach the runtime about a model the
+     * framework doesn't ship knowledge for.
      *
      * @param modelId the model identifier
      * @param contextWindow the context window size in tokens
      * @param maxOutput the maximum output tokens
      */
     public static void register(String modelId, int contextWindow, int maxOutput) {
-        synchronized (MODELS) {
-            MODELS.put(modelId, new ModelSpec(contextWindow, maxOutput));
-        }
+        ModelCapability cap =
+                new ModelCapability(
+                        familyOf(modelId),
+                        "custom",
+                        contextWindow,
+                        maxOutput,
+                        false,
+                        false,
+                        ToolVerbosity.STANDARD,
+                        (IntRange) null);
+        ModelCapabilityRegistry.register(modelId, cap);
+    }
+
+    private static String familyOf(String modelId) {
+        if (modelId == null) return "unknown";
+        if (modelId.startsWith("claude")) return "claude";
+        if (modelId.startsWith("gpt") || modelId.startsWith("openai")) return "gpt";
+        if (modelId.startsWith("glm")) return "glm";
+        if (modelId.startsWith("deepseek")) return "deepseek";
+        if (modelId.startsWith("qwen")) return "qwen";
+        return "unknown";
     }
 }

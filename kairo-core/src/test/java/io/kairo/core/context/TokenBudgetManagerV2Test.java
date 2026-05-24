@@ -32,9 +32,12 @@ class TokenBudgetManagerV2Test {
     void testForModelFactory() {
         TokenBudgetManager mgr = TokenBudgetManager.forModel("claude-sonnet-4-20250514");
 
+        // sonnet-4 maxOutput reconciled from 20000 → 16384 when ModelRegistry
+        // became a facade over ModelCapabilityRegistry (which had the
+        // Anthropic-documented value all along).
         ModelRegistry.ModelSpec spec = mgr.getModelSpec();
         assertEquals(200_000, spec.contextWindow());
-        assertEquals(20_000, spec.maxOutputTokens());
+        assertEquals(16_384, spec.maxOutputTokens());
     }
 
     @Test
@@ -42,8 +45,8 @@ class TokenBudgetManagerV2Test {
     void testGetEffectiveBudget() {
         TokenBudgetManager mgr = TokenBudgetManager.forModel("claude-sonnet-4-20250514");
 
-        // 200_000 - 20_000 - 13_000 = 167_000
-        assertEquals(167_000, mgr.getEffectiveBudget());
+        // 200_000 - 16_384 - 13_000 = 170_616
+        assertEquals(170_616, mgr.getEffectiveBudget());
     }
 
     @Test
@@ -107,15 +110,15 @@ class TokenBudgetManagerV2Test {
     void testGetPressure() {
         TokenBudgetManager mgr = TokenBudgetManager.forModel("claude-sonnet-4-20250514");
 
-        // effective budget = 167_000
+        // effective budget = 170_616 (post sonnet-4 reconciliation)
         // Create messages whose char-based estimate equals the budget
         String text = "a".repeat(1000);
         List<Msg> messages = List.of(Msg.of(MsgRole.USER, text));
 
         double pressure = mgr.getPressure(messages);
         // estimated tokens = 1000 * 4 / 3 = 1333
-        // pressure = 1333 / 167000 ≈ 0.00798
-        double expectedPressure = (1000.0 * 4 / 3) / 167_000;
+        // pressure = 1333 / 170_616 ≈ 0.00781
+        double expectedPressure = (1000.0 * 4 / 3) / 170_616;
         assertEquals(expectedPressure, pressure, 0.001);
     }
 
@@ -127,8 +130,8 @@ class TokenBudgetManagerV2Test {
         String text = "a".repeat(300);
         List<Msg> messages = List.of(Msg.of(MsgRole.USER, text));
 
-        // effective = 167_000, estimated = 300 * 4 / 3 = 400
-        assertEquals(167_000 - 400, mgr.getRemainingBudget(messages));
+        // effective = 170_616 (post-reconciliation), estimated = 300 * 4 / 3 = 400
+        assertEquals(170_616 - 400, mgr.getRemainingBudget(messages));
     }
 
     @Test

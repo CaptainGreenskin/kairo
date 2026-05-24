@@ -27,6 +27,14 @@ import java.util.Set;
  * <p>Local-only providers ({@code ollama}, {@code lm-studio}) accept any non-null api key and use
  * {@code baseUrl} if provided. {@code openai-compatible} is a generic escape hatch — {@code
  * baseUrl} is required, otherwise it throws.
+ *
+ * <p><b>Scope vs the model registries:</b> this class indexes <i>provider names</i> ({@code openai}
+ * / {@code anthropic} / {@code glm} …) to {@code ProviderFactory} (HTTP wiring). It is
+ * <b>orthogonal</b> to {@link ModelRegistry} / {@link ModelCapabilityRegistry}, which index
+ * <i>model ids</i> ({@code gpt-4o} / {@code claude-sonnet-4-20250514} / {@code glm-4-long} …) to
+ * token-window and capability metadata. Audits periodically flag the three as "duplicate
+ * registries" because their names overlap — they're not. Adding a new provider touches this class;
+ * adding a new model touches {@link ModelCapabilityRegistry}; they share no fields.
  */
 public final class DefaultProviderRegistry implements ProviderRegistry {
 

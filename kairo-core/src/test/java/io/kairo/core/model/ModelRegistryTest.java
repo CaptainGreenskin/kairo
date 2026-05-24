@@ -35,9 +35,12 @@ class ModelRegistryTest {
     }
 
     @Test
-    @DisplayName("Known model max output: claude-sonnet-4-20250514 has 20000 max output tokens")
+    @DisplayName("Known model max output: claude-sonnet-4-20250514 has 16384 max output tokens")
     void testClaudeSonnet4MaxOutput() {
-        assertEquals(20_000, ModelRegistry.getMaxOutputTokens("claude-sonnet-4-20250514"));
+        // Was 20000 when ModelRegistry maintained its own table; reconciled to
+        // 16384 (Anthropic's documented default without the beta header) when
+        // ModelRegistry became a facade over ModelCapabilityRegistry.
+        assertEquals(16_384, ModelRegistry.getMaxOutputTokens("claude-sonnet-4-20250514"));
     }
 
     @Test
@@ -58,12 +61,13 @@ class ModelRegistryTest {
     @Test
     @DisplayName("Prefix matching: extended model ID resolves to base model spec")
     void testPrefixMatchingExtendedModelId() {
-        // "claude-sonnet-4-20250514-extended" starts with "claude-sonnet-4-20250514"
+        // "claude-sonnet-4-20250514-extended" prefix-matches "claude-sonnet-4"
+        // (registered in ModelCapabilityRegistry) which now is the sole SoT.
         int contextWindow = ModelRegistry.getContextWindow("claude-sonnet-4-20250514-extended");
         assertEquals(200_000, contextWindow);
 
         int maxOutput = ModelRegistry.getMaxOutputTokens("claude-sonnet-4-20250514-extended");
-        assertEquals(20_000, maxOutput);
+        assertEquals(16_384, maxOutput);
     }
 
     @Test
