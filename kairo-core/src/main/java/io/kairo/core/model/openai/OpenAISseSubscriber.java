@@ -48,6 +48,7 @@ public class OpenAISseSubscriber
     private final StringBuilder textAccumulator = new StringBuilder();
     private final List<ToolCallAccumulator> toolAccumulators = new ArrayList<>();
     private ModelResponse.StopReason stopReason;
+    private boolean finalEmitted;
 
     public OpenAISseSubscriber(Sinks.Many<ModelResponse> sink, ObjectMapper objectMapper) {
         this.sink = sink;
@@ -131,6 +132,19 @@ public class OpenAISseSubscriber
                         if (fnArgs != null) acc.arguments.append(fnArgs);
                     }
                 }
+
+                // finish_reason signals the end of the model turn. Some OpenAI-compatible
+                // providers (MiniMax M2, Zhipu GLM) skip the trailing `data: [DONE]` marker —
+                // without emitting on finish_reason here, the accumulated tool_calls would be
+                // dropped on the floor and the consumer would never see the final aggregated
+                // ModelResponse with ToolUseContent. Matches RawOpenAISseSubscriber's contract.
+                if (finishReason != null
+                        && ("stop".equals(finishReason)
+                                || "tool_calls".equals(finishReason)
+                                || "length".equals(finishReason))) {
+                    emitFinalResponse();
+                    sink.tryEmitComplete();
+                }
             }
         } catch (Exception e) {
             log.warn("Failed to parse SSE chunk: {}", data, e);
@@ -149,6 +163,8 @@ public class OpenAISseSubscriber
 
     @SuppressWarnings("unchecked")
     private void emitFinalResponse() {
+        if (finalEmitted) return;
+        finalEmitted = true;
         List<Content> contents = new ArrayList<>();
         String text = textAccumulator.toString();
         if (!text.isEmpty()) {

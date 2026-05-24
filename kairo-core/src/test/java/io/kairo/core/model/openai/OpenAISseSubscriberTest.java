@@ -128,6 +128,59 @@ class OpenAISseSubscriberTest {
     }
 
     @Test
+    void toolCallDelta_emitsOnFinishReason_whenDoneMarkerOmitted() {
+        // Regression: MiniMax M2 and Zhipu GLM omit the trailing `data: [DONE]` line and signal
+        // end-of-stream only via finish_reason. Without emitting the aggregated response here,
+        // accumulated tool_calls are silently dropped, leaving the consumer with text-only output
+        // and (for code agents) no way to know which tools the model wanted to invoke.
+        subscriber.onNext(
+                "data: {\"id\":\"chatcmpl-mm\",\"model\":\"MiniMax-M2\","
+                        + "\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"tc-9\","
+                        + "\"function\":{\"name\":\"write\",\"arguments\":\"{\\\"p\\\":\\\"a.txt\\\"}\"}}]},"
+                        + "\"finish_reason\":\"tool_calls\"}]}");
+        // Notice: no `data: [DONE]` follows — provider closes the stream silently.
+
+        var last = collected.get(collected.size() - 1);
+        assertThat(last.stopReason()).isEqualTo(ModelResponse.StopReason.TOOL_USE);
+        boolean hasToolUse =
+                last.contents().stream()
+                        .anyMatch(
+                                c ->
+                                        c instanceof Content.ToolUseContent tu
+                                                && "write".equals(tu.toolName())
+                                                && "tc-9".equals(tu.toolId()));
+        assertThat(hasToolUse).isTrue();
+    }
+
+    @Test
+    void emitFinalResponse_isIdempotent_acrossFinishReasonAndDone() {
+        // finish_reason triggers an early emit; a trailing [DONE] from a well-behaved provider
+        // must NOT cause a second duplicate final response.
+        subscriber.onNext(
+                "data: {\"id\":\"chatcmpl-id\",\"model\":\"gpt-4o\","
+                        + "\"choices\":[{\"delta\":{\"content\":\"Hello\"},"
+                        + "\"finish_reason\":\"stop\"}]}");
+        int afterFinish = collected.size();
+        subscriber.onNext("data: [DONE]");
+        // [DONE] arriving after finish_reason should NOT add another aggregated response —
+        // partial deltas can keep flowing in (so we don't assert ==), but no NEW aggregated
+        // response with the same accumulated text should appear.
+        long aggregatedCount =
+                collected.stream()
+                        .filter(
+                                r ->
+                                        r.contents().stream()
+                                                .anyMatch(
+                                                        c ->
+                                                                c instanceof Content.TextContent tc
+                                                                        && tc.text().equals("Hello")
+                                                                        && r.stopReason() != null))
+                        .count();
+        assertThat(aggregatedCount).isEqualTo(1);
+        assertThat(collected.size()).isEqualTo(afterFinish);
+    }
+
+    @Test
     void onError_propagatesToSink() {
         List<Throwable> errors = new ArrayList<>();
         sink.asFlux().subscribe(r -> {}, errors::add);
