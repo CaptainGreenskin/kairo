@@ -66,9 +66,37 @@ public final class BuiltInServers {
                     List.of("clangd"),
                     "cpp");
 
+    /**
+     * Eclipse JDT Language Server (jdtls). Common installer commands:
+     *
+     * <pre>
+     *   brew install jdtls            # macOS
+     *   pacman -S jdtls               # Arch Linux
+     *   coc.nvim / vim-jdtls / nvim-jdtls plugins also expose `jdtls` on PATH
+     * </pre>
+     *
+     * Workspace markers cover Maven, Gradle (Groovy + Kotlin DSL), and bare {@code .project} from
+     * Eclipse-style projects. Without one of these jdtls cannot resolve project classpath, so the
+     * registry refuses to spawn for ad-hoc Java files outside a project root.
+     */
+    public static final ServerDef JDT_LS =
+            new ServerDef(
+                    "jdtls",
+                    "Eclipse JDT Language Server",
+                    Set.of("java"),
+                    Set.of(
+                            "pom.xml",
+                            "build.gradle",
+                            "build.gradle.kts",
+                            "settings.gradle",
+                            "settings.gradle.kts",
+                            ".project"),
+                    List.of("jdtls"),
+                    "java");
+
     private BuiltInServers() {}
 
     public static List<ServerDef> all() {
-        return List.of(PYRIGHT, TYPESCRIPT, GOPLS, RUST_ANALYZER, CLANGD);
+        return List.of(PYRIGHT, TYPESCRIPT, GOPLS, RUST_ANALYZER, CLANGD, JDT_LS);
     }
 }

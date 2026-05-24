@@ -16,7 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 class DefaultLanguageServerRegistryTest {
 
     @Test
-    void registeredBuiltInsAreFiveAndOrdered() {
+    void registeredBuiltInsAreSixAndOrdered() {
         var registry = new DefaultLanguageServerRegistry().registerBuiltIns();
         assertThat(registry.registeredIds())
                 .containsExactly(
@@ -24,7 +24,20 @@ class DefaultLanguageServerRegistryTest {
                         "typescript-language-server",
                         "gopls",
                         "rust-analyzer",
-                        "clangd");
+                        "clangd",
+                        "jdtls");
+    }
+
+    @Test
+    void jdtlsResolvesJavaFileFromMavenWorkspace(@TempDir Path tmp) throws Exception {
+        // Java agent tooling (kairo-code) needs JDT_LS to wire up. Project markers commonly
+        // used: pom.xml (Maven), build.gradle (Gradle), .project (Eclipse). Verify routing.
+        var src = tmp.resolve("src/main/java/com/example");
+        Files.createDirectories(src);
+        Files.createFile(tmp.resolve("pom.xml"));
+        Path javaFile = Files.createFile(src.resolve("Main.java"));
+        var registry = new DefaultLanguageServerRegistry().registerBuiltIns();
+        assertThat(registry.findFor(javaFile)).map(ServerDef::serverId).hasValue("jdtls");
     }
 
     @Test
