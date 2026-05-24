@@ -18,6 +18,8 @@ package io.kairo.tools.agent;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.agent.AgentFactory;
+import io.kairo.api.agent.SubagentDefinition;
+import io.kairo.api.agent.SubagentRegistry;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
@@ -25,9 +27,14 @@ import io.kairo.api.tool.SyncTool;
 import io.kairo.api.tool.Tool;
 import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
+import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolParam;
+import io.kairo.api.tool.ToolRegistry;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.core.tool.DefaultToolRegistry;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
@@ -35,42 +42,74 @@ import reactor.core.publisher.Mono;
 /**
  * Spawns a sub-agent to handle a specific task autonomously.
  *
- * <p>The sub-agent is created from the parent agent's configuration as a template, with a custom
- * system prompt and task description. The sub-agent runs to completion and its result is returned
- * to the parent agent.
+ * <p>Two invocation modes (both backward-compatible):
  *
- * <p>This enables hierarchical agent delegation: a parent agent can break complex work into
- * sub-tasks and delegate each to a specialized sub-agent.
+ * <ol>
+ *   <li><b>Registered subagent</b> — pass {@code subagent_type=<qualifiedName>} (e.g. {@code
+ *       "code-reviewer"} or {@code "myplugin:explorer"}). Loads the {@link SubagentDefinition} from
+ *       the {@link SubagentRegistry} and applies its {@code systemPrompt} + {@code tools} whitelist
+ *       + {@code model} pinning. This is the path that lights up {@code agents/*.md} contributions
+ *       from plugins.
+ *   <li><b>Ad-hoc</b> — pass {@code name}+{@code task}+{@code systemPrompt}. Spawns a sub-agent
+ *       inheriting the parent's tools + model. The legacy path; kept so existing callers don't
+ *       break.
+ * </ol>
+ *
+ * <p>The sub-agent runs with a clean context (no parent {@code conversationHistory} inherited —
+ * {@link AgentFactory#create} is used, not {@code createSubAgent}). The result is returned
+ * synchronously to the caller.
  */
 @Tool(
         name = "agent_spawn",
-        description = "Spawn a sub-agent to handle a specific task autonomously.",
+        description =
+                "Spawn a sub-agent to handle a specific task autonomously. Pass subagent_type to use"
+                        + " a registered subagent (with its own systemPrompt + tool whitelist + model);"
+                        + " otherwise pass name+task+systemPrompt for an ad-hoc sub-agent.",
         category = ToolCategory.AGENT_AND_TASK)
 public class AgentSpawnTool implements SyncTool {
 
     private static final Logger log = LoggerFactory.getLogger(AgentSpawnTool.class);
 
-    @ToolParam(description = "Name for the sub-agent", required = true)
+    @ToolParam(
+            description =
+                    "Qualified subagent name (e.g. 'code-reviewer' or 'myplugin:explorer'). Looked"
+                            + " up in SubagentRegistry. If provided, overrides name/systemPrompt and"
+                            + " applies the subagent's tool whitelist + model pinning.")
+    private String subagent_type;
+
+    @ToolParam(description = "Name for the sub-agent (ad-hoc mode; ignored if subagent_type set)")
     private String name;
 
     @ToolParam(description = "Task description for the sub-agent", required = true)
     private String task;
 
-    @ToolParam(description = "System prompt for the sub-agent")
+    @ToolParam(
+            description =
+                    "System prompt for the sub-agent (ad-hoc mode; ignored if subagent_type set)")
     private String systemPrompt;
 
     private final AgentFactory agentFactory;
     private final AgentConfig baseConfig;
+    private final SubagentRegistry subagentRegistry;
 
     /**
-     * Create a new AgentSpawnTool.
-     *
-     * @param agentFactory the factory for creating sub-agents
-     * @param baseConfig the parent agent's config used as a template
+     * Legacy constructor — registry-less. Ad-hoc mode only; {@code subagent_type} lookups will fail
+     * loudly with a descriptive error.
      */
     public AgentSpawnTool(AgentFactory agentFactory, AgentConfig baseConfig) {
+        this(agentFactory, baseConfig, null);
+    }
+
+    /**
+     * @param agentFactory the factory for creating sub-agents
+     * @param baseConfig the parent agent's config used as a template
+     * @param subagentRegistry catalog of plugin-contributed subagents (nullable)
+     */
+    public AgentSpawnTool(
+            AgentFactory agentFactory, AgentConfig baseConfig, SubagentRegistry subagentRegistry) {
         this.agentFactory = agentFactory;
         this.baseConfig = baseConfig;
+        this.subagentRegistry = subagentRegistry;
     }
 
     @Override
@@ -79,58 +118,140 @@ public class AgentSpawnTool implements SyncTool {
     }
 
     private ToolResult executeSync(Map<String, Object> input, ToolContext ctx) {
-        String name = (String) input.get("name");
-        String task = (String) input.get("task");
-        String prompt = (String) input.getOrDefault("systemPrompt", "You are a helpful sub-agent.");
+        String subagentType = (String) input.get("subagent_type");
+        String adhocName = (String) input.get("name");
+        String taskText = (String) input.get("task");
 
-        if (name == null || name.isBlank()) {
-            return ToolResult.error(null, "Parameter 'name' is required");
-        }
-        if (task == null || task.isBlank()) {
+        if (taskText == null || taskText.isBlank()) {
             return ToolResult.error(null, "Parameter 'task' is required");
         }
 
+        ResolvedSubagent resolved;
+        if (subagentType != null && !subagentType.isBlank()) {
+            if (subagentRegistry == null) {
+                return ToolResult.error(
+                        null,
+                        "subagent_type='"
+                                + subagentType
+                                + "' but no SubagentRegistry is wired into this AgentSpawnTool —"
+                                + " pass one to the 3-arg constructor or use the ad-hoc"
+                                + " name/systemPrompt parameters instead.");
+            }
+            Optional<SubagentDefinition> def = subagentRegistry.get(subagentType);
+            if (def.isEmpty()) {
+                return ToolResult.error(
+                        null,
+                        "subagent_type='"
+                                + subagentType
+                                + "' not found in SubagentRegistry. Registered: "
+                                + subagentRegistry.list().stream()
+                                        .map(SubagentDefinition::qualifiedName)
+                                        .toList());
+            }
+            resolved = ResolvedSubagent.fromDefinition(def.get());
+        } else {
+            String prompt =
+                    (String) input.getOrDefault("systemPrompt", "You are a helpful sub-agent.");
+            if (adhocName == null || adhocName.isBlank()) {
+                return ToolResult.error(
+                        null, "Either 'subagent_type' or 'name' parameter is required");
+            }
+            resolved = new ResolvedSubagent(adhocName, prompt, List.of(), null);
+        }
+
         try {
-            // Build sub-agent config from parent config template
-            AgentConfig subConfig =
-                    AgentConfig.builder()
-                            .name(name)
-                            .systemPrompt(prompt)
-                            .modelProvider(baseConfig.modelProvider())
-                            .toolRegistry(baseConfig.toolRegistry())
-                            .maxIterations(baseConfig.maxIterations())
-                            .timeout(baseConfig.timeout())
-                            .tokenBudget(baseConfig.tokenBudget())
-                            .build();
-
+            AgentConfig subConfig = buildSubagentConfig(resolved);
             Agent subAgent = agentFactory.create(subConfig);
-            log.info("Spawned sub-agent '{}' for task: {}", name, task);
+            log.info(
+                    "Spawned sub-agent '{}' (mode={}) for task: {}",
+                    resolved.name(),
+                    subagentType != null ? "registered:" + subagentType : "ad-hoc",
+                    taskText);
 
-            // Execute sub-agent synchronously (blocks until complete)
-            Msg taskMsg = Msg.of(MsgRole.USER, task);
+            Msg taskMsg = Msg.of(MsgRole.USER, taskText);
             Msg result = subAgent.call(taskMsg).block();
 
             String resultText =
                     result != null ? extractText(result) : "Sub-agent completed with no output";
-            log.info("Sub-agent '{}' completed", name);
+            log.info("Sub-agent '{}' completed", resolved.name());
             return ToolResult.success(
                     null,
-                    String.format("Sub-agent '%s' result:\n%s", name, resultText),
-                    Map.of("subAgentName", name));
+                    String.format("Sub-agent '%s' result:\n%s", resolved.name(), resultText),
+                    Map.of(
+                            "subAgentName",
+                            resolved.name(),
+                            "mode",
+                            subagentType != null ? "registered" : "ad-hoc"));
 
         } catch (Exception e) {
-            log.error("Sub-agent '{}' failed: {}", name, e.getMessage(), e);
+            log.error("Sub-agent '{}' failed: {}", resolved.name(), e.getMessage(), e);
             return ToolResult.error(
-                    null, String.format("Sub-agent '%s' failed: %s", name, e.getMessage()));
+                    null,
+                    String.format("Sub-agent '%s' failed: %s", resolved.name(), e.getMessage()));
         }
     }
 
-    /**
-     * Extract text content from a message.
-     *
-     * @param msg the message to extract text from
-     * @return the extracted text content
-     */
+    /** Build the sub-agent's {@link AgentConfig} with tool whitelist + model pinning applied. */
+    private AgentConfig buildSubagentConfig(ResolvedSubagent resolved) {
+        AgentConfig.Builder builder =
+                AgentConfig.builder()
+                        .name(resolved.name())
+                        .systemPrompt(resolved.systemPrompt())
+                        .modelProvider(baseConfig.modelProvider())
+                        .maxIterations(baseConfig.maxIterations())
+                        .timeout(baseConfig.timeout())
+                        .tokenBudget(baseConfig.tokenBudget());
+
+        // tools whitelist: when non-empty, filter the parent's tool registry to
+        // only the named tools. Empty = inherit everything. Unknown tools are
+        // silently dropped (log a warning) rather than failing the spawn —
+        // matches Claude Code's lenient behavior on stale agent.md frontmatter.
+        ToolRegistry parentTools = baseConfig.toolRegistry();
+        if (resolved.tools().isEmpty() || parentTools == null) {
+            builder.toolRegistry(parentTools);
+        } else {
+            builder.toolRegistry(filteredToolRegistry(parentTools, resolved.tools()));
+        }
+
+        // model pinning: when non-null, override the model name. When null,
+        // inherit the parent's modelName so subagents run on the same model
+        // unless they explicitly opt out. The provider factory still comes
+        // from the parent — switching providers per-model would require a
+        // ProviderRegistry handle here; deferred to a future refactor.
+        if (resolved.model() != null && !resolved.model().isBlank()) {
+            builder.modelName(resolved.model());
+        } else if (baseConfig.modelName() != null) {
+            builder.modelName(baseConfig.modelName());
+        }
+
+        return builder.build();
+    }
+
+    private static ToolRegistry filteredToolRegistry(ToolRegistry parent, List<String> whitelist) {
+        DefaultToolRegistry filtered = new DefaultToolRegistry();
+        for (String toolName : whitelist) {
+            Optional<ToolDefinition> def = parent.get(toolName);
+            if (def.isPresent()) {
+                filtered.register(def.get());
+            } else {
+                log.warn(
+                        "Subagent tool whitelist references unknown tool '{}'; skipping (allowed:"
+                                + " {})",
+                        toolName,
+                        parent.getAll().stream().map(ToolDefinition::name).toList());
+            }
+        }
+        return filtered;
+    }
+
+    /** Internal value object — resolves either registered SubagentDefinition or ad-hoc params. */
+    private record ResolvedSubagent(
+            String name, String systemPrompt, List<String> tools, String model) {
+        static ResolvedSubagent fromDefinition(SubagentDefinition def) {
+            return new ResolvedSubagent(def.name(), def.systemPrompt(), def.tools(), def.model());
+        }
+    }
+
     private String extractText(Msg msg) {
         StringBuilder sb = new StringBuilder();
         for (Content content : msg.contents()) {

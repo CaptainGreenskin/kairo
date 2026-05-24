@@ -20,15 +20,26 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.agent.AgentFactory;
+import io.kairo.api.agent.SubagentDefinition;
+import io.kairo.api.agent.SubagentRegistry;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
+import io.kairo.api.tool.JsonSchema;
+import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
+import io.kairo.api.tool.ToolDefinition;
+import io.kairo.api.tool.ToolRegistry;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.core.tool.DefaultToolRegistry;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -37,28 +48,53 @@ class AgentSpawnToolTest {
     private AgentSpawnTool tool;
     private StubAgentFactory agentFactory;
     private AgentConfig baseConfig;
+    private ToolRegistry parentToolRegistry;
+    private StubSubagentRegistry subagentRegistry;
     private static final ToolContext CTX = new ToolContext("agent-1", "sess-1", Map.of());
 
     @BeforeEach
     void setUp() {
+        // Parent registry stocked with three named tools so whitelist-filter
+        // tests can assert which ones survive into the child config.
+        parentToolRegistry = new DefaultToolRegistry();
+        parentToolRegistry.register(stubToolDef("read"));
+        parentToolRegistry.register(stubToolDef("grep"));
+        parentToolRegistry.register(stubToolDef("bash"));
+
         baseConfig =
                 AgentConfig.builder()
                         .name("parent")
                         .systemPrompt("parent prompt")
                         .modelProvider(new StubModelProvider())
+                        .modelName("parent-model")
                         .maxIterations(10)
                         .timeout(java.time.Duration.ofMinutes(5))
                         .tokenBudget(100_000)
+                        .toolRegistry(parentToolRegistry)
                         .build();
         agentFactory = new StubAgentFactory();
-        tool = new AgentSpawnTool(agentFactory, baseConfig);
+        subagentRegistry = new StubSubagentRegistry();
+        tool = new AgentSpawnTool(agentFactory, baseConfig, subagentRegistry);
+    }
+
+    private static ToolDefinition stubToolDef(String name) {
+        return new ToolDefinition(
+                name,
+                "stub " + name,
+                ToolCategory.GENERAL,
+                new JsonSchema("object", Map.of(), List.of(), name + " input"),
+                AgentSpawnToolTest.class);
     }
 
     @Test
     void missingNameParameter() {
+        // After SA1, the error message points users at both invocation modes
+        // (registered via subagent_type or ad-hoc via name) — assert on the
+        // common substring.
         ToolResult result = tool.execute(Map.of("task", "do something"), CTX).block();
         assertTrue(result.isError());
-        assertTrue(result.content().contains("'name' is required"));
+        assertTrue(
+                result.content().contains("'subagent_type' or 'name'"), "got: " + result.content());
     }
 
     @Test
@@ -66,7 +102,8 @@ class AgentSpawnToolTest {
         ToolResult result =
                 tool.execute(Map.of("name", "   ", "task", "do something"), CTX).block();
         assertTrue(result.isError());
-        assertTrue(result.content().contains("'name' is required"));
+        assertTrue(
+                result.content().contains("'subagent_type' or 'name'"), "got: " + result.content());
     }
 
     @Test
@@ -210,6 +247,210 @@ class AgentSpawnToolTest {
         assertEquals("specific task description", agentFactory.lastStubAgent.lastInputText);
     }
 
+    // ── SA1+SA2: registry path coverage ─────────────────────────────────────
+
+    @Test
+    void subagentTypeHitsRegistryAndUsesItsSystemPrompt() {
+        // subagent_type wins over any name/systemPrompt args — registry is the
+        // source of truth once the agents/*.md contribution is loaded.
+        subagentRegistry.register(
+                new SubagentDefinition(
+                        "code-reviewer",
+                        "reviews code diffs",
+                        "You are a meticulous code reviewer.",
+                        List.of(),
+                        null,
+                        null));
+        agentFactory.response = Msg.of(MsgRole.ASSISTANT, "lgtm");
+
+        ToolResult result =
+                tool.execute(
+                                Map.of(
+                                        "subagent_type",
+                                        "code-reviewer",
+                                        "task",
+                                        "review PR #42",
+                                        "name",
+                                        "ignored-adhoc-name",
+                                        "systemPrompt",
+                                        "ignored ad-hoc prompt"),
+                                CTX)
+                        .block();
+
+        assertFalse(result.isError(), () -> "got: " + result.content());
+        assertEquals("code-reviewer", agentFactory.lastConfig.name());
+        assertEquals("You are a meticulous code reviewer.", agentFactory.lastConfig.systemPrompt());
+        assertEquals("registered", result.metadata().get("mode"));
+    }
+
+    @Test
+    void subagentTypeToolsWhitelistFiltersChildRegistry() {
+        subagentRegistry.register(
+                new SubagentDefinition(
+                        "reader",
+                        "read-only inspector",
+                        "Inspect files.",
+                        List.of("read", "grep"),
+                        null,
+                        null));
+        agentFactory.response = Msg.of(MsgRole.ASSISTANT, "done");
+
+        tool.execute(Map.of("subagent_type", "reader", "task", "inspect"), CTX).block();
+
+        ToolRegistry childRegistry = agentFactory.lastConfig.toolRegistry();
+        assertNotNull(childRegistry);
+        assertTrue(childRegistry.get("read").isPresent(), "whitelisted tool 'read' missing");
+        assertTrue(childRegistry.get("grep").isPresent(), "whitelisted tool 'grep' missing");
+        assertTrue(childRegistry.get("bash").isEmpty(), "non-whitelisted 'bash' leaked through");
+    }
+
+    @Test
+    void subagentTypeEmptyToolsWhitelistInheritsParentRegistry() {
+        subagentRegistry.register(
+                new SubagentDefinition(
+                        "explorer",
+                        "general explorer",
+                        "Explore freely.",
+                        List.of(), // empty → inherit
+                        null,
+                        null));
+        agentFactory.response = Msg.of(MsgRole.ASSISTANT, "done");
+
+        tool.execute(Map.of("subagent_type", "explorer", "task", "explore"), CTX).block();
+
+        // Empty whitelist = inherit verbatim — child sees the same ToolRegistry
+        // instance as the parent, not a filtered copy.
+        assertSame(parentToolRegistry, agentFactory.lastConfig.toolRegistry());
+    }
+
+    @Test
+    void subagentTypeUnknownToolInWhitelistSilentlyDropped() {
+        // Lenient on stale agents/*.md — log a warn but don't abort the spawn.
+        subagentRegistry.register(
+                new SubagentDefinition(
+                        "partial",
+                        "with a ghost tool",
+                        "You have one valid tool.",
+                        List.of("read", "does-not-exist"),
+                        null,
+                        null));
+        agentFactory.response = Msg.of(MsgRole.ASSISTANT, "done");
+
+        ToolResult result =
+                tool.execute(Map.of("subagent_type", "partial", "task", "do work"), CTX).block();
+
+        assertFalse(result.isError());
+        ToolRegistry childRegistry = agentFactory.lastConfig.toolRegistry();
+        assertTrue(childRegistry.get("read").isPresent());
+        assertTrue(childRegistry.get("does-not-exist").isEmpty());
+    }
+
+    @Test
+    void subagentTypeModelPinningOverridesParentModelName() {
+        subagentRegistry.register(
+                new SubagentDefinition(
+                        "haiku-bot",
+                        "fast cheap subagent",
+                        "Be terse.",
+                        List.of(),
+                        "claude-haiku-4-5-20251001",
+                        null));
+        agentFactory.response = Msg.of(MsgRole.ASSISTANT, "done");
+
+        tool.execute(Map.of("subagent_type", "haiku-bot", "task", "summarize"), CTX).block();
+
+        assertEquals("claude-haiku-4-5-20251001", agentFactory.lastConfig.modelName());
+    }
+
+    @Test
+    void subagentTypeNoModelInheritsParentModelName() {
+        subagentRegistry.register(
+                new SubagentDefinition(
+                        "inheriting",
+                        "no model pin",
+                        "Use the parent's model.",
+                        List.of(),
+                        null,
+                        null));
+        agentFactory.response = Msg.of(MsgRole.ASSISTANT, "done");
+
+        tool.execute(Map.of("subagent_type", "inheriting", "task", "do work"), CTX).block();
+
+        assertEquals("parent-model", agentFactory.lastConfig.modelName());
+    }
+
+    @Test
+    void subagentTypeNotFoundReturnsErrorWithAvailableList() {
+        subagentRegistry.register(
+                new SubagentDefinition("alpha", "a", "Alpha agent.", List.of(), null, null));
+        subagentRegistry.register(
+                new SubagentDefinition("beta", "b", "Beta agent.", List.of(), null, "myplugin"));
+
+        ToolResult result =
+                tool.execute(Map.of("subagent_type", "missing", "task", "do work"), CTX).block();
+
+        assertTrue(result.isError());
+        // Message must name what was missing AND what's available — that's the
+        // "loud failure" promised by SA1 so plugin authors can fix typos fast.
+        assertTrue(result.content().contains("missing"), () -> "got: " + result.content());
+        assertTrue(result.content().contains("alpha"), () -> "got: " + result.content());
+        assertTrue(result.content().contains("myplugin:beta"), () -> "got: " + result.content());
+    }
+
+    @Test
+    void subagentTypeWithoutRegistryWiredReturnsDescriptiveError() {
+        // Legacy 2-arg constructor: registry is null → subagent_type can't be
+        // resolved. Spell out both the cause and the workaround.
+        AgentSpawnTool registrylessTool = new AgentSpawnTool(agentFactory, baseConfig);
+
+        ToolResult result =
+                registrylessTool
+                        .execute(Map.of("subagent_type", "code-reviewer", "task", "review"), CTX)
+                        .block();
+
+        assertTrue(result.isError());
+        assertTrue(
+                result.content().contains("no SubagentRegistry"), () -> "got: " + result.content());
+        assertTrue(
+                result.content().contains("3-arg constructor")
+                        || result.content().contains("ad-hoc"),
+                () -> "got: " + result.content());
+    }
+
+    @Test
+    void subagentTypeWithNamespacedQualifiedNameResolves() {
+        subagentRegistry.register(
+                new SubagentDefinition(
+                        "explorer",
+                        "namespaced explorer",
+                        "Plugin-contributed explorer.",
+                        List.of(),
+                        null,
+                        "myplugin"));
+        agentFactory.response = Msg.of(MsgRole.ASSISTANT, "done");
+
+        ToolResult result =
+                tool.execute(Map.of("subagent_type", "myplugin:explorer", "task", "explore"), CTX)
+                        .block();
+
+        assertFalse(result.isError(), () -> "got: " + result.content());
+        assertEquals("explorer", agentFactory.lastConfig.name());
+        assertEquals("Plugin-contributed explorer.", agentFactory.lastConfig.systemPrompt());
+    }
+
+    @Test
+    void adhocModeMetadataReportsAdHoc() {
+        // Regression guard: the mode metadata distinguishes the two paths so
+        // observability/dashboards can tell registered subagent runs apart
+        // from ad-hoc one-shots.
+        agentFactory.response = Msg.of(MsgRole.ASSISTANT, "done");
+
+        ToolResult result =
+                tool.execute(Map.of("name", "ad-hoc-worker", "task", "do work"), CTX).block();
+
+        assertEquals("ad-hoc", result.metadata().get("mode"));
+    }
+
     /** Stub implementation of AgentFactory for testing without Mockito. */
     private static class StubAgentFactory implements AgentFactory {
         Msg response;
@@ -271,6 +512,49 @@ class AgentSpawnToolTest {
 
         @Override
         public void interrupt() {}
+    }
+
+    /** In-memory stub SubagentRegistry — no Mockito, mirrors DefaultSubagentRegistry behavior. */
+    private static class StubSubagentRegistry implements SubagentRegistry {
+        private final ConcurrentMap<String, SubagentDefinition> byQualifiedName =
+                new ConcurrentHashMap<>();
+
+        @Override
+        public void register(SubagentDefinition definition) {
+            SubagentDefinition prior =
+                    byQualifiedName.putIfAbsent(definition.qualifiedName(), definition);
+            if (prior != null) {
+                throw new IllegalStateException(
+                        "Duplicate subagent: " + definition.qualifiedName());
+            }
+        }
+
+        @Override
+        public boolean unregister(String qualifiedName) {
+            return byQualifiedName.remove(qualifiedName) != null;
+        }
+
+        @Override
+        public Optional<SubagentDefinition> get(String qualifiedName) {
+            return Optional.ofNullable(byQualifiedName.get(qualifiedName));
+        }
+
+        @Override
+        public List<SubagentDefinition> list() {
+            return List.copyOf(byQualifiedName.values());
+        }
+
+        @Override
+        public List<SubagentDefinition> listByNamespace(String namespace) {
+            return byQualifiedName.values().stream()
+                    .filter(d -> namespace.equals(d.namespace()))
+                    .toList();
+        }
+
+        @Override
+        public int size() {
+            return byQualifiedName.size();
+        }
     }
 
     /** Minimal stub ModelProvider for constructing AgentConfig. */
