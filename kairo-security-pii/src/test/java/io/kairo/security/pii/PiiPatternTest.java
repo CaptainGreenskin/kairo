@@ -25,8 +25,12 @@ import org.junit.jupiter.params.provider.EnumSource;
 class PiiPatternTest {
 
     @Test
-    void tenPatternsDefined() {
-        assertThat(PiiPattern.values()).hasSize(10);
+    void allBundledPatternsDefined() {
+        // Floor, not exact equality — promotions from kairo-assistant
+        // (AWS/PEM/GitHub/Slack creds, etc.) grow this list over time.
+        // The per-pattern tests below + the cloud-creds suite cover each
+        // entry; this assertion guards against accidental removal.
+        assertThat(PiiPattern.values().length).isGreaterThanOrEqualTo(10);
     }
 
     @ParameterizedTest
