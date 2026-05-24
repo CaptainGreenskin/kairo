@@ -39,7 +39,18 @@ public enum PiiPattern {
     IPV4(
             "\\b(?:(?:25[0-5]|2[0-4]\\d|[01]?\\d?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|[01]?\\d?\\d)\\b",
             "<redacted:ipv4>"),
-    IBAN("\\b[A-Z]{2}\\d{2}[A-Z0-9]{11,30}\\b", "<redacted:iban>");
+    IBAN("\\b[A-Z]{2}\\d{2}[A-Z0-9]{11,30}\\b", "<redacted:iban>"),
+    // Cloud / dev credentials — promoted from kairo-assistant's OutputScanner so any agent
+    // (kairo-code, kairo-assistant, or third-party) gets the same default protection.
+    AWS_ACCESS_KEY("\\bAKIA[0-9A-Z]{16}\\b", "<redacted:aws-key>"),
+    AWS_SECRET_KEY(
+            "(?i)aws[_\\-]?secret[_\\-]?access[_\\-]?key\\s*[=:]\\s*[A-Za-z0-9/+=]{40}",
+            "<redacted:aws-secret>"),
+    PRIVATE_KEY_PEM("-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----", "<redacted:private-key>"),
+    GITHUB_TOKEN("\\bgh[pousr]_[A-Za-z0-9_]{36,255}\\b", "<redacted:github-token>"),
+    SLACK_TOKEN(
+            "\\bxox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24,32}\\b",
+            "<redacted:slack-token>");
 
     private final Pattern pattern;
     private final String replacement;
