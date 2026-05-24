@@ -22,18 +22,18 @@
     </description>
 
     <modules>
-        <module>../kairo-tools</module>
-        <module>../kairo-mcp</module>
-        <module>../kairo-multi-agent</module>
-        <module>../kairo-observability</module>
-        <module>../kairo-skill</module>
-        <module>../kairo-evolution</module>
-        <module>../kairo-expert-team</module>
-        <module>../kairo-security-pii</module>
-        <module>../kairo-plugin</module>
-        <module>../kairo-cron</module>
-        <module>../kairo-gateway</module>
-        <module>../kairo-lsp</module>
-        <module>../kairo-acp</module>
+        <module>kairo-tools</module>
+        <module>kairo-mcp</module>
+        <module>kairo-multi-agent</module>
+        <module>kairo-observability</module>
+        <module>kairo-skill</module>
+        <module>kairo-evolution</module>
+        <module>kairo-expert-team</module>
+        <module>kairo-security-pii</module>
+        <module>kairo-plugin</module>
+        <module>kairo-cron</module>
+        <module>kairo-gateway</module>
+        <module>kairo-lsp</module>
+        <module>kairo-acp</module>
     </modules>
 </project>
