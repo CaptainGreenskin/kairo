@@ -42,7 +42,7 @@ import reactor.core.publisher.Mono;
  * @see <a href="../../../../../../docs/adr/ADR-016-coordinator-spi.md">ADR-016</a>
  * @since v0.10 (Experimental)
  */
-@Experimental("TeamCoordinator SPI — contract may change in v0.11")
+@Experimental("TeamCoordinator SPI — contract may change before v1.2.0 stabilization")
 public interface TeamCoordinator {
 
     /**

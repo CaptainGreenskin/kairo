@@ -32,7 +32,7 @@ import java.util.List;
  * @param tags categorization tags for discovery; may be empty
  * @see AgentCard
  */
-@Experimental("A2A agent skill; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("A2A agent skill; introduced in v0.10, targeting stabilization in v1.2.0")
 public record AgentSkill(String id, String name, String description, List<String> tags) {
 
     /** Compact constructor with null-safe defaults. */

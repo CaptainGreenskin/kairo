@@ -32,7 +32,7 @@ import java.util.Objects;
  * @param stepIndex the zero-based position of this step in the plan; must be {@code >= 0}
  * @since v0.10 (Experimental)
  */
-@Experimental("Team plan step; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("Team plan step; introduced in v0.10, targeting stabilization in v1.2.0")
 public record TeamStep(
         String stepId,
         String description,

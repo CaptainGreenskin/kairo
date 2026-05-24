@@ -31,7 +31,7 @@ import javax.annotation.Nullable;
  * @param reviewModelName optional model name override for evolution review calls
  * @since v0.9 (Experimental)
  */
-@Experimental("Self-Evolution SPI — contract may change in v0.10")
+@Experimental("Self-Evolution SPI — contract may change before v1.2.0 stabilization")
 public record EvolutionConfig(
         @Nullable EvolutionPolicy evolutionPolicy,
         @Nullable EvolvedSkillStore evolvedSkillStore,

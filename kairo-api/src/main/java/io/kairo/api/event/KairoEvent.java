@@ -47,7 +47,7 @@ import javax.annotation.Nullable;
  * @param attributes free-form attribute map for observability backends
  * @since v0.10 (Experimental)
  */
-@Experimental("KairoEventBus — contract may change in v0.11")
+@Experimental("KairoEventBus — contract may change before v1.2.0 stabilization")
 public record KairoEvent(
         String eventId,
         Instant timestamp,

@@ -36,7 +36,7 @@ import java.util.Objects;
  * @param evaluatedAt when the verdict was produced; non-null
  * @since v0.10 (Experimental)
  */
-@Experimental("Team evaluation verdict; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("Team evaluation verdict; introduced in v0.10, targeting stabilization in v1.2.0")
 public record EvaluationVerdict(
         VerdictOutcome outcome,
         double score,

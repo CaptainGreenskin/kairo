@@ -28,6 +28,14 @@ import reactor.core.publisher.Mono;
  * In-memory {@link MemoryStore} backed by a {@link CopyOnWriteArrayList} (optimised for read-heavy
  * workloads).
  *
+ * <p><b>Role:</b> test fixture. Production code paths wire the richer {@code InMemoryStore}
+ * (sibling class, ~199 LOC) via {@code MemoryAutoConfiguration}; this class is intentionally a
+ * minimal, dependency-free impl that downstream tests in {@code kairo-code-cli} ({@code
+ * MemoryCommandTest}) and {@code kairo-assistant-core} ({@code AssistantContextSourcesTest})
+ * instantiate directly to avoid spinning up the production store. Do NOT delete on a "phantom impl"
+ * sweep — periodic audits grep for {@code InMemoryMemoryStore} in this repo and miss the
+ * sibling-repo test usage.
+ *
  * <p>Search results are ranked by {@link MemoryRelevanceScorer}: {@code score = 0.7 * termOverlap +
  * 0.3 * recencyFactor} using a 7-day half-life decay for recency.
  *

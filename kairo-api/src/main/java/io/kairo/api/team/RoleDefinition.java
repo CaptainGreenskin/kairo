@@ -34,7 +34,7 @@ import java.util.Objects;
  * @param allowedTools optional tool allowlist; defensively copied, never {@code null}
  * @since v0.10 (Experimental)
  */
-@Experimental("Team role definition; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("Team role definition; introduced in v0.10, targeting stabilization in v1.2.0")
 public record RoleDefinition(
         String roleId,
         String roleName,

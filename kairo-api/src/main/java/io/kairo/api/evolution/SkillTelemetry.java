@@ -46,7 +46,7 @@ import javax.annotation.Nullable;
  *     null if archived for other reasons
  * @since v0.10 (Experimental)
  */
-@Experimental("Self-Evolution SPI — contract may change in v0.11")
+@Experimental("Self-Evolution SPI — contract may change before v1.2.0 stabilization")
 public record SkillTelemetry(
         String skillName,
         SkillLifecycleState state,

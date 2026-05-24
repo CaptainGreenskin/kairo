@@ -30,7 +30,7 @@ import java.util.Objects;
  *
  * @since v0.10
  */
-@Experimental("Team aggregate root; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("Team aggregate root; introduced in v0.10, targeting stabilization in v1.2.0")
 public class Team {
 
     private final String name;

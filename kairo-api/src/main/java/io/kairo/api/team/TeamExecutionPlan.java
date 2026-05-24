@@ -28,7 +28,7 @@ import java.util.Objects;
  * @param createdAt when the plan was produced; non-null
  * @since v0.10 (Experimental)
  */
-@Experimental("Team execution plan; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("Team execution plan; introduced in v0.10, targeting stabilization in v1.2.0")
 public record TeamExecutionPlan(String planId, List<TeamStep> steps, Instant createdAt) {
 
     public TeamExecutionPlan {

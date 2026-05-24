@@ -32,7 +32,7 @@ import javax.annotation.Nullable;
  *
  * @since v0.7 (Experimental)
  */
-@Experimental("Guardrail SPI — contract may change in v0.8")
+@Experimental("Guardrail SPI — contract may change before v1.2.0 stabilization")
 public sealed interface GuardrailPayload {
 
     /**

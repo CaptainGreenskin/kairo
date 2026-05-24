@@ -42,7 +42,7 @@ import java.util.Map;
  * @see AgentSkill
  * @see AgentCardResolver
  */
-@Experimental("A2A agent card; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("A2A agent card; introduced in v0.10, targeting stabilization in v1.2.0")
 public record AgentCard(
         String id,
         String name,

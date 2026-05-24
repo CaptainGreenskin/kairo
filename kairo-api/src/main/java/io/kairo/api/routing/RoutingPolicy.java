@@ -24,7 +24,7 @@ import reactor.core.publisher.Mono;
  * <p>Implementations can consider cost budgets, message complexity, and other factors to choose the
  * most appropriate provider for a given request.
  */
-@Experimental("Cost Routing SPI — contract may change in v0.8")
+@Experimental("Cost Routing SPI — contract may change before v1.2.0 stabilization")
 public interface RoutingPolicy {
 
     /**

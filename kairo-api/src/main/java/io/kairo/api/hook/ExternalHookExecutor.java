@@ -27,7 +27,7 @@ import reactor.core.publisher.Mono;
  *
  * @since v0.11 (Experimental)
  */
-@Experimental("External hook execution SPI — contract may change in v0.12")
+@Experimental("External hook execution SPI — contract may change before v1.2.0 stabilization")
 public interface ExternalHookExecutor {
 
     /**

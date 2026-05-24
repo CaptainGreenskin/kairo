@@ -24,7 +24,7 @@ import io.kairo.api.Experimental;
  *
  * @since v0.10 (Experimental)
  */
-@Experimental("Self-Evolution SPI — contract may change in v0.11")
+@Experimental("Self-Evolution SPI — contract may change before v1.2.0 stabilization")
 public enum SkillProvenance {
     /** Auto-extracted by the evolution pipeline; the curator owns its lifecycle. */
     AGENT_CREATED,

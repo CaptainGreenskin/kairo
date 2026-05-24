@@ -38,7 +38,7 @@ import javax.annotation.Nullable;
  * @param usageCount number of times the skill has been applied
  * @since v0.9 (Experimental)
  */
-@Experimental("Self-Evolution SPI — contract may change in v0.10")
+@Experimental("Self-Evolution SPI — contract may change before v1.2.0 stabilization")
 public record EvolvedSkill(
         String name,
         String version,

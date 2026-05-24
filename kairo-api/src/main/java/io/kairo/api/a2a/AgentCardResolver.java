@@ -33,7 +33,7 @@ import java.util.Set;
  *
  * @see AgentCard
  */
-@Experimental("A2A card resolver SPI; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("A2A card resolver SPI; introduced in v0.10, targeting stabilization in v1.2.0")
 public interface AgentCardResolver {
 
     /**

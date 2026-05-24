@@ -31,7 +31,7 @@ import reactor.core.publisher.Mono;
  *
  * @since v0.10 (Experimental)
  */
-@Experimental("Self-Evolution SPI — contract may change in v0.11")
+@Experimental("Self-Evolution SPI — contract may change before v1.2.0 stabilization")
 public interface SkillTelemetryStore {
 
     /** Fetch the telemetry record for {@code skillName}, or empty if no record exists yet. */

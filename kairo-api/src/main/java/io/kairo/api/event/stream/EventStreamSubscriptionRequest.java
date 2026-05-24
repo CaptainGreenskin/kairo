@@ -29,7 +29,7 @@ import java.util.Objects;
  *     {@link KairoEventStreamAuthorizer} to inspect. Never null; use an empty map when unavailable.
  * @since v0.9 (Experimental)
  */
-@Experimental("EventStream SPI — contract may change in v0.10")
+@Experimental("EventStream SPI — contract may change before v1.2.0 stabilization")
 public record EventStreamSubscriptionRequest(
         EventStreamFilter filter,
         BackpressurePolicy backpressurePolicy,

@@ -18,6 +18,7 @@ package io.kairo.api.team;
 import io.kairo.api.Experimental;
 import java.time.Duration;
 import java.util.Objects;
+import javax.annotation.Nullable;
 
 /**
  * Caller-provided configuration bundle for a single {@link TeamExecutionRequest}.
@@ -33,11 +34,12 @@ import java.util.Objects;
  * @param resourceConstraint team-level resource budget; non-null
  * @since v0.10 (Experimental)
  */
-@Experimental("Team config record; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("Team config record; introduced in v0.10, targeting stabilization in v1.2.0")
 public record TeamConfig(
         RiskProfile riskProfile,
         int maxFeedbackRounds,
         Duration teamTimeout,
+        @Nullable Duration stepTimeout,
         EvaluatorPreference evaluatorPreference,
         PlannerFailureMode plannerFailureMode,
         TeamResourceConstraint resourceConstraint) {
@@ -52,9 +54,40 @@ public record TeamConfig(
         if (teamTimeout.toMillis() <= 0) {
             throw new IllegalArgumentException("teamTimeout must be > 0ms, got " + teamTimeout);
         }
+        if (stepTimeout != null && stepTimeout.toMillis() <= 0) {
+            throw new IllegalArgumentException(
+                    "stepTimeout must be > 0ms if set, got " + stepTimeout);
+        }
         Objects.requireNonNull(evaluatorPreference, "evaluatorPreference must not be null");
         Objects.requireNonNull(plannerFailureMode, "plannerFailureMode must not be null");
         Objects.requireNonNull(resourceConstraint, "resourceConstraint must not be null");
+    }
+
+    /** Six-argument compatibility constructor (stepTimeout defaults to null). */
+    public TeamConfig(
+            RiskProfile riskProfile,
+            int maxFeedbackRounds,
+            Duration teamTimeout,
+            EvaluatorPreference evaluatorPreference,
+            PlannerFailureMode plannerFailureMode,
+            TeamResourceConstraint resourceConstraint) {
+        this(
+                riskProfile,
+                maxFeedbackRounds,
+                teamTimeout,
+                null,
+                evaluatorPreference,
+                plannerFailureMode,
+                resourceConstraint);
+    }
+
+    /** Per-step timeout, falling back to teamTimeout / stepCount if not explicitly set. */
+    public Duration resolveStepTimeout(int totalSteps) {
+        if (stepTimeout != null) {
+            return stepTimeout;
+        }
+        long perStep = teamTimeout.toMillis() / Math.max(totalSteps, 1);
+        return Duration.ofMillis(perStep);
     }
 
     /**
@@ -68,6 +101,7 @@ public record TeamConfig(
                 RiskProfile.MEDIUM,
                 3,
                 Duration.ofMinutes(10L),
+                null,
                 EvaluatorPreference.AUTO,
                 PlannerFailureMode.FAIL_FAST,
                 TeamResourceConstraint.unbounded());

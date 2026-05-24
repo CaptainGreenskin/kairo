@@ -25,5 +25,5 @@ import io.kairo.api.Experimental;
  * @param config the external hook configuration (command, http, etc.)
  * @since v0.11 (Experimental)
  */
-@Experimental("External hook binding record — contract may change in v0.12")
+@Experimental("External hook binding record — contract may change before v1.2.0 stabilization")
 public record ExternalHookBinding(HookPhase phase, ExternalHookConfig config) {}

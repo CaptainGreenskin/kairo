@@ -25,7 +25,7 @@ import io.kairo.api.exception.KairoException;
  *
  * @see A2aClient
  */
-@Experimental("A2A exception; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("A2A exception; introduced in v0.10, targeting stabilization in v1.2.0")
 public class A2aException extends KairoException {
 
     private final String targetAgentId;

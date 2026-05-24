@@ -30,7 +30,7 @@ import io.kairo.api.Experimental;
  * @param timestamp transition time ({@link System#currentTimeMillis()})
  * @since v0.10 (Experimental)
  */
-@Experimental("Circuit breaker observability — contract may change in v0.11")
+@Experimental("Circuit breaker observability — contract may change before v1.2.0 stabilization")
 public record CircuitBreakerEvent(String name, State previous, State current, long timestamp) {
 
     /** Circuit breaker states, aligned with {@code CircuitBreakerPrimitive.State}. */

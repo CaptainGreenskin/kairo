@@ -31,7 +31,7 @@ import io.kairo.api.Experimental;
  *
  * @since v0.10 (Experimental)
  */
-@Experimental("Team risk profile enum; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("Team risk profile enum; introduced in v0.10, targeting stabilization in v1.2.0")
 public enum RiskProfile {
 
     /**

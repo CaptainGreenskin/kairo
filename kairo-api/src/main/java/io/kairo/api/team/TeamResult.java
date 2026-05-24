@@ -39,7 +39,7 @@ import java.util.Optional;
  *     {@code null}
  * @since v0.10 (Experimental)
  */
-@Experimental("Team terminal result; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("Team terminal result; introduced in v0.10, targeting stabilization in v1.2.0")
 public record TeamResult(
         String requestId,
         TeamStatus status,

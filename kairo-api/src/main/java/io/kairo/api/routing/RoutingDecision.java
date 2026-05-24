@@ -24,5 +24,5 @@ import io.kairo.api.Experimental;
  * @param rationale a short description of why this provider was selected
  * @param estimatedCost optional estimated cost for this call (nullable)
  */
-@Experimental("Cost Routing SPI — contract may change in v0.8")
+@Experimental("Cost Routing SPI — contract may change before v1.2.0 stabilization")
 public record RoutingDecision(String providerName, String rationale, Double estimatedCost) {}

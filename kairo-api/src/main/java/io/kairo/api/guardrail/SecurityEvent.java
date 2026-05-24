@@ -35,7 +35,7 @@ import java.util.Map;
  * @param attributes key-value pairs from the guardrail context metadata for observability
  * @since v0.7 (Experimental)
  */
-@Experimental("Security Observability — contract may change in v0.8")
+@Experimental("Security Observability — contract may change before v1.2.0 stabilization")
 public record SecurityEvent(
         Instant timestamp,
         SecurityEventType type,

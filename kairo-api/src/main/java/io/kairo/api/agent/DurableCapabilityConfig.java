@@ -29,7 +29,7 @@ import javax.annotation.Nullable;
  * @param recoveryOnStartup whether to replay the pending event log on agent construction
  * @since v0.10 (Experimental)
  */
-@Experimental("AgentConfig capability — contract may change in v0.11")
+@Experimental("AgentConfig capability — contract may change before v1.2.0 stabilization")
 public record DurableCapabilityConfig(
         @Nullable DurableExecutionStore store, boolean recoveryOnStartup) {
 

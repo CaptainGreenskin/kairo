@@ -40,7 +40,7 @@ import java.util.Objects;
  * @param attributes free-form observability attributes; defensively copied, never {@code null}
  * @since v0.10 (Experimental)
  */
-@Experimental("TeamEvent — contract may change in v0.11")
+@Experimental("TeamEvent — contract may change before v1.2.0 stabilization")
 public record TeamEvent(
         TeamEventType type,
         String teamId,

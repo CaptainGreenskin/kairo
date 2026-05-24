@@ -30,7 +30,7 @@ import java.util.Objects;
  * @param config the team configuration in effect for this execution; non-null
  * @since v0.10 (Experimental)
  */
-@Experimental("Team evaluation context; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("Team evaluation context; introduced in v0.10, targeting stabilization in v1.2.0")
 public record EvaluationContext(
         TeamStep step,
         String artifact,

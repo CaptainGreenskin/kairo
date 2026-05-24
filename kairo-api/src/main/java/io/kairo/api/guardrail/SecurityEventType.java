@@ -22,7 +22,7 @@ import io.kairo.api.Experimental;
  *
  * @since v0.7 (Experimental)
  */
-@Experimental("Security Observability — contract may change in v0.8")
+@Experimental("Security Observability — contract may change before v1.2.0 stabilization")
 public enum SecurityEventType {
     GUARDRAIL_ALLOW,
     GUARDRAIL_DENY,

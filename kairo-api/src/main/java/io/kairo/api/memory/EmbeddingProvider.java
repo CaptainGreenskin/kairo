@@ -34,7 +34,7 @@ import reactor.core.publisher.Mono;
  *     consistent value for the lifetime of the provider instance.
  * @since 0.5.0
  */
-@Experimental("Embedding provider SPI — may change as integration matures; targeting v0.11")
+@Experimental("Embedding provider SPI — may change as integration matures; targeting v1.2.0")
 public interface EmbeddingProvider {
 
     /**

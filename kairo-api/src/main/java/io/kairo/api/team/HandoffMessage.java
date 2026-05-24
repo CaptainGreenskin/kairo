@@ -33,7 +33,7 @@ import java.util.Objects;
  * @param sentAt when the handoff occurred; non-null
  * @since v0.10 (Experimental)
  */
-@Experimental("Team handoff message; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("Team handoff message; introduced in v0.10, targeting stabilization in v1.2.0")
 public record HandoffMessage(
         String fromRoleId,
         String toRoleId,

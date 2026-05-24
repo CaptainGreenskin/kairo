@@ -32,7 +32,7 @@ import reactor.core.publisher.Mono;
  *
  * @see AgentCardResolver
  */
-@Experimental("A2A client SPI; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("A2A client SPI; introduced in v0.10, targeting stabilization in v1.2.0")
 public interface A2aClient {
 
     /**

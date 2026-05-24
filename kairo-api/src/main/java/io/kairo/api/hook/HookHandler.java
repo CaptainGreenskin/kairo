@@ -35,7 +35,7 @@ import java.lang.annotation.Target;
  *
  * @since v0.10 (Experimental)
  */
-@Experimental("Unified hook dispatch — contract may change in v0.11")
+@Experimental("Unified hook dispatch — contract may change before v1.2.0 stabilization")
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
 public @interface HookHandler {

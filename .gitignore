@@ -66,6 +66,9 @@ scripts/
 # Kairo runtime
 /tmp/kairo-sessions/
 .kairo/
+# kairo-code & opencode worktree checkouts (8MB+ of full-repo clones agents
+# leave behind in long debug sessions — never source of truth)
+.kairo-code/worktrees/
 
 # VitePress docs
 docs/node_modules/

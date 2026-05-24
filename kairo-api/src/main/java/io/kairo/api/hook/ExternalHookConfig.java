@@ -41,7 +41,7 @@ import javax.annotation.Nullable;
  * @param ifCondition the if-condition for argument-level filtering (optional, future use)
  * @since v0.11 (Experimental)
  */
-@Experimental("External hook config record — contract may change in v0.12")
+@Experimental("External hook config record — contract may change before v1.2.0 stabilization")
 public record ExternalHookConfig(
         String type,
         @Nullable String command,

@@ -25,7 +25,7 @@ import io.kairo.api.Experimental;
  * @param consecutiveFailures consecutive failure count
  * @since v0.9 (Experimental)
  */
-@Experimental("Self-Evolution SPI — contract may change in v0.10")
+@Experimental("Self-Evolution SPI — contract may change before v1.2.0 stabilization")
 public record EvolutionCounters(
         int turnSinceLastMemoryReview,
         int toolLoopIterationsSinceLastSkillReview,

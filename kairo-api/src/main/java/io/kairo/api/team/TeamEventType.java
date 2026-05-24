@@ -27,7 +27,7 @@ import io.kairo.api.Experimental;
  *
  * @since v0.10 (Experimental)
  */
-@Experimental("Team event type enum; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("Team event type enum; introduced in v0.10, targeting stabilization in v1.2.0")
 public enum TeamEventType {
 
     /** The team has accepted a request and begun orchestrating. */

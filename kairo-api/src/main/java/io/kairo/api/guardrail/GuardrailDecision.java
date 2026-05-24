@@ -29,7 +29,7 @@ import io.kairo.api.Experimental;
  * @param modifiedPayload the modified payload (only meaningful for {@link Action#MODIFY})
  * @since v0.7 (Experimental)
  */
-@Experimental("Guardrail SPI — contract may change in v0.8")
+@Experimental("Guardrail SPI — contract may change before v1.2.0 stabilization")
 public record GuardrailDecision(
         Action action, String reason, String policyName, GuardrailPayload modifiedPayload) {
 

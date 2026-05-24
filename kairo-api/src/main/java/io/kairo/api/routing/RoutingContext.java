@@ -28,6 +28,6 @@ import java.util.List;
  * @param config the model configuration for this call
  * @param costBudget optional cost budget limit (nullable, from ModelConfig)
  */
-@Experimental("Cost Routing SPI — contract may change in v0.8")
+@Experimental("Cost Routing SPI — contract may change before v1.2.0 stabilization")
 public record RoutingContext(
         String agentName, List<Msg> messages, ModelConfig config, Double costBudget) {}

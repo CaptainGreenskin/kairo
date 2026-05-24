@@ -33,7 +33,7 @@ import io.kairo.api.Experimental;
  * @param outputTokens cumulative output tokens (0 if unknown)
  * @since v0.10 (Experimental)
  */
-@Experimental("Agent progress events — contract may change in v0.11")
+@Experimental("Agent progress events — contract may change before v1.2.0 stabilization")
 public record AgentProgressEvent(
         String agentName,
         Phase phase,

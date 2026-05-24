@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
  *
  * @since v0.9 (Experimental)
  */
-@Experimental("EventStream SPI — contract may change in v0.10")
+@Experimental("EventStream SPI — contract may change before v1.2.0 stabilization")
 @FunctionalInterface
 public interface EventStreamFilter {
 

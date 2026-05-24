@@ -23,7 +23,7 @@ import io.kairo.api.Experimental;
  *
  * @since v0.9 (Experimental)
  */
-@Experimental("EventStream SPI — contract may change in v0.10")
+@Experimental("EventStream SPI — contract may change before v1.2.0 stabilization")
 public enum BackpressurePolicy {
 
     /** Drop the oldest buffered event on overflow. Default for dashboard-style consumers. */

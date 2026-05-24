@@ -37,7 +37,7 @@ import java.util.Objects;
  * @param maxFeedbackRounds maximum revise loops per step; must be {@code >= 1}
  * @since v0.10 (Experimental)
  */
-@Experimental("Team resource constraint VO; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("Team resource constraint VO; introduced in v0.10, targeting stabilization in v1.2.0")
 public record TeamResourceConstraint(
         long maxTotalTokens, Duration maxDuration, int maxParallelSteps, int maxFeedbackRounds) {
 

@@ -40,7 +40,7 @@ import java.util.List;
  *
  * @since v0.10 (Experimental)
  */
-@Experimental("Provider pipeline — API may change in v0.11")
+@Experimental("Provider pipeline — API may change before v1.2.0 stabilization")
 public interface ProviderPipeline<RequestT, ResponseT> {
 
     RequestBuilder<RequestT> requestBuilder();

@@ -33,7 +33,7 @@ import javax.annotation.Nullable;
  * @param toolSearchQuery optional case-insensitive query to filter exposed MCP tools
  * @since v0.10 (Experimental)
  */
-@Experimental("AgentConfig capability — contract may change in v0.11")
+@Experimental("AgentConfig capability — contract may change before v1.2.0 stabilization")
 public record McpCapabilityConfig(
         List<Object> serverConfigs,
         int maxToolsPerServer,

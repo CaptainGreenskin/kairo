@@ -31,7 +31,7 @@ import reactor.core.publisher.Mono;
  *
  * @since v0.10 (Experimental)
  */
-@Experimental("Skill subsystem unification — API may change in v0.11")
+@Experimental("Skill subsystem unification — API may change before v1.2.0 stabilization")
 public interface SkillStore {
 
     /** Persist a skill definition; returns the stored value. */

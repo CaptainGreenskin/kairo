@@ -26,7 +26,7 @@ import reactor.core.publisher.Flux;
  *
  * @since v0.9 (Experimental)
  */
-@Experimental("EventStream SPI — contract may change in v0.10")
+@Experimental("EventStream SPI — contract may change before v1.2.0 stabilization")
 public interface EventStreamSubscription {
 
     /** Unique subscription identifier assigned by the event-stream service. */

@@ -22,7 +22,7 @@ import io.kairo.api.Experimental;
  *
  * @since v0.7 (Experimental)
  */
-@Experimental("Guardrail SPI — contract may change in v0.8")
+@Experimental("Guardrail SPI — contract may change before v1.2.0 stabilization")
 public enum GuardrailPhase {
 
     /** Before the messages are sent to the model. */

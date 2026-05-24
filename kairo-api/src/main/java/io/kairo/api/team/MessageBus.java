@@ -21,7 +21,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /** Asynchronous message bus for inter-agent communication. */
-@Experimental("Team message bus SPI; introduced in v0.10, targeting stabilization in v1.1")
+@Experimental("Team message bus SPI; introduced in v0.10, targeting stabilization in v1.2.0")
 public interface MessageBus {
 
     /**

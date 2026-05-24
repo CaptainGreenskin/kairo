@@ -30,7 +30,7 @@ import reactor.core.publisher.Flux;
  *
  * @since v0.10 (Experimental)
  */
-@Experimental("KairoEventBus — contract may change in v0.11")
+@Experimental("KairoEventBus — contract may change before v1.2.0 stabilization")
 public interface KairoEventBus {
 
     /**

@@ -22,9 +22,24 @@ import java.util.Objects;
 /**
  * Tracks recent tool calls to detect repeated (toolName, argsHash) pairs within a sliding window.
  *
- * <p>Complements {@link LoopDetector} by focusing on exact per-call repetition: the same tool
- * invoked with the same arguments in consecutive model responses. This catches tight repair loops
- * (e.g., {@code bash("mvn test")} → fail → same fix → same fail) that waste token budget.
+ * <p><b>Layer 0 of the loop-detection stack — per-call granularity.</b> Counts how many of the last
+ * N <i>individual</i> tool calls are identical. Catches tight repair loops where the agent emits
+ * one call per response and the same call keeps coming back: {@code bash("mvn test")} → fail → same
+ * fix → same fail.
+ *
+ * <p>Not a duplicate of {@link LoopDetector} — that one operates at <b>per-response granularity</b>
+ * (Layers 1-3): hash of the whole tool-call set, frequency sliding window, and "every response in
+ * the last N contains the same key" detection. {@link LoopDetector}#checkToolRepetition catches
+ * <i>this</i> pattern that {@code ToolCallHistory} would miss:
+ *
+ * <pre>
+ *   resp 1: [bash("foo"), read("bar")]
+ *   resp 2: [bash("foo"), edit("baz")]
+ *   resp 3: [bash("foo"), grep("qux")]   ← bash("foo") horizontal across responses
+ * </pre>
+ *
+ * <p>Both layers are intentionally registered in {@code ReActLoop.checkLoops()} — see lines 495-501
+ * for the layered dispatch. Do NOT delete on a "duplicate detection" sweep.
  *
  * <p>Thread-unsafe — single-agent use only.
  */

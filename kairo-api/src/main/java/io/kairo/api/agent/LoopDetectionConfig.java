@@ -29,7 +29,7 @@ import java.time.Duration;
  * @param freqWindow sliding time window for frequency detection (default 10 minutes)
  * @since v0.10 (Experimental)
  */
-@Experimental("AgentConfig capability — contract may change in v0.11")
+@Experimental("AgentConfig capability — contract may change before v1.2.0 stabilization")
 public record LoopDetectionConfig(
         int hashWarnThreshold,
         int hashHardLimit,
