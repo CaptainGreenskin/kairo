@@ -94,19 +94,26 @@
         <junit.version>5.11.4</junit.version>
         <jackson.version>2.18.6</jackson.version>
         <mcp-sdk.version>1.1.2</mcp-sdk.version>
-        <opentelemetry.version>1.61.0</opentelemetry.version>
+        <opentelemetry.version>1.62.0</opentelemetry.version>
         <swagger-parser.version>2.1.40</swagger-parser.version>
-        <spring-boot.version>3.5.3</spring-boot.version>
+        <spring-boot.version>3.5.14</spring-boot.version>
         <mockito.version>5.11.0</mockito.version>
         <!-- Security overrides: pin vulnerable transitive deps to patched versions.
-             These override the Spring Boot BOM defaults. -->
-        <tomcat.version>10.1.54</tomcat.version>
+             These override the Spring Boot BOM defaults. Each version below has been
+             chosen to clear an open dependabot alert against the prior Spring Boot
+             BOM default — bump in lockstep when bumping spring-boot.version. -->
+        <tomcat.version>10.1.55</tomcat.version>
         <spring-framework.version>6.2.18</spring-framework.version>
-        <netty.version>4.1.132.Final</netty.version>
+        <netty.version>4.1.133.Final</netty.version>
+        <logback.version>1.5.25</logback.version>
+        <commons-lang3.version>3.18.0</commons-lang3.version>
+        <!-- rhino: transitive via the dingtalk SDK in kairo-channel-dingtalk; 1.7.14.1
+             closes 14 dependabot lows that the Spring Boot BOM doesn't manage. -->
+        <rhino.version>1.7.14.1</rhino.version>
         <mockwebserver.version>5.3.2</mockwebserver.version>
         <assertj.version>3.27.7</assertj.version>
         <commons-compress.version>1.27.1</commons-compress.version>
-        <jgit.version>7.1.0.202411261347-r</jgit.version>
+        <jgit.version>7.1.1.202505221757-r</jgit.version>
         <jacoco.line.threshold>0</jacoco.line.threshold>
     </properties>
 
@@ -200,6 +207,143 @@
                 <artifactId>org.eclipse.jgit</artifactId>
                 <version>${jgit.version}</version>
             </dependency>
+            <!-- rhino is NOT managed by the Spring Boot BOM, so pin it explicitly here.
+                 It arrives transitively through the dingtalk-stream SDK; without this pin
+                 the older vulnerable versions resolve and dependabot flags 14 lows. -->
+            <dependency>
+                <groupId>org.mozilla</groupId>
+                <artifactId>rhino</artifactId>
+                <version>${rhino.version}</version>
+            </dependency>
+
+            <!-- ── Security pins (explicit dependencyManagement entries) ───────────────
+                 Spring Boot 3.5.14 imports its own properties internally (netty.version,
+                 tomcat.version, commons-lang3.version are baked into the BOM's resolved
+                 versions). Overriding via root <properties> does NOT change what the
+                 imported BOM resolves to — the BOM's properties live in its own
+                 evaluation context. Only explicit dependencyManagement entries that
+                 come AFTER the BOM import actually win.
+
+                 Each pin below corresponds to a closed dependabot alert (2026-05-24).
+                 When you bump spring-boot.version, re-check whether the BOM's default
+                 has caught up to or exceeded these patch versions — if so, remove the
+                 explicit pin to let the BOM win again. -->
+
+            <!-- Tomcat: 11 high + 3 critical alerts (CVE-2026-* family). 10.1.55 patches
+                 path traversal, request smuggling, WebDAV unbounded read, etc. -->
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-core</artifactId>
+                <version>${tomcat.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-el</artifactId>
+                <version>${tomcat.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-websocket</artifactId>
+                <version>${tomcat.version}</version>
+            </dependency>
+
+            <!-- Netty 4.1.133.Final: 8 high alerts (HTTP request smuggling,
+                 decompression bomb DoS, MadeYouReset H2 DoS, DNS codec bypass).
+                 netty-bom import would be cleaner but reactor-netty-http transitively
+                 pins exact versions that win nearest-wins, so explicit pins per
+                 artifact are needed to actually override. -->
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-codec-http</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-codec-http2</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-codec</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-codec-dns</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-handler-proxy</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-common</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-buffer</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-transport</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-handler</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-resolver-dns</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-resolver</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-resolver-dns-native-macos</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-resolver-dns-classes-macos</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-transport-native-epoll</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-transport-native-unix-common</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-transport-classes-epoll</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+
+            <!-- commons-lang3 3.18.0: 15 medium alerts. -->
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-lang3</artifactId>
+                <version>${commons-lang3.version}</version>
+            </dependency>
+
+            <!-- logback 1.5.25 is the dependabot patch line; Spring Boot 3.5.14 ships
+                 1.5.32 which already supersedes it. Keep the property as documentation
+                 of the floor, but no explicit entry needed since the BOM's value is
+                 higher. -->
             <!-- MCP SDK (split into core + jackson2 for Jackson 2.x compatibility) -->
             <dependency>
                 <groupId>io.modelcontextprotocol.sdk</groupId>
