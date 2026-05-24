@@ -119,6 +119,18 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- OpenTelemetry BOM FIRST so its OTel artifact versions win over
+                 Spring Boot BOM's (which would otherwise pin OTel to its own
+                 older default, e.g. 1.49.0 in spring-boot 3.5.14 vs our
+                 1.62.0 here). With <scope>import</scope> BOMs, Maven's rule
+                 is "first-declared wins for shared coordinates". -->
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-bom</artifactId>
+                <version>${opentelemetry.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
@@ -359,16 +371,6 @@
                 <groupId>io.swagger.parser.v3</groupId>
                 <artifactId>swagger-parser</artifactId>
                 <version>${swagger-parser.version}</version>
-            </dependency>
-            <!-- OpenTelemetry BOM: pins io.opentelemetry:* at the parent level so every
-                 submodule (and external consumers that import this parent) gets a single
-                 consistent OTel version instead of per-artifact <version/> stanzas. -->
-            <dependency>
-                <groupId>io.opentelemetry</groupId>
-                <artifactId>opentelemetry-bom</artifactId>
-                <version>${opentelemetry.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
             </dependency>
             <!-- Kairo MCP module -->
             <dependency>
