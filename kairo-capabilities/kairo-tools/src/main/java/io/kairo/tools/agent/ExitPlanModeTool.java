@@ -220,7 +220,12 @@ public class ExitPlanModeTool implements SyncTool {
                         + "\nSeeded "
                         + seeded
                         + " todo(s) — start working on the first item NOW;"
-                        + " do not call todo_write to recreate them.";
+                        + " do not call todo_write to recreate them."
+                        + "\n\nWhen all todos are complete, call `verify_execution` to confirm"
+                        + " the changes pass build/tests BEFORE declaring the task done. The tool"
+                        + " auto-detects the project's build system; pass explicit `commands` if"
+                        + " your verification differs from the canonical `mvn test` / `npm test` /"
+                        + " `pytest -q` / `cargo test`.";
         return ToolResult.success(null, message, Map.of("mode", "execute", "todoCount", seeded));
     }
 

@@ -95,6 +95,20 @@ class ExitPlanModeToolTest {
     }
 
     @Test
+    void successMessagePointsAtVerifyExecutionTool() {
+        // M-PlanVerify soft-link: the exit message must direct the agent at
+        // verify_execution as the final step. Without this nudge the model
+        // tends to declare "done" the moment the last todo flips to complete,
+        // skipping the cheapest build/test sanity check.
+        ToolResult result = tool.execute(base("Anything"), CTX).block();
+        assertFalse(result.isError());
+        assertTrue(result.content().contains("verify_execution"), () -> "got: " + result.content());
+        assertTrue(
+                result.content().contains("BEFORE declaring the task done"),
+                () -> "got: " + result.content());
+    }
+
+    @Test
     void exitWithoutToolExecutorDoesNotThrow() {
         ToolResult result = tool.execute(base("Deploy"), CTX).block();
         assertFalse(result.isError());
