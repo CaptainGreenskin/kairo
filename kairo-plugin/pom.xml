@@ -50,6 +50,21 @@
         </dependency>
 
         <!-- Test dependencies -->
+        <!-- kairo-tools is test-scope only: needed by SubagentE2EIT to wire
+             plugin agents/*.md through AgentSpawnTool. Pulling it as compile
+             scope would invert the layering (plugin doesn't ship tool impls). -->
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-tools</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captaingreenskin</groupId>
+            <artifactId>kairo-core</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
