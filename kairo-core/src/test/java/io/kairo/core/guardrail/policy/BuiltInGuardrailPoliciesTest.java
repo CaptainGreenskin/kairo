@@ -16,14 +16,24 @@
 package io.kairo.core.guardrail.policy;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import io.kairo.api.guardrail.GuardrailContext;
 import io.kairo.api.guardrail.GuardrailDecision;
 import io.kairo.api.guardrail.GuardrailPayload;
 import io.kairo.api.guardrail.GuardrailPhase;
+import io.kairo.api.message.Content;
+import io.kairo.api.model.ModelProvider;
+import io.kairo.api.model.ModelResponse;
 import io.kairo.api.tool.ToolResult;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Mono;
 
 /**
  * Tests for the three built-in guardrail policies promoted from kairo-assistant in M-F5a:
@@ -161,6 +171,93 @@ class BuiltInGuardrailPoliciesTest {
         // Fourth failure should NOT trigger the threshold (counter was cleared)
         var fifthFail = policy.evaluate(postToolFail("bash")).block();
         assertThat(fifthFail.action()).isEqualTo(GuardrailDecision.Action.ALLOW);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // LlmBashClassifier fallback integration (M-F5a follow-up: closes the
+    // heuristic-UNKNOWN→ALLOW silent fallthrough by routing UNKNOWNs to an LLM
+    // before letting decide() run). The 3-arg ctor must NOT change happy-path
+    // semantics for known categories — the 4 cases below pin both the regression
+    // guard (heuristic-only) and the new fallback ladder (UNKNOWN→{DESTRUCTIVE,
+    // EXEC, UNKNOWN}).
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void dangerousCommand_heuristicOnly_stillBlocksHardlineRmRfRoot() {
+        // Regression guard: the new (Set, LlmBashClassifier) ctor with a null
+        // fallback must produce exactly the legacy heuristic-only behavior. If the
+        // LLM call ever fires for a heuristic-known DESTRUCTIVE command we've
+        // regressed the happy path.
+        ModelProvider provider = mock(ModelProvider.class);
+        var policy =
+                new DangerousCommandPolicy(
+                        DangerousCommandPolicy.DEFAULT_SHELL_TOOLS,
+                        new LlmBashClassifier(provider, "test-model"));
+
+        var decision = policy.evaluate(preTool("bash", Map.of("command", "rm -rf /"))).block();
+        assertThat(decision.action()).isEqualTo(GuardrailDecision.Action.DENY);
+        verify(provider, never()).call(any(), any());
+    }
+
+    @Test
+    void dangerousCommand_llmFallback_unknownToDestructive_upgradesToDeny() {
+        ModelProvider provider = mock(ModelProvider.class);
+        when(provider.call(any(), any()))
+                .thenReturn(
+                        Mono.just(jsonResponse("{\"category\":\"DESTRUCTIVE\",\"reason\":\"x\"}")));
+        var policy =
+                new DangerousCommandPolicy(
+                        DangerousCommandPolicy.DEFAULT_SHELL_TOOLS,
+                        new LlmBashClassifier(provider, "test-model"));
+
+        // ./obscure.sh is heuristic UNKNOWN → falls to LLM → DESTRUCTIVE → DENY.
+        var decision = policy.evaluate(preTool("bash", Map.of("command", "./obscure.sh"))).block();
+
+        assertThat(decision.action()).isEqualTo(GuardrailDecision.Action.DENY);
+        assertThat(decision.reason()).contains("[DESTRUCTIVE]");
+    }
+
+    @Test
+    void dangerousCommand_llmFallback_unknownToExec_warnsOnly() {
+        ModelProvider provider = mock(ModelProvider.class);
+        when(provider.call(any(), any()))
+                .thenReturn(Mono.just(jsonResponse("{\"category\":\"EXEC\",\"reason\":\"x\"}")));
+        var policy =
+                new DangerousCommandPolicy(
+                        DangerousCommandPolicy.DEFAULT_SHELL_TOOLS,
+                        new LlmBashClassifier(provider, "test-model"));
+
+        var decision = policy.evaluate(preTool("bash", Map.of("command", "./mystery.sh"))).block();
+
+        assertThat(decision.action()).isEqualTo(GuardrailDecision.Action.WARN);
+        assertThat(decision.reason()).contains("[EXEC]");
+    }
+
+    @Test
+    void dangerousCommand_llmFallback_stillUnknown_allows() {
+        // The fallback is honest about uncertainty: an LLM verdict of UNKNOWN
+        // must not invent a new positive — we keep today's UNKNOWN→ALLOW so we
+        // don't surface false positives to the user.
+        ModelProvider provider = mock(ModelProvider.class);
+        when(provider.call(any(), any()))
+                .thenReturn(Mono.just(jsonResponse("{\"category\":\"UNKNOWN\",\"reason\":\"x\"}")));
+        var policy =
+                new DangerousCommandPolicy(
+                        DangerousCommandPolicy.DEFAULT_SHELL_TOOLS,
+                        new LlmBashClassifier(provider, "test-model"));
+
+        var decision = policy.evaluate(preTool("bash", Map.of("command", "./mystery.sh"))).block();
+
+        assertThat(decision.action()).isEqualTo(GuardrailDecision.Action.ALLOW);
+    }
+
+    private static ModelResponse jsonResponse(String text) {
+        return new ModelResponse(
+                "resp-id",
+                List.of(new Content.TextContent(text)),
+                new ModelResponse.Usage(0, 0, 0, 0),
+                ModelResponse.StopReason.END_TURN,
+                "test-model");
     }
 
     private static GuardrailContext preTool(String toolName, Map<String, Object> args) {
