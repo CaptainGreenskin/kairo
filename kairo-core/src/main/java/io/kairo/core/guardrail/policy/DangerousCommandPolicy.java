@@ -119,20 +119,60 @@ public class DangerousCommandPolicy implements GuardrailPolicy {
             return Mono.just(GuardrailDecision.allow(NAME));
         }
 
+        // Categorise first — informs the decision and is surfaced in the reason for
+        // audit log / UI consumers via the [CATEGORY] prefix convention.
+        BashCommandClassifier.Category category = BashCommandClassifier.classify(command);
+
+        // Hardline regex catalog still wins (deny). It existed before the classifier and
+        // has been tuned against real attack patterns; we keep it as the source of truth.
         for (Pattern p : HARDLINE_PATTERNS) {
             if (p.matcher(command).find()) {
                 return Mono.just(
                         GuardrailDecision.deny(
-                                "Blocked by hardline safety rule: " + p.pattern(), NAME));
+                                "["
+                                        + category
+                                        + "] Blocked by hardline safety rule: "
+                                        + p.pattern(),
+                                NAME));
             }
         }
+
+        // DESTRUCTIVE category catches commands the legacy regex missed (DROP TABLE,
+        // TRUNCATE TABLE, DELETE FROM ... no WHERE, fork bomb variants). Deny upgrade
+        // from the legacy "warn" decision these would have produced.
+        if (category == BashCommandClassifier.Category.DESTRUCTIVE) {
+            return Mono.just(
+                    GuardrailDecision.deny(
+                            "[DESTRUCTIVE] Command classified as destructive by"
+                                    + " BashCommandClassifier; refusing.",
+                            NAME));
+        }
+
+        // Dangerous regex catalog → warn. Tag with the classifier's verdict so audit
+        // log entries record the bucket (network / exec / write etc.).
         for (Pattern p : DANGEROUS_PATTERNS) {
             if (p.matcher(command).find()) {
                 return Mono.just(
                         GuardrailDecision.warn(
-                                "Potentially dangerous command detected: " + p.pattern(), NAME));
+                                "["
+                                        + category
+                                        + "] Potentially dangerous command detected: "
+                                        + p.pattern(),
+                                NAME));
             }
         }
+
+        // EXEC classifier verdict (curl|sh etc.) catches the gray zone the dangerous
+        // catalog might miss with different quoting / spacing. Warn so the user can
+        // confirm; don't deny outright.
+        if (category == BashCommandClassifier.Category.EXEC) {
+            return Mono.just(
+                    GuardrailDecision.warn(
+                            "[EXEC] Command classified as untrusted-input execution by"
+                                    + " BashCommandClassifier; confirm before running.",
+                            NAME));
+        }
+
         return Mono.just(GuardrailDecision.allow(NAME));
     }
 
