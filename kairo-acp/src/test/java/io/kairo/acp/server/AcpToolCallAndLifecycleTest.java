@@ -46,22 +46,31 @@ class AcpToolCallAndLifecycleTest {
 
         List<JsonNode> frames = runServer(agent, input);
 
-        // 4 frames: tool_call_start + tool_call_progress + tool_call_complete + final result
+        // 4 frames: tool_call (initial) + tool_call_update (progress) + tool_call_update
+        // (terminal) + final result. Per ACP spec, lifecycle uses `tool_call` once and
+        // `tool_call_update` for subsequent deltas — not separate start/progress/complete.
         assertThat(frames).hasSize(4);
-        assertThat(frames.get(0).path("params").path("update").path("sessionUpdate").asText())
-                .isEqualTo("tool_call_start");
-        assertThat(frames.get(0).path("params").path("update").path("toolCallId").asText())
-                .isEqualTo("call-1");
-        assertThat(frames.get(0).path("params").path("update").path("title").asText())
-                .isEqualTo("Read file");
-        assertThat(frames.get(1).path("params").path("update").path("sessionUpdate").asText())
-                .isEqualTo("tool_call_progress");
-        assertThat(frames.get(1).path("params").path("update").path("chunk").asText())
+        JsonNode init = frames.get(0).path("params").path("update");
+        assertThat(init.path("sessionUpdate").asText()).isEqualTo("tool_call");
+        assertThat(init.path("toolCallId").asText()).isEqualTo("call-1");
+        assertThat(init.path("title").asText()).isEqualTo("Read file");
+        assertThat(init.path("status").asText()).isEqualTo("in_progress");
+
+        JsonNode mid = frames.get(1).path("params").path("update");
+        assertThat(mid.path("sessionUpdate").asText()).isEqualTo("tool_call_update");
+        assertThat(mid.path("toolCallId").asText()).isEqualTo("call-1");
+        // content is array of {type:"content", content:{type:"text", text:...}} wrappers.
+        assertThat(mid.path("content").get(0).path("type").asText()).isEqualTo("content");
+        assertThat(mid.path("content").get(0).path("content").path("text").asText())
                 .isEqualTo("line 1\n");
-        assertThat(frames.get(2).path("params").path("update").path("sessionUpdate").asText())
-                .isEqualTo("tool_call_complete");
-        assertThat(frames.get(2).path("params").path("update").path("success").asBoolean())
-                .isTrue();
+
+        JsonNode done = frames.get(2).path("params").path("update");
+        assertThat(done.path("sessionUpdate").asText()).isEqualTo("tool_call_update");
+        assertThat(done.path("toolCallId").asText()).isEqualTo("call-1");
+        assertThat(done.path("status").asText()).isEqualTo("completed");
+        assertThat(done.path("content").get(0).path("content").path("text").asText())
+                .isEqualTo("(complete)");
+
         assertThat(frames.get(3).path("result").path("stopReason").asText()).isEqualTo("end_turn");
     }
 

@@ -333,35 +333,59 @@ public final class AcpStdioServer {
         ObjectMapper m = codec.mapper();
         ObjectNode params = m.createObjectNode();
         params.put("sessionId", update.sessionId());
-        ObjectNode body = m.createObjectNode();
+
+        // ACP session/update is internally tagged with `sessionUpdate` as the discriminator.
+        // Per https://agentclientprotocol.com/protocol/prompt-turn :
+        //   - agent_message_chunk / agent_thought_chunk: `content` is a SINGLE object
+        //     ({"type":"text","text":"..."}), NOT an array.
+        //   - tool lifecycle uses `tool_call` (initial) + `tool_call_update` (subsequent
+        //     status / content deltas). There is no `tool_call_start` / `tool_call_progress`
+        //     / `tool_call_complete` in the spec — those names crashed Zed's Rust
+        //     deserializer with "expected variant identifier".
+        //   - tool_call_update.content is an ARRAY of wrapper objects
+        //     ({"type":"content","content":{"type":"text",...}}).
+        ObjectNode update_ = m.createObjectNode();
         if (update instanceof AcpSessionUpdate.AgentMessageChunk amc) {
-            body.put("sessionUpdate", "agent_message_chunk");
-            ArrayNode content = body.putArray("content");
-            ObjectNode block = content.addObject();
-            block.put("type", "text");
-            block.put("text", amc.text());
+            update_.put("sessionUpdate", "agent_message_chunk");
+            ObjectNode content = update_.putObject("content");
+            content.put("type", "text");
+            content.put("text", amc.text());
         } else if (update instanceof AcpSessionUpdate.AgentThoughtChunk atc) {
-            body.put("sessionUpdate", "agent_thought_chunk");
-            ArrayNode content = body.putArray("content");
-            ObjectNode block = content.addObject();
-            block.put("type", "text");
-            block.put("text", atc.text());
+            update_.put("sessionUpdate", "agent_thought_chunk");
+            ObjectNode content = update_.putObject("content");
+            content.put("type", "text");
+            content.put("text", atc.text());
         } else if (update instanceof AcpSessionUpdate.ToolCallStart start) {
-            body.put("sessionUpdate", "tool_call_start");
-            body.put("toolCallId", start.toolCallId());
-            body.put("title", start.title());
-            body.set("input", m.valueToTree(start.input() == null ? Map.of() : start.input()));
+            update_.put("sessionUpdate", "tool_call");
+            update_.put("toolCallId", start.toolCallId());
+            update_.put("title", start.title());
+            update_.put("kind", "other");
+            update_.put("status", "in_progress");
+            update_.set(
+                    "rawInput", m.valueToTree(start.input() == null ? Map.of() : start.input()));
         } else if (update instanceof AcpSessionUpdate.ToolCallProgress prog) {
-            body.put("sessionUpdate", "tool_call_progress");
-            body.put("toolCallId", prog.toolCallId());
-            body.put("chunk", prog.chunk());
+            update_.put("sessionUpdate", "tool_call_update");
+            update_.put("toolCallId", prog.toolCallId());
+            ArrayNode content = update_.putArray("content");
+            ObjectNode wrap = content.addObject();
+            wrap.put("type", "content");
+            ObjectNode inner = wrap.putObject("content");
+            inner.put("type", "text");
+            inner.put("text", prog.chunk() == null ? "" : prog.chunk());
         } else if (update instanceof AcpSessionUpdate.ToolCallComplete done) {
-            body.put("sessionUpdate", "tool_call_complete");
-            body.put("toolCallId", done.toolCallId());
-            body.put("success", done.success());
-            body.put("output", done.output());
+            update_.put("sessionUpdate", "tool_call_update");
+            update_.put("toolCallId", done.toolCallId());
+            update_.put("status", done.success() ? "completed" : "failed");
+            if (done.output() != null && !done.output().isEmpty()) {
+                ArrayNode content = update_.putArray("content");
+                ObjectNode wrap = content.addObject();
+                wrap.put("type", "content");
+                ObjectNode inner = wrap.putObject("content");
+                inner.put("type", "text");
+                inner.put("text", done.output());
+            }
         }
-        params.set("update", body);
+        params.set("update", update_);
         return codec.notification("session/update", params);
     }
 

@@ -82,13 +82,10 @@ class AcpStdioServerTest {
         assertThat(update.path("method").asText()).isEqualTo("session/update");
         assertThat(update.path("params").path("update").path("sessionUpdate").asText())
                 .isEqualTo("agent_message_chunk");
-        assertThat(
-                        update.path("params")
-                                .path("update")
-                                .path("content")
-                                .get(0)
-                                .path("text")
-                                .asText())
+        // Per ACP spec, agent_message_chunk.content is a single ContentBlock object, not array.
+        assertThat(update.path("params").path("update").path("content").path("type").asText())
+                .isEqualTo("text");
+        assertThat(update.path("params").path("update").path("content").path("text").asText())
                 .isEqualTo("echo: hi");
 
         JsonNode result = outputs.get(1);
