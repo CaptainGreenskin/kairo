@@ -48,6 +48,16 @@
             <groupId>io.swagger.parser.v3</groupId>
             <artifactId>swagger-parser</artifactId>
         </dependency>
+        <!-- WorkflowTool parses YAML workflow files at runtime. jackson-databind is already on
+             the transitive classpath; we add the YAML dataformat as the only extra dep. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
 
         <!-- ExecutionSandboxTCK depends on JUnit 5 + AssertJ at compile scope so
              sandbox-backend authors can reuse the scenarios in their own test suites. -->
