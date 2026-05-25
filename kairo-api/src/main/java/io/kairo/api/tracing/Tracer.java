@@ -146,4 +146,75 @@ public interface Tracer {
         span.setAttribute("exception.message", exception.getMessage());
         span.setStatus(false, exception.getMessage());
     }
+
+    /**
+     * Record a full observation payload (model call, tool call, guardrail decision) onto a span in
+     * a single SPI call. Writes the standard Langfuse-flavoured {@code langfuse.observation.*}
+     * attribute set plus the OTel GenAI {@code gen_ai.usage.*} counters and {@code
+     * langfuse.usage_details} map, so dashboards reading either convention see the same data.
+     *
+     * <p>Null / zero fields are skipped — callers do not have to filter before calling. Setting
+     * {@link ObservationData#level()} to {@link ObservationData.Level#ERROR} surfaces the row in
+     * Langfuse's error view; combine with a non-null {@link ObservationData#statusMessage()} so the
+     * dashboard has something to display.
+     *
+     * <p>Implementations should not override this method unless they want to bypass the default
+     * attribute-key convention; the goal is one canonical attribute schema across the codebase.
+     *
+     * @param span the span to annotate (no-op if {@code null})
+     * @param data the structured observation payload (no-op if {@code null})
+     * @since 1.4
+     */
+    default void recordObservation(Span span, ObservationData data) {
+        if (span == null || data == null) return;
+
+        // Langfuse observation attributes — drives the Langfuse dashboard.
+        span.setAttribute(
+                "langfuse.observation.type", data.type().name().toLowerCase(java.util.Locale.ROOT));
+        span.setAttribute("langfuse.observation.level", data.level().name());
+        if (data.model() != null) {
+            span.setAttribute("langfuse.observation.model", data.model());
+        }
+        if (data.input() != null) {
+            span.setAttribute("langfuse.observation.input", data.input());
+        }
+        if (data.output() != null) {
+            span.setAttribute("langfuse.observation.output", data.output());
+        }
+        if (data.statusMessage() != null) {
+            span.setAttribute("langfuse.observation.status_message", data.statusMessage());
+        }
+
+        // OTel GenAI semantic convention — dashboard-agnostic, picked up by any OTel collector.
+        if (data.model() != null) {
+            span.setAttribute("gen_ai.request.model", data.model());
+        }
+        if (data.inputTokens() > 0) {
+            span.setAttribute("gen_ai.usage.input_tokens", data.inputTokens());
+        }
+        if (data.outputTokens() > 0) {
+            span.setAttribute("gen_ai.usage.output_tokens", data.outputTokens());
+        }
+
+        // Langfuse cost-panel inputs.
+        if (data.inputTokens() > 0 || data.outputTokens() > 0) {
+            span.setAttribute(
+                    "langfuse.usage_details",
+                    java.util.Map.of(
+                            "input", data.inputTokens(),
+                            "output", data.outputTokens(),
+                            "total", data.totalTokens()));
+        }
+        if (data.costUsd() != null) {
+            span.setAttribute("langfuse.cost_details", java.util.Map.of("total", data.costUsd()));
+        }
+
+        // Caller-supplied metadata — written verbatim so component-specific keys (e.g.
+        // classifier.heuristic_verdict, tool.success) can ride alongside the standard set.
+        for (java.util.Map.Entry<String, Object> e : data.metadata().entrySet()) {
+            if (e.getValue() != null) {
+                span.setAttribute(e.getKey(), e.getValue());
+            }
+        }
+    }
 }

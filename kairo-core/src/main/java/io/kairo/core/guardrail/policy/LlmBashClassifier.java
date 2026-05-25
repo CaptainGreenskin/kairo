@@ -27,6 +27,7 @@ import io.kairo.api.model.ModelResponse;
 import io.kairo.api.model.RetryConfig;
 import io.kairo.api.tracing.NoopSpan;
 import io.kairo.api.tracing.NoopTracer;
+import io.kairo.api.tracing.ObservationData;
 import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
 import io.kairo.core.guardrail.policy.BashCommandClassifier.Category;
@@ -265,7 +266,8 @@ public final class LlmBashClassifier {
         totalInputTokens.addAndGet(inTokens);
         totalOutputTokens.addAndGet(outTokens);
 
-        setSuccessAttrs(span, verdict, latencyMs, inTokens, outTokens, parsed.orElse(null));
+        setSuccessAttrs(
+                span, command, verdict, latencyMs, inTokens, outTokens, parsed.orElse(null));
 
         if (verdict != Category.UNKNOWN) {
             // Cache only confident verdicts. UNKNOWN may have been a transient parse blip.
@@ -291,7 +293,7 @@ public final class LlmBashClassifier {
         long latencyMs = (System.nanoTime() - startNanos) / 1_000_000L;
         llmFailures.incrementAndGet();
         recordVerdict(Category.UNKNOWN);
-        setFailureAttrs(span, err, latencyMs);
+        setFailureAttrs(span, command, err, latencyMs);
         emitFailureEvent(command, err);
         log.warn(
                 "LlmBashClassifier failed: command_len={} model={} reason={} latency_ms={}",
@@ -325,19 +327,19 @@ public final class LlmBashClassifier {
     }
 
     private void setBaseAttrs(Span span, String command) {
+        // Classifier-domain attrs stay on the span directly — the langfuse.observation.* set is
+        // written in one shot by Tracer#recordObservation in handleSuccess / handleFailure once
+        // the call outcome is known.
         span.setAttribute("classifier.command_prefix", commandPrefix(command));
         span.setAttribute("classifier.command_length", command.length());
         span.setAttribute("classifier.heuristic_verdict", Category.UNKNOWN.name());
         span.setAttribute("classifier.cache_hit", false);
         span.setAttribute("classifier.model", modelName);
-        span.setAttribute("langfuse.observation.type", "generation");
-        span.setAttribute("langfuse.observation.model", modelName);
-        span.setAttribute(
-                "langfuse.observation.input", "<command>" + commandPrefix(command) + "</command>");
     }
 
     private void setSuccessAttrs(
             Span span,
+            String command,
             Category verdict,
             long latencyMs,
             int inTokens,
@@ -345,32 +347,41 @@ public final class LlmBashClassifier {
             LlmVerdict parsed) {
         span.setAttribute("classifier.llm_verdict", verdict.name());
         span.setAttribute("classifier.latency_ms", latencyMs);
-        span.setAttribute("gen_ai.usage.input_tokens", inTokens);
-        span.setAttribute("gen_ai.usage.output_tokens", outTokens);
-        span.setAttribute("langfuse.observation.level", "DEFAULT");
-        span.setAttribute(
-                "langfuse.observation.output",
+        String output =
                 parsed != null
                         ? "{\"category\":\"" + verdict + "\"}"
-                        : "{\"category\":\"UNKNOWN\",\"reason\":\"parse_failed\"}");
-        // Langfuse cost panel needs usage_details to render token charts.
-        span.setAttribute(
-                "langfuse.usage_details",
-                Map.of(
-                        "input", inTokens,
-                        "output", outTokens,
-                        "total", inTokens + outTokens));
+                        : "{\"category\":\"UNKNOWN\",\"reason\":\"parse_failed\"}";
+        config.tracer()
+                .recordObservation(
+                        span,
+                        ObservationData.builder()
+                                .type(ObservationData.Type.GENERATION)
+                                .model(modelName)
+                                .input("<command>" + commandPrefix(command) + "</command>")
+                                .output(output)
+                                .inputTokens(inTokens)
+                                .outputTokens(outTokens)
+                                .level(ObservationData.Level.DEFAULT)
+                                .build());
         span.setStatus(true, null);
     }
 
-    private void setFailureAttrs(Span span, Throwable err, long latencyMs) {
+    private void setFailureAttrs(Span span, String command, Throwable err, long latencyMs) {
         span.setAttribute("classifier.llm_verdict", Category.UNKNOWN.name());
         span.setAttribute("classifier.latency_ms", latencyMs);
-        span.setAttribute("langfuse.observation.level", "ERROR");
-        span.setAttribute(
-                "langfuse.observation.status_message",
+        String statusMessage =
                 err.getClass().getSimpleName()
-                        + (err.getMessage() != null ? ": " + err.getMessage() : ""));
+                        + (err.getMessage() != null ? ": " + err.getMessage() : "");
+        config.tracer()
+                .recordObservation(
+                        span,
+                        ObservationData.builder()
+                                .type(ObservationData.Type.GENERATION)
+                                .model(modelName)
+                                .input("<command>" + commandPrefix(command) + "</command>")
+                                .level(ObservationData.Level.ERROR)
+                                .statusMessage(statusMessage)
+                                .build());
         span.setStatus(false, err.getMessage());
     }
 
