@@ -15,7 +15,11 @@
     <description>Core runtime implementation</description>
 
     <properties>
-        <jacoco.line.threshold>0.50</jacoco.line.threshold>
+        <!-- Coverage floor for kairo-core. Actual coverage as of 2026-05-25 is ~78%;
+             0.60 is a gentle gate that catches large regressions (e.g., a critical
+             test class going dark) without forcing micro-tests for every refactor.
+             Bump as coverage stabilizes upward. -->
+        <jacoco.line.threshold>0.60</jacoco.line.threshold>
     </properties>
 
     <dependencies>

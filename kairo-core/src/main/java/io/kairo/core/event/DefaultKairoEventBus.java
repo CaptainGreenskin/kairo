@@ -22,6 +22,7 @@ import io.kairo.api.tenant.TenantContextHolder;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -30,10 +31,16 @@ import reactor.core.publisher.Sinks;
 /**
  * Default in-process implementation of {@link KairoEventBus} backed by a multicast Reactor sink.
  *
- * <p>Uses {@code Sinks.many().multicast().onBackpressureBuffer()} so multiple concurrent
+ * <p>Uses {@code Sinks.many().multicast().onBackpressureBuffer(bufferSize)} so multiple concurrent
  * subscribers (OTel exporter, metrics, custom audit sink) can receive every event without blocking
  * the publisher. Events published when no subscribers are connected are dropped; this is
  * intentional — subscribers must attach before publishers start emitting.
+ *
+ * <p>The bus buffer is bounded (default {@link #DEFAULT_BUFFER_SIZE}). Reactor's default of 256 is
+ * too small for production workloads where slow subscribers can briefly fall behind. When the
+ * buffer fills or all subscribers are gone, {@link Sinks.Many#tryEmitNext} returns a failure
+ * result; we count those as drops and expose the running tally via {@link #droppedCount()} so
+ * operators can wire it into metrics / health probes.
  *
  * <p>The bus is also the single enrichment seam for {@link TenantContext} propagation: every
  * envelope is decorated with {@link TenantContext#ATTR_TENANT_ID} and {@link
@@ -49,15 +56,28 @@ public class DefaultKairoEventBus implements KairoEventBus {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultKairoEventBus.class);
 
+    /** Buffer size used when callers don't specify one. 100k events ≈ minutes of headroom. */
+    public static final int DEFAULT_BUFFER_SIZE = 100_000;
+
     private final Sinks.Many<KairoEvent> sink;
     private final TenantContextHolder tenantHolder;
+    private final AtomicLong droppedCount = new AtomicLong();
+    private final int bufferSize;
 
     public DefaultKairoEventBus() {
-        this(TenantContextHolder.NOOP);
+        this(TenantContextHolder.NOOP, DEFAULT_BUFFER_SIZE);
     }
 
     public DefaultKairoEventBus(TenantContextHolder tenantHolder) {
-        this.sink = Sinks.many().multicast().onBackpressureBuffer();
+        this(tenantHolder, DEFAULT_BUFFER_SIZE);
+    }
+
+    public DefaultKairoEventBus(TenantContextHolder tenantHolder, int bufferSize) {
+        if (bufferSize <= 0) {
+            throw new IllegalArgumentException("bufferSize must be positive: " + bufferSize);
+        }
+        this.bufferSize = bufferSize;
+        this.sink = Sinks.many().multicast().onBackpressureBuffer(bufferSize);
         this.tenantHolder = Objects.requireNonNull(tenantHolder, "tenantHolder");
     }
 
@@ -69,12 +89,27 @@ public class DefaultKairoEventBus implements KairoEventBus {
         KairoEvent enriched = enrichWithTenant(event);
         Sinks.EmitResult result = sink.tryEmitNext(enriched);
         if (result.isFailure()) {
+            droppedCount.incrementAndGet();
             log.debug(
                     "KairoEventBus dropped event (domain={}, type={}, result={})",
                     enriched.domain(),
                     enriched.eventType(),
                     result);
         }
+    }
+
+    /**
+     * Running count of events that {@link Sinks.Many#tryEmitNext} refused to accept (buffer full,
+     * no subscribers, or terminated sink). Exposed so observability layers can surface backpressure
+     * pressure without subscribing to the bus.
+     */
+    public long droppedCount() {
+        return droppedCount.get();
+    }
+
+    /** Configured buffer size, mirrored for diagnostics endpoints. */
+    public int bufferSize() {
+        return bufferSize;
     }
 
     @Override

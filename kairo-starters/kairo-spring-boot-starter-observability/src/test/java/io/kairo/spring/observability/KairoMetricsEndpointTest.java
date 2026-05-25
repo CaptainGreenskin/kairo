@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.kairo.api.event.KairoEventBus;
 import io.kairo.core.event.DefaultKairoEventBus;
+import io.kairo.observability.event.KairoEventOTelExporter;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.logs.LoggerProvider;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -56,13 +57,44 @@ class KairoMetricsEndpointTest {
                             Map<String, Object> metrics = endpoint.metrics();
 
                             assertThat(metrics).containsKey("tracerName");
-                            assertThat(metrics).containsKey("activeSpans");
                             assertThat(metrics).containsKey("isEnabled");
                             assertThat(metrics).containsKey("version");
+                            assertThat(metrics).containsKey("eventExporter");
 
                             assertThat((String) metrics.get("tracerName")).isNotBlank();
                             assertThat(metrics.get("isEnabled")).isEqualTo(true);
                             assertThat(metrics.get("version")).isEqualTo("1.0.0-SNAPSHOT");
+
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> exporter =
+                                    (Map<String, Object>) metrics.get("eventExporter");
+                            assertThat(exporter)
+                                    .containsEntry("present", true)
+                                    .containsKeys(
+                                            "exportedCount",
+                                            "droppedByDomainCount",
+                                            "droppedBySamplingCount",
+                                            "exportFailedCount");
+                        });
+    }
+
+    @Test
+    void withoutExporter_endpointReportsExporterAbsent() {
+        // enabled=true triggers the auto-config; OpenTelemetryOnly provides only OpenTelemetry
+        // (no KairoEventBus / LoggerProvider), so the exporter bean is NOT created — endpoint
+        // should still wire and report present=false for the exporter section.
+        runner.withPropertyValues("kairo.observability.event-otel.enabled=true")
+                .withUserConfiguration(OpenTelemetryOnly.class)
+                .run(
+                        ctx -> {
+                            assertThat(ctx).hasSingleBean(KairoMetricsEndpoint.class);
+                            assertThat(ctx).doesNotHaveBean(KairoEventOTelExporter.class);
+                            Map<String, Object> metrics =
+                                    ctx.getBean(KairoMetricsEndpoint.class).metrics();
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> exporter =
+                                    (Map<String, Object>) metrics.get("eventExporter");
+                            assertThat(exporter).containsEntry("present", false);
                         });
     }
 
@@ -83,6 +115,16 @@ class KairoMetricsEndpointTest {
         @Bean
         KairoEventBus bus() {
             return new DefaultKairoEventBus();
+        }
+    }
+
+    @Configuration
+    static class OpenTelemetryOnly {
+        @Bean
+        OpenTelemetry openTelemetry() {
+            return OpenTelemetrySdk.builder()
+                    .setTracerProvider(SdkTracerProvider.builder().build())
+                    .build();
         }
     }
 

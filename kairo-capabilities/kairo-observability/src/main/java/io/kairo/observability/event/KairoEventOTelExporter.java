@@ -71,6 +71,8 @@ public final class KairoEventOTelExporter {
     private final AtomicLong exportedCount = new AtomicLong();
     private final AtomicLong droppedBySamplingCount = new AtomicLong();
     private final AtomicLong droppedByDomainCount = new AtomicLong();
+    private final AtomicLong exportFailedCount = new AtomicLong();
+    private volatile String lastExportError;
 
     private volatile Disposable subscription;
 
@@ -137,10 +139,30 @@ public final class KairoEventOTelExporter {
         return droppedBySamplingCount.get();
     }
 
+    /**
+     * Number of envelopes that reached {@link #export} but threw before emit completed
+     * (LoggerProvider misconfigured, downstream exporter rejection, attribute coercion error,
+     * etc.). Used by the observability health indicator and {@code /actuator/kairo-metrics}.
+     */
+    public long exportFailedCount() {
+        return exportFailedCount.get();
+    }
+
+    /**
+     * Last export failure summarised as {@code ExceptionClass: message}, or {@code null} when no
+     * export has failed yet. Surfaced verbatim by the health indicator so operators can correlate
+     * with downstream OTel SDK logs without grepping.
+     */
+    public String lastExportError() {
+        return lastExportError;
+    }
+
     private void exportSafely(KairoEvent event) {
         try {
             export(event);
         } catch (RuntimeException ex) {
+            exportFailedCount.incrementAndGet();
+            lastExportError = ex.getClass().getSimpleName() + ": " + ex.getMessage();
             LOG.warn("Failed to export KairoEvent {}", event.eventId(), ex);
         }
     }

@@ -14,6 +14,16 @@
     <name>Kairo — API</name>
     <description>Pure interfaces for the agent runtime (no implementation dependencies)</description>
 
+    <properties>
+        <!-- Coverage floor for kairo-api. Actual line coverage as of 2026-05-25 is
+             ~43%; many records/sealed interfaces and SPI surfaces have low test
+             leverage by design (they're contracts, not behavior). 0.40 is a gentle
+             gate that flags large regressions (e.g., entire SPI package losing
+             coverage) without blocking incremental SPI additions. Ratchet up as
+             targeted SPI test coverage improves. -->
+        <jacoco.line.threshold>0.40</jacoco.line.threshold>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>io.projectreactor</groupId>
@@ -96,22 +106,55 @@
                                         </file>
                                     </newVersion>
                                     <parameter>
-                                        <!-- Only report breaks on @Stable-annotated surfaces. -->
-                                        <includeAnnotations>
-                                            <includeAnnotation>@io.kairo.api.Stable</includeAnnotation>
-                                        </includeAnnotations>
+                                        <!--
+                                          Scope the gate to @Stable-annotated surfaces. The japicmp
+                                          0.25.x maven plugin expresses annotation filtering via the
+                                          standard <includes> list using the @<FQN> prefix — there is
+                                          no separate <includeAnnotations> element (an earlier draft
+                                          of this profile used a non-existent parameter and silently
+                                          broke the build on any -Papi-compat invocation).
+                                        -->
+                                        <includes>
+                                            <include>@io.kairo.api.Stable</include>
+                                        </includes>
                                         <excludes>
-                                            <!-- Exclude test / internal implementation packages; kairo-api has none. -->
+                                            <!--
+                                              Belt-and-braces: explicitly drop @Experimental and
+                                              @Internal even if a type accidentally also carries
+                                              @Stable. We never make stability promises about those.
+                                            -->
+                                            <exclude>@io.kairo.api.Experimental</exclude>
+                                            <exclude>@io.kairo.api.Internal</exclude>
+                                            <!--
+                                              Incubation-era accepted breaks (audited 2026-05-25 against
+                                              baseline 1.0.0). These @Stable surfaces were redesigned
+                                              during v1.0 → v1.1 incubation per project policy
+                                              "孵化阶段不做兼容迁移" (CLAUDE.md). The breaks are real
+                                              but pre-date the hardening gate; listing them here so
+                                              the baseline diff does not drown out legitimate NEW
+                                              breaks introduced by future PRs.
+                                              TODO: once v1.1.x is published to Maven Central,
+                                              bump api.baseline.version above and delete this block.
+                                            -->
+                                            <exclude>io.kairo.api.message.Content$ThinkingContent</exclude>
+                                            <exclude>io.kairo.api.tool.ToolContext#idempotencyKey()</exclude>
+                                            <exclude>io.kairo.api.tool.ToolHandler</exclude>
+                                            <exclude>io.kairo.api.tool.ToolResult</exclude>
                                         </excludes>
                                         <onlyModified>true</onlyModified>
-                                        <onlyBinaryIncompatibleModifications>true</onlyBinaryIncompatibleModifications>
                                         <breakBuildOnBinaryIncompatibleModifications>true</breakBuildOnBinaryIncompatibleModifications>
                                         <breakBuildOnSourceIncompatibleModifications>true</breakBuildOnSourceIncompatibleModifications>
                                         <skipPomModules>true</skipPomModules>
-                                        <!-- Skip the whole execution if no baseline is configured (RC1 bootstrap case). -->
                                         <skipXmlReport>false</skipXmlReport>
                                         <skipHtmlReport>false</skipHtmlReport>
                                     </parameter>
+                                    <!--
+                                      Fail if baseline artifact cannot be resolved (typo in
+                                      api.baseline.version, Maven Central outage, etc). Plugin
+                                      default silently passes the gate when baseline is missing,
+                                      which masks real regressions. We want a hard fail.
+                                    -->
+                                    <ignoreMissingOldVersion>false</ignoreMissingOldVersion>
                                     <skip>${japicmp.skip}</skip>
                                 </configuration>
                             </execution>

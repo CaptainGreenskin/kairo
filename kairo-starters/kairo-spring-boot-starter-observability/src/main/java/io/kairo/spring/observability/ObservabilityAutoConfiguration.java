@@ -27,6 +27,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -106,14 +108,32 @@ public class ObservabilityAutoConfiguration {
 
     /**
      * Exposes the {@code /actuator/kairo-metrics} endpoint when an {@link OpenTelemetry} bean is
-     * present.
+     * present. Optionally pulls counters from {@link KairoEventOTelExporter} when the bridge is
+     * wired so the endpoint reports real exported / dropped / failed numbers instead of the
+     * placeholder values it returned before Step 4.
      */
     @Bean
     @ConditionalOnMissingBean
     @ConditionalOnBean(OpenTelemetry.class)
-    public KairoMetricsEndpoint kairoMetricsEndpoint(OpenTelemetry openTelemetry) {
+    public KairoMetricsEndpoint kairoMetricsEndpoint(
+            OpenTelemetry openTelemetry, ObjectProvider<KairoEventOTelExporter> exporterProvider) {
         Tracer tracer = openTelemetry.getTracer("io.kairo.spring.observability");
-        return new KairoMetricsEndpoint(tracer);
+        return new KairoMetricsEndpoint(tracer, exporterProvider.getIfAvailable());
+    }
+
+    /**
+     * Health contribution surfacing {@link KairoEventOTelExporter#exportFailedCount()} as a Spring
+     * Actuator status so the OTel bridge no longer fails silently behind a {@code LOG.warn}. Only
+     * registered when Spring Actuator's {@link HealthIndicator} is on the classpath and the
+     * exporter bean is actually present.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnClass(HealthIndicator.class)
+    @ConditionalOnBean(KairoEventOTelExporter.class)
+    public KairoObservabilityHealthIndicator kairoObservabilityHealthIndicator(
+            KairoEventOTelExporter exporter) {
+        return new KairoObservabilityHealthIndicator(exporter);
     }
 
     private static Pattern compile(ObservabilityProperties.EventOTel cfg) {

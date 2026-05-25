@@ -53,6 +53,9 @@ import java.time.Duration;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -347,6 +350,22 @@ class CoreAutoConfiguration {
                 cbProps.getFailureThreshold(),
                 cbProps.getResetTimeout());
         return breaker;
+    }
+
+    // ---- Runtime Health ----
+
+    /**
+     * Surfaces model circuit-breaker state, event-bus dropped-message count, and live-agent count
+     * as a Spring Actuator health indicator at {@code /actuator/health/kairoRuntime}. Only
+     * registered when Spring Actuator is on the classpath; the {@link ModelCircuitBreaker} bean is
+     * optional so apps that opt out of the breaker still get bus + agent visibility.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnClass(HealthIndicator.class)
+    KairoRuntimeHealthIndicator kairoRuntimeHealthIndicator(
+            ObjectProvider<ModelCircuitBreaker> modelBreaker, KairoEventBus kairoEventBus) {
+        return new KairoRuntimeHealthIndicator(modelBreaker.getIfAvailable(), kairoEventBus);
     }
 
     // ---- Graceful Shutdown ----

@@ -58,6 +58,13 @@ public class McpClientRegistry implements Closeable {
     private static final Duration REGISTER_RETRY_MIN_BACKOFF = Duration.ofMillis(250);
     private static final Duration REGISTER_RETRY_MAX_BACKOFF = Duration.ofSeconds(2);
 
+    /**
+     * Upper bound on how long any single MCP client {@code closeGracefully()} is allowed to take
+     * before the registry abandons it and moves on. Hung subprocesses must not stall JVM shutdown
+     * or other unregister operations indefinitely.
+     */
+    static final Duration CLOSE_TIMEOUT = Duration.ofSeconds(10);
+
     private final ConcurrentHashMap<String, McpAsyncClient> clients = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, McpToolGroup> toolGroups = new ConcurrentHashMap<>();
 
@@ -166,9 +173,10 @@ public class McpClientRegistry implements Closeable {
                                     "Failed to register MCP server '{}': {}",
                                     config.name(),
                                     e.getMessage());
-                            // Best-effort close on failure
+                            // Best-effort close on failure. Bounded by CLOSE_TIMEOUT so a
+                            // half-spawned subprocess can't wedge the caller indefinitely.
                             try {
-                                client.closeGracefully().block();
+                                client.closeGracefully().block(CLOSE_TIMEOUT);
                             } catch (Exception ignored) {
                                 // ignore close errors during failed registration
                             }
@@ -232,7 +240,18 @@ public class McpClientRegistry implements Closeable {
                 "Unregistering MCP server '{}' ({} tools)", name, group != null ? group.size() : 0);
 
         return client.closeGracefully()
+                .timeout(CLOSE_TIMEOUT)
                 .doOnSuccess(v -> logger.info("MCP server '{}' closed", name))
+                .onErrorResume(
+                        TimeoutException.class,
+                        e -> {
+                            logger.warn(
+                                    "MCP server '{}' did not close within {} — abandoning."
+                                            + " Subprocess may need manual cleanup.",
+                                    name,
+                                    CLOSE_TIMEOUT);
+                            return Mono.empty();
+                        })
                 .onErrorResume(
                         e -> {
                             logger.warn("Error closing MCP server '{}': {}", name, e.getMessage());
@@ -267,16 +286,31 @@ public class McpClientRegistry implements Closeable {
                 .flatMapIterable(McpToolGroup::getAllToolDefinitions);
     }
 
-    /** Closes all registered MCP clients. */
+    /**
+     * Closes all registered MCP clients.
+     *
+     * <p>Each client is given at most {@link #CLOSE_TIMEOUT} to complete its graceful shutdown
+     * before the registry moves on to the next one. A single misbehaving subprocess therefore
+     * cannot block JVM shutdown indefinitely; total close time is bounded by {@code N *
+     * CLOSE_TIMEOUT} in the worst case.
+     */
     @Override
     public void close() {
         logger.info("Closing McpClientRegistry ({} servers)", clients.size());
         for (Map.Entry<String, McpAsyncClient> entry : clients.entrySet()) {
+            String name = entry.getKey();
             try {
-                entry.getValue().closeGracefully().block();
-                logger.debug("Closed MCP client: {}", entry.getKey());
+                entry.getValue().closeGracefully().block(CLOSE_TIMEOUT);
+                logger.debug("Closed MCP client: {}", name);
+            } catch (IllegalStateException timeoutEx) {
+                // Reactor wraps timeout from block(Duration) as IllegalStateException
+                logger.warn(
+                        "MCP client '{}' did not close within {} — abandoning. Subprocess may"
+                                + " need manual cleanup.",
+                        name,
+                        CLOSE_TIMEOUT);
             } catch (Exception e) {
-                logger.warn("Error closing MCP client '{}': {}", entry.getKey(), e.getMessage());
+                logger.warn("Error closing MCP client '{}': {}", name, e.getMessage());
             }
         }
         clients.clear();

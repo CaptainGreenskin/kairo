@@ -25,8 +25,15 @@ import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolDefinition;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.api.tracing.NoopSpan;
+import io.kairo.api.tracing.Span;
+import io.kairo.api.tracing.Tracer;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
@@ -284,6 +291,62 @@ class DefaultToolExecutorTest {
                 .verify();
     }
 
+    // ==================== TRACER OBSERVATION ====================
+
+    @Test
+    void execute_success_emitsLangfuseToolObservation() {
+        RecordingTracer tracer = new RecordingTracer();
+        DefaultToolExecutor tracedExecutor = new DefaultToolExecutor(registry, guard, tracer);
+        registerToolHandler(
+                "echo",
+                (input, ctx) ->
+                        Mono.just(ToolResult.success("echo", "echoed: " + input.get("text"))));
+
+        StepVerifier.create(tracedExecutor.execute("echo", Map.of("text", "hi")))
+                .assertNext(r -> assertFalse(r.isError()))
+                .verifyComplete();
+
+        Assertions.assertThat(tracer.spans).hasSize(1);
+        RecordingSpan span = tracer.spans.get(0);
+        Assertions.assertThat(span.ended).isTrue();
+        Assertions.assertThat(span.statusSuccess).isTrue();
+        Assertions.assertThat(span.attributes)
+                .containsEntry("langfuse.observation.type", "tool")
+                .containsEntry("langfuse.observation.level", "DEFAULT")
+                .containsEntry("langfuse.observation.output", "echoed: hi")
+                .containsEntry("tool.name", "echo")
+                .containsEntry("tool.success", true)
+                .containsKey("tool.duration_ms")
+                .containsKey("tool.output.length");
+    }
+
+    @Test
+    void execute_failure_emitsErrorLevelToolObservation() {
+        RecordingTracer tracer = new RecordingTracer();
+        DefaultToolExecutor tracedExecutor = new DefaultToolExecutor(registry, guard, tracer);
+        registerToolHandler(
+                "failing",
+                (input, ctx) ->
+                        Mono.fromCallable(
+                                () -> {
+                                    throw new RuntimeException("kaboom");
+                                }));
+
+        StepVerifier.create(tracedExecutor.execute("failing", Map.of()))
+                .assertNext(r -> assertTrue(r.isError()))
+                .verifyComplete();
+
+        Assertions.assertThat(tracer.spans).hasSize(1);
+        RecordingSpan span = tracer.spans.get(0);
+        Assertions.assertThat(span.ended).isTrue();
+        Assertions.assertThat(span.attributes)
+                .containsEntry("langfuse.observation.type", "tool")
+                .containsEntry("langfuse.observation.level", "ERROR")
+                .containsEntry("tool.success", false);
+        Assertions.assertThat((String) span.attributes.get("langfuse.observation.status_message"))
+                .contains("kaboom");
+    }
+
     @Test
     void toolThrowingWrappedAgentInterruptedExceptionPropagates() {
         registerToolHandler(
@@ -303,5 +366,61 @@ class DefaultToolExecutorTest {
                                 e.getCause() != null
                                         && e.getCause() instanceof AgentInterruptedException)
                 .verify();
+    }
+
+    // ==================== TRACER TEST DOUBLES ====================
+
+    private static final class RecordingTracer implements Tracer {
+        final List<RecordingSpan> spans = new ArrayList<>();
+
+        @Override
+        public Span startToolSpan(Span parent, String toolName, Map<String, Object> input) {
+            RecordingSpan span = new RecordingSpan("tool:" + toolName);
+            spans.add(span);
+            return span;
+        }
+    }
+
+    private static final class RecordingSpan implements Span {
+        final String name;
+        final Map<String, Object> attributes = new HashMap<>();
+        boolean statusSuccess;
+        String statusMessage;
+        boolean ended;
+
+        RecordingSpan(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String spanId() {
+            return "test-span";
+        }
+
+        @Override
+        public String name() {
+            return name;
+        }
+
+        @Override
+        public Span parent() {
+            return NoopSpan.INSTANCE;
+        }
+
+        @Override
+        public void setAttribute(String key, Object value) {
+            attributes.put(key, value);
+        }
+
+        @Override
+        public void setStatus(boolean success, String message) {
+            this.statusSuccess = success;
+            this.statusMessage = message;
+        }
+
+        @Override
+        public void end() {
+            this.ended = true;
+        }
     }
 }

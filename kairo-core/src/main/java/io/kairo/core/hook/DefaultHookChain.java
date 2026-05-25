@@ -17,14 +17,22 @@ package io.kairo.core.hook;
 
 import io.kairo.api.hook.*;
 import io.kairo.api.message.Msg;
+import io.kairo.api.tracing.NoopTracer;
+import io.kairo.api.tracing.ObservationData;
+import io.kairo.api.tracing.Span;
+import io.kairo.api.tracing.Tracer;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -50,9 +58,38 @@ public class DefaultHookChain implements HookChain {
      */
     public static final String DIAGNOSTICS_RECORDER_KEY = "kairo.diagnostics.recorder";
 
+    /**
+     * Reactor Context key used to propagate the parent {@link Span} from upstream (agent /
+     * iteration) into hook firings so child spans nest under the correct parent in the trace tree.
+     * Matches the pattern in {@code DefaultToolExecutor.SPAN_CONTEXT_KEY} so existing callers that
+     * already populate {@code Context.put(Span.class, …)} get hook spans wired for free.
+     */
+    public static final Class<Span> SPAN_CONTEXT_KEY = Span.class;
+
     private final List<Object> handlers = new CopyOnWriteArrayList<>();
     private final List<ExternalHookExecutor> externalExecutors = new CopyOnWriteArrayList<>();
     private final List<ExternalHookBinding> externalBindings = new CopyOnWriteArrayList<>();
+
+    private final Tracer tracer;
+    private final Map<String, AtomicLong> firedByPhase = new ConcurrentHashMap<>();
+    private final Map<String, AtomicLong> failuresByPhase = new ConcurrentHashMap<>();
+    private final Map<String, AtomicLong> decisionsByOutcome = new ConcurrentHashMap<>();
+    private final AtomicLong externalHookFailures = new AtomicLong();
+    private final AtomicLong totalDurationNanos = new AtomicLong();
+
+    /** Backward-compatible constructor — no tracer, so hook spans are NoopSpan (no-op). */
+    public DefaultHookChain() {
+        this(NoopTracer.INSTANCE);
+    }
+
+    /**
+     * Construct a chain that emits one child span per hook firing via {@code
+     * tracer.startHookSpan(parent, phase, hookName)}. Pass {@link NoopTracer#INSTANCE} for tests or
+     * production runs without an observability backend — span calls become no-ops.
+     */
+    public DefaultHookChain(Tracer tracer) {
+        this.tracer = tracer == null ? NoopTracer.INSTANCE : tracer;
+    }
 
     @Override
     public void register(Object hookHandler) {
@@ -290,32 +327,47 @@ public class DefaultHookChain implements HookChain {
             return Mono.just(event);
         }
 
-        T current = event;
-        for (AnnotatedMethod am : methods) {
-            if (isCancelled(current)) break;
-            try {
-                Object result = am.method().invoke(am.handler(), current);
-                if (result != null && event.getClass().isInstance(result)) {
-                    current = (T) result;
-                }
-            } catch (InvocationTargetException e) {
-                Throwable cause = e.getCause();
-                log.error(
-                        "Hook method {}#{} threw exception",
-                        am.handler().getClass().getSimpleName(),
-                        am.method().getName(),
-                        cause);
-                return Mono.error(cause != null ? cause : e);
-            } catch (IllegalAccessException e) {
-                log.error(
-                        "Hook method {}#{} is not accessible",
-                        am.handler().getClass().getSimpleName(),
-                        am.method().getName(),
-                        e);
-                return Mono.error(e);
-            }
-        }
-        return Mono.just(current);
+        return Mono.deferContextual(
+                ctx -> {
+                    Span parent = parentSpanFromContext(ctx);
+                    T current = event;
+                    for (AnnotatedMethod am : methods) {
+                        if (isCancelled(current)) break;
+                        Span span = beginHookSpan(parent, phase.name(), am);
+                        long start = System.nanoTime();
+                        try {
+                            Object result = am.method().invoke(am.handler(), current);
+                            recordSuccess(
+                                    span, phase.name(), am, "CONTINUE", System.nanoTime() - start);
+                            if (result != null && event.getClass().isInstance(result)) {
+                                current = (T) result;
+                            }
+                        } catch (InvocationTargetException e) {
+                            Throwable cause = e.getCause();
+                            recordFailure(
+                                    span,
+                                    phase.name(),
+                                    am,
+                                    cause != null ? cause : e,
+                                    System.nanoTime() - start);
+                            log.error(
+                                    "Hook method {}#{} threw exception",
+                                    am.handler().getClass().getSimpleName(),
+                                    am.method().getName(),
+                                    cause);
+                            return Mono.error(cause != null ? cause : e);
+                        } catch (IllegalAccessException e) {
+                            recordFailure(span, phase.name(), am, e, System.nanoTime() - start);
+                            log.error(
+                                    "Hook method {}#{} is not accessible",
+                                    am.handler().getClass().getSimpleName(),
+                                    am.method().getName(),
+                                    e);
+                            return Mono.error(e);
+                        }
+                    }
+                    return Mono.just(current);
+                });
     }
 
     @SuppressWarnings("unchecked")
@@ -326,38 +378,72 @@ public class DefaultHookChain implements HookChain {
             return Mono.just(HookResult.proceed(event));
         }
 
-        T current = event;
-        HookResult.Decision winningDecision = HookResult.Decision.CONTINUE;
-        String winningReason = null;
+        return Mono.deferContextual(
+                ctx -> {
+                    Span parent = parentSpanFromContext(ctx);
+                    T current = event;
+                    HookResult.Decision winningDecision = HookResult.Decision.CONTINUE;
+                    String winningReason = null;
 
-        for (AnnotatedMethod am : methods) {
-            if (isCancelled(current)) break;
-            try {
-                Object result = am.method().invoke(am.handler(), current);
-                if (result instanceof HookResult<?> hr) {
-                    HookResult<T> typed = (HookResult<T>) hr;
-                    current = typed.event();
-                    if (typed.decision() == HookResult.Decision.ABORT) {
-                        return Mono.just(typed);
+                    for (AnnotatedMethod am : methods) {
+                        if (isCancelled(current)) break;
+                        Span span = beginHookSpan(parent, phase.name(), am);
+                        long start = System.nanoTime();
+                        try {
+                            Object result = am.method().invoke(am.handler(), current);
+                            String decisionLabel = "CONTINUE";
+                            if (result instanceof HookResult<?> hr) {
+                                HookResult<T> typed = (HookResult<T>) hr;
+                                current = typed.event();
+                                decisionLabel = typed.decision().name();
+                                if (typed.decision() == HookResult.Decision.ABORT) {
+                                    recordSuccess(
+                                            span,
+                                            phase.name(),
+                                            am,
+                                            decisionLabel,
+                                            System.nanoTime() - start);
+                                    return Mono.just(typed);
+                                }
+                                if (typed.decision().priority() > winningDecision.priority()) {
+                                    winningDecision = typed.decision();
+                                    if (typed.reason() != null) winningReason = typed.reason();
+                                }
+                            } else if (result != null && event.getClass().isInstance(result)) {
+                                current = (T) result;
+                            }
+                            recordSuccess(
+                                    span,
+                                    phase.name(),
+                                    am,
+                                    decisionLabel,
+                                    System.nanoTime() - start);
+                        } catch (InvocationTargetException e) {
+                            Throwable cause = e.getCause();
+                            recordFailure(
+                                    span,
+                                    phase.name(),
+                                    am,
+                                    cause != null ? cause : e,
+                                    System.nanoTime() - start);
+                            log.error("Hook threw exception", cause);
+                            return Mono.error(cause != null ? cause : e);
+                        } catch (IllegalAccessException e) {
+                            recordFailure(span, phase.name(), am, e, System.nanoTime() - start);
+                            return Mono.error(e);
+                        }
                     }
-                    if (typed.decision().priority() > winningDecision.priority()) {
-                        winningDecision = typed.decision();
-                        if (typed.reason() != null) winningReason = typed.reason();
-                    }
-                } else if (result != null && event.getClass().isInstance(result)) {
-                    current = (T) result;
-                }
-            } catch (InvocationTargetException e) {
-                Throwable cause = e.getCause();
-                log.error("Hook threw exception", cause);
-                return Mono.error(cause != null ? cause : e);
-            } catch (IllegalAccessException e) {
-                return Mono.error(e);
-            }
-        }
 
-        return Mono.just(
-                new HookResult<>(current, winningDecision, null, null, winningReason, null, null));
+                    return Mono.just(
+                            new HookResult<>(
+                                    current,
+                                    winningDecision,
+                                    null,
+                                    null,
+                                    winningReason,
+                                    null,
+                                    null));
+                });
     }
 
     @SuppressWarnings("unchecked")
@@ -374,6 +460,10 @@ public class DefaultHookChain implements HookChain {
                             return executor.execute(event, binding.config())
                                     .onErrorResume(
                                             e -> {
+                                                recordExternalHookFailure(
+                                                        binding.phase().name(),
+                                                        externalHookId(binding),
+                                                        e);
                                                 log.warn(
                                                         "External hook failed: {}", e.getMessage());
                                                 return Mono.just(HookResult.proceed(event));
@@ -402,12 +492,31 @@ public class DefaultHookChain implements HookChain {
                             return executor.<T>execute(event, binding.config())
                                     .onErrorResume(
                                             e -> {
+                                                recordExternalHookFailure(
+                                                        binding.phase().name(),
+                                                        externalHookId(binding),
+                                                        e);
                                                 log.warn(
                                                         "External hook failed: {}", e.getMessage());
                                                 return Mono.just(HookResult.proceed(event));
                                             });
                         })
                 .reduce(baseline, (acc, result) -> mergeResults(acc, (HookResult<T>) result));
+    }
+
+    /**
+     * Derive a span-identifier for an external hook binding. Prefers the command / URL over the
+     * generic type so dashboards show which concrete hook failed (e.g. {@code
+     * command:./scripts/pre-tool.sh} rather than just {@code command}).
+     */
+    private String externalHookId(ExternalHookBinding binding) {
+        if (binding == null || binding.config() == null) return "unknown";
+        var cfg = binding.config();
+        String type = cfg.type() == null ? "external" : cfg.type();
+        String detail = cfg.command();
+        if (detail == null || detail.isBlank()) detail = cfg.url();
+        if (detail == null || detail.isBlank()) return type;
+        return type + ":" + detail;
     }
 
     private <T> HookResult<T> mergeResults(HookResult<T> a, HookResult<T> b) {
@@ -510,12 +619,14 @@ public class DefaultHookChain implements HookChain {
      */
     @SuppressWarnings("unchecked")
     private <T> Mono<T> fireEvent(T event, Class<? extends Annotation> annotationType) {
-        return Mono.defer(
-                () -> {
+        return Mono.deferContextual(
+                ctx -> {
                     List<AnnotatedMethod> methods = findAnnotatedMethods(annotationType);
                     if (methods.isEmpty()) {
                         return Mono.just(event);
                     }
+                    Span parent = parentSpanFromContext(ctx);
+                    String phaseLabel = phaseLabelFor(annotationType);
 
                     T current = event;
                     for (AnnotatedMethod am : methods) {
@@ -528,13 +639,23 @@ public class DefaultHookChain implements HookChain {
                             break;
                         }
 
+                        Span span = beginHookSpan(parent, phaseLabel, am);
+                        long start = System.nanoTime();
                         try {
                             Object result = am.method().invoke(am.handler(), current);
+                            recordSuccess(
+                                    span, phaseLabel, am, "CONTINUE", System.nanoTime() - start);
                             if (result != null && event.getClass().isInstance(result)) {
                                 current = (T) result;
                             }
                         } catch (InvocationTargetException e) {
                             Throwable cause = e.getCause();
+                            recordFailure(
+                                    span,
+                                    phaseLabel,
+                                    am,
+                                    cause != null ? cause : e,
+                                    System.nanoTime() - start);
                             log.error(
                                     "Hook method {}#{} threw exception",
                                     am.handler().getClass().getSimpleName(),
@@ -542,6 +663,7 @@ public class DefaultHookChain implements HookChain {
                                     cause);
                             return Mono.error(cause != null ? cause : e);
                         } catch (IllegalAccessException e) {
+                            recordFailure(span, phaseLabel, am, e, System.nanoTime() - start);
                             log.error(
                                     "Hook method {}#{} is not accessible",
                                     am.handler().getClass().getSimpleName(),
@@ -564,12 +686,14 @@ public class DefaultHookChain implements HookChain {
     @SuppressWarnings("unchecked")
     private <T> Mono<HookResult<T>> fireEventWithResult(
             T event, Class<? extends Annotation> annotationType) {
-        return Mono.defer(
-                () -> {
+        return Mono.deferContextual(
+                ctx -> {
                     List<AnnotatedMethod> methods = findAnnotatedMethods(annotationType);
                     if (methods.isEmpty()) {
                         return Mono.just(HookResult.proceed(event));
                     }
+                    Span parent = parentSpanFromContext(ctx);
+                    String phaseLabel = phaseLabelFor(annotationType);
 
                     T current = event;
                     HookResult.Decision winningDecision = HookResult.Decision.CONTINUE;
@@ -584,12 +708,16 @@ public class DefaultHookChain implements HookChain {
                             break;
                         }
 
+                        Span span = beginHookSpan(parent, phaseLabel, am);
+                        long start = System.nanoTime();
                         try {
                             Object result = am.method().invoke(am.handler(), current);
+                            String decisionLabel = "CONTINUE";
 
                             if (result instanceof HookResult<?> hr) {
                                 HookResult<T> typed = (HookResult<T>) hr;
                                 current = typed.event();
+                                decisionLabel = typed.decision().name();
 
                                 // ABORT always short-circuits
                                 if (typed.decision() == HookResult.Decision.ABORT) {
@@ -598,6 +726,12 @@ public class DefaultHookChain implements HookChain {
                                             am.handler().getClass().getSimpleName(),
                                             am.method().getName(),
                                             typed.reason());
+                                    recordSuccess(
+                                            span,
+                                            phaseLabel,
+                                            am,
+                                            decisionLabel,
+                                            System.nanoTime() - start);
                                     return Mono.just(
                                             new HookResult<>(
                                                     current,
@@ -636,8 +770,16 @@ public class DefaultHookChain implements HookChain {
                                 // Hook returned a plain event — auto-wrap as CONTINUE
                                 current = (T) result;
                             }
+                            recordSuccess(
+                                    span, phaseLabel, am, decisionLabel, System.nanoTime() - start);
                         } catch (InvocationTargetException e) {
                             Throwable cause = e.getCause();
+                            recordFailure(
+                                    span,
+                                    phaseLabel,
+                                    am,
+                                    cause != null ? cause : e,
+                                    System.nanoTime() - start);
                             log.error(
                                     "Hook method {}#{} threw exception",
                                     am.handler().getClass().getSimpleName(),
@@ -645,6 +787,7 @@ public class DefaultHookChain implements HookChain {
                                     cause);
                             return Mono.error(cause != null ? cause : e);
                         } catch (IllegalAccessException e) {
+                            recordFailure(span, phaseLabel, am, e, System.nanoTime() - start);
                             log.error(
                                     "Hook method {}#{} is not accessible",
                                     am.handler().getClass().getSimpleName(),
@@ -727,6 +870,16 @@ public class DefaultHookChain implements HookChain {
         return result;
     }
 
+    /**
+     * Resolve a stable string label for the hook phase associated with the given annotation, used
+     * as the {@code phase} attribute on hook spans. Falls back to the annotation simple name when
+     * no canonical {@link HookPhase} matches (e.g. {@link OnError}).
+     */
+    private static String phaseLabelFor(Class<? extends Annotation> annotationType) {
+        HookPhase p = phaseFor(annotationType);
+        return p != null ? p.name() : annotationType.getSimpleName();
+    }
+
     private static HookPhase phaseFor(Class<? extends Annotation> annotationType) {
         if (annotationType == PreReasoning.class) return HookPhase.PRE_REASONING;
         if (annotationType == PostReasoning.class) return HookPhase.POST_REASONING;
@@ -757,6 +910,138 @@ public class DefaultHookChain implements HookChain {
 
     /** Internal record holding a handler, its annotated method, and the execution order. */
     private record AnnotatedMethod(Object handler, Method method, int order) {}
+
+    // ==================== OBSERVATION ====================
+
+    /**
+     * Snapshot the in-memory counters as an immutable record. Mirrors the {@code
+     * LlmBashClassifier.Stats} / {@code AgentMetricsCollector.AgentMetricsSummary} pattern so REPL
+     * commands and tests can assert chain activity without standing up a full metrics backend.
+     */
+    public HookChainStats snapshot() {
+        return new HookChainStats(
+                snapshotMap(firedByPhase),
+                snapshotMap(failuresByPhase),
+                snapshotMap(decisionsByOutcome),
+                externalHookFailures.get(),
+                totalDurationNanos.get() / 1_000_000L);
+    }
+
+    private Map<String, Long> snapshotMap(Map<String, AtomicLong> source) {
+        Map<String, Long> out = new HashMap<>(source.size());
+        source.forEach((k, v) -> out.put(k, v.get()));
+        return Map.copyOf(out);
+    }
+
+    /**
+     * Programmatic observation snapshot for the hook chain. Returned by {@link #snapshot()};
+     * exposes per-phase fire counts, per-phase failure counts, decision outcome counts (e.g.
+     * CONTINUE / ABORT / SKIP / INJECT / MODIFY) and total wall-clock duration. Used by REPL {@code
+     * :hooks} command and tests; values are point-in-time copies, not live views.
+     */
+    public record HookChainStats(
+            Map<String, Long> firedByPhase,
+            Map<String, Long> failuresByPhase,
+            Map<String, Long> decisionsByOutcome,
+            long externalHookFailures,
+            long totalDurationMillis) {}
+
+    /**
+     * Resolve the parent {@link Span} for a hook firing by inspecting the Reactor Context, falling
+     * back to {@code null} (the tracer's NoopSpan parent) when no upstream agent / iteration has
+     * written one.
+     */
+    private Span parentSpanFromContext(reactor.util.context.ContextView ctx) {
+        return ctx.hasKey(SPAN_CONTEXT_KEY) ? ctx.get(SPAN_CONTEXT_KEY) : null;
+    }
+
+    /**
+     * Begin a hook span and return it. Caller is responsible for calling {@link
+     * #recordSuccess(Span, String, AnnotatedMethod, String, long)} or {@link #recordFailure(Span,
+     * String, AnnotatedMethod, Throwable, long)} with the elapsed nanos when the invocation
+     * settles.
+     */
+    private Span beginHookSpan(Span parent, String phase, AnnotatedMethod am) {
+        return tracer.startHookSpan(
+                parent,
+                phase,
+                am.handler().getClass().getSimpleName() + "#" + am.method().getName());
+    }
+
+    private void recordSuccess(
+            Span span, String phase, AnnotatedMethod am, String decision, long elapsedNanos) {
+        firedByPhase.computeIfAbsent(phase, k -> new AtomicLong()).incrementAndGet();
+        decisionsByOutcome.computeIfAbsent(decision, k -> new AtomicLong()).incrementAndGet();
+        totalDurationNanos.addAndGet(elapsedNanos);
+        long elapsedMs = elapsedNanos / 1_000_000L;
+
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("hook.phase", phase);
+        meta.put("hook.handler", am.handler().getClass().getName());
+        meta.put("hook.method", am.method().getName());
+        meta.put("hook.decision", decision);
+        meta.put("hook.duration_ms", elapsedMs);
+
+        tracer.recordObservation(
+                span,
+                ObservationData.builder()
+                        .type(ObservationData.Type.SPAN)
+                        .level(ObservationData.Level.DEFAULT)
+                        .metadata(meta)
+                        .build());
+        span.setStatus(true, null);
+        span.end();
+    }
+
+    private void recordFailure(
+            Span span, String phase, AnnotatedMethod am, Throwable error, long elapsedNanos) {
+        firedByPhase.computeIfAbsent(phase, k -> new AtomicLong()).incrementAndGet();
+        failuresByPhase.computeIfAbsent(phase, k -> new AtomicLong()).incrementAndGet();
+        decisionsByOutcome.computeIfAbsent("ERROR", k -> new AtomicLong()).incrementAndGet();
+        totalDurationNanos.addAndGet(elapsedNanos);
+        long elapsedMs = elapsedNanos / 1_000_000L;
+
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("hook.phase", phase);
+        meta.put("hook.handler", am.handler().getClass().getName());
+        meta.put("hook.method", am.method().getName());
+        meta.put("hook.duration_ms", elapsedMs);
+
+        tracer.recordObservation(
+                span,
+                ObservationData.builder()
+                        .type(ObservationData.Type.SPAN)
+                        .level(ObservationData.Level.ERROR)
+                        .statusMessage(error.getClass().getSimpleName() + ": " + error.getMessage())
+                        .metadata(meta)
+                        .build());
+        span.setStatus(false, error.getMessage());
+        span.end();
+    }
+
+    /**
+     * Record an external hook failure event. Surfaces external command / HTTP hook failures into
+     * the same observation pipeline so dashboards see in-process vs external failures uniformly.
+     */
+    public void recordExternalHookFailure(String phase, String hookId, Throwable error) {
+        externalHookFailures.incrementAndGet();
+        failuresByPhase.computeIfAbsent(phase, k -> new AtomicLong()).incrementAndGet();
+        Span span = tracer.startHookSpan(null, phase, "external:" + hookId);
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("hook.phase", phase);
+        meta.put("hook.kind", "external");
+        meta.put("hook.id", hookId);
+        tracer.recordObservation(
+                span,
+                ObservationData.builder()
+                        .type(ObservationData.Type.SPAN)
+                        .level(ObservationData.Level.ERROR)
+                        .statusMessage(error.getClass().getSimpleName() + ": " + error.getMessage())
+                        .metadata(meta)
+                        .build());
+        span.setStatus(false, error.getMessage());
+        span.end();
+    }
 
     /**
      * Wrap a fire-method Mono to record a diagnostics event on success. Uses {@code

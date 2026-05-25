@@ -532,7 +532,13 @@ public class DefaultReActAgent implements Agent {
                                                                                 e -> Mono.empty())
                                                                         .subscribe();
                                                             })
-                                                    .subscribe();
+                                                    .subscribe(
+                                                            null,
+                                                            err ->
+                                                                    log.warn(
+                                                                            "Stall detector subscription failed for agent '{}': {}",
+                                                                            name,
+                                                                            err.toString()));
 
                                     // Register with shutdown manager
                                     if (!shutdownManager.registerAgent(this)) {

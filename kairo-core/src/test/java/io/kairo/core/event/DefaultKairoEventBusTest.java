@@ -18,6 +18,8 @@ package io.kairo.core.event;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.kairo.api.event.KairoEvent;
 import io.kairo.api.tenant.TenantContext;
@@ -152,6 +154,44 @@ class DefaultKairoEventBusTest {
         assertEquals(original.eventType(), enriched.eventType());
         assertNull(enriched.payload());
         sub.dispose();
+    }
+
+    @Test
+    void defaultBufferSizeIsExposed() {
+        DefaultKairoEventBus bus = new DefaultKairoEventBus();
+        assertEquals(DefaultKairoEventBus.DEFAULT_BUFFER_SIZE, bus.bufferSize());
+        assertEquals(0L, bus.droppedCount());
+    }
+
+    @Test
+    void customBufferSizeIsHonored() {
+        DefaultKairoEventBus bus = new DefaultKairoEventBus(TenantContextHolder.NOOP, 42);
+        assertEquals(42, bus.bufferSize());
+    }
+
+    @Test
+    void invalidBufferSizeRejected() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new DefaultKairoEventBus(TenantContextHolder.NOOP, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new DefaultKairoEventBus(TenantContextHolder.NOOP, -1));
+    }
+
+    @Test
+    void overflowsAreCountedAsDropped() {
+        // Tiny buffer + no subscribers attached → publishes beyond bufferSize are refused
+        // by the sink and must be reflected in droppedCount(). Verifies the AtomicLong
+        // wiring without relying on slow-subscriber timing tricks.
+        DefaultKairoEventBus bus = new DefaultKairoEventBus(TenantContextHolder.NOOP, 4);
+        for (int i = 0; i < 20; i++) {
+            bus.publish(KairoEvent.of(KairoEvent.DOMAIN_EXECUTION, "evt-" + i, Map.of()));
+        }
+        assertTrue(
+                bus.droppedCount() > 0,
+                "expected at least one drop when buffer (4) overflows with 20 publishes, got: "
+                        + bus.droppedCount());
     }
 
     private static void waitUntil(java.util.function.BooleanSupplier predicate) {
