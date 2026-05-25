@@ -28,6 +28,13 @@ jobs:
           gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
           gpg-passphrase: GPG_PASSPHRASE
 
+      # Gate: verify @Stable SPI surface against the baseline release in Maven Central
+      # before any deploy happens. If japicmp finds a binary/source-incompatible break on
+      # an @Stable type, the build fails and no artifact is published. See
+      # docs/governance/japicmp-policy.md for the baseline lifecycle.
+      - name: Verify API compatibility (japicmp)
+        run: mvn -Papi-compat -pl kairo-api -am -DskipTests verify -B
+
       - name: Publish to Maven Central
         run: mvn -Prelease -DskipTests deploy -B
         env:

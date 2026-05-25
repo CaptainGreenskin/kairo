@@ -163,25 +163,28 @@ public class PartialCompaction implements CompactionStrategy {
     }
 
     private Mono<CompactionResult> compactUpTo(List<Msg> messages, CompactionConfig config) {
+        // Resolve the boundary marker eagerly (pure CPU on a small list). Doing it before
+        // Mono.fromCallable lets us hand the fallback directly to compactFrom() instead of
+        // .block()-ing on it from inside another Mono — that pattern is dangerous when the
+        // outer Mono is subscribed on the parallel scheduler.
+        String markerId = config.boundaryMarkerId();
+        int found = -1;
+        for (int i = 0; i < messages.size(); i++) {
+            if (markerId.equals(messages.get(i).id())) {
+                found = i;
+                break;
+            }
+        }
+        if (found < 0) {
+            log.warn(
+                    "PartialCompaction UP_TO: boundary marker '{}' not found, falling back to FROM",
+                    markerId);
+            return compactFrom(messages, config);
+        }
+        final int markerIndex = found;
+
         return Mono.fromCallable(
                 () -> {
-                    String markerId = config.boundaryMarkerId();
-                    int markerIndex = -1;
-                    for (int i = 0; i < messages.size(); i++) {
-                        if (markerId.equals(messages.get(i).id())) {
-                            markerIndex = i;
-                            break;
-                        }
-                    }
-
-                    if (markerIndex < 0) {
-                        // Marker not found, fall back to FROM behavior
-                        log.warn(
-                                "PartialCompaction UP_TO: boundary marker '{}' not found, falling back to FROM",
-                                markerId);
-                        return compactFrom(messages, config).block();
-                    }
-
                     List<Msg> result = new ArrayList<>();
                     int originalTokens = messages.stream().mapToInt(Msg::tokenCount).sum();
 
