@@ -22,6 +22,9 @@ import io.kairo.api.tenant.TenantContext;
 import io.kairo.api.tenant.TenantContextHolder;
 import io.kairo.core.event.DefaultKairoEventBus;
 import io.kairo.core.tenant.ThreadLocalTenantContextHolder;
+import io.opentelemetry.api.logs.LogRecordBuilder;
+import io.opentelemetry.api.logs.Logger;
+import io.opentelemetry.api.logs.LoggerProvider;
 import io.opentelemetry.api.logs.Severity;
 import io.opentelemetry.sdk.logs.SdkLoggerProvider;
 import io.opentelemetry.sdk.logs.data.LogRecordData;
@@ -317,6 +320,55 @@ class KairoEventOTelExporterTest {
         assertThat(attr(records.get(0), "kairo.tenant.principal")).isEqualTo("anonymous");
 
         exporter.stop();
+    }
+
+    @Test
+    void exportFailure_bumpsCounterAndCapturesLastError() {
+        LoggerProvider exploding = explodingLoggerProvider("downstream exporter is down");
+        KairoEventOTelExporter exporter =
+                new KairoEventOTelExporter(
+                        bus, exploding, Set.of(KairoEvent.DOMAIN_SECURITY), 1.0, null);
+        exporter.start();
+
+        bus.publish(KairoEvent.of(KairoEvent.DOMAIN_SECURITY, "GUARDRAIL_DENY", Map.of()));
+        bus.publish(KairoEvent.of(KairoEvent.DOMAIN_SECURITY, "GUARDRAIL_DENY", Map.of()));
+
+        assertThat(exporter.exportFailedCount()).isEqualTo(2L);
+        assertThat(exporter.exportedCount()).isZero();
+        assertThat(exporter.lastExportError())
+                .contains("IllegalStateException")
+                .contains("downstream exporter is down");
+
+        exporter.stop();
+    }
+
+    static LoggerProvider explodingLoggerProvider(String message) {
+        Logger explodingLogger =
+                new Logger() {
+                    @Override
+                    public LogRecordBuilder logRecordBuilder() {
+                        throw new IllegalStateException(message);
+                    }
+                };
+        io.opentelemetry.api.logs.LoggerBuilder builder =
+                new io.opentelemetry.api.logs.LoggerBuilder() {
+                    @Override
+                    public io.opentelemetry.api.logs.LoggerBuilder setSchemaUrl(String s) {
+                        return this;
+                    }
+
+                    @Override
+                    public io.opentelemetry.api.logs.LoggerBuilder setInstrumentationVersion(
+                            String s) {
+                        return this;
+                    }
+
+                    @Override
+                    public Logger build() {
+                        return explodingLogger;
+                    }
+                };
+        return scope -> builder;
     }
 
     @Test

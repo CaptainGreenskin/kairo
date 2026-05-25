@@ -127,6 +127,31 @@ class ObservabilityAutoConfigurationTest {
     }
 
     @Test
+    void healthIndicator_wiredWhenExporterPresent() {
+        runner.withPropertyValues("kairo.observability.event-otel.enabled=true")
+                .withUserConfiguration(TestInfra.class)
+                .run(
+                        ctx -> {
+                            assertThat(ctx).hasSingleBean(KairoObservabilityHealthIndicator.class);
+                            assertThat(
+                                            ctx.getBean(KairoObservabilityHealthIndicator.class)
+                                                    .health()
+                                                    .getStatus()
+                                                    .getCode())
+                                    .isEqualTo("UP");
+                        });
+    }
+
+    @Test
+    void healthIndicator_absentWhenExporterNotConfigured() {
+        runner.withUserConfiguration(TestInfra.class)
+                .run(
+                        ctx ->
+                                assertThat(ctx)
+                                        .doesNotHaveBean(KairoObservabilityHealthIndicator.class));
+    }
+
+    @Test
     void autoStartFalse_exporterWiredButNotSubscribed() {
         runner.withPropertyValues(
                         "kairo.observability.event-otel.enabled=true",
