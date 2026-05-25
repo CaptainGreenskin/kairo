@@ -756,11 +756,17 @@ public class AgentBuilder {
             throw new IllegalArgumentException("tokenBudget must be positive, got: " + tokenBudget);
         }
 
+        // Wrap the user-supplied provider so every model call emits a reasoning span with
+        // the full langfuse.observation.* + gen_ai.usage.* attribute set. Noop tracer is a no-op
+        // wrap (returns the delegate unchanged).
+        ModelProvider tracedModelProvider =
+                io.kairo.core.tracing.TracingModelProvider.wrap(modelProvider, tracer);
+
         AgentConfig.Builder configBuilder =
                 AgentConfig.builder()
                         .name(name)
                         .systemPrompt(systemPrompt)
-                        .modelProvider(modelProvider)
+                        .modelProvider(tracedModelProvider)
                         .toolRegistry(toolRegistry)
                         .maxIterations(maxIterations)
                         .timeout(timeout)

@@ -19,6 +19,7 @@ import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.exception.PlanModeViolationException;
 import io.kairo.api.guardrail.*;
 import io.kairo.api.tool.*;
+import io.kairo.api.tracing.ObservationData;
 import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
 import io.kairo.core.shutdown.GracefulShutdownManager;
@@ -345,20 +346,9 @@ public class DefaultToolExecutor implements ToolExecutor {
                                         Duration elapsed =
                                                 Duration.ofMillis(
                                                         System.currentTimeMillis() - startMs);
+                                        recordToolObservation(
+                                                toolSpan, toolName, input, result, elapsed, null);
                                         if (result != null) {
-                                            String content = result.content();
-                                            if (content != null) {
-                                                String preview =
-                                                        content.length() <= 4000
-                                                                ? content
-                                                                : content.substring(0, 4000) + "…";
-                                                toolSpan.setAttribute(
-                                                        "langfuse.observation.output", preview);
-                                                toolSpan.setAttribute("output.value", preview);
-                                                toolSpan.setAttribute(
-                                                        "tool.output.length",
-                                                        (long) content.length());
-                                            }
                                             tracer.recordToolResult(
                                                     toolSpan, toolName, !result.isError(), elapsed);
                                             toolSpan.setStatus(
@@ -376,12 +366,86 @@ public class DefaultToolExecutor implements ToolExecutor {
                                         Duration elapsed =
                                                 Duration.ofMillis(
                                                         System.currentTimeMillis() - startMs);
+                                        recordToolObservation(
+                                                toolSpan, toolName, input, null, elapsed, e);
                                         tracer.recordToolResult(toolSpan, toolName, false, elapsed);
                                         tracer.recordException(toolSpan, e);
                                         toolSpan.setStatus(false, e.getMessage());
                                         toolSpan.end();
                                     });
                 });
+    }
+
+    /**
+     * Write one structured observation per tool invocation onto {@code toolSpan} — emits the full
+     * {@code langfuse.observation.*} attribute set so Langfuse and any OTel GenAI consumer see tool
+     * runs alongside model calls in the same dashboard. Result/error parameters are mutually
+     * exclusive (one of {@code result} or {@code error} is non-null).
+     */
+    private void recordToolObservation(
+            Span toolSpan,
+            String toolName,
+            Map<String, Object> input,
+            @Nullable ToolResult result,
+            Duration elapsed,
+            @Nullable Throwable error) {
+        String inputPreview = previewInput(input);
+        String outputPreview = null;
+        boolean isError = error != null || (result != null && result.isError());
+        String statusMessage = null;
+        if (result != null && result.content() != null) {
+            outputPreview = clipPreview(result.content());
+        }
+        if (error != null) {
+            statusMessage =
+                    error.getMessage() == null
+                            ? error.getClass().getSimpleName()
+                            : error.getMessage();
+        } else if (result != null && result.isError()) {
+            statusMessage = result.content();
+        }
+
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("tool.name", toolName);
+        meta.put("tool.success", !isError);
+        meta.put("tool.duration_ms", elapsed.toMillis());
+        if (result != null && result.content() != null) {
+            meta.put("tool.output.length", (long) result.content().length());
+            meta.put("output.value", outputPreview);
+        }
+        if (error != null) {
+            meta.put("exception.type", error.getClass().getName());
+        }
+
+        ObservationData data =
+                ObservationData.builder()
+                        .type(ObservationData.Type.TOOL)
+                        .input(inputPreview)
+                        .output(outputPreview)
+                        .level(
+                                isError
+                                        ? ObservationData.Level.ERROR
+                                        : ObservationData.Level.DEFAULT)
+                        .statusMessage(statusMessage)
+                        .metadata(meta)
+                        .build();
+        tracer.recordObservation(toolSpan, data);
+    }
+
+    private static String previewInput(Map<String, Object> input) {
+        if (input == null || input.isEmpty()) return null;
+        try {
+            // Best-effort, dependency-light JSON-ish: rely on Map.toString to avoid pulling Jackson
+            // into the tool span path. Truncate to keep span attributes small.
+            return clipPreview(input.toString());
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static String clipPreview(String s) {
+        if (s == null) return null;
+        return s.length() <= 4000 ? s : s.substring(0, 4000) + "…";
     }
 
     /** Build a composite circuit-breaker key scoped to both tool name and session. */
