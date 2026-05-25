@@ -91,6 +91,35 @@ public interface Tracer {
         return NoopSpan.INSTANCE;
     }
 
+    /**
+     * Start a child span for a single hook firing.
+     *
+     * @param parent the parent span (typically the iteration or agent span)
+     * @param phase the hook lifecycle phase (e.g. {@code "PRE_ACTING"}, {@code "POST_REASONING"})
+     * @param hookName the in-process handler class name, or the external hook command / URL, used
+     *     as the span identifier for backend dashboards
+     * @return a new child {@link Span}, never {@code null}
+     * @since 1.4
+     */
+    default Span startHookSpan(Span parent, String phase, String hookName) {
+        return NoopSpan.INSTANCE;
+    }
+
+    /**
+     * Start a child span for a single guardrail policy evaluation.
+     *
+     * @param parent the parent span (typically the tool or reasoning span being guarded)
+     * @param policyName the {@link io.kairo.api.guardrail.GuardrailPolicy#name()} of the policy
+     *     evaluating the request
+     * @param phase the guardrail phase being evaluated (e.g. {@code "PRE_TOOL"}, {@code
+     *     "PRE_REASONING"}); used as a span attribute / dashboard filter
+     * @return a new child {@link Span}, never {@code null}
+     * @since 1.4
+     */
+    default Span startGuardrailSpan(Span parent, String policyName, String phase) {
+        return NoopSpan.INSTANCE;
+    }
+
     // --- Business convenience methods (use setAttribute internally) ---
 
     /**
