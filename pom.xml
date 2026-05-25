@@ -104,7 +104,7 @@
              BOM default — bump in lockstep when bumping spring-boot.version. -->
         <tomcat.version>10.1.55</tomcat.version>
         <spring-framework.version>6.2.18</spring-framework.version>
-        <netty.version>4.1.133.Final</netty.version>
+        <netty.version>4.2.14.Final</netty.version>
         <logback.version>1.5.25</logback.version>
         <commons-lang3.version>3.18.0</commons-lang3.version>
         <!-- rhino: transitive via the dingtalk SDK in kairo-channel-dingtalk; 1.7.14.1
