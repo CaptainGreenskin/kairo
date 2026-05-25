@@ -166,8 +166,13 @@ public class TracingModelProvider implements ModelProvider {
                         .metadata(meta);
 
         if (response != null && response.usage() != null) {
-            b.inputTokens(response.usage().inputTokens())
-                    .outputTokens(response.usage().outputTokens());
+            int in = response.usage().inputTokens();
+            int out = response.usage().outputTokens();
+            b.inputTokens(in).outputTokens(out);
+            // Populate cost so Langfuse's cost panel doesn't sit at $0.00. Self-hosted Langfuse
+            // installs without a synced model catalog can't compute cost on their side; we ship it.
+            io.kairo.core.model.ModelPricing.estimateUsd(modelName(config), in, out)
+                    .ifPresent(b::costUsd);
         }
         tracer.recordObservation(span, b.build());
         span.setStatus(true, null);

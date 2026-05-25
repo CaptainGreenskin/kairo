@@ -96,6 +96,11 @@ public class OpenAIRequestBuilder implements ProviderPipeline.RequestBuilder<Str
         }
         if (stream) {
             root.put("stream", true);
+            // Required for OpenAI-compatible providers (incl. GLM) to emit the final usage chunk.
+            // Without it, the SSE terminates without a usage frame and every streamed call records
+            // tokens=0, which in turn zeroes out langfuse.cost_details.
+            ObjectNode streamOpts = root.putObject("stream_options");
+            streamOpts.put("include_usage", true);
         }
 
         // Build messages array

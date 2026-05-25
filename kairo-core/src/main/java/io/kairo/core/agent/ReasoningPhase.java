@@ -596,7 +596,13 @@ public class ReasoningPhase {
         // avoiding a second fallback model call.
         // Tap THINKING chunks via Reactor Context so transports can stream reasoning_content
         // deltas to the UI without changing AgentBuilder/AgentService signatures.
+        // Tap USAGE chunks (emitted by RawOpenAISseSubscriber for providers with
+        // stream_options.include_usage=true) so the synthetic ModelResponse carries authoritative
+        // tokens instead of the char-count estimate. Order: usage frame arrives BEFORE [DONE], so
+        // the AtomicReference is always populated before executeStreamingTools reads it.
         var textAccumulator = new StringBuilder();
+        java.util.concurrent.atomic.AtomicReference<int[]> usageRef =
+                new java.util.concurrent.atomic.AtomicReference<>();
         java.util.function.Consumer<String> deltaConsumer = textDeltaConsumerSupplier.get();
         Flux<StreamChunk> tappedStream =
                 rawStream.transformDeferredContextual(
@@ -624,6 +630,20 @@ public class ReasoningPhase {
                                                 // Never let a UI sink failure abort the reasoning
                                                 // stream.
                                             }
+                                        } else if (chunk.type()
+                                                        == io.kairo.api.model.StreamChunkType.USAGE
+                                                && chunk.metadata() != null) {
+                                            Object in =
+                                                    chunk.metadata()
+                                                            .get("gen_ai.usage.input_tokens");
+                                            Object out =
+                                                    chunk.metadata()
+                                                            .get("gen_ai.usage.output_tokens");
+                                            if (in instanceof Number n1
+                                                    && out instanceof Number n2) {
+                                                usageRef.set(
+                                                        new int[] {n1.intValue(), n2.intValue()});
+                                            }
                                         }
                                     });
                         });
@@ -636,7 +656,8 @@ public class ReasoningPhase {
         if (!ctx.toolExecutor().supportsStreaming()) {
             return fallbackModelCall(messages, modelConfig);
         }
-        return executeStreamingTools(messages, modelConfig, detectedTools, textAccumulator);
+        return executeStreamingTools(
+                messages, modelConfig, detectedTools, textAccumulator, usageRef);
     }
 
     private Mono<ModelResponse> fallbackModelCall(List<Msg> messages, ModelConfig modelConfig) {
@@ -648,7 +669,8 @@ public class ReasoningPhase {
             List<Msg> messages,
             ModelConfig modelConfig,
             Flux<DetectedToolCall> detectedTools,
-            StringBuilder textAccumulator) {
+            StringBuilder textAccumulator,
+            java.util.concurrent.atomic.AtomicReference<int[]> usageRef) {
         var streamingExecutor = new StreamingToolExecutor(ctx.toolExecutor());
         // Track tool call ID → tool name AND original args for building the synthetic response.
         // Preserving args lets downstream consumers (UI bridge hook) display the actual tool
@@ -675,7 +697,14 @@ public class ReasoningPhase {
                 .collectList()
                 .flatMap(
                         toolResults -> {
-                            int inputTokensEstimate = estimateInputTokens(messages);
+                            // Real usage from the provider's trailing usage frame wins;
+                            // estimate is the fallback for providers that don't surface it.
+                            int[] usage = usageRef.get();
+                            int inputTokens =
+                                    usage != null ? usage[0] : estimateInputTokens(messages);
+                            // outputTokens supplied to builders is the *fallback* — when the
+                            // provider gave us real usage we override the per-builder estimate
+                            // below.
                             String accumulated = textAccumulator.toString();
                             // Source of truth = what the detector saw, NOT what executeEager
                             // returned. MiniMax / Zhipu can race the executor (finish_reason in
@@ -691,14 +720,15 @@ public class ReasoningPhase {
                                         toolNameMap.size(),
                                         toolResults.size(),
                                         accumulated.length());
-                                return Mono.just(
+                                ModelResponse r =
                                         buildSyntheticStreamingResponse(
                                                 toolResults,
                                                 toolNameMap,
                                                 toolArgsMap,
                                                 accumulated,
                                                 modelConfig.model(),
-                                                inputTokensEstimate));
+                                                inputTokens);
+                                return Mono.just(overrideUsageIfPresent(r, usage));
                             }
                             if (!accumulated.isEmpty()) {
                                 // Text-only response: build from accumulated stream text.
@@ -707,11 +737,10 @@ public class ReasoningPhase {
                                 log.debug(
                                         "Streaming text-only response ({} chars)",
                                         accumulated.length());
-                                return Mono.just(
+                                ModelResponse r =
                                         buildTextOnlyResponse(
-                                                accumulated,
-                                                modelConfig.model(),
-                                                inputTokensEstimate));
+                                                accumulated, modelConfig.model(), inputTokens);
+                                return Mono.just(overrideUsageIfPresent(r, usage));
                             }
                             // Empty stream — fall back (rare edge case)
                             return fallbackModelCall(messages, modelConfig);
@@ -791,6 +820,23 @@ public class ReasoningPhase {
                 new ModelResponse.Usage(inputTokens, outputTokens, 0, 0),
                 stopReason,
                 modelName);
+    }
+
+    /**
+     * Replace the synthetic Usage built from char-count estimates with authoritative provider
+     * counts when the trailing usage frame populated {@code usage}. Returns the original response
+     * when usage is unavailable, so providers that don't surface usage fall back to the estimate.
+     */
+    private static ModelResponse overrideUsageIfPresent(ModelResponse response, int[] usage) {
+        if (usage == null || response == null) {
+            return response;
+        }
+        return new ModelResponse(
+                response.id(),
+                response.contents(),
+                new ModelResponse.Usage(usage[0], usage[1], 0, 0),
+                response.stopReason(),
+                response.model());
     }
 
     /** Char-count → token estimate (~4 chars/token). Returns at least 1 for non-empty text. */

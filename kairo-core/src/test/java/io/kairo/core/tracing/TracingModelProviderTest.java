@@ -153,6 +153,42 @@ class TracingModelProviderTest {
                 .containsEntry("gen_ai.streaming.chunks", 3L);
     }
 
+    @Test
+    void streamRaw_usageChunk_populatesTokensAndCost() {
+        FakeRawProviderWithUsage raw = new FakeRawProviderWithUsage(123, 45);
+        RecordingTracer tracer = new RecordingTracer();
+        RawStreamingModelProvider wrapped =
+                (RawStreamingModelProvider) TracingModelProvider.wrap(raw, tracer);
+
+        // gpt-4o has a price entry ($2.50 / $10 per 1M), so cost_details must be set
+        wrapped.streamRaw(
+                        List.of(Msg.of(MsgRole.USER, "stream me")),
+                        ModelConfig.builder().model("gpt-4o").build())
+                .collectList()
+                .block();
+
+        assertThat(tracer.spans).hasSize(1);
+        RecordingSpan span = tracer.spans.get(0);
+        assertThat(span.ended).isTrue();
+        assertThat(span.statusSuccess).isTrue();
+        assertThat(span.attributes)
+                .containsEntry("gen_ai.usage.input_tokens", 123)
+                .containsEntry("gen_ai.usage.output_tokens", 45)
+                .containsKey("langfuse.usage_details")
+                .containsKey("langfuse.cost_details");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Integer> usage =
+                (Map<String, Integer>) span.attributes.get("langfuse.usage_details");
+        assertThat(usage).containsEntry("input", 123).containsEntry("output", 45);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Double> cost =
+                (Map<String, Double>) span.attributes.get("langfuse.cost_details");
+        assertThat(cost).containsKey("total");
+        assertThat(cost.get("total")).isGreaterThan(0.0);
+    }
+
     // --- Fakes ---
 
     private static class FakeProvider implements ModelProvider {
@@ -192,6 +228,26 @@ class TracingModelProviderTest {
         @Override
         public Flux<StreamChunk> streamRaw(List<Msg> messages, ModelConfig config) {
             return Flux.just(StreamChunk.text("a"), StreamChunk.text("b"), StreamChunk.text("c"));
+        }
+    }
+
+    private static final class FakeRawProviderWithUsage extends FakeProvider
+            implements RawStreamingModelProvider {
+        private final int inputTokens;
+        private final int outputTokens;
+
+        FakeRawProviderWithUsage(int inputTokens, int outputTokens) {
+            super(null, null);
+            this.inputTokens = inputTokens;
+            this.outputTokens = outputTokens;
+        }
+
+        @Override
+        public Flux<StreamChunk> streamRaw(List<Msg> messages, ModelConfig config) {
+            return Flux.just(
+                    StreamChunk.text("hi"),
+                    StreamChunk.usage(inputTokens, outputTokens),
+                    StreamChunk.done());
         }
     }
 

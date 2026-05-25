@@ -49,6 +49,10 @@ public class OpenAISseSubscriber
     private final List<ToolCallAccumulator> toolAccumulators = new ArrayList<>();
     private ModelResponse.StopReason stopReason;
     private boolean finalEmitted;
+    // Usage chunk (requires stream_options.include_usage=true upstream). With OpenAI / GLM it
+    // arrives as a separate trailing chunk with choices=[] and a populated `usage` object. Default
+    // to zero so legacy providers that ignore include_usage still emit a final ModelResponse.
+    private ModelResponse.Usage finalUsage = new ModelResponse.Usage(0, 0, 0, 0);
 
     public OpenAISseSubscriber(Sinks.Many<ModelResponse> sink, ObjectMapper objectMapper) {
         this.sink = sink;
@@ -83,6 +87,30 @@ public class OpenAISseSubscriber
             JsonNode event = objectMapper.readTree(data);
             responseId = event.path("id").asText(responseId);
             responseModel = event.path("model").asText(responseModel);
+
+            // Final usage chunk: OpenAI / GLM emit this AFTER the last choices chunk when
+            // stream_options.include_usage=true. choices is typically empty here, so we extract
+            // first and then fall through to the (no-op) choices loop. If the final aggregated
+            // ModelResponse has already been emitted (we emit eagerly on finish_reason because GLM
+            // skips [DONE]), emit a usage-only response so TracingModelProvider's
+            // doOnNext(last::set) picks up the cost data.
+            JsonNode usage = event.path("usage");
+            if (usage.isObject() && !usage.isMissingNode()) {
+                int in = usage.path("prompt_tokens").asInt(0);
+                int out = usage.path("completion_tokens").asInt(0);
+                if (in > 0 || out > 0) {
+                    finalUsage = new ModelResponse.Usage(in, out, 0, 0);
+                    if (finalEmitted) {
+                        sink.tryEmitNext(
+                                new ModelResponse(
+                                        responseId,
+                                        List.of(),
+                                        finalUsage,
+                                        stopReason,
+                                        responseModel));
+                    }
+                }
+            }
 
             JsonNode choices = event.path("choices");
             if (choices.isArray() && !choices.isEmpty()) {
@@ -182,12 +210,7 @@ public class OpenAISseSubscriber
         }
         if (!contents.isEmpty()) {
             sink.tryEmitNext(
-                    new ModelResponse(
-                            responseId,
-                            contents,
-                            new ModelResponse.Usage(0, 0, 0, 0),
-                            stopReason,
-                            responseModel));
+                    new ModelResponse(responseId, contents, finalUsage, stopReason, responseModel));
         }
     }
 }

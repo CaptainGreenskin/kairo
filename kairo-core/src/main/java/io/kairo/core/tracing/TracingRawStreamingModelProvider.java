@@ -19,14 +19,17 @@ import io.kairo.api.message.Msg;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.RawStreamingModelProvider;
 import io.kairo.api.model.StreamChunk;
+import io.kairo.api.model.StreamChunkType;
 import io.kairo.api.tracing.ObservationData;
 import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
+import io.kairo.core.model.ModelPricing;
 import io.kairo.core.tool.DefaultToolExecutor;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import reactor.core.publisher.Flux;
 
 /**
@@ -63,8 +66,30 @@ public final class TracingRawStreamingModelProvider extends TracingModelProvider
                     span.setAttribute("gen_ai.streaming.raw", true);
                     long startMs = System.currentTimeMillis();
                     AtomicInteger chunkCount = new AtomicInteger();
+                    // Captures the authoritative usage frame emitted by RawOpenAISseSubscriber
+                    // when stream_options.include_usage=true. Null means the provider didn't
+                    // surface usage out-of-band (legacy path) — recordRawSuccess falls back to
+                    // zero so Langfuse still gets a generation, just without cost.
+                    AtomicReference<int[]> usageRef = new AtomicReference<>();
                     return raw.streamRaw(messages, config)
-                            .doOnNext(c -> chunkCount.incrementAndGet())
+                            .doOnNext(
+                                    chunk -> {
+                                        chunkCount.incrementAndGet();
+                                        if (chunk.type() == StreamChunkType.USAGE
+                                                && chunk.metadata() != null) {
+                                            Object in =
+                                                    chunk.metadata()
+                                                            .get("gen_ai.usage.input_tokens");
+                                            Object out =
+                                                    chunk.metadata()
+                                                            .get("gen_ai.usage.output_tokens");
+                                            if (in instanceof Number n1
+                                                    && out instanceof Number n2) {
+                                                usageRef.set(
+                                                        new int[] {n1.intValue(), n2.intValue()});
+                                            }
+                                        }
+                                    })
                             .doOnComplete(
                                     () ->
                                             recordRawSuccess(
@@ -72,6 +97,7 @@ public final class TracingRawStreamingModelProvider extends TracingModelProvider
                                                     messages,
                                                     config,
                                                     chunkCount.get(),
+                                                    usageRef.get(),
                                                     startMs))
                             .doOnError(err -> recordError(span, messages, config, err, startMs))
                             .doFinally(signal -> span.end());
@@ -79,20 +105,33 @@ public final class TracingRawStreamingModelProvider extends TracingModelProvider
     }
 
     private void recordRawSuccess(
-            Span span, List<Msg> messages, ModelConfig config, int chunks, long startMs) {
+            Span span,
+            List<Msg> messages,
+            ModelConfig config,
+            int chunks,
+            int[] usage,
+            long startMs) {
         long latencyMs = System.currentTimeMillis() - startMs;
         Map<String, Object> meta = new HashMap<>();
         meta.put("model.latency_ms", latencyMs);
         meta.put("model.provider", delegate.name());
         meta.put("gen_ai.streaming.chunks", (long) chunks);
-        ObservationData data =
+        ObservationData.Builder b =
                 ObservationData.builder()
                         .type(ObservationData.Type.GENERATION)
                         .model(config == null ? null : config.model())
                         .level(ObservationData.Level.DEFAULT)
-                        .metadata(meta)
-                        .build();
-        tracer.recordObservation(span, data);
+                        .metadata(meta);
+        if (usage != null) {
+            int in = usage[0];
+            int out = usage[1];
+            b.inputTokens(in).outputTokens(out);
+            // Cost only when both usage AND a price entry exist — guessing either silently is
+            // worse than $0 in the dashboard (which at least signals "model not in catalog").
+            ModelPricing.estimateUsd(config == null ? null : config.model(), in, out)
+                    .ifPresent(b::costUsd);
+        }
+        tracer.recordObservation(span, b.build());
         span.setStatus(true, null);
     }
 }

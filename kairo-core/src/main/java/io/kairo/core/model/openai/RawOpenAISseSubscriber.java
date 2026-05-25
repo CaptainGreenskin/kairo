@@ -71,6 +71,20 @@ public class RawOpenAISseSubscriber implements Flow.Subscriber<String> {
 
         try {
             JsonNode event = objectMapper.readTree(data);
+
+            // OpenAI/GLM emit the authoritative usage frame as a trailing chunk with empty
+            // `choices` when stream_options.include_usage=true. Extract BEFORE the empty-choices
+            // bail-out below — otherwise Langfuse + downstream accounting see zero tokens and the
+            // raw streaming path silently falls back to char-count estimates.
+            JsonNode usage = event.path("usage");
+            if (usage.isObject() && !usage.isMissingNode()) {
+                int in = usage.path("prompt_tokens").asInt(0);
+                int out = usage.path("completion_tokens").asInt(0);
+                if (in > 0 || out > 0) {
+                    sink.tryEmitNext(StreamChunk.usage(in, out));
+                }
+            }
+
             JsonNode choices = event.path("choices");
             if (!choices.isArray() || choices.isEmpty()) return;
 
