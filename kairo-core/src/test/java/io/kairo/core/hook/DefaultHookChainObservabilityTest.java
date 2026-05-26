@@ -27,10 +27,13 @@ import io.kairo.api.tracing.NoopSpan;
 import io.kairo.api.tracing.ObservationData;
 import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
+import io.kairo.core.health.HookChainObserver;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
 
@@ -44,6 +47,12 @@ import reactor.test.StepVerifier;
  * same RecordingTracer pattern — kept self-contained so it doesn't drift if the others change.
  */
 class DefaultHookChainObservabilityTest {
+
+    @AfterEach
+    void resetGlobalObserver() {
+        // The global observer is process-wide; reset to no-op so the suite stays order-independent.
+        HookChainObserver.setGlobal(null);
+    }
 
     static class GoodHandler {
         @PreReasoning
@@ -172,6 +181,125 @@ class DefaultHookChainObservabilityTest {
                 .verifyComplete();
 
         assertThat(chain.snapshot().firedByPhase()).containsEntry("PRE_REASONING", 1L);
+    }
+
+    @Test
+    void firePhase_inProcess_invokesObserverWithFiredCallback() {
+        RecordingObserver observer = new RecordingObserver();
+        HookChainObserver.setGlobal(observer);
+
+        DefaultHookChain chain = new DefaultHookChain();
+        chain.register(new GoodHandler());
+
+        StepVerifier.create(chain.firePreReasoning(new PreReasoningEvent(List.of(), null, false)))
+                .expectNextCount(1)
+                .verifyComplete();
+
+        assertThat(observer.fired).hasSize(1);
+        Fired f = observer.fired.get(0);
+        assertThat(f.phase).isEqualTo("PRE_REASONING");
+        assertThat(f.decision).isEqualTo("CONTINUE");
+        assertThat(f.duration.toNanos()).isGreaterThanOrEqualTo(0L);
+        assertThat(observer.failed).isEmpty();
+        assertThat(observer.externalFailed).isEmpty();
+    }
+
+    @Test
+    void firePhase_handlerThrows_invokesObserverFailedCallback() {
+        RecordingObserver observer = new RecordingObserver();
+        HookChainObserver.setGlobal(observer);
+
+        DefaultHookChain chain = new DefaultHookChain();
+        chain.register(new BoomHandler());
+
+        StepVerifier.create(chain.firePreReasoning(new PreReasoningEvent(List.of(), null, false)))
+                .expectErrorMessage("synthetic boom")
+                .verify();
+
+        assertThat(observer.failed).hasSize(1);
+        Failed f = observer.failed.get(0);
+        assertThat(f.phase).isEqualTo("PRE_REASONING");
+        assertThat(f.error).isInstanceOf(IllegalStateException.class);
+        assertThat(observer.fired).isEmpty();
+    }
+
+    @Test
+    void recordExternalHookFailure_invokesObserverExternalFailedCallback() {
+        RecordingObserver observer = new RecordingObserver();
+        HookChainObserver.setGlobal(observer);
+
+        DefaultHookChain chain = new DefaultHookChain();
+        chain.recordExternalHookFailure(
+                HookPhase.PRE_ACTING.name(),
+                "command:./guard.sh",
+                new RuntimeException("script exited 1"));
+
+        assertThat(observer.externalFailed).hasSize(1);
+        ExternalFailed e = observer.externalFailed.get(0);
+        assertThat(e.phase).isEqualTo("PRE_ACTING");
+        assertThat(e.hookId).isEqualTo("command:./guard.sh");
+        assertThat(e.error).isInstanceOf(RuntimeException.class);
+    }
+
+    @Test
+    void observer_thatThrows_doesNotBreakChain() {
+        HookChainObserver.setGlobal(
+                new HookChainObserver() {
+                    @Override
+                    public void onHookFired(String phase, String decision, Duration duration) {
+                        throw new RuntimeException("observer is buggy");
+                    }
+
+                    @Override
+                    public void onHookFailed(String phase, Throwable error, Duration duration) {
+                        throw new RuntimeException("observer is buggy");
+                    }
+
+                    @Override
+                    public void onExternalHookFailure(
+                            String phase, String hookId, Throwable error) {
+                        throw new RuntimeException("observer is buggy");
+                    }
+                });
+
+        DefaultHookChain chain = new DefaultHookChain();
+        chain.register(new GoodHandler());
+
+        // A misbehaving observer must not propagate into the hook chain's reactive stream.
+        StepVerifier.create(chain.firePreReasoning(new PreReasoningEvent(List.of(), null, false)))
+                .expectNextCount(1)
+                .verifyComplete();
+
+        assertThat(chain.snapshot().firedByPhase()).containsEntry("PRE_REASONING", 1L);
+    }
+
+    // ── Observer recording scaffolding ──────────────────────────────────────
+
+    private record Fired(String phase, String decision, Duration duration) {}
+
+    private record Failed(String phase, Throwable error, Duration duration) {}
+
+    private record ExternalFailed(String phase, String hookId, Throwable error) {}
+
+    private static final class RecordingObserver implements HookChainObserver {
+        final List<Fired> fired = new ArrayList<>();
+        final List<Failed> failed = new ArrayList<>();
+        final List<ExternalFailed> externalFailed = new ArrayList<>();
+
+        @Override
+        public void onHookFired(String phase, String decision, Duration duration) {
+            fired.add(new Fired(phase, decision, duration));
+        }
+
+        @Override
+        public void onHookFailed(String phase, Throwable error, Duration duration) {
+            failed.add(new Failed(phase, error, duration));
+        }
+
+        @Override
+        public void onExternalHookFailure(String phase, String hookId, Throwable error) {
+            externalFailed.add(new ExternalFailed(phase, hookId, error));
+        }
     }
 
     // ── Recording scaffolding ───────────────────────────────────────────────

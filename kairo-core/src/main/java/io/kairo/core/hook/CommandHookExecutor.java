@@ -70,16 +70,12 @@ public class CommandHookExecutor implements ExternalHookExecutor {
             return Mono.just(HookResult.proceed(event));
         }
 
+        // Errors are intentionally NOT swallowed here: see HttpHookExecutor.execute for the
+        // rationale — DefaultHookChain.fireExternalHooks catches and feeds the failure to
+        // recordExternalHookFailure so the observability pipeline sees it before degrading to
+        // CONTINUE.
         return Mono.fromCallable(() -> executeBlocking(event, config))
-                .subscribeOn(Schedulers.boundedElastic())
-                .onErrorResume(
-                        e -> {
-                            log.warn(
-                                    "Command hook failed [{}]: {}",
-                                    config.command(),
-                                    e.getMessage());
-                            return Mono.just(HookResult.proceed(event));
-                        });
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     @SuppressWarnings("unchecked")
