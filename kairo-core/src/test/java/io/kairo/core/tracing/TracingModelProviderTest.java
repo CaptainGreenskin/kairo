@@ -150,7 +150,14 @@ class TracingModelProviderTest {
                 .containsEntry("langfuse.observation.type", "generation")
                 .containsEntry("gen_ai.streaming", true)
                 .containsEntry("gen_ai.streaming.raw", true)
-                .containsEntry("gen_ai.streaming.chunks", 3L);
+                .containsEntry("gen_ai.streaming.chunks", 3L)
+                // Langfuse Input panel needs the prompt; the raw-streaming path used to skip this,
+                // which was the visible "Input: null" bug in the Langfuse UI for every reasoning
+                // span.
+                .containsEntry("langfuse.observation.input", "stream me")
+                // Output is the accumulated TEXT chunks ("a" + "b" + "c") — without this Langfuse's
+                // Output panel showed null even though the model produced content.
+                .containsEntry("langfuse.observation.output", "abc");
     }
 
     @Test

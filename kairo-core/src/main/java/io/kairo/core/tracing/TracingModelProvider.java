@@ -204,7 +204,7 @@ public class TracingModelProvider implements ModelProvider {
         return config == null ? null : config.model();
     }
 
-    private static String previewLastUser(List<Msg> messages) {
+    static String previewLastUser(List<Msg> messages) {
         if (messages == null || messages.isEmpty()) return null;
         for (int i = messages.size() - 1; i >= 0; i--) {
             Msg m = messages.get(i);
@@ -231,7 +231,7 @@ public class TracingModelProvider implements ModelProvider {
         return sb.length() == 0 ? null : clip(sb.toString(), 4000);
     }
 
-    private static String clip(String s, int max) {
+    static String clip(String s, int max) {
         if (s == null || s.length() <= max) return s;
         return s.substring(0, max) + "…";
     }

@@ -71,10 +71,21 @@ public final class TracingRawStreamingModelProvider extends TracingModelProvider
                     // surface usage out-of-band (legacy path) — recordRawSuccess falls back to
                     // zero so Langfuse still gets a generation, just without cost.
                     AtomicReference<int[]> usageRef = new AtomicReference<>();
+                    // Reactor guarantees single-threaded onNext per subscription, so a plain
+                    // StringBuilder is safe here. We cap at 4000 chars to match
+                    // TracingModelProvider's
+                    // clip() bound and keep span attrs small — Langfuse truncates large attrs
+                    // anyway.
+                    StringBuilder outputBuf = new StringBuilder();
                     return raw.streamRaw(messages, config)
                             .doOnNext(
                                     chunk -> {
                                         chunkCount.incrementAndGet();
+                                        if (chunk.type() == StreamChunkType.TEXT
+                                                && chunk.content() != null
+                                                && outputBuf.length() < 4000) {
+                                            outputBuf.append(chunk.content());
+                                        }
                                         if (chunk.type() == StreamChunkType.USAGE
                                                 && chunk.metadata() != null) {
                                             Object in =
@@ -98,6 +109,7 @@ public final class TracingRawStreamingModelProvider extends TracingModelProvider
                                                     config,
                                                     chunkCount.get(),
                                                     usageRef.get(),
+                                                    outputBuf.toString(),
                                                     startMs))
                             .doOnError(err -> recordError(span, messages, config, err, startMs))
                             .doFinally(signal -> span.end());
@@ -110,6 +122,7 @@ public final class TracingRawStreamingModelProvider extends TracingModelProvider
             ModelConfig config,
             int chunks,
             int[] usage,
+            String output,
             long startMs) {
         long latencyMs = System.currentTimeMillis() - startMs;
         Map<String, Object> meta = new HashMap<>();
@@ -120,6 +133,11 @@ public final class TracingRawStreamingModelProvider extends TracingModelProvider
                 ObservationData.builder()
                         .type(ObservationData.Type.GENERATION)
                         .model(config == null ? null : config.model())
+                        .input(TracingModelProvider.previewLastUser(messages))
+                        .output(
+                                output == null || output.isEmpty()
+                                        ? null
+                                        : TracingModelProvider.clip(output, 4000))
                         .level(ObservationData.Level.DEFAULT)
                         .metadata(meta);
         if (usage != null) {
