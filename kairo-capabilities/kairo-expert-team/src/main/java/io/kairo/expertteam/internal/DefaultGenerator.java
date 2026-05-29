@@ -22,6 +22,7 @@ import io.kairo.api.skill.SkillDefinition;
 import io.kairo.api.skill.SkillRegistry;
 import io.kairo.api.team.EvaluationVerdict;
 import io.kairo.api.team.TeamStep;
+import io.kairo.core.agent.ToolCallSink;
 import io.kairo.expertteam.role.ExpertProfile;
 import io.kairo.expertteam.role.ExpertRoleRegistry;
 import java.util.List;
@@ -71,7 +72,22 @@ public final class DefaultGenerator {
             int attemptNumber,
             List<EvaluationVerdict> priorVerdicts) {
         return generateWithModelOverride(
-                step, roleBindings, goal, attemptNumber, priorVerdicts, null);
+                step, roleBindings, goal, attemptNumber, priorVerdicts, null, null);
+    }
+
+    /**
+     * Produce an artifact for the given step, streaming the worker agent's individual tool calls to
+     * {@code toolCallSink} (nullable). See {@link ToolCallSink}.
+     */
+    public Mono<String> generate(
+            TeamStep step,
+            Map<String, Agent> roleBindings,
+            String goal,
+            int attemptNumber,
+            List<EvaluationVerdict> priorVerdicts,
+            @Nullable ToolCallSink toolCallSink) {
+        return generateWithModelOverride(
+                step, roleBindings, goal, attemptNumber, priorVerdicts, null, toolCallSink);
     }
 
     /**
@@ -90,6 +106,25 @@ public final class DefaultGenerator {
             int attemptNumber,
             List<EvaluationVerdict> priorVerdicts,
             @Nullable String modelOverride) {
+        return generateWithModelOverride(
+                step, roleBindings, goal, attemptNumber, priorVerdicts, modelOverride, null);
+    }
+
+    /**
+     * Produce an artifact, optionally overriding the model and streaming the worker's tool calls.
+     *
+     * <p>When {@code toolCallSink} is non-null it is published into the Reactor Context under
+     * {@link ToolCallSink#CONTEXT_KEY}, so the worker agent's {@code ToolPhase} forwards each tool
+     * call (the real read/edit/bash, not a single opaque {@code agent.call}) to the sink.
+     */
+    public Mono<String> generateWithModelOverride(
+            TeamStep step,
+            Map<String, Agent> roleBindings,
+            String goal,
+            int attemptNumber,
+            List<EvaluationVerdict> priorVerdicts,
+            @Nullable String modelOverride,
+            @Nullable ToolCallSink toolCallSink) {
         Objects.requireNonNull(step, "step must not be null");
         Objects.requireNonNull(roleBindings, "roleBindings must not be null");
         Objects.requireNonNull(goal, "goal must not be null");
@@ -118,7 +153,11 @@ public final class DefaultGenerator {
         } else {
             input = Msg.of(MsgRole.USER, prompt);
         }
-        return agent.call(input).map(Msg::text);
+        Mono<String> call = agent.call(input).map(Msg::text);
+        if (toolCallSink != null) {
+            call = call.contextWrite(ctx -> ctx.put(ToolCallSink.CONTEXT_KEY, toolCallSink));
+        }
+        return call;
     }
 
     private String buildPrompt(

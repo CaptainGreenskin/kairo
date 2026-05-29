@@ -39,6 +39,7 @@ import io.kairo.api.team.TeamResult;
 import io.kairo.api.team.TeamResult.StepOutcome;
 import io.kairo.api.team.TeamStatus;
 import io.kairo.api.team.TeamStep;
+import io.kairo.core.agent.ToolCallSink;
 import io.kairo.expertteam.ExpertTeamStateMachine.State;
 import io.kairo.expertteam.internal.DefaultGenerator;
 import io.kairo.expertteam.internal.DefaultPlanner;
@@ -371,21 +372,30 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
 
         EvaluationStrategy strategy = selectStrategy(ctx.request().config());
 
+        log.debug(" confirmAndExecute: {} steps to run", ctx.plan().steps().size());
         Mono<Void> chain = Mono.empty();
         for (TeamStep step : ctx.plan().steps()) {
+            final String stepId = step.stepId();
             chain =
                     chain.then(
                             Mono.defer(
-                                    () ->
-                                            executeStep(
-                                                    ctx.request(),
-                                                    ctx.team(),
-                                                    step,
-                                                    ctx.bindings(),
-                                                    strategy,
-                                                    currentState,
-                                                    outcomes,
-                                                    warnings)));
+                                    () -> {
+                                        log.debug(" executeStep START: {}", stepId);
+                                        return executeStep(
+                                                        ctx.request(),
+                                                        ctx.team(),
+                                                        step,
+                                                        ctx.bindings(),
+                                                        strategy,
+                                                        currentState,
+                                                        outcomes,
+                                                        warnings)
+                                                .doOnTerminate(
+                                                        () ->
+                                                                log.debug(
+                                                                        "executeStep DONE: {}",
+                                                                        stepId));
+                                    }));
         }
 
         Mono<TeamResult> pipeline =
@@ -753,24 +763,32 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
 
         transitionIfNeeded(currentState, State.GENERATING);
 
+        // Stream the worker's real tool calls (read/edit/bash …) as per-step STEP_TOOL_CALL events
+        // while it executes — replaces the old single fake "agent.call" event. See ToolCallSink.
+        ToolCallSink toolSink =
+                (toolName, args, result, isError, ms) -> {
+                    Map<String, Object> attrs = new LinkedHashMap<>();
+                    attrs.put("stepId", step.stepId());
+                    attrs.put("toolName", toolName);
+                    attrs.put("args", args);
+                    attrs.put("result", trimForEvent(result));
+                    attrs.put("isError", isError);
+                    attrs.put("durationMs", ms);
+                    publish(team, request, TeamEventType.STEP_TOOL_CALL, attrs);
+                };
+
         return generator
-                .generate(step, bindings, request.goal(), attemptNumber, priorVerdicts)
+                .generate(step, bindings, request.goal(), attemptNumber, priorVerdicts, toolSink)
+                .doOnNext(
+                        artifact ->
+                                log.debug(
+                                        "generate() emitted artifact ({} chars) for step {}",
+                                        artifact != null ? artifact.length() : 0,
+                                        step.stepId()))
                 .doOnNext(
                         artifact -> {
-                            // Emit high-frequency streaming events after generation completes.
-                            publish(
-                                    team,
-                                    request,
-                                    TeamEventType.STEP_THINKING,
-                                    Map.of("stepId", step.stepId(), "text", artifact));
-                            publish(
-                                    team,
-                                    request,
-                                    TeamEventType.STEP_TOOL_CALL,
-                                    Map.of(
-                                            "stepId", step.stepId(),
-                                            "toolName", "agent.call",
-                                            "args", step.description()));
+                            // The expert's final output (summary/report). Tool-level detail is
+                            // streamed live via toolSink above; here we surface the artifact.
                             publish(
                                     team,
                                     request,
@@ -793,6 +811,12 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                             List.copyOf(priorVerdicts),
                                             request.config());
                             return strategy.evaluate(ctx)
+                                    .doOnNext(
+                                            v ->
+                                                    log.debug(
+                                                            "evaluate() returned: {} for step {}",
+                                                            v.outcome(),
+                                                            step.stepId()))
                                     .defaultIfEmpty(nullVerdict())
                                     .map(
                                             verdict -> {
@@ -1203,6 +1227,10 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             Instant started,
             AtomicReference<Boolean> terminalEmitted,
             @Nullable TeamExecutionPlan plan) {
+        log.debug(
+                "completeSuccessfully ENTERED, outcomes={}, warnings={}",
+                outcomes.size(),
+                warnings.size());
         boolean degraded = !warnings.isEmpty();
         State terminal = degraded ? State.DEGRADED : State.COMPLETED;
         transitionTo(currentState, terminal);
@@ -1393,6 +1421,18 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
         Map<String, Object> result = new LinkedHashMap<>(attrs);
         result.put("seq", eventSeq.incrementAndGet());
         return result;
+    }
+
+    /** Max chars of a tool result carried in a STEP_TOOL_CALL event (avoid bloating the bus). */
+    private static final int MAX_TOOL_RESULT_CHARS = 10_000;
+
+    private static String trimForEvent(String s) {
+        if (s == null) {
+            return "";
+        }
+        return s.length() <= MAX_TOOL_RESULT_CHARS
+                ? s
+                : s.substring(0, MAX_TOOL_RESULT_CHARS) + "\n…(truncated)";
     }
 
     private void publish(
