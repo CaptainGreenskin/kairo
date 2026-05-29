@@ -69,6 +69,7 @@ import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 /**
  * Default plan → generate → evaluate coordinator (ADR-015).
@@ -334,17 +335,22 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                                         started,
                                                         terminalEmitted)));
 
-        return pipeline.onErrorResume(
-                ex ->
-                        onFailure(
-                                request,
-                                team,
-                                currentState,
-                                outcomes,
-                                warnings,
-                                started,
-                                terminalEmitted,
-                                ex));
+        // Planning runs synchronously at the head of runPlanAndSteps and, when an LLM planning
+        // agent is wired, blocks on the model call. Offload the whole pipeline to boundedElastic
+        // so that block() is legal regardless of the caller's thread (reactor-netty/parallel),
+        // and so the team timeout can cancel a hung planning call cleanly.
+        return pipeline.subscribeOn(Schedulers.boundedElastic())
+                .onErrorResume(
+                        ex ->
+                                onFailure(
+                                        request,
+                                        team,
+                                        currentState,
+                                        outcomes,
+                                        warnings,
+                                        started,
+                                        terminalEmitted,
+                                        ex));
     }
 
     /**
