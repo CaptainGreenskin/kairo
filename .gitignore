@@ -32,6 +32,10 @@ out/
 .project
 .settings/
 bin/
+# …but test fixtures legitimately ship a bin/ component dir (e.g. plugin loader fixtures);
+# the blanket bin/ rule above was silently excluding them, so they were absent on CI.
+!**/src/test/resources/**/bin/
+!**/src/test/resources/**/bin/**
 
 # IDE - VS Code
 .vscode/
@@ -76,7 +80,5 @@ docs/.vitepress/cache/
 docs/.vitepress/dist/
 dependency-tree.txt
 
-# cli-dispatcher (transient)
-.dispatcher/worktrees/
-.dispatcher/logs/
-.dispatcher/.path_review_state
+# cli-dispatcher (transient — lives outside the repo, never commit)
+.dispatcher/
