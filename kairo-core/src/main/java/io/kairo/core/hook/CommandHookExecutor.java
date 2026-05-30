@@ -21,11 +21,13 @@ import io.kairo.api.hook.ExternalHookConfig;
 import io.kairo.api.hook.ExternalHookExecutor;
 import io.kairo.api.hook.HookEvent;
 import io.kairo.api.hook.HookResult;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
@@ -86,6 +88,15 @@ public class CommandHookExecutor implements ExternalHookExecutor {
         pb.redirectErrorStream(false);
 
         Process process = pb.start();
+        // Drain stdout/stderr on dedicated threads started BEFORE waitFor. Reading the pipes
+        // after waitFor() returns races with the JVM's process reaper closing/swapping the
+        // ProcessPipeInputStream, which surfaced as intermittent "Stream closed" on CI (the
+        // exit-2 hook then fell back to CONTINUE instead of ABORT). Continuous draining from
+        // start also prevents a full pipe buffer from deadlocking a chatty hook.
+        AtomicReference<byte[]> stdoutRef = new AtomicReference<>(new byte[0]);
+        AtomicReference<byte[]> stderrRef = new AtomicReference<>(new byte[0]);
+        Thread outDrain = drain(process.getInputStream(), stdoutRef);
+        Thread errDrain = drain(process.getErrorStream(), stderrRef);
         try {
             byte[] inputJson = objectMapper.writeValueAsBytes(event);
             try (OutputStream os = process.getOutputStream()) {
@@ -104,8 +115,12 @@ public class CommandHookExecutor implements ExternalHookExecutor {
             }
 
             int exitCode = process.exitValue();
-            String stdout = readStream(process.getInputStream());
-            String stderr = readStream(process.getErrorStream());
+            // Process has exited; the drain threads see EOF and finish. Bound the join so a
+            // stuck reader can never hang the hook.
+            outDrain.join(2000);
+            errDrain.join(2000);
+            String stdout = new String(stdoutRef.get(), StandardCharsets.UTF_8);
+            String stderr = new String(stderrRef.get(), StandardCharsets.UTF_8);
 
             if (!stderr.isBlank()) {
                 log.debug("Command hook stderr [{}]: {}", config.command(), stderr.trim());
@@ -191,7 +206,24 @@ public class CommandHookExecutor implements ExternalHookExecutor {
         return new String[] {"/bin/sh", "-c", command};
     }
 
-    private static String readStream(InputStream is) throws Exception {
-        return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+    /**
+     * Reads {@code is} to EOF on a daemon thread, storing the bytes into {@code sink}. Reading on a
+     * separate thread started before {@code waitFor} avoids the read-after-reap race that closed
+     * the pipe out from under a direct {@code readAllBytes()} call.
+     */
+    private static Thread drain(InputStream is, AtomicReference<byte[]> sink) {
+        Thread t =
+                new Thread(
+                        () -> {
+                            try (is) {
+                                sink.set(is.readAllBytes());
+                            } catch (IOException ignored) {
+                                // stream closed by process teardown / kill — leave sink empty
+                            }
+                        },
+                        "kairo-cmdhook-drain");
+        t.setDaemon(true);
+        t.start();
+        return t;
     }
 }

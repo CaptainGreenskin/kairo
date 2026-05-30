@@ -34,7 +34,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java: ['17', '21']
+        # Project compiles with maven.compiler.release=21 (root pom), so JDK 17 cannot build it.
+        java: ['21']
 
     steps:
       - uses: actions/checkout@v4
@@ -64,7 +65,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: temurin
           cache: maven
       # Runs japicmp against the baseline version declared in kairo-api/pom.xml
