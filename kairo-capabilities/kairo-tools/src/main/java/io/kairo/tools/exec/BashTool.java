@@ -226,7 +226,10 @@ public class BashTool implements StreamingTool {
                 Flux.interval(HEARTBEAT_INTERVAL)
                         .map(i -> (ToolEvent) new ToolEvent.Progress(-1.0, "Running..."));
 
-        // Merge chunks + heartbeat, take until exit, then emit Final
+        // Merge chunks + heartbeat, take until exit, then emit Final. doFinally terminates the
+        // underlying process on cancellation (e.g. the user hit Stop) so a long-running command
+        // does not keep executing after the agent run is disposed. cancel() is idempotent, so it
+        // is a no-op when the process already exited normally.
         return Flux.merge(chunks, heartbeat)
                 .takeUntilOther(handle.exit().delayElement(Duration.ofMillis(100)))
                 .concatWith(
@@ -234,7 +237,8 @@ public class BashTool implements StreamingTool {
                                 .flatMapMany(
                                         exit ->
                                                 buildFinalEvent(
-                                                        cmd, outputBuffer.toString(), exit)));
+                                                        cmd, outputBuffer.toString(), exit)))
+                .doFinally(signal -> handle.cancel());
     }
 
     private Flux<ToolEvent> buildFinalEvent(String cmd, String output, SandboxExit exit) {
