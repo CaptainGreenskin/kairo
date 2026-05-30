@@ -40,5 +40,17 @@ public enum StreamChunkType {
     DONE,
 
     /** An error occurred during streaming. */
-    ERROR
+    ERROR,
+
+    /**
+     * Final usage frame carrying authoritative token counts.
+     *
+     * <p>Emitted at most once per stream, immediately before {@link #DONE}, by providers that
+     * surface usage out-of-band (OpenAI/GLM trailing chunk with empty {@code choices} when {@code
+     * stream_options.include_usage=true}). Counts live in {@link StreamChunk#metadata()} under keys
+     * {@code gen_ai.usage.input_tokens} / {@code gen_ai.usage.output_tokens} (both {@link
+     * Integer}). Use {@link StreamChunk#usage(int, int)} to build one. Consumers that don't need
+     * usage can ignore this type — it is purely additive.
+     */
+    USAGE
 }

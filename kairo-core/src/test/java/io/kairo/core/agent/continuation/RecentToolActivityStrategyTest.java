@@ -112,4 +112,59 @@ class RecentToolActivityStrategyTest {
     void name_returnsRecentToolActivity() {
         assertEquals("RecentToolActivity", new RecentToolActivityStrategy().name());
     }
+
+    @Test
+    void decide_longAssistantText_returnsPass() {
+        // A long structured answer is a final answer to the user, not mid-task narration.
+        // Even with recent tool activity, the strategy must NOT nudge — otherwise the agent
+        // re-prompts itself after delivering the result, burning one extra iteration.
+        RecentToolActivityStrategy strategy = new RecentToolActivityStrategy(3);
+
+        String longAnswer = "The file contains a Python script that ".repeat(20);
+        assertTrue(longAnswer.length() >= 200);
+
+        ContinuationContext ctx =
+                new ContinuationContext(
+                        "test-agent",
+                        5,
+                        50,
+                        List.of(),
+                        Msg.of(MsgRole.ASSISTANT, longAnswer),
+                        ModelResponse.StopReason.END_TURN,
+                        0.3f,
+                        0,
+                        false,
+                        5,
+                        Map.of());
+
+        StepVerifier.create(strategy.decide(ctx))
+                .assertNext(decision -> assertInstanceOf(ContinuationDecision.Pass.class, decision))
+                .verifyComplete();
+    }
+
+    @Test
+    void decide_nullLastAssistantMsg_stillNudges() {
+        // Defensive: if the message is null, fall back to existing tool-activity signal so we
+        // don't silently lose narration detection.
+        RecentToolActivityStrategy strategy = new RecentToolActivityStrategy(3);
+
+        ContinuationContext ctx =
+                new ContinuationContext(
+                        "test-agent",
+                        5,
+                        50,
+                        List.of(),
+                        null,
+                        ModelResponse.StopReason.END_TURN,
+                        0.3f,
+                        0,
+                        false,
+                        5,
+                        Map.of());
+
+        StepVerifier.create(strategy.decide(ctx))
+                .assertNext(
+                        decision -> assertInstanceOf(ContinuationDecision.Nudge.class, decision))
+                .verifyComplete();
+    }
 }

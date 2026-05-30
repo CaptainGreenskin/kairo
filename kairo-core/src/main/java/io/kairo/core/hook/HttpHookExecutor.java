@@ -79,13 +79,15 @@ public class HttpHookExecutor implements ExternalHookExecutor {
             return Mono.just(HookResult.proceed(event));
         }
 
+        // Errors are intentionally NOT swallowed here: the caller
+        // (DefaultHookChain.fireExternalHooks)
+        // wraps every external execution with .onErrorResume → recordExternalHookFailure(...) so
+        // the
+        // failure feeds the observability pipeline (tracer span + observer counter + chain stats)
+        // before degrading to CONTINUE. Catching here would hide every HTTP hook failure from
+        // metrics.
         return Mono.fromCallable(() -> executeBlocking(event, config))
-                .subscribeOn(Schedulers.boundedElastic())
-                .onErrorResume(
-                        e -> {
-                            log.warn("HTTP hook failed [{}]: {}", config.url(), e.getMessage());
-                            return Mono.just(HookResult.proceed(event));
-                        });
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     @SuppressWarnings("unchecked")

@@ -21,6 +21,7 @@ import io.kairo.api.tracing.NoopTracer;
 import io.kairo.api.tracing.ObservationData;
 import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
+import io.kairo.core.health.HookChainObserver;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -991,6 +992,8 @@ public class DefaultHookChain implements HookChain {
                         .build());
         span.setStatus(true, null);
         span.end();
+        invokeObserver(
+                o -> o.onHookFired(phase, decision, java.time.Duration.ofNanos(elapsedNanos)));
     }
 
     private void recordFailure(
@@ -1017,6 +1020,7 @@ public class DefaultHookChain implements HookChain {
                         .build());
         span.setStatus(false, error.getMessage());
         span.end();
+        invokeObserver(o -> o.onHookFailed(phase, error, java.time.Duration.ofNanos(elapsedNanos)));
     }
 
     /**
@@ -1041,6 +1045,22 @@ public class DefaultHookChain implements HookChain {
                         .build());
         span.setStatus(false, error.getMessage());
         span.end();
+        invokeObserver(o -> o.onExternalHookFailure(phase, hookId, error));
+    }
+
+    /**
+     * Invoke the globally registered {@link HookChainObserver}. Observer callbacks are best-effort:
+     * exceptions are swallowed at {@code DEBUG} so a misbehaving metrics exporter cannot break the
+     * hook chain.
+     */
+    private void invokeObserver(java.util.function.Consumer<HookChainObserver> call) {
+        HookChainObserver observer = HookChainObserver.global();
+        if (observer == null) return;
+        try {
+            call.accept(observer);
+        } catch (Exception e) {
+            log.debug("HookChainObserver callback threw: {}", e.getMessage());
+        }
     }
 
     /**

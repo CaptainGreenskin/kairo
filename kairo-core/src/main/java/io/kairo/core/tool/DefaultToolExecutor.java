@@ -668,6 +668,18 @@ public class DefaultToolExecutor implements ToolExecutor {
                                                         inv ->
                                                                 approvalFlow
                                                                         .approveIfNeeded(inv)
+                                                                        .contextWrite(
+                                                                                c ->
+                                                                                        inv
+                                                                                                                .toolCallId()
+                                                                                                        != null
+                                                                                                ? c
+                                                                                                        .put(
+                                                                                                                ToolInvocationRunner
+                                                                                                                        .TOOL_CALL_ID_KEY,
+                                                                                                                inv
+                                                                                                                        .toolCallId())
+                                                                                                : c)
                                                                         .doOnNext(
                                                                                 result -> {
                                                                                     synchronized (
@@ -686,6 +698,16 @@ public class DefaultToolExecutor implements ToolExecutor {
                                                     inv ->
                                                             approvalFlow
                                                                     .approveIfNeeded(inv)
+                                                                    .contextWrite(
+                                                                            c ->
+                                                                                    inv.toolCallId()
+                                                                                                    != null
+                                                                                            ? c.put(
+                                                                                                    ToolInvocationRunner
+                                                                                                            .TOOL_CALL_ID_KEY,
+                                                                                                    inv
+                                                                                                            .toolCallId())
+                                                                                            : c)
                                                                     .doOnNext(
                                                                             result -> {
                                                                                 synchronized (
@@ -718,7 +740,15 @@ public class DefaultToolExecutor implements ToolExecutor {
 
     @Override
     public Mono<ToolResult> executeSingle(ToolInvocation invocation) {
-        return approvalFlow.approveIfNeeded(invocation);
+        return approvalFlow
+                .approveIfNeeded(invocation)
+                .contextWrite(
+                        ctx ->
+                                invocation.toolCallId() != null
+                                        ? ctx.put(
+                                                ToolInvocationRunner.TOOL_CALL_ID_KEY,
+                                                invocation.toolCallId())
+                                        : ctx);
     }
 
     @Override

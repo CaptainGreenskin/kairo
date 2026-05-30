@@ -113,6 +113,7 @@ public class AgentBuilder {
     @javax.annotation.Nullable private java.util.function.Consumer<String> textDeltaConsumer;
     @javax.annotation.Nullable private KairoEventBus eventBus;
     @javax.annotation.Nullable private AgentContinuationStrategy continuationStrategy;
+    @javax.annotation.Nullable private io.kairo.api.workspace.Workspace workspace;
 
     private AgentBuilder() {}
 
@@ -156,6 +157,21 @@ public class AgentBuilder {
      */
     public AgentBuilder toolDependencies(Map<String, Object> dependencies) {
         this.toolDependencies = dependencies != null ? Map.copyOf(dependencies) : Map.of();
+        return this;
+    }
+
+    /**
+     * Set the workspace for tool execution context.
+     *
+     * <p>When set, tools receive this workspace via {@link
+     * io.kairo.api.tool.ToolContext#workspace()} instead of defaulting to the JVM's current working
+     * directory.
+     *
+     * @param workspace the workspace, or null to use JVM cwd
+     * @return this builder
+     */
+    public AgentBuilder workspace(io.kairo.api.workspace.Workspace workspace) {
+        this.workspace = workspace;
         return this;
     }
 
@@ -677,6 +693,19 @@ public class AgentBuilder {
                         recoveryHandler,
                         recoveryOnStartup,
                         continuationStrategy);
+
+        // Wire ToolContext with workspace and dependencies so tools resolve paths correctly
+        if (workspace != null || !toolDependencies.isEmpty()) {
+            agent.setToolContext(
+                    new io.kairo.api.tool.ToolContext(
+                            agent.id(),
+                            null,
+                            io.kairo.api.tool.OutputBudgetConfig.DEFAULT,
+                            workspace,
+                            io.kairo.api.tenant.TenantContext.SINGLE,
+                            java.util.Optional.empty(),
+                            toolDependencies));
+        }
 
         // Wire event bus for progress events
         if (eventBus != null) {

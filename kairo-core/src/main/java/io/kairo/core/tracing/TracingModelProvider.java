@@ -166,8 +166,13 @@ public class TracingModelProvider implements ModelProvider {
                         .metadata(meta);
 
         if (response != null && response.usage() != null) {
-            b.inputTokens(response.usage().inputTokens())
-                    .outputTokens(response.usage().outputTokens());
+            int in = response.usage().inputTokens();
+            int out = response.usage().outputTokens();
+            b.inputTokens(in).outputTokens(out);
+            // Populate cost so Langfuse's cost panel doesn't sit at $0.00. Self-hosted Langfuse
+            // installs without a synced model catalog can't compute cost on their side; we ship it.
+            io.kairo.core.model.ModelPricing.estimateUsd(modelName(config), in, out)
+                    .ifPresent(b::costUsd);
         }
         tracer.recordObservation(span, b.build());
         span.setStatus(true, null);
@@ -199,7 +204,7 @@ public class TracingModelProvider implements ModelProvider {
         return config == null ? null : config.model();
     }
 
-    private static String previewLastUser(List<Msg> messages) {
+    static String previewLastUser(List<Msg> messages) {
         if (messages == null || messages.isEmpty()) return null;
         for (int i = messages.size() - 1; i >= 0; i--) {
             Msg m = messages.get(i);
@@ -226,7 +231,7 @@ public class TracingModelProvider implements ModelProvider {
         return sb.length() == 0 ? null : clip(sb.toString(), 4000);
     }
 
-    private static String clip(String s, int max) {
+    static String clip(String s, int max) {
         if (s == null || s.length() <= max) return s;
         return s.substring(0, max) + "…";
     }

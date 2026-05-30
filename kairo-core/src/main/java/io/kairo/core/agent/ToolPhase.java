@@ -384,7 +384,10 @@ class ToolPhase {
                                             toolCall.toolId(), toolCall.toolName(), result))
                             .then(
                                     finishToolExecutionPipeline(
-                                            toolCall.toolName(), result, toolStart))
+                                            toolCall.toolName(),
+                                            toolCall.input(),
+                                            result,
+                                            toolStart))
                             .doOnNext(r -> finalResults.set(idx, r))
                             .then();
         }
@@ -443,7 +446,10 @@ class ToolPhase {
                                 emitToolCallResponse(toolCall.toolId(), toolCall.toolName(), result)
                                         .then(
                                                 finishToolExecutionPipeline(
-                                                        toolCall.toolName(), result, toolStart)));
+                                                        toolCall.toolName(),
+                                                        toolCall.input(),
+                                                        result,
+                                                        toolStart)));
     }
 
     /**
@@ -500,9 +506,10 @@ class ToolPhase {
     }
 
     private Mono<ToolResult> finishToolExecutionPipeline(
-            String toolName, ToolResult result, Instant toolStart) {
+            String toolName, Map<String, Object> input, ToolResult result, Instant toolStart) {
         return emitToolResultEvent(toolName, result, toolStart)
                 .flatMap(emitted -> firePostActingAndReturn(toolName, emitted))
+                .flatMap(finalResult -> notifyToolCallSink(toolName, input, finalResult, toolStart))
                 .flatMap(
                         finalResult -> {
                             if (finalResult.isError()) {
@@ -510,6 +517,37 @@ class ToolPhase {
                             }
                             return Mono.just(finalResult);
                         });
+    }
+
+    /**
+     * Best-effort: forward this completed tool call to a {@link ToolCallSink} published in the
+     * Reactor Context, if present. Mirrors the {@link ReasoningPhase#THINKING_DELTA_KEY} pattern —
+     * used by the expert-team coordinator to stream per-step tool calls to the UI. Never breaks the
+     * tool flow: a missing sink is a no-op and sink exceptions are swallowed.
+     */
+    private Mono<ToolResult> notifyToolCallSink(
+            String toolName, Map<String, Object> input, ToolResult result, Instant toolStart) {
+        return Mono.deferContextual(
+                ctxView -> {
+                    ToolCallSink sink = ctxView.getOrDefault(ToolCallSink.CONTEXT_KEY, null);
+                    if (sink != null) {
+                        try {
+                            long ms = Duration.between(toolStart, Instant.now()).toMillis();
+                            sink.onToolCall(
+                                    toolName,
+                                    input != null ? input : Map.of(),
+                                    result.content(),
+                                    result.isError(),
+                                    ms);
+                        } catch (RuntimeException e) {
+                            log.warn(
+                                    "ToolCallSink failed for tool '{}': {}",
+                                    toolName,
+                                    e.getMessage());
+                        }
+                    }
+                    return Mono.just(result);
+                });
     }
 
     private Mono<ToolResult> firePostToolFailure(String toolName, ToolResult result) {

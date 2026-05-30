@@ -596,7 +596,13 @@ public class ReasoningPhase {
         // avoiding a second fallback model call.
         // Tap THINKING chunks via Reactor Context so transports can stream reasoning_content
         // deltas to the UI without changing AgentBuilder/AgentService signatures.
+        // Tap USAGE chunks (emitted by RawOpenAISseSubscriber for providers with
+        // stream_options.include_usage=true) so the synthetic ModelResponse carries authoritative
+        // tokens instead of the char-count estimate. Order: usage frame arrives BEFORE [DONE], so
+        // the AtomicReference is always populated before executeStreamingTools reads it.
         var textAccumulator = new StringBuilder();
+        java.util.concurrent.atomic.AtomicReference<int[]> usageRef =
+                new java.util.concurrent.atomic.AtomicReference<>();
         java.util.function.Consumer<String> deltaConsumer = textDeltaConsumerSupplier.get();
         Flux<StreamChunk> tappedStream =
                 rawStream.transformDeferredContextual(
@@ -624,6 +630,20 @@ public class ReasoningPhase {
                                                 // Never let a UI sink failure abort the reasoning
                                                 // stream.
                                             }
+                                        } else if (chunk.type()
+                                                        == io.kairo.api.model.StreamChunkType.USAGE
+                                                && chunk.metadata() != null) {
+                                            Object in =
+                                                    chunk.metadata()
+                                                            .get("gen_ai.usage.input_tokens");
+                                            Object out =
+                                                    chunk.metadata()
+                                                            .get("gen_ai.usage.output_tokens");
+                                            if (in instanceof Number n1
+                                                    && out instanceof Number n2) {
+                                                usageRef.set(
+                                                        new int[] {n1.intValue(), n2.intValue()});
+                                            }
                                         }
                                     });
                         });
@@ -636,7 +656,8 @@ public class ReasoningPhase {
         if (!ctx.toolExecutor().supportsStreaming()) {
             return fallbackModelCall(messages, modelConfig);
         }
-        return executeStreamingTools(messages, modelConfig, detectedTools, textAccumulator);
+        return executeStreamingTools(
+                messages, modelConfig, detectedTools, textAccumulator, usageRef);
     }
 
     private Mono<ModelResponse> fallbackModelCall(List<Msg> messages, ModelConfig modelConfig) {
@@ -648,13 +669,19 @@ public class ReasoningPhase {
             List<Msg> messages,
             ModelConfig modelConfig,
             Flux<DetectedToolCall> detectedTools,
-            StringBuilder textAccumulator) {
+            StringBuilder textAccumulator,
+            java.util.concurrent.atomic.AtomicReference<int[]> usageRef) {
         var streamingExecutor = new StreamingToolExecutor(ctx.toolExecutor());
         // Track tool call ID → tool name AND original args for building the synthetic response.
         // Preserving args lets downstream consumers (UI bridge hook) display the actual tool
-        // input rather than only the synthetic `_streaming_result` marker.
-        var toolNameMap = new java.util.concurrent.ConcurrentHashMap<String, String>();
-        var toolArgsMap = new java.util.concurrent.ConcurrentHashMap<String, Map<String, Object>>();
+        // input rather than only the synthetic `_streaming_result` marker. LinkedHashMap so
+        // detector emission order survives into the synthetic ModelResponse — providers like
+        // MiniMax / Zhipu that emit finish_reason in the same chunk as tool_calls would
+        // otherwise scramble multi-call order. Synchronized because Reactor doOnNext is only
+        // guaranteed serial per subscription, not visible to flatMap downstream without it.
+        var toolNameMap = Collections.synchronizedMap(new LinkedHashMap<String, String>());
+        var toolArgsMap =
+                Collections.synchronizedMap(new LinkedHashMap<String, Map<String, Object>>());
         Flux<DetectedToolCall> trackedTools =
                 detectedTools.doOnNext(
                         tool -> {
@@ -670,35 +697,53 @@ public class ReasoningPhase {
                 .collectList()
                 .flatMap(
                         toolResults -> {
-                            int inputTokensEstimate = estimateInputTokens(messages);
-                            if (toolResults.isEmpty()) {
+                            // Real usage from the provider's trailing usage frame wins;
+                            // estimate is the fallback for providers that don't surface it.
+                            int[] usage = usageRef.get();
+                            int inputTokens =
+                                    usage != null ? usage[0] : estimateInputTokens(messages);
+                            // outputTokens supplied to builders is the *fallback* — when the
+                            // provider gave us real usage we override the per-builder estimate
+                            // below.
+                            String accumulated = textAccumulator.toString();
+                            // Source of truth = what the detector saw, NOT what executeEager
+                            // returned. MiniMax / Zhipu can race the executor (finish_reason in
+                            // same SSE chunk as tool_calls) — the detector emits the tool but
+                            // the executor returns nothing by the time collectList completes,
+                            // which previously dropped the tool_use block silently. Synthesize
+                            // whenever the detector saw any tool, attaching `_streaming_result`
+                            // only for those the executor actually produced.
+                            if (!toolNameMap.isEmpty()) {
+                                log.debug(
+                                        "Streaming response: {} detected tool(s), {} executor"
+                                                + " result(s), {} text chars",
+                                        toolNameMap.size(),
+                                        toolResults.size(),
+                                        accumulated.length());
+                                ModelResponse r =
+                                        buildSyntheticStreamingResponse(
+                                                toolResults,
+                                                toolNameMap,
+                                                toolArgsMap,
+                                                accumulated,
+                                                modelConfig.model(),
+                                                inputTokens);
+                                return Mono.just(overrideUsageIfPresent(r, usage));
+                            }
+                            if (!accumulated.isEmpty()) {
                                 // Text-only response: build from accumulated stream text.
                                 // Avoids a redundant fallback model call; per-token output
                                 // was already fired via textDeltaConsumer during streaming.
-                                String accumulated = textAccumulator.toString();
-                                if (!accumulated.isEmpty()) {
-                                    log.debug(
-                                            "Streaming text-only response ({} chars)",
-                                            accumulated.length());
-                                    return Mono.just(
-                                            buildTextOnlyResponse(
-                                                    accumulated,
-                                                    modelConfig.model(),
-                                                    inputTokensEstimate));
-                                }
-                                // Empty stream — fall back (rare edge case)
-                                return fallbackModelCall(messages, modelConfig);
+                                log.debug(
+                                        "Streaming text-only response ({} chars)",
+                                        accumulated.length());
+                                ModelResponse r =
+                                        buildTextOnlyResponse(
+                                                accumulated, modelConfig.model(), inputTokens);
+                                return Mono.just(overrideUsageIfPresent(r, usage));
                             }
-                            log.debug(
-                                    "Streaming execution completed {} tool results",
-                                    toolResults.size());
-                            return Mono.just(
-                                    buildSyntheticStreamingResponse(
-                                            toolResults,
-                                            toolNameMap,
-                                            toolArgsMap,
-                                            modelConfig.model(),
-                                            inputTokensEstimate));
+                            // Empty stream — fall back (rare edge case)
+                            return fallbackModelCall(messages, modelConfig);
                         })
                 .transform(guards::withCooperativeCancellation);
     }
@@ -717,35 +762,81 @@ public class ReasoningPhase {
                 modelName);
     }
 
-    private ModelResponse buildSyntheticStreamingResponse(
+    /**
+     * Synthesize the ModelResponse delivered to PostReasoning hooks after a streaming turn.
+     *
+     * <p>Iterates {@code toolNameMap} (the detector's emission order) rather than {@code
+     * toolResults} so tool_use blocks the model produced survive even when the executor raced
+     * finish_reason and returned no results. Accumulated streaming text is prepended as a
+     * TextContent so reasoning that preceded the tool call(s) is not lost. Package-private + static
+     * so {@code ReasoningPhaseTest} can exercise it directly without staging a full agent context.
+     */
+    static ModelResponse buildSyntheticStreamingResponse(
             List<ToolResult> toolResults,
             Map<String, String> toolNameMap,
             Map<String, Map<String, Object>> toolArgsMap,
+            String accumulatedText,
             String modelName,
             int inputTokens) {
+        // Index results by toolUseId so the iteration below can attach `_streaming_result`
+        // only to the tools the executor actually completed. Tools without a result still
+        // appear as ToolUseContent so the agent loop dispatches them in the next turn.
+        Map<String, ToolResult> resultById = new LinkedHashMap<>();
+        for (ToolResult tr : toolResults) {
+            resultById.put(tr.toolUseId(), tr);
+        }
         var contents = new ArrayList<Content>();
         int outputCharCount = 0;
-        for (var tr : toolResults) {
-            String toolName = toolNameMap.getOrDefault(tr.toolUseId(), tr.toolUseId());
+        if (accumulatedText != null && !accumulatedText.isEmpty()) {
+            contents.add(new Content.TextContent(accumulatedText));
+            outputCharCount += accumulatedText.length();
+        }
+        for (Map.Entry<String, String> entry : toolNameMap.entrySet()) {
+            String toolId = entry.getKey();
+            String toolName = entry.getValue();
             // Merge the original tool args with the streaming-result marker so the UI bridge
             // can display the real input (path, command, …) while the agent loop still
             // recognizes the response as pre-executed via `isStreamingPreExecuted`.
-            Map<String, Object> originalArgs = toolArgsMap.getOrDefault(tr.toolUseId(), Map.of());
-            var mergedInput = new java.util.LinkedHashMap<String, Object>(originalArgs);
-            mergedInput.put("_streaming_result", tr.content());
-            contents.add(new Content.ToolUseContent(tr.toolUseId(), toolName, mergedInput));
+            Map<String, Object> originalArgs = toolArgsMap.getOrDefault(toolId, Map.of());
+            var mergedInput = new LinkedHashMap<String, Object>(originalArgs);
+            ToolResult tr = resultById.get(toolId);
+            if (tr != null) {
+                mergedInput.put("_streaming_result", tr.content());
+            }
+            contents.add(new Content.ToolUseContent(toolId, toolName, mergedInput));
             outputCharCount += toolName.length();
-            if (originalArgs != null) {
+            if (!originalArgs.isEmpty()) {
                 outputCharCount += originalArgs.toString().length();
             }
         }
         int outputTokens = Math.max(1, outputCharCount / 4);
+        var stopReason =
+                toolNameMap.isEmpty()
+                        ? ModelResponse.StopReason.END_TURN
+                        : ModelResponse.StopReason.TOOL_USE;
         return new ModelResponse(
                 "streaming",
                 contents,
                 new ModelResponse.Usage(inputTokens, outputTokens, 0, 0),
-                ModelResponse.StopReason.TOOL_USE,
+                stopReason,
                 modelName);
+    }
+
+    /**
+     * Replace the synthetic Usage built from char-count estimates with authoritative provider
+     * counts when the trailing usage frame populated {@code usage}. Returns the original response
+     * when usage is unavailable, so providers that don't surface usage fall back to the estimate.
+     */
+    private static ModelResponse overrideUsageIfPresent(ModelResponse response, int[] usage) {
+        if (usage == null || response == null) {
+            return response;
+        }
+        return new ModelResponse(
+                response.id(),
+                response.contents(),
+                new ModelResponse.Usage(usage[0], usage[1], 0, 0),
+                response.stopReason(),
+                response.model());
     }
 
     /** Char-count → token estimate (~4 chars/token). Returns at least 1 for non-empty text. */

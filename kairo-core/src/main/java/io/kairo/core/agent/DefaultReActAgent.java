@@ -131,6 +131,36 @@ public class DefaultReActAgent implements Agent {
      */
     private volatile ToolContext toolContext;
 
+    /** Package-private setter used by {@link AgentBuilder} to wire workspace + dependencies. */
+    void setToolContext(ToolContext ctx) {
+        this.toolContext = ctx;
+    }
+
+    /**
+     * Merge additional entries into this agent's tool dependencies. Rebuilds the immutable
+     * ToolContext with the merged map. Used by {@code CodeAgentFactory} to inject session-level
+     * dependencies (e.g. streaming chunk sink) after the agent is built.
+     */
+    public void mergeToolDependencies(Map<String, Object> extra) {
+        if (extra == null || extra.isEmpty()) return;
+        ToolContext existing = this.toolContext;
+        if (existing == null) {
+            this.toolContext = new ToolContext(this.id, null, extra);
+            return;
+        }
+        Map<String, Object> merged = new java.util.LinkedHashMap<>(existing.dependencies());
+        merged.putAll(extra);
+        this.toolContext =
+                new ToolContext(
+                        existing.agentId(),
+                        existing.sessionId(),
+                        existing.budget(),
+                        existing.workspace(),
+                        existing.tenant(),
+                        existing.idempotencyKey(),
+                        merged);
+    }
+
     /** The extracted ReAct loop — owns the conversation history. */
     private final ReActLoop reactLoop;
 
@@ -823,10 +853,12 @@ public class DefaultReActAgent implements Agent {
                 // downstream tool invocation (even in concurrent agents sharing a single
                 // ToolExecutor) sees the correct context.
                 .contextWrite(
-                        ctx ->
-                                toolContext != null
-                                        ? ctx.put(DefaultToolExecutor.CONTEXT_KEY, toolContext)
-                                        : ctx);
+                        ctx -> {
+                            if (toolContext != null) {
+                                return ctx.put(DefaultToolExecutor.CONTEXT_KEY, toolContext);
+                            }
+                            return ctx;
+                        });
     }
 
     private Mono<Void> fireSessionStartBestEffort(Msg input) {

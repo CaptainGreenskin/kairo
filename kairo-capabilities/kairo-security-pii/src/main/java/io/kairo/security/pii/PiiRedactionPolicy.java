@@ -23,6 +23,7 @@ import io.kairo.api.message.Content;
 import io.kairo.api.model.ModelResponse;
 import io.kairo.api.tool.ToolResult;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -120,6 +121,19 @@ public final class PiiRedactionPolicy implements GuardrailPolicy {
                                 ? tc
                                 : new Content.ThinkingContent(
                                         red.text(), tc.budgetTokens(), tc.signature()));
+            } else if (c instanceof Content.ToolUseContent tu) {
+                // Tool args can carry PII (e.g. send_email(to="alice@example.com"),
+                // create_user(ssn="...")). Deep-walk the input map so nested strings inside
+                // Map/List values are redacted too. We rebuild the ToolUseContent only when
+                // a match was found to avoid churning identity-equal records for the common
+                // no-PII case.
+                ArgsRedactionResult ar = redactArgs(tu.input());
+                totalMatches += ar.matchCount();
+                rewritten.add(
+                        ar.matchCount() == 0
+                                ? tu
+                                : new Content.ToolUseContent(
+                                        tu.toolId(), tu.toolName(), ar.args()));
             } else {
                 rewritten.add(c);
             }
@@ -176,6 +190,54 @@ public final class PiiRedactionPolicy implements GuardrailPolicy {
      * @param matchCount total PII matches replaced across all configured patterns
      */
     record RedactionResult(String text, int matchCount) {}
+
+    /**
+     * Deep-walk a tool-args map, redacting every String value (including those nested inside Map /
+     * List). Returns the original map reference when no matches were found so the policy can
+     * short-circuit and avoid allocating a new ToolUseContent.
+     */
+    ArgsRedactionResult redactArgs(Map<String, Object> args) {
+        if (args == null || args.isEmpty()) {
+            return new ArgsRedactionResult(args, 0);
+        }
+        Map<String, Object> redacted = new LinkedHashMap<>(args.size());
+        int total = 0;
+        for (Map.Entry<String, Object> e : args.entrySet()) {
+            ValueRedactionResult vr = redactValue(e.getValue());
+            total += vr.matchCount();
+            redacted.put(e.getKey(), vr.value());
+        }
+        return new ArgsRedactionResult(total == 0 ? args : redacted, total);
+    }
+
+    @SuppressWarnings("unchecked")
+    private ValueRedactionResult redactValue(Object value) {
+        if (value instanceof String s) {
+            RedactionResult r = redactString(s);
+            return new ValueRedactionResult(r.matchCount() == 0 ? value : r.text(), r.matchCount());
+        }
+        if (value instanceof Map<?, ?> m) {
+            ArgsRedactionResult ar = redactArgs((Map<String, Object>) m);
+            return new ValueRedactionResult(
+                    ar.matchCount() == 0 ? value : ar.args(), ar.matchCount());
+        }
+        if (value instanceof List<?> l) {
+            List<Object> redactedList = new ArrayList<>(l.size());
+            int total = 0;
+            for (Object item : l) {
+                ValueRedactionResult vr = redactValue(item);
+                total += vr.matchCount();
+                redactedList.add(vr.value());
+            }
+            return new ValueRedactionResult(total == 0 ? value : redactedList, total);
+        }
+        return new ValueRedactionResult(value, 0);
+    }
+
+    /** Internal container for {@link #redactArgs} results. */
+    record ArgsRedactionResult(Map<String, Object> args, int matchCount) {}
+
+    record ValueRedactionResult(Object value, int matchCount) {}
 
     /** Public accessor so hosting apps can introspect which phases + patterns are active. */
     public PiiRedactionConfig config() {

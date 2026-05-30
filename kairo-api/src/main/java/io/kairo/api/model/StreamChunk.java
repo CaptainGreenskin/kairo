@@ -69,4 +69,20 @@ public record StreamChunk(
     public static StreamChunk error(String message) {
         return new StreamChunk(StreamChunkType.ERROR, message, null, null, null);
     }
+
+    /**
+     * Create a usage chunk carrying authoritative token counts from the provider.
+     *
+     * <p>Counts are placed in {@link #metadata()} under the OTel GenAI standard keys {@code
+     * gen_ai.usage.input_tokens} and {@code gen_ai.usage.output_tokens}, so observability
+     * decorators can read them without knowing about a Kairo-specific shape. Emit at most once per
+     * stream, before {@link #done()}.
+     */
+    public static StreamChunk usage(int inputTokens, int outputTokens) {
+        Map<String, Object> meta =
+                Map.of(
+                        "gen_ai.usage.input_tokens", inputTokens,
+                        "gen_ai.usage.output_tokens", outputTokens);
+        return new StreamChunk(StreamChunkType.USAGE, null, null, null, meta);
+    }
 }
