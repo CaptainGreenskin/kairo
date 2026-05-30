@@ -82,3 +82,6 @@ dependency-tree.txt
 
 # cli-dispatcher (transient — lives outside the repo, never commit)
 .dispatcher/
+
+# dispatch task management (briefs, evals, queue — lives outside the repo)
+tasks/
