@@ -102,6 +102,16 @@ public class CommandHookExecutor implements ExternalHookExecutor {
             try (OutputStream os = process.getOutputStream()) {
                 os.write(inputJson);
                 os.flush();
+            } catch (IOException pipeClosed) {
+                // A hook command that doesn't consume stdin (or exits before we finish writing —
+                // e.g. `echo ...; exit 2`) closes the pipe early, so the write/close throws
+                // "Stream closed" / broken pipe. The exit code + stdout still define the result,
+                // so this must not fail the hook. (This was the real cause of the flaky
+                // CommandHookExecutor failures on CI.)
+                log.debug(
+                        "Command hook did not consume stdin [{}]: {}",
+                        config.command(),
+                        pipeClosed.getMessage());
             }
 
             boolean finished = process.waitFor(config.timeout().toMillis(), TimeUnit.MILLISECONDS);

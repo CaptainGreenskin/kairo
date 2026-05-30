@@ -178,12 +178,17 @@ class SkillHotReloadWatcherTest {
         Files.writeString(file1, SKILL_MD, StandardCharsets.UTF_8);
         assertThat(awaitEvent()).isTrue();
 
-        int eventCountBefore = events.size();
-        watcher.stop();
+        // A single write can emit multiple OS watch events (e.g. CREATE then MODIFY); let any
+        // trailing event for file1 settle BEFORE we snapshot the count, otherwise an in-flight
+        // duplicate arriving around stop() makes this flaky ("size 1 but was 2" on slow CI).
         pause(500);
+        watcher.stop();
+        int eventCountAfterStop = events.size();
 
-        // After stop, no new events should be added
-        assertThat(events).hasSize(eventCountBefore);
+        // A change made AFTER stop must not produce any further events.
+        Files.writeString(tempDir.resolve("skill2.md"), SKILL_MD, StandardCharsets.UTF_8);
+        pause(500);
+        assertThat(events).hasSize(eventCountAfterStop);
     }
 
     @Test
