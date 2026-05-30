@@ -130,6 +130,7 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
         private final AtomicBoolean truncated = new AtomicBoolean(false);
         private final AtomicBoolean closed = new AtomicBoolean(false);
+        private final AtomicBoolean exitEmitted = new AtomicBoolean(false);
         private final AtomicLong lastOutputTime = new AtomicLong(System.nanoTime());
 
         LocalHandle(Process process, SandboxRequest request, Duration customIdleTimeout) {
@@ -169,8 +170,22 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
         @Override
         public void cancel() {
             if (cancelled.compareAndSet(false, true) && process.isAlive()) {
-                process.destroyForcibly();
+                destroyTree();
             }
+        }
+
+        /**
+         * Forcibly kill the process <em>and all its descendants</em>. {@link
+         * Process#destroyForcibly()} only signals the direct child; a command that forks (e.g.
+         * {@code script … /bin/bash -i}, or any launcher that spawns a grandchild) leaves those
+         * descendants alive holding the stdout pipe's write end open. The reader then never
+         * observes EOF, {@link #exit()} never completes, and the caller (BashTool → agent step →
+         * team) hangs forever. Killing the whole tree closes every write end so the reader unblocks
+         * naturally.
+         */
+        private void destroyTree() {
+            process.descendants().forEach(ProcessHandle::destroyForcibly);
+            process.destroyForcibly();
         }
 
         @Override
@@ -187,7 +202,13 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
         private void onTimeout() {
             if (process.isAlive()) {
                 timedOut.set(true);
-                process.destroyForcibly();
+                destroyTree();
+                // Drive the terminal signal directly rather than waiting for the reader to see EOF.
+                // If a detached descendant keeps the pipe open, the reader can stay blocked; this
+                // guarantees the caller's exit() Mono still completes. completeExit() is
+                // idempotent.
+                reader.interrupt();
+                completeExit();
             }
         }
 
@@ -195,7 +216,9 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
             long elapsed = System.nanoTime() - lastOutputTime.get();
             if (elapsed > idleTimeout.toNanos() && process.isAlive()) {
                 idleTimedOut.set(true);
-                process.destroyForcibly();
+                destroyTree();
+                reader.interrupt();
+                completeExit();
             }
         }
 
@@ -228,6 +251,11 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
         }
 
         private void completeExit() {
+            // May be invoked from both the reader thread (on EOF) and a watchdog thread (on
+            // timeout/idle kill). Emit exactly once.
+            if (!exitEmitted.compareAndSet(false, true)) {
+                return;
+            }
             int code;
             String signal = null;
             try {
