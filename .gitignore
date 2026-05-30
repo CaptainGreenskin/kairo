@@ -85,3 +85,6 @@ dependency-tree.txt
 
 # dispatch task management (briefs, evals, queue — lives outside the repo)
 tasks/
+
+# local Claude Code config / dispatch commands
+.claude/
