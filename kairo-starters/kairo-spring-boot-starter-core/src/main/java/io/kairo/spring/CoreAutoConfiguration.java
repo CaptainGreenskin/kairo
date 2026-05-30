@@ -352,20 +352,33 @@ class CoreAutoConfiguration {
         return breaker;
     }
 
-    // ---- Runtime Health ----
+    // ---- Runtime Health (only when Spring Actuator is present) ----
 
     /**
-     * Surfaces model circuit-breaker state, event-bus dropped-message count, and live-agent count
-     * as a Spring Actuator health indicator at {@code /actuator/health/kairoRuntime}. Only
-     * registered when Spring Actuator is on the classpath; the {@link ModelCircuitBreaker} bean is
-     * optional so apps that opt out of the breaker still get bus + agent visibility.
+     * Isolated in a nested {@code @ConditionalOnClass} configuration so the enclosing {@link
+     * CoreAutoConfiguration} never references {@link HealthIndicator} in a bean signature. Spring
+     * reflectively introspects the enclosing class while evaluating conditions for unrelated beans;
+     * a direct {@code HealthIndicator}-typed method there triggers {@code NoClassDefFoundError}
+     * (and fails the whole context) when Actuator is absent. A nested config is condition-checked
+     * via bytecode before its methods are loaded, so it's skipped cleanly when Actuator is off the
+     * classpath.
      */
-    @Bean
-    @ConditionalOnMissingBean
+    @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(HealthIndicator.class)
-    KairoRuntimeHealthIndicator kairoRuntimeHealthIndicator(
-            ObjectProvider<ModelCircuitBreaker> modelBreaker, KairoEventBus kairoEventBus) {
-        return new KairoRuntimeHealthIndicator(modelBreaker.getIfAvailable(), kairoEventBus);
+    static class RuntimeHealthConfiguration {
+
+        /**
+         * Surfaces model circuit-breaker state, event-bus dropped-message count, and live-agent
+         * count as a Spring Actuator health indicator at {@code /actuator/health/kairoRuntime}. The
+         * {@link ModelCircuitBreaker} bean is optional so apps that opt out of the breaker still
+         * get bus + agent visibility.
+         */
+        @Bean
+        @ConditionalOnMissingBean
+        KairoRuntimeHealthIndicator kairoRuntimeHealthIndicator(
+                ObjectProvider<ModelCircuitBreaker> modelBreaker, KairoEventBus kairoEventBus) {
+            return new KairoRuntimeHealthIndicator(modelBreaker.getIfAvailable(), kairoEventBus);
+        }
     }
 
     // ---- Graceful Shutdown ----
