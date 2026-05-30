@@ -91,8 +91,11 @@ public final class ToolInvocationRunner {
                                     if (ctx == null) {
                                         ctx = new ToolContext(null, null, Map.of());
                                     }
-                                    ToolContext effective = ctx;
-                                    return dispatchTool(handler, input, effective);
+                                    String callId =
+                                            innerCtxView.hasKey(TOOL_CALL_ID_KEY)
+                                                    ? innerCtxView.get(TOOL_CALL_ID_KEY)
+                                                    : null;
+                                    return dispatchTool(toolName, callId, handler, input, ctx);
                                 })
                         .subscribeOn(Schedulers.boundedElastic())
                         .transform(this::withCooperativeCancellation)
@@ -133,30 +136,59 @@ public final class ToolInvocationRunner {
     }
 
     /**
+     * Key for a {@code BiConsumer<String, String>} (toolName, chunkText) placed in {@link
+     * ToolContext#dependencies()} by the hosting application. When present, streaming tool output
+     * chunks are forwarded to it in real time.
+     */
+    public static final String CHUNK_SINK_KEY = "kairo.tool.chunk.sink";
+
+    public static final String TOOL_CALL_ID_KEY = "kairo.tool.callId";
+
+    /**
      * Dispatch tool execution based on the runtime type of the handler. SyncTool and StreamingTool
      * are the only v1.2 SPI shapes.
      */
     private Mono<ToolResult> dispatchTool(
-            Object handler, Map<String, Object> input, ToolContext ctx) {
+            String toolName,
+            String toolCallId,
+            Object handler,
+            Map<String, Object> input,
+            ToolContext ctx) {
         if (handler instanceof SyncTool syncTool) {
             return syncTool.execute(input, ctx);
         }
         if (handler instanceof StreamingTool streamingTool) {
-            // Collect streaming events and extract the Final result.
-            // Progress/Chunk events record a diagnostics heartbeat to reset the stall timer.
             return Mono.deferContextual(
                     ctxView -> {
                         Consumer<String> recorder = extractDiagnosticsRecorder(ctxView);
+                        @SuppressWarnings("unchecked")
+                        var chunkSink =
+                                ctx.dependencies() != null
+                                        ? (java.util.function.BiConsumer<String, String>)
+                                                ctx.dependencies().get(CHUNK_SINK_KEY)
+                                        : null;
                         return streamingTool.stream(input, ctx)
                                 .doOnNext(
                                         event -> {
+                                            if (event instanceof ToolEvent.Chunk chunk
+                                                    && chunkSink != null
+                                                    && toolCallId != null) {
+                                                try {
+                                                    chunkSink.accept(toolCallId, chunk.data());
+                                                } catch (Exception e) {
+                                                    log.warn(
+                                                            "chunk sink error: tool={}",
+                                                            toolName,
+                                                            e);
+                                                }
+                                            }
                                             if (recorder != null
                                                     && (event instanceof ToolEvent.Progress
                                                             || event instanceof ToolEvent.Chunk)) {
                                                 try {
                                                     recorder.accept("TOOL_PROGRESS");
                                                 } catch (Exception e) {
-                                                    // Best-effort — must not break tool stream
+                                                    // Best-effort
                                                 }
                                             }
                                         })

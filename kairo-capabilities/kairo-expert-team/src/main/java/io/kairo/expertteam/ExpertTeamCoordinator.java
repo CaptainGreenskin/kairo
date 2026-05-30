@@ -41,6 +41,7 @@ import io.kairo.api.team.TeamStatus;
 import io.kairo.api.team.TeamStep;
 import io.kairo.core.agent.ToolCallSink;
 import io.kairo.expertteam.ExpertTeamStateMachine.State;
+import io.kairo.expertteam.internal.DagExecutor;
 import io.kairo.expertteam.internal.DefaultGenerator;
 import io.kairo.expertteam.internal.DefaultPlanner;
 import io.kairo.expertteam.role.ExpertProfile;
@@ -107,6 +108,7 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
     @Nullable private final EvaluationStrategy agentStrategy;
     private final DefaultPlanner planner;
     private final DefaultGenerator generator;
+    private final DagExecutor dagExecutor = new DagExecutor();
     private final ExpertTeamStateMachine stateMachine;
     @Nullable private final ExpertRoleRegistry roleRegistry;
     @Nullable private final MessageBus messageBus;
@@ -379,15 +381,14 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
         EvaluationStrategy strategy = selectStrategy(ctx.request().config());
 
         log.debug(" confirmAndExecute: {} steps to run", ctx.plan().steps().size());
-        Mono<Void> chain = Mono.empty();
-        for (TeamStep step : ctx.plan().steps()) {
-            final String stepId = step.stepId();
-            chain =
-                    chain.then(
-                            Mono.defer(
-                                    () -> {
-                                        log.debug(" executeStep START: {}", stepId);
-                                        return executeStep(
+        // Schedule by the plan DAG: dependency-driven, independent steps run in parallel within a
+        // layer (bounded). Replaces the old strictly-sequential array-order chain.
+        Mono<TeamResult> pipeline =
+                dagExecutor
+                        .execute(
+                                ctx.plan().steps(),
+                                step ->
+                                        executeStep(
                                                         ctx.request(),
                                                         ctx.team(),
                                                         step,
@@ -396,27 +397,19 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                                         currentState,
                                                         outcomes,
                                                         warnings)
-                                                .doOnTerminate(
-                                                        () ->
-                                                                log.debug(
-                                                                        "executeStep DONE: {}",
-                                                                        stepId));
-                                    }));
-        }
-
-        Mono<TeamResult> pipeline =
-                chain.then(
-                        Mono.defer(
-                                () ->
-                                        completeSuccessfully(
-                                                ctx.request(),
-                                                ctx.team(),
-                                                currentState,
-                                                outcomes,
-                                                warnings,
-                                                started,
-                                                terminalEmitted,
-                                                ctx.plan())));
+                                                .thenReturn(step.stepId()))
+                        .then(
+                                Mono.defer(
+                                        () ->
+                                                completeSuccessfully(
+                                                        ctx.request(),
+                                                        ctx.team(),
+                                                        currentState,
+                                                        outcomes,
+                                                        warnings,
+                                                        started,
+                                                        terminalEmitted,
+                                                        ctx.plan())));
 
         return pipeline.timeout(
                         ctx.request().config().teamTimeout(),
@@ -552,36 +545,34 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
 
         EvaluationStrategy strategy = selectStrategy(request.config());
 
-        Mono<Void> chain = Mono.empty();
-        for (TeamStep step : plan.steps()) {
-            chain =
-                    chain.then(
-                            Mono.defer(
-                                    () ->
-                                            executeStep(
-                                                    request,
-                                                    team,
-                                                    step,
-                                                    bindings,
-                                                    strategy,
-                                                    currentState,
-                                                    outcomes,
-                                                    warnings)));
-        }
-
         TeamExecutionPlan finalPlan = plan;
-        return chain.then(
-                Mono.defer(
-                        () ->
-                                completeSuccessfully(
-                                        request,
-                                        team,
-                                        currentState,
-                                        outcomes,
-                                        warnings,
-                                        started,
-                                        terminalEmitted,
-                                        finalPlan)));
+        // Dependency-driven DAG scheduling (parallel within a layer), replacing sequential order.
+        return dagExecutor
+                .execute(
+                        plan.steps(),
+                        step ->
+                                executeStep(
+                                                request,
+                                                team,
+                                                step,
+                                                bindings,
+                                                strategy,
+                                                currentState,
+                                                outcomes,
+                                                warnings)
+                                        .thenReturn(step.stepId()))
+                .then(
+                        Mono.defer(
+                                () ->
+                                        completeSuccessfully(
+                                                request,
+                                                team,
+                                                currentState,
+                                                outcomes,
+                                                warnings,
+                                                started,
+                                                terminalEmitted,
+                                                finalPlan)));
     }
 
     private Mono<Void> executeStep(
@@ -604,7 +595,24 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                 Map.of("stepId", step.stepId(), "roleId", step.assignedRole().roleId()));
 
         int maxRounds = request.config().maxFeedbackRounds();
-        return attempt(request, team, step, bindings, strategy, 1, new ArrayList<>(), currentState)
+        // Collect the outputs of the steps this one depends on, to feed into the worker's prompt.
+        // DagExecutor guarantees a step's whole dependency layer has completed before it starts,
+        // so every dependsOn outcome is already present in the shared list.
+        List<StepOutcome> upstream;
+        synchronized (outcomes) {
+            upstream =
+                    outcomes.stream().filter(o -> step.dependsOn().contains(o.stepId())).toList();
+        }
+        return attempt(
+                        request,
+                        team,
+                        step,
+                        bindings,
+                        strategy,
+                        1,
+                        new ArrayList<>(),
+                        currentState,
+                        upstream)
                 .flatMap(
                         finalOutcome -> {
                             StepAttemptResult result = finalOutcome;
@@ -659,8 +667,9 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                                                         escalationResult.artifact(),
                                                                         escalationResult.verdict(),
                                                                         escalationResult.attempt());
-                                                        outcomes.set(
-                                                                outcomes.size() - 1,
+                                                        replaceOutcome(
+                                                                outcomes,
+                                                                step.stepId(),
                                                                 successOutcome);
                                                         publish(
                                                                 team,
@@ -763,7 +772,8 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             EvaluationStrategy strategy,
             int attemptNumber,
             List<EvaluationVerdict> priorVerdicts,
-            AtomicReference<State> currentState) {
+            AtomicReference<State> currentState,
+            List<StepOutcome> upstreamOutcomes) {
 
         int maxRounds = request.config().maxFeedbackRounds();
 
@@ -784,7 +794,14 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                 };
 
         return generator
-                .generate(step, bindings, request.goal(), attemptNumber, priorVerdicts, toolSink)
+                .generate(
+                        step,
+                        bindings,
+                        request.goal(),
+                        attemptNumber,
+                        priorVerdicts,
+                        toolSink,
+                        upstreamOutcomes)
                 .doOnNext(
                         artifact ->
                                 log.debug(
@@ -887,7 +904,8 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                     strategy,
                                     attemptNumber + 1,
                                     nextPrior,
-                                    currentState);
+                                    currentState,
+                                    upstreamOutcomes);
                         });
     }
 
@@ -942,7 +960,8 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                                                     artifact,
                                                                     finalVerdict,
                                                                     finalAttempt);
-                                                    outcomes.set(outcomes.size() - 1, finalOutcome);
+                                                    replaceOutcome(
+                                                            outcomes, step.stepId(), finalOutcome);
                                                     warnings.add(
                                                             "Step '"
                                                                     + step.stepId()
@@ -1243,11 +1262,15 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
 
         TeamStatus status = degraded ? TeamStatus.DEGRADED : TeamStatus.COMPLETED;
 
+        // Under parallel DAG execution outcomes are appended in completion order; restore plan
+        // order (by stepIndex) so the final report and TeamResult honour the documented contract.
+        List<StepOutcome> orderedOutcomes = orderOutcomesByPlan(outcomes, plan);
+
         Mono<String> finalOutputMono;
         if (synthesizer != null) {
-            finalOutputMono = synthesizer.synthesize(request.goal(), List.copyOf(outcomes));
+            finalOutputMono = synthesizer.synthesize(request.goal(), orderedOutcomes);
         } else {
-            finalOutputMono = Mono.just(assembleFinalOutput(outcomes));
+            finalOutputMono = Mono.just(assembleFinalOutput(orderedOutcomes));
         }
 
         return finalOutputMono.map(
@@ -1259,7 +1282,7 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                 TeamResult.of(
                                         request.requestId(),
                                         status,
-                                        List.copyOf(outcomes),
+                                        orderedOutcomes,
                                         finalOutput,
                                         Duration.between(started, Instant.now()),
                                         List.copyOf(allWarnings));
@@ -1281,7 +1304,7 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                             TeamResult.of(
                                     request.requestId(),
                                     status,
-                                    List.copyOf(outcomes),
+                                    orderedOutcomes,
                                     finalOutput,
                                     Duration.between(started, Instant.now()),
                                     List.copyOf(allWarnings));
@@ -1407,6 +1430,45 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             throw new IllegalStateException("Invalid state transition: " + from + " -> " + to);
         }
         currentState.set(to);
+    }
+
+    /**
+     * Replace the outcome for {@code stepId} (parallel-safe; positional set is unsafe under DAG).
+     */
+    private static void replaceOutcome(
+            List<StepOutcome> outcomes, String stepId, StepOutcome replacement) {
+        synchronized (outcomes) {
+            for (int i = 0; i < outcomes.size(); i++) {
+                if (stepId.equals(outcomes.get(i).stepId())) {
+                    outcomes.set(i, replacement);
+                    return;
+                }
+            }
+            outcomes.add(replacement);
+        }
+    }
+
+    /**
+     * Return outcomes in plan order (by {@link TeamStep#stepIndex()}). Parallel execution appends
+     * them in completion order; the final report and {@link TeamResult} promise plan order.
+     */
+    private static List<StepOutcome> orderOutcomesByPlan(
+            List<StepOutcome> outcomes, @Nullable TeamExecutionPlan plan) {
+        List<StepOutcome> copy;
+        synchronized (outcomes) {
+            copy = new ArrayList<>(outcomes);
+        }
+        if (plan == null) {
+            return copy;
+        }
+        Map<String, Integer> indexByStep = new java.util.HashMap<>();
+        for (TeamStep s : plan.steps()) {
+            indexByStep.put(s.stepId(), s.stepIndex());
+        }
+        copy.sort(
+                java.util.Comparator.comparingInt(
+                        o -> indexByStep.getOrDefault(o.stepId(), Integer.MAX_VALUE)));
+        return copy;
     }
 
     private String assembleFinalOutput(List<StepOutcome> outcomes) {

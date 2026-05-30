@@ -21,6 +21,7 @@ import io.kairo.api.message.MsgRole;
 import io.kairo.api.skill.SkillDefinition;
 import io.kairo.api.skill.SkillRegistry;
 import io.kairo.api.team.EvaluationVerdict;
+import io.kairo.api.team.TeamResult.StepOutcome;
 import io.kairo.api.team.TeamStep;
 import io.kairo.core.agent.ToolCallSink;
 import io.kairo.expertteam.role.ExpertProfile;
@@ -72,7 +73,7 @@ public final class DefaultGenerator {
             int attemptNumber,
             List<EvaluationVerdict> priorVerdicts) {
         return generateWithModelOverride(
-                step, roleBindings, goal, attemptNumber, priorVerdicts, null, null);
+                step, roleBindings, goal, attemptNumber, priorVerdicts, null, null, List.of());
     }
 
     /**
@@ -86,8 +87,31 @@ public final class DefaultGenerator {
             int attemptNumber,
             List<EvaluationVerdict> priorVerdicts,
             @Nullable ToolCallSink toolCallSink) {
+        return generate(
+                step, roleBindings, goal, attemptNumber, priorVerdicts, toolCallSink, List.of());
+    }
+
+    /**
+     * Produce an artifact, streaming tool calls and injecting the outputs of upstream steps this
+     * step depends on into the prompt (see {@link StepOutcome}).
+     */
+    public Mono<String> generate(
+            TeamStep step,
+            Map<String, Agent> roleBindings,
+            String goal,
+            int attemptNumber,
+            List<EvaluationVerdict> priorVerdicts,
+            @Nullable ToolCallSink toolCallSink,
+            List<StepOutcome> upstreamOutcomes) {
         return generateWithModelOverride(
-                step, roleBindings, goal, attemptNumber, priorVerdicts, null, toolCallSink);
+                step,
+                roleBindings,
+                goal,
+                attemptNumber,
+                priorVerdicts,
+                null,
+                toolCallSink,
+                upstreamOutcomes);
     }
 
     /**
@@ -107,7 +131,14 @@ public final class DefaultGenerator {
             List<EvaluationVerdict> priorVerdicts,
             @Nullable String modelOverride) {
         return generateWithModelOverride(
-                step, roleBindings, goal, attemptNumber, priorVerdicts, modelOverride, null);
+                step,
+                roleBindings,
+                goal,
+                attemptNumber,
+                priorVerdicts,
+                modelOverride,
+                null,
+                List.of());
     }
 
     /**
@@ -124,7 +155,8 @@ public final class DefaultGenerator {
             int attemptNumber,
             List<EvaluationVerdict> priorVerdicts,
             @Nullable String modelOverride,
-            @Nullable ToolCallSink toolCallSink) {
+            @Nullable ToolCallSink toolCallSink,
+            List<StepOutcome> upstreamOutcomes) {
         Objects.requireNonNull(step, "step must not be null");
         Objects.requireNonNull(roleBindings, "roleBindings must not be null");
         Objects.requireNonNull(goal, "goal must not be null");
@@ -141,7 +173,7 @@ public final class DefaultGenerator {
                                     + "'"));
         }
 
-        String prompt = buildPrompt(step, goal, attemptNumber, priorVerdicts);
+        String prompt = buildPrompt(step, goal, attemptNumber, priorVerdicts, upstreamOutcomes);
         Msg input;
         if (modelOverride != null) {
             input =
@@ -160,8 +192,15 @@ public final class DefaultGenerator {
         return call;
     }
 
+    /** Max chars of an upstream artifact injected into a downstream step's prompt. */
+    private static final int MAX_UPSTREAM_CHARS = 6_000;
+
     private String buildPrompt(
-            TeamStep step, String goal, int attemptNumber, List<EvaluationVerdict> priorVerdicts) {
+            TeamStep step,
+            String goal,
+            int attemptNumber,
+            List<EvaluationVerdict> priorVerdicts,
+            List<StepOutcome> upstreamOutcomes) {
         StringBuilder sb = new StringBuilder();
         sb.append("[Goal] ").append(goal).append('\n');
         sb.append("[Step ")
@@ -177,6 +216,19 @@ public final class DefaultGenerator {
 
         // Inject mounted skill content if available
         appendMountedSkills(sb, step.assignedRole().roleId());
+
+        // Feed the outputs of the steps this one depends on, so e.g. the coder sees the
+        // architect's design instead of having to rediscover it from the filesystem.
+        if (upstreamOutcomes != null && !upstreamOutcomes.isEmpty()) {
+            sb.append("\n[Upstream outputs] (results of steps you depend on)\n");
+            for (StepOutcome o : upstreamOutcomes) {
+                String out = o.output() == null ? "" : o.output();
+                if (out.length() > MAX_UPSTREAM_CHARS) {
+                    out = out.substring(0, MAX_UPSTREAM_CHARS) + "\n…(truncated)";
+                }
+                sb.append("\n## From ").append(o.stepId()).append(":\n").append(out).append('\n');
+            }
+        }
 
         if (attemptNumber > 1 && !priorVerdicts.isEmpty()) {
             sb.append("[Revision attempt ").append(attemptNumber).append("]\n");

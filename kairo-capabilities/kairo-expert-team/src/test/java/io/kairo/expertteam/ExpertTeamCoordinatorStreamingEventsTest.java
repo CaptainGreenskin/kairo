@@ -40,8 +40,13 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * Tests that STEP_THINKING, STEP_TOOL_CALL, STEP_ARTIFACT_CHUNK events are emitted, that all events
- * carry a monotonically increasing seq, and that SynthesizerStep is wired correctly.
+ * Tests that STEP_ARTIFACT_CHUNK is emitted, that all events carry a monotonically increasing seq,
+ * and that SynthesizerStep is wired correctly.
+ *
+ * <p>Note: STEP_THINKING and STEP_TOOL_CALL are no longer synthesized by the coordinator — real
+ * per-tool STEP_TOOL_CALL events now stream from the worker agent's ToolPhase via {@code
+ * ToolCallSink}, which a {@link StubAgent} (a fixed-response stub, not a real ReAct agent) does not
+ * exercise. Those are covered by the worker/tool path and end-to-end tests.
  */
 final class ExpertTeamCoordinatorStreamingEventsTest {
 
@@ -53,61 +58,6 @@ final class ExpertTeamCoordinatorStreamingEventsTest {
                     EvaluatorPreference.SIMPLE,
                     PlannerFailureMode.FAIL_FAST,
                     TeamResourceConstraint.unbounded());
-
-    @Test
-    void stepThinkingEventIsEmittedDuringGeneration() {
-        RecordingEventBus bus = new RecordingEventBus();
-        ExpertTeamCoordinator coordinator =
-                new ExpertTeamCoordinator(
-                        bus, new SimpleEvaluationStrategy(), null, new DefaultPlanner());
-
-        StubAgent agent = StubAgent.fixed("scribe", "thinking-output");
-        Team team = new Team("t", List.of(agent), new NoopMessageBus());
-
-        TeamResult result =
-                coordinator
-                        .execute(
-                                new TeamExecutionRequest(
-                                        "req-1", "do stuff", Map.of(), DEFAULT_CONFIG),
-                                team)
-                        .block(Duration.ofSeconds(10L));
-
-        assertThat(result).isNotNull();
-        assertThat(result.status()).isEqualTo(TeamStatus.COMPLETED);
-
-        List<String> types = bus.teamEventTypes();
-        assertThat(types).contains(TeamEventType.STEP_THINKING.name());
-    }
-
-    @Test
-    void stepToolCallEventContainsToolName() {
-        RecordingEventBus bus = new RecordingEventBus();
-        ExpertTeamCoordinator coordinator =
-                new ExpertTeamCoordinator(
-                        bus, new SimpleEvaluationStrategy(), null, new DefaultPlanner());
-
-        StubAgent agent = StubAgent.fixed("scribe", "output-text");
-        Team team = new Team("t", List.of(agent), new NoopMessageBus());
-
-        coordinator
-                .execute(
-                        new TeamExecutionRequest("req-2", "do work", Map.of(), DEFAULT_CONFIG),
-                        team)
-                .block(Duration.ofSeconds(10L));
-
-        List<KairoEvent> teamEvents = bus.recordedTeamEvents();
-        List<KairoEvent> toolCallEvents =
-                teamEvents.stream()
-                        .filter(e -> TeamEventType.STEP_TOOL_CALL.name().equals(e.eventType()))
-                        .toList();
-        assertThat(toolCallEvents).isNotEmpty();
-
-        // Extract the payload and verify toolName attribute
-        KairoEvent toolCallEvent = toolCallEvents.get(0);
-        TeamEvent teamEvent = (TeamEvent) toolCallEvent.payload();
-        assertThat(teamEvent.attributes()).containsKey("toolName");
-        assertThat(teamEvent.attributes().get("toolName")).isEqualTo("agent.call");
-    }
 
     @Test
     void stepArtifactChunkEventIsEmitted() {
