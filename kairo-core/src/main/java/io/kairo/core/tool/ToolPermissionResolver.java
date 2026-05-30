@@ -23,6 +23,8 @@ import io.kairo.core.tool.permission.PermissionMode;
 import io.kairo.core.tool.permission.PermissionRule;
 import io.kairo.core.tool.permission.PermissionRuleEngine;
 import io.kairo.core.tool.permission.PermissionSettings;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -47,6 +49,11 @@ public final class ToolPermissionResolver {
     private volatile PermissionRuleEngine ruleEngine = new PermissionRuleEngine(List.of());
     private final Map<String, ToolPermission> toolPermissions = new ConcurrentHashMap<>();
     private volatile Set<String> activeToolConstraints = null; // null = no restriction
+    private volatile Path workspaceRoot = null; // null = no boundary enforcement
+
+    /** Arg keys that may carry a file path, mirroring {@code PathTraversalPolicy}. */
+    private static final List<String> PATH_ARG_KEYS =
+            List.of("file_path", "filePath", "path", "directory", "dir", "target");
 
     /**
      * Create a new permission resolver.
@@ -162,6 +169,18 @@ public final class ToolPermissionResolver {
     }
 
     /**
+     * Set the workspace root that confines file WRITE operations. When set, a WRITE-side-effect
+     * tool whose resolved target path escapes this root is escalated to {@link ToolPermission#ASK}
+     * (human approval), so writes outside the workspace require explicit user consent rather than
+     * proceeding silently. Pass {@code null} to disable boundary enforcement.
+     *
+     * @param root the workspace root directory, or null to disable
+     */
+    public void setWorkspaceRoot(Path root) {
+        this.workspaceRoot = root != null ? root.toAbsolutePath().normalize() : null;
+    }
+
+    /**
      * Check plan mode restrictions before executing a tool.
      *
      * @param toolName the tool name
@@ -252,6 +271,21 @@ public final class ToolPermissionResolver {
      */
     public ToolPermission resolvePermission(
             String toolName, ToolSideEffect sideEffect, Map<String, Object> args) {
+        ToolPermission base = resolveBasePermission(toolName, sideEffect, args);
+
+        // Workspace boundary: a WRITE whose target escapes the workspace root requires human
+        // approval. Never loosen an explicit DENIED, and respect BYPASS ("trust everything").
+        if (base != ToolPermission.DENIED
+                && mode != PermissionMode.BYPASS
+                && sideEffect == ToolSideEffect.WRITE
+                && escapesWorkspace(args)) {
+            return ToolPermission.ASK;
+        }
+        return base;
+    }
+
+    private ToolPermission resolveBasePermission(
+            String toolName, ToolSideEffect sideEffect, Map<String, Object> args) {
         // 1. Programmatic tool-specific override
         var toolPerm = toolPermissions.get(toolName);
         if (toolPerm != null) return toolPerm;
@@ -266,5 +300,43 @@ public final class ToolPermissionResolver {
 
         // 4. Mode-based default
         return mode.defaultPermission(sideEffect);
+    }
+
+    /**
+     * True when {@link #workspaceRoot} is set and any path argument resolves outside it. Relative
+     * paths are resolved against the root (matching how file tools resolve), so both absolute paths
+     * and {@code ../} traversal that escape the workspace are caught. Handles single-path tools
+     * ({@code write}/{@code edit}) via {@link #PATH_ARG_KEYS} and batch tools ({@code batch_write})
+     * whose {@code files} array carries one {@code path} per entry.
+     */
+    private boolean escapesWorkspace(Map<String, Object> args) {
+        Path root = this.workspaceRoot;
+        if (root == null || args == null) return false;
+        for (String key : PATH_ARG_KEYS) {
+            if (args.get(key) instanceof String s && escapesRoot(root, s)) return true;
+        }
+        // batch_write-style: { files: [ { path|file_path: "..." }, ... ] }
+        if (args.get("files") instanceof List<?> files) {
+            for (Object item : files) {
+                if (item instanceof Map<?, ?> entry) {
+                    Object p = entry.get("path");
+                    if (!(p instanceof String)) p = entry.get("file_path");
+                    if (p instanceof String s && escapesRoot(root, s)) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** True when {@code filePath}, resolved against {@code root}, falls outside it. */
+    private static boolean escapesRoot(Path root, String filePath) {
+        if (filePath == null || filePath.isBlank()) return false;
+        try {
+            Path target = root.resolve(filePath).toAbsolutePath().normalize();
+            return !target.startsWith(root);
+        } catch (InvalidPathException e) {
+            // Unparseable path → let downstream guardrails/tools reject it; don't force approval.
+            return false;
+        }
     }
 }

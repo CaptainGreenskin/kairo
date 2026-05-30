@@ -27,17 +27,21 @@ import io.kairo.api.tool.ToolSideEffect;
 import io.kairo.core.tool.permission.PermissionMode;
 import io.kairo.core.tool.permission.PermissionRule;
 import io.kairo.core.tool.permission.PermissionSettings;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class ToolPermissionResolverTest {
 
     private DefaultToolRegistry registry;
     private DefaultPermissionGuard guard;
     private ToolPermissionResolver resolver;
+
+    @TempDir Path workspace;
 
     @BeforeEach
     void setUp() {
@@ -212,6 +216,122 @@ class ToolPermissionResolverTest {
         assertEquals(
                 ToolPermission.ALLOWED,
                 resolver.resolvePermission("bash", ToolSideEffect.SYSTEM_CHANGE));
+    }
+
+    // ===== Workspace boundary (outside-write → approval) =====
+
+    @Test
+    void workspaceRoot_writeInside_allowed() {
+        resolver.setWorkspaceRoot(workspace);
+        assertEquals(
+                ToolPermission.ALLOWED,
+                resolver.resolvePermission(
+                        "write",
+                        ToolSideEffect.WRITE,
+                        Map.of("file_path", workspace.resolve("src/App.java").toString())));
+    }
+
+    @Test
+    void workspaceRoot_writeRelativeInside_allowed() {
+        resolver.setWorkspaceRoot(workspace);
+        assertEquals(
+                ToolPermission.ALLOWED,
+                resolver.resolvePermission(
+                        "write", ToolSideEffect.WRITE, Map.of("file_path", "src/App.java")));
+    }
+
+    @Test
+    void workspaceRoot_writeAbsoluteOutside_escalatesToAsk() {
+        resolver.setWorkspaceRoot(workspace);
+        assertEquals(
+                ToolPermission.ASK,
+                resolver.resolvePermission(
+                        "write", ToolSideEffect.WRITE, Map.of("file_path", "/tmp/evil.txt")));
+    }
+
+    @Test
+    void workspaceRoot_writeTraversalOutside_escalatesToAsk() {
+        resolver.setWorkspaceRoot(workspace);
+        assertEquals(
+                ToolPermission.ASK,
+                resolver.resolvePermission(
+                        "write", ToolSideEffect.WRITE, Map.of("file_path", "../../etc/hosts")));
+    }
+
+    @Test
+    void workspaceRoot_unset_writeOutsideStaysAllowed() {
+        // No boundary configured → behaves exactly as before.
+        assertEquals(
+                ToolPermission.ALLOWED,
+                resolver.resolvePermission(
+                        "write", ToolSideEffect.WRITE, Map.of("file_path", "/tmp/evil.txt")));
+    }
+
+    @Test
+    void workspaceRoot_readOutside_notEscalated() {
+        // Only WRITE side-effects are confined; reads outside the root are not escalated.
+        resolver.setWorkspaceRoot(workspace);
+        assertEquals(
+                ToolPermission.ALLOWED,
+                resolver.resolvePermission(
+                        "read", ToolSideEffect.READ_ONLY, Map.of("file_path", "/tmp/notes.txt")));
+    }
+
+    @Test
+    void workspaceRoot_explicitDeniedOutside_staysDenied() {
+        // Boundary must never loosen an explicit DENIED to ASK.
+        resolver.setWorkspaceRoot(workspace);
+        resolver.setDefaultPermission(ToolSideEffect.WRITE, ToolPermission.DENIED);
+        assertEquals(
+                ToolPermission.DENIED,
+                resolver.resolvePermission(
+                        "write", ToolSideEffect.WRITE, Map.of("file_path", "/tmp/evil.txt")));
+    }
+
+    @Test
+    void workspaceRoot_batchWriteAllInside_allowed() {
+        resolver.setWorkspaceRoot(workspace);
+        Map<String, Object> args =
+                Map.of(
+                        "files",
+                        List.of(
+                                Map.of(
+                                        "path",
+                                        workspace.resolve("a.txt").toString(),
+                                        "content",
+                                        "x"),
+                                Map.of("path", "src/b.txt", "content", "y")));
+        assertEquals(
+                ToolPermission.ALLOWED,
+                resolver.resolvePermission("batch_write", ToolSideEffect.WRITE, args));
+    }
+
+    @Test
+    void workspaceRoot_batchWriteOneOutside_escalatesToAsk() {
+        resolver.setWorkspaceRoot(workspace);
+        Map<String, Object> args =
+                Map.of(
+                        "files",
+                        List.of(
+                                Map.of(
+                                        "path",
+                                        workspace.resolve("a.txt").toString(),
+                                        "content",
+                                        "x"),
+                                Map.of("path", "/tmp/evil.txt", "content", "y")));
+        assertEquals(
+                ToolPermission.ASK,
+                resolver.resolvePermission("batch_write", ToolSideEffect.WRITE, args));
+    }
+
+    @Test
+    void workspaceRoot_bypassMode_outsideWriteStillAllowed() {
+        resolver.setWorkspaceRoot(workspace);
+        resolver.setMode(PermissionMode.BYPASS);
+        assertEquals(
+                ToolPermission.ALLOWED,
+                resolver.resolvePermission(
+                        "write", ToolSideEffect.WRITE, Map.of("file_path", "/tmp/evil.txt")));
     }
 
     // ===== Side-effect resolution =====

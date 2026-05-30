@@ -320,6 +320,17 @@ public class DefaultToolExecutor implements ToolExecutor {
         permissionResolver.applySettings(settings);
     }
 
+    /**
+     * Confine file WRITE operations to a workspace root. Writes whose resolved target escapes the
+     * root are escalated to {@link ToolPermission#ASK} (human approval). Pass {@code null} to
+     * disable boundary enforcement.
+     *
+     * @param root the workspace root directory, or null to disable
+     */
+    public void setWorkspaceRoot(java.nio.file.Path root) {
+        permissionResolver.setWorkspaceRoot(root);
+    }
+
     @Override
     public Mono<ToolResult> execute(String toolName, Map<String, Object> input) {
         ToolDefinition definition = registry.get(toolName).orElse(null);
