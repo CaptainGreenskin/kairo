@@ -17,6 +17,7 @@ package io.kairo.api.agent;
 
 import io.kairo.api.Stable;
 import io.kairo.api.message.Msg;
+import java.util.List;
 import reactor.core.publisher.Mono;
 
 /**
@@ -127,5 +128,22 @@ public interface Agent {
      */
     default AgentDiagnostics diagnostics() {
         return null;
+    }
+
+    /**
+     * Inject messages into the agent's conversation history mid-run ("steering").
+     *
+     * <p>Intended to be called from another thread while a {@link #call(Msg)} is in flight: the
+     * injected messages are appended to the conversation and picked up at the next reasoning
+     * iteration, letting an operator nudge or correct a running turn without interrupting it.
+     *
+     * <p>The default implementation is a no-op, so implementations that don't support steering are
+     * unaffected. {@code DefaultReActAgent} overrides this.
+     *
+     * @param messages messages to append; {@code null} or empty is ignored
+     * @since 1.3.0
+     */
+    default void injectMessages(List<Msg> messages) {
+        // no-op by default
     }
 }
