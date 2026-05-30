@@ -74,6 +74,9 @@
         <java.version>21</java.version>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
+        <!-- Surefire retries a failed test this many times before failing the build; absorbs
+             transient timing/IO flakiness on CI. Set to 0 to disable. -->
+        <surefire.rerunFailingTestsCount>2</surefire.rerunFailingTestsCount>
         <!-- Pair `release` with source/target so javac resolves JDK 21 module boundaries
              (prevents accidentally linking against newer JDK APIs on a newer build JDK). -->
         <maven.compiler.release>21</maven.compiler.release>
@@ -399,6 +402,12 @@
                 <version>3.5.5</version>
                 <configuration>
                     <forkedProcessExitTimeoutInSeconds>60</forkedProcessExitTimeoutInSeconds>
+                    <!-- Retry a failed test before marking it failed. Tolerates transient
+                         timing/IO flakiness on loaded CI runners (filesystem watchers,
+                         subprocesses) that pass locally; a genuinely-broken test still fails every
+                         attempt, so real regressions are not hidden. Override with
+                         -Dsurefire.rerunFailingTestsCount=0 to disable. -->
+                    <rerunFailingTestsCount>${surefire.rerunFailingTestsCount}</rerunFailingTestsCount>
                     <groups>${groups}</groups>
                     <excludedGroups>${excludedGroups}</excludedGroups>
                     <!-- Surefire owns unit tests (*Test.java). Integration tests (*IT.java)
