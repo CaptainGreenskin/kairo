@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.kairo.api.exception.MemoryStoreException;
 import io.kairo.api.memory.MemoryEntry;
+import io.kairo.api.memory.MemoryQuery;
 import io.kairo.api.memory.MemoryScope;
 import io.kairo.api.memory.MemoryStore;
 import java.io.IOException;
@@ -28,9 +29,12 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.slf4j.Logger;
@@ -175,6 +179,150 @@ public class FileMemoryStore implements MemoryStore {
                                                                                         lowerQuery)))
                                         && e.tags() != null
                                         && e.tags().containsAll(tags));
+    }
+
+    /**
+     * Ranked hybrid search over the persisted entries — the durable counterpart to {@link
+     * InMemoryStore}'s in-memory ranking. Lexical relevance reuses {@link MemoryRelevanceScorer}
+     * (weighted term-overlap + recency); vector relevance reuses {@link
+     * InMemoryStore#cosineSimilarity}. The two candidate lists are fused per {@link
+     * MemoryQuery.RankingMode} (RRF for {@code HYBRID}). No external full-text engine or new
+     * dependency — pure-Java ranking over the JSON-backed store the assistant actually uses.
+     */
+    @Override
+    public Flux<MemoryEntry> search(MemoryQuery query) {
+        return Mono.fromCallable(() -> rankedSearch(query)).flatMapMany(Flux::fromIterable);
+    }
+
+    private List<MemoryEntry> rankedSearch(MemoryQuery query) {
+        List<MemoryEntry> entries = loadAllEntries();
+        Instant now = Instant.now();
+
+        // Structured filters (mirror InMemoryStore semantics).
+        List<MemoryEntry> filtered =
+                entries.stream()
+                        .filter(e -> query.agentId() == null || query.agentId().equals(e.agentId()))
+                        .filter(
+                                e ->
+                                        query.tags() == null
+                                                || query.tags().isEmpty()
+                                                || (e.tags() != null
+                                                        && e.tags().containsAll(query.tags())))
+                        .filter(e -> e.importance() >= query.minImportance())
+                        .filter(e -> query.from() == null || !e.timestamp().isBefore(query.from()))
+                        .filter(e -> query.to() == null || !e.timestamp().isAfter(query.to()))
+                        .toList();
+
+        boolean hasKeyword = query.keyword() != null && !query.keyword().isBlank();
+        boolean hasVector = query.queryVector() != null && query.queryVector().length > 0;
+
+        // Lexical candidates: relevance-ranked when a keyword is present, else newest-first.
+        List<MemoryEntry> lexical;
+        if (hasKeyword) {
+            String kw = query.keyword();
+            // Inclusion is by term overlap (recency alone must not admit a non-matching entry);
+            // ordering uses the full relevance score (term overlap + recency).
+            lexical =
+                    filtered.stream()
+                            .filter(e -> MemoryRelevanceScorer.computeTermOverlap(e, kw) > 0.0)
+                            .sorted(
+                                    Comparator.comparingDouble(
+                                                    (MemoryEntry e) ->
+                                                            MemoryRelevanceScorer.score(e, kw, now))
+                                            .reversed())
+                            .limit(query.lexicalTopK())
+                            .toList();
+        } else {
+            lexical =
+                    filtered.stream()
+                            .sorted(Comparator.comparing(MemoryEntry::timestamp).reversed())
+                            .limit(query.lexicalTopK())
+                            .toList();
+        }
+
+        // Vector candidates: cosine-ranked over entries that carry an embedding.
+        List<MemoryEntry> vector = List.of();
+        if (hasVector) {
+            float[] qv = query.queryVector();
+            vector =
+                    filtered.stream()
+                            .filter(e -> e.embedding() != null && e.embedding().length > 0)
+                            .sorted(
+                                    Comparator.comparingDouble(
+                                                    (MemoryEntry e) ->
+                                                            InMemoryStore.cosineSimilarity(
+                                                                    qv, e.embedding()))
+                                            .reversed())
+                            .limit(query.vectorTopK())
+                            .toList();
+        }
+
+        List<MemoryEntry> fused =
+                switch (query.rankingMode()) {
+                    case VECTOR_ONLY -> hasVector ? vector : lexical;
+                    case LEXICAL_ONLY -> lexical;
+                    case HYBRID -> {
+                        if (hasVector && hasKeyword) {
+                            yield rrf(lexical, vector);
+                        }
+                        // Only one signal present — fuse would just dilute it with the recency
+                        // fallback list, so rank by whichever signal we actually have.
+                        yield hasVector ? vector : lexical;
+                    }
+                };
+        return fused.stream().limit(query.limit()).toList();
+    }
+
+    /** Reciprocal-rank fusion (k=60) of two ranked candidate lists, de-duplicated by id. */
+    private static List<MemoryEntry> rrf(List<MemoryEntry> a, List<MemoryEntry> b) {
+        final double k = 60.0;
+        Map<String, Double> scores = new LinkedHashMap<>();
+        Map<String, MemoryEntry> byId = new LinkedHashMap<>();
+        for (List<MemoryEntry> list : List.of(a, b)) {
+            for (int i = 0; i < list.size(); i++) {
+                MemoryEntry e = list.get(i);
+                byId.putIfAbsent(e.id(), e);
+                scores.merge(e.id(), 1.0 / (k + i + 1), Double::sum);
+            }
+        }
+        return scores.entrySet().stream()
+                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+                .map(en -> byId.get(en.getKey()))
+                .toList();
+    }
+
+    /** Load every persisted entry across all scopes (read-locked). */
+    private List<MemoryEntry> loadAllEntries() {
+        lock.readLock().lock();
+        try {
+            List<MemoryEntry> all = new ArrayList<>();
+            for (MemoryScope scope : MemoryScope.values()) {
+                Path scopeDir = storageDir.resolve(scope.name().toLowerCase());
+                if (!Files.exists(scopeDir)) {
+                    continue;
+                }
+                try (DirectoryStream<Path> stream =
+                        Files.newDirectoryStream(scopeDir, "*" + JSON_SUFFIX)) {
+                    for (Path file : stream) {
+                        try {
+                            all.add(
+                                    objectMapper.readValue(
+                                            Files.readString(file), MemoryEntry.class));
+                        } catch (IOException e) {
+                            log.warn(
+                                    "Failed to read memory entry from {}: {}",
+                                    file,
+                                    e.getMessage());
+                        }
+                    }
+                } catch (IOException e) {
+                    log.warn("Failed to scan scope dir {}: {}", scopeDir, e.getMessage());
+                }
+            }
+            return all;
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     @Override
