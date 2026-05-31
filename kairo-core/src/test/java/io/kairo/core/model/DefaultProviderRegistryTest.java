@@ -45,6 +45,31 @@ class DefaultProviderRegistryTest {
     }
 
     @Test
+    void builtInsContainNewOpenAiCompatibleProviders() {
+        ProviderRegistry registry = DefaultProviderRegistry.withBuiltIns();
+        assertThat(registry.names())
+                .contains(
+                        "together",
+                        "fireworks",
+                        "novita",
+                        "nvidia",
+                        "stepfun",
+                        "perplexity",
+                        "cerebras",
+                        "mistral");
+        // each resolves to an OpenAI-compatible provider (name() == "openai")
+        for (String name :
+                new String[] {
+                    "together", "fireworks", "novita", "nvidia",
+                    "stepfun", "perplexity", "cerebras", "mistral"
+                }) {
+            assertThat(registry.create(name, ProviderSpec.of(KEY)).name())
+                    .as("provider %s", name)
+                    .isEqualTo("openai");
+        }
+    }
+
+    @Test
     void createIsCaseInsensitive() {
         ProviderRegistry registry = DefaultProviderRegistry.withBuiltIns();
         assertThat(registry.create("OpenAI", ProviderSpec.of(KEY)).name()).isEqualTo("openai");

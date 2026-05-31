@@ -59,6 +59,14 @@ public final class DefaultProviderRegistry implements ProviderRegistry {
         r.registerApiKeyOnly("xai", ProviderPresets::xai);
         r.registerApiKeyOnly("grok", ProviderPresets::xai);
         r.registerApiKeyOnly("openrouter", ProviderPresets::openrouter);
+        r.registerApiKeyOnly("together", ProviderPresets::together);
+        r.registerApiKeyOnly("fireworks", ProviderPresets::fireworks);
+        r.registerApiKeyOnly("novita", ProviderPresets::novita);
+        r.registerApiKeyOnly("nvidia", ProviderPresets::nvidia);
+        r.registerApiKeyOnly("stepfun", ProviderPresets::stepfun);
+        r.registerApiKeyOnly("perplexity", ProviderPresets::perplexity);
+        r.registerApiKeyOnly("cerebras", ProviderPresets::cerebras);
+        r.registerApiKeyOnly("mistral", ProviderPresets::mistral);
 
         // Local providers — api key ignored, base URL optional.
         r.register(

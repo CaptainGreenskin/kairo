@@ -188,4 +188,87 @@ public final class ProviderPresets {
     public static OpenAIProvider lmStudio(String baseUrl) {
         return new OpenAIProvider("lm-studio", baseUrl, "/v1/chat/completions");
     }
+
+    /**
+     * Together AI — OpenAI-compatible endpoint.
+     *
+     * @param apiKey the Together API key
+     * @return a configured provider
+     */
+    public static OpenAIProvider together(String apiKey) {
+        return new OpenAIProvider(apiKey, "https://api.together.xyz", "/v1/chat/completions");
+    }
+
+    /**
+     * Fireworks AI — OpenAI-compatible endpoint.
+     *
+     * @param apiKey the Fireworks API key
+     * @return a configured provider
+     */
+    public static OpenAIProvider fireworks(String apiKey) {
+        return new OpenAIProvider(
+                apiKey, "https://api.fireworks.ai/inference", "/v1/chat/completions");
+    }
+
+    /**
+     * Novita AI — OpenAI-compatible endpoint.
+     *
+     * @param apiKey the Novita API key
+     * @return a configured provider
+     */
+    public static OpenAIProvider novita(String apiKey) {
+        return new OpenAIProvider(apiKey, "https://api.novita.ai/v3/openai", "/chat/completions");
+    }
+
+    /**
+     * NVIDIA NIM (integrate.api.nvidia.com) — OpenAI-compatible endpoint for Nemotron and hosted
+     * models.
+     *
+     * @param apiKey the NVIDIA API key
+     * @return a configured provider
+     */
+    public static OpenAIProvider nvidia(String apiKey) {
+        return new OpenAIProvider(
+                apiKey, "https://integrate.api.nvidia.com", "/v1/chat/completions");
+    }
+
+    /**
+     * StepFun — OpenAI-compatible endpoint.
+     *
+     * @param apiKey the StepFun API key
+     * @return a configured provider
+     */
+    public static OpenAIProvider stepfun(String apiKey) {
+        return new OpenAIProvider(apiKey, "https://api.stepfun.com", "/v1/chat/completions");
+    }
+
+    /**
+     * Perplexity (Sonar) — OpenAI-compatible endpoint.
+     *
+     * @param apiKey the Perplexity API key
+     * @return a configured provider
+     */
+    public static OpenAIProvider perplexity(String apiKey) {
+        return new OpenAIProvider(apiKey, "https://api.perplexity.ai", "/chat/completions");
+    }
+
+    /**
+     * Cerebras — OpenAI-compatible endpoint.
+     *
+     * @param apiKey the Cerebras API key
+     * @return a configured provider
+     */
+    public static OpenAIProvider cerebras(String apiKey) {
+        return new OpenAIProvider(apiKey, "https://api.cerebras.ai", "/v1/chat/completions");
+    }
+
+    /**
+     * Mistral AI — OpenAI-compatible endpoint.
+     *
+     * @param apiKey the Mistral API key
+     * @return a configured provider
+     */
+    public static OpenAIProvider mistral(String apiKey) {
+        return new OpenAIProvider(apiKey, "https://api.mistral.ai", "/v1/chat/completions");
+    }
 }
