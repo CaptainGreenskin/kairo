@@ -23,6 +23,8 @@ import io.kairo.core.tool.permission.PermissionMode;
 import io.kairo.core.tool.permission.PermissionRule;
 import io.kairo.core.tool.permission.PermissionRuleEngine;
 import io.kairo.core.tool.permission.PermissionSettings;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.List;
@@ -303,11 +305,11 @@ public final class ToolPermissionResolver {
     }
 
     /**
-     * True when {@link #workspaceRoot} is set and any path argument resolves outside it. Relative
-     * paths are resolved against the root (matching how file tools resolve), so both absolute paths
-     * and {@code ../} traversal that escape the workspace are caught. Handles single-path tools
-     * ({@code write}/{@code edit}) via {@link #PATH_ARG_KEYS} and batch tools ({@code batch_write})
-     * whose {@code files} array carries one {@code path} per entry.
+     * True when {@link #workspaceRoot} is set and a single-path WRITE argument resolves outside it.
+     * Only single-path tools ({@code write}/{@code edit}) are escalated to approval here;
+     * multi-file tools like {@code batch_write} carry their own workspace confinement (a write
+     * outside the root is rejected by the tool), so escalating them to ASK would be futile — they
+     * are intentionally not handled here.
      */
     private boolean escapesWorkspace(Map<String, Object> args) {
         Path root = this.workspaceRoot;
@@ -315,28 +317,46 @@ public final class ToolPermissionResolver {
         for (String key : PATH_ARG_KEYS) {
             if (args.get(key) instanceof String s && escapesRoot(root, s)) return true;
         }
-        // batch_write-style: { files: [ { path|file_path: "..." }, ... ] }
-        if (args.get("files") instanceof List<?> files) {
-            for (Object item : files) {
-                if (item instanceof Map<?, ?> entry) {
-                    Object p = entry.get("path");
-                    if (!(p instanceof String)) p = entry.get("file_path");
-                    if (p instanceof String s && escapesRoot(root, s)) return true;
-                }
-            }
-        }
         return false;
     }
 
-    /** True when {@code filePath}, resolved against {@code root}, falls outside it. */
+    /**
+     * True when {@code filePath}, resolved against {@code root}, falls outside it. Paths are
+     * canonicalized (symlinks resolved) so an in-workspace symlink pointing outside is still
+     * caught: the root and the target's nearest existing ancestor are resolved via {@link
+     * Path#toRealPath}, then compared. The write target itself may not exist yet, so its
+     * non-existent trailing segments are appended to the canonical ancestor.
+     */
     private static boolean escapesRoot(Path root, String filePath) {
         if (filePath == null || filePath.isBlank()) return false;
         try {
+            Path canonicalRoot = canonicalize(root);
             Path target = root.resolve(filePath).toAbsolutePath().normalize();
-            return !target.startsWith(root);
+            return !canonicalize(target).startsWith(canonicalRoot);
         } catch (InvalidPathException e) {
             // Unparseable path → let downstream guardrails/tools reject it; don't force approval.
             return false;
+        }
+    }
+
+    /**
+     * Canonical absolute path with symlinks resolved. Since {@code path} may not exist yet (a write
+     * target), walk up to the nearest existing ancestor, {@code toRealPath()} it, then re-append
+     * the remaining (non-existent) segments. Falls back to a lexical absolute+normalize on IO
+     * error.
+     */
+    private static Path canonicalize(Path path) {
+        Path abs = path.toAbsolutePath().normalize();
+        Path existing = abs;
+        while (existing != null && !Files.exists(existing)) {
+            existing = existing.getParent();
+        }
+        if (existing == null) return abs;
+        try {
+            Path real = existing.toRealPath();
+            return real.resolve(existing.relativize(abs)).normalize();
+        } catch (IOException e) {
+            return abs;
         }
     }
 }
