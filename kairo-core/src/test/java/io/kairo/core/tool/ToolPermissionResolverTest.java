@@ -27,6 +27,7 @@ import io.kairo.api.tool.ToolSideEffect;
 import io.kairo.core.tool.permission.PermissionMode;
 import io.kairo.core.tool.permission.PermissionRule;
 import io.kairo.core.tool.permission.PermissionSettings;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +43,7 @@ class ToolPermissionResolverTest {
     private ToolPermissionResolver resolver;
 
     @TempDir Path workspace;
+    @TempDir Path outside;
 
     @BeforeEach
     void setUp() {
@@ -289,39 +291,33 @@ class ToolPermissionResolverTest {
     }
 
     @Test
-    void workspaceRoot_batchWriteAllInside_allowed() {
+    void workspaceRoot_batchWriteOutside_notEscalated() {
+        // batch_write is NOT escalated to ASK here: BatchWriteTool enforces its own confinement
+        // (rejects outside-root entries), so escalating would be futile. The resolver leaves it
+        // at the mode default (DEFAULT: WRITE → ALLOWED) and lets the tool reject the bad entry.
         resolver.setWorkspaceRoot(workspace);
         Map<String, Object> args =
-                Map.of(
-                        "files",
-                        List.of(
-                                Map.of(
-                                        "path",
-                                        workspace.resolve("a.txt").toString(),
-                                        "content",
-                                        "x"),
-                                Map.of("path", "src/b.txt", "content", "y")));
+                Map.of("files", List.of(Map.of("path", "/tmp/evil.txt", "content", "y")));
         assertEquals(
                 ToolPermission.ALLOWED,
                 resolver.resolvePermission("batch_write", ToolSideEffect.WRITE, args));
     }
 
     @Test
-    void workspaceRoot_batchWriteOneOutside_escalatesToAsk() {
+    void workspaceRoot_symlinkEscapingRoot_escalatesToAsk() throws Exception {
+        // An in-workspace symlink pointing outside must be caught via canonicalization, not just
+        // lexical normalization.
+        Path link = workspace.resolve("link");
+        try {
+            Files.createSymbolicLink(link, outside);
+        } catch (java.nio.file.FileSystemException e) {
+            org.junit.jupiter.api.Assumptions.assumeTrue(false, "symlinks unsupported on this FS");
+        }
         resolver.setWorkspaceRoot(workspace);
-        Map<String, Object> args =
-                Map.of(
-                        "files",
-                        List.of(
-                                Map.of(
-                                        "path",
-                                        workspace.resolve("a.txt").toString(),
-                                        "content",
-                                        "x"),
-                                Map.of("path", "/tmp/evil.txt", "content", "y")));
         assertEquals(
                 ToolPermission.ASK,
-                resolver.resolvePermission("batch_write", ToolSideEffect.WRITE, args));
+                resolver.resolvePermission(
+                        "write", ToolSideEffect.WRITE, Map.of("file_path", "link/escaped.txt")));
     }
 
     @Test
