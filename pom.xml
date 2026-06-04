@@ -112,7 +112,7 @@
         <commons-lang3.version>3.18.0</commons-lang3.version>
         <!-- rhino: transitive via the dingtalk SDK in kairo-channel-dingtalk; 1.7.14.1
              closes 14 dependabot lows that the Spring Boot BOM doesn't manage. -->
-        <rhino.version>1.7.14.1</rhino.version>
+        <rhino.version>1.9.1</rhino.version>
         <mockwebserver.version>5.3.2</mockwebserver.version>
         <assertj.version>3.27.7</assertj.version>
         <commons-compress.version>1.27.1</commons-compress.version>
