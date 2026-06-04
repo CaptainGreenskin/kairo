@@ -105,7 +105,7 @@
              These override the Spring Boot BOM defaults. Each version below has been
              chosen to clear an open dependabot alert against the prior Spring Boot
              BOM default — bump in lockstep when bumping spring-boot.version. -->
-        <tomcat.version>10.1.55</tomcat.version>
+        <tomcat.version>11.0.22</tomcat.version>
         <spring-framework.version>6.2.18</spring-framework.version>
         <netty.version>4.1.133.Final</netty.version>
         <logback.version>1.5.25</logback.version>
