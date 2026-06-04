@@ -88,6 +88,7 @@ public class AgentBuilder {
     private ContextManager contextManager;
     private MemoryStore memoryStore;
     private String sessionId;
+    private io.kairo.api.session.SessionStorageProvider sessionStorageProvider;
     private SessionManager sessionManager;
     private UserApprovalHandler approvalHandler;
     private Tracer tracer;
@@ -244,6 +245,16 @@ public class AgentBuilder {
     /** Set the session ID for session memory recovery (optional). */
     public AgentBuilder sessionId(String sessionId) {
         this.sessionId = sessionId;
+        return this;
+    }
+
+    /**
+     * Set a session storage provider for per-session checkpoint isolation. When set, the agent
+     * automatically creates a session-scoped {@link io.kairo.api.agent.IterationCheckpointStore}
+     * from this provider using the configured {@link #sessionId(String)}.
+     */
+    public AgentBuilder sessionStorage(io.kairo.api.session.SessionStorageProvider provider) {
+        this.sessionStorageProvider = provider;
         return this;
     }
 
@@ -705,6 +716,14 @@ public class AgentBuilder {
                             io.kairo.api.tenant.TenantContext.SINGLE,
                             java.util.Optional.empty(),
                             toolDependencies));
+        }
+
+        // Wire session-scoped checkpoint manager from SessionStorageProvider
+        if (sessionStorageProvider != null && sessionId != null) {
+            sessionStorageProvider.ensureSession(sessionId);
+            var store = sessionStorageProvider.checkpointStore(sessionId);
+            agent.setCheckpointManager(
+                    new io.kairo.core.agent.checkpoint.IterationCheckpointManager(store));
         }
 
         // Wire event bus for progress events
