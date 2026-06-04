@@ -20,9 +20,14 @@ import io.kairo.api.a2a.AgentCardResolver;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.team.MessageBus;
 import io.kairo.api.team.Team;
+import io.kairo.api.team.TeamCreateRequest;
+import io.kairo.api.team.TeamLifecycleStatus;
 import io.kairo.api.team.TeamManager;
 import io.kairo.core.a2a.InProcessAgentCardResolver;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.slf4j.Logger;
@@ -31,14 +36,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Default implementation of {@link TeamManager} for managing agent teams.
  *
- * <p>Creates teams with a shared {@link InProcessMessageBus} for intra-team communication. ADR-015
- * retires the public task-board surface: task-dispatch semantics are now an implementation detail
- * of the {@link io.kairo.api.team.TeamCoordinator} driving the team, so {@code TeamManager} no
- * longer owns a {@code TaskBoard}.
- *
- * <p>The v0.10 {@link Team} record holds an <em>immutable</em> agent roster (snapshot at
- * construction time). This manager therefore maintains its own mutable per-team state and returns a
- * fresh {@link Team} instance from {@link #get(String)} that reflects the latest roster.
+ * <p>Creates teams with a shared {@link InProcessMessageBus} for intra-team communication. Each
+ * team gets a unique {@code teamId} (UUID-based) separate from its human-readable {@code name}.
  *
  * <p>Thread-safe via {@link ConcurrentHashMap} and {@link CopyOnWriteArrayList}.
  */
@@ -49,37 +48,33 @@ public class DefaultTeamManager implements TeamManager {
     private final ConcurrentHashMap<String, TeamState> teams = new ConcurrentHashMap<>();
     private final AgentCardResolver agentCardResolver;
 
-    /** Creates a {@code DefaultTeamManager} without A2A agent-card integration. */
     public DefaultTeamManager() {
         this(null);
     }
 
-    /**
-     * Creates a {@code DefaultTeamManager} with optional A2A agent-card integration.
-     *
-     * <p>When a non-null resolver is provided, agents added via {@link #addAgent(String, Agent)}
-     * are automatically registered as {@link AgentCard}s for A2A discovery, and removed agents are
-     * unregistered.
-     *
-     * @param agentCardResolver the resolver to use for agent card registration, or {@code null}
-     */
     public DefaultTeamManager(AgentCardResolver agentCardResolver) {
         this.agentCardResolver = agentCardResolver;
     }
 
     @Override
-    public Team create(String name) {
-        TeamState state = new TeamState(name, new InProcessMessageBus());
-        teams.put(name, state);
-        log.info("Created team '{}'", name);
+    public Team create(TeamCreateRequest request) {
+        String teamId = "team-" + UUID.randomUUID().toString().substring(0, 8);
+        TeamState state =
+                new TeamState(
+                        teamId,
+                        request.name(),
+                        request.goal(),
+                        new InProcessMessageBus(),
+                        request.metadata());
+        teams.put(teamId, state);
+        log.info("Created team '{}' (id={})", request.name(), teamId);
         return state.snapshot();
     }
 
     @Override
-    public void delete(String name) {
-        TeamState state = teams.remove(name);
+    public void delete(String teamId) {
+        TeamState state = teams.remove(teamId);
         if (state != null) {
-            // Interrupt all running agents in the team
             state.agents.forEach(
                     agent -> {
                         try {
@@ -91,84 +86,120 @@ public class DefaultTeamManager implements TeamManager {
                                     e);
                         }
                     });
-            // Clean up message bus
             MessageBus bus = state.messageBus;
             if (bus instanceof InProcessMessageBus inProcessBus) {
                 state.agents.forEach(agent -> inProcessBus.unregisterAgent(agent.id()));
             }
-            log.info("Deleted team '{}' with {} agents", name, state.agents.size());
+            log.info(
+                    "Deleted team '{}' (id={}) with {} agents",
+                    state.name,
+                    teamId,
+                    state.agents.size());
         }
     }
 
     @Override
-    public Team get(String name) {
-        TeamState state = teams.get(name);
+    public Team get(String teamId) {
+        TeamState state = teams.get(teamId);
         return state == null ? null : state.snapshot();
     }
 
     @Override
-    public void addAgent(String teamName, Agent agent) {
-        TeamState state = teams.get(teamName);
+    public void addAgent(String teamId, Agent agent) {
+        TeamState state = teams.get(teamId);
         if (state == null) {
-            throw new IllegalArgumentException("Team not found: " + teamName);
+            throw new IllegalArgumentException("Team not found: " + teamId);
         }
         state.agents.add(agent);
-        // Register agent on message bus for broadcast support
         if (state.messageBus instanceof InProcessMessageBus inProcessBus) {
             inProcessBus.registerAgent(agent.id());
         }
-        // Register agent card for A2A discovery
         if (agentCardResolver != null) {
             AgentCard card = AgentCard.of(agent.id(), agent.name(), "");
             if (agentCardResolver instanceof InProcessAgentCardResolver inProcessResolver) {
-                inProcessResolver.registerScoped(teamName, card);
+                inProcessResolver.registerScoped(teamId, card);
             } else {
                 agentCardResolver.register(card);
             }
-            log.debug("Registered AgentCard for '{}'", agent.id());
         }
-        log.info("Added agent '{}' to team '{}'", agent.id(), teamName);
+        log.info("Added agent '{}' to team '{}'", agent.id(), teamId);
     }
 
     @Override
-    public void removeAgent(String teamName, String agentId) {
-        TeamState state = teams.get(teamName);
+    public void removeAgent(String teamId, String agentId) {
+        TeamState state = teams.get(teamId);
         if (state == null) {
-            throw new IllegalArgumentException("Team not found: " + teamName);
+            throw new IllegalArgumentException("Team not found: " + teamId);
         }
         state.agents.removeIf(a -> a.id().equals(agentId));
-        // Unregister from message bus
         if (state.messageBus instanceof InProcessMessageBus inProcessBus) {
             inProcessBus.unregisterAgent(agentId);
         }
-        // Unregister agent card from A2A discovery
         if (agentCardResolver != null) {
             if (agentCardResolver instanceof InProcessAgentCardResolver inProcessResolver) {
-                inProcessResolver.unregisterScoped(teamName, agentId);
+                inProcessResolver.unregisterScoped(teamId, agentId);
             } else {
                 agentCardResolver.unregister(agentId);
             }
-            log.debug("Unregistered AgentCard for '{}'", agentId);
         }
-        log.info("Removed agent '{}' from team '{}'", agentId, teamName);
+        log.info("Removed agent '{}' from team '{}'", agentId, teamId);
     }
 
-    /**
-     * Mutable per-team bookkeeping. The public {@link Team} is rebuilt from this state on demand
-     * because v0.10 {@code Team.agents()} is immutable.
-     */
+    @Override
+    public List<Team> listActive() {
+        return teams.values().stream()
+                .filter(
+                        s ->
+                                s.status == TeamLifecycleStatus.INITIALIZING
+                                        || s.status == TeamLifecycleStatus.ACTIVE)
+                .map(TeamState::snapshot)
+                .toList();
+    }
+
+    @Override
+    public void updateStatus(String teamId, TeamLifecycleStatus status) {
+        TeamState state = teams.get(teamId);
+        if (state != null) {
+            state.status = status;
+            log.info("Updated team '{}' status to {}", teamId, status);
+        }
+    }
+
     private static final class TeamState {
+        final String teamId;
         final String name;
+        final String goal;
         final MessageBus messageBus;
         final CopyOnWriteArrayList<Agent> agents = new CopyOnWriteArrayList<>();
+        final Map<String, Object> metadata;
+        final Instant createdAt;
+        volatile TeamLifecycleStatus status;
 
-        TeamState(String name, MessageBus messageBus) {
+        TeamState(
+                String teamId,
+                String name,
+                String goal,
+                MessageBus messageBus,
+                Map<String, Object> metadata) {
+            this.teamId = teamId;
             this.name = name;
+            this.goal = goal;
             this.messageBus = messageBus;
+            this.metadata = metadata;
+            this.createdAt = Instant.now();
+            this.status = TeamLifecycleStatus.INITIALIZING;
         }
 
         Team snapshot() {
-            return new Team(name, List.copyOf(agents), messageBus);
+            return new Team(
+                    teamId,
+                    name,
+                    goal,
+                    List.copyOf(agents),
+                    messageBus,
+                    status,
+                    metadata,
+                    createdAt);
         }
     }
 }

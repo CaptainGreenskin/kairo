@@ -15,23 +15,45 @@
  */
 package io.kairo.core.context;
 
+import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import java.util.List;
 
 /**
- * Conservative fallback estimator based on message character length.
+ * Content-type-aware token estimator with per-type coefficients.
  *
- * <p>Uses {@code chars * 4 / 3}. This deliberately overestimates in most cases to bias toward
- * earlier compaction rather than context overflow.
+ * <p>Different content types have different token densities:
+ *
+ * <ul>
+ *   <li>TextContent / ThinkingContent → chars/3.5 (dense prose)
+ *   <li>ToolUseContent input (JSON) → chars/5.0 (sparse structure)
+ *   <li>ToolResultContent → chars/4.5 (semi-structured output)
+ * </ul>
  */
 public class HeuristicTokenEstimator implements TokenEstimator {
 
     @Override
     public int estimate(List<Msg> messages) {
-        int totalChars = 0;
+        int total = 0;
         for (Msg msg : messages) {
-            totalChars += msg.text().length();
+            for (Content c : msg.contents()) {
+                total += estimateContent(c);
+            }
         }
-        return totalChars * 4 / 3;
+        return total;
+    }
+
+    private static int estimateContent(Content c) {
+        if (c instanceof Content.TextContent t) {
+            return Math.max(1, t.text().length() * 2 / 7);
+        } else if (c instanceof Content.ThinkingContent t) {
+            return Math.max(1, t.thinking().length() * 2 / 7);
+        } else if (c instanceof Content.ToolUseContent t) {
+            int len = t.input() != null ? t.input().toString().length() : 0;
+            return Math.max(1, len / 5);
+        } else if (c instanceof Content.ToolResultContent t) {
+            return Math.max(1, t.content().length() * 2 / 9);
+        }
+        return 0;
     }
 }

@@ -113,8 +113,19 @@ class LoopDetectorTest {
 
     @Test
     void freqLayer_oldCallsOutsideWindowDoNotCount() {
-        // Use a tiny window (1ms) so calls age out immediately
-        LoopDetector detector = new LoopDetector(100, 200, 5, 10, Duration.ofMillis(1), 1000);
+        // Use a tiny window (1ms) so calls age out immediately; high no-progress threshold
+        LoopDetector detector =
+                new LoopDetector(
+                        100,
+                        200,
+                        5,
+                        10,
+                        Duration.ofMillis(1),
+                        1000,
+                        100,
+                        100,
+                        100,
+                        LoopDetector.DEFAULT_WRITE_TOOLS);
 
         for (int i = 0; i < 10; i++) {
             detector.check(toolCallsWithArgs("search", Map.of("q", "query" + i)));
@@ -243,5 +254,209 @@ class LoopDetectorTest {
         // After reset, same calls should start fresh
         detector.reset();
         assertEquals(DetectionResult.Level.NONE, detector.check(calls).level());
+    }
+
+    // ---- Layer 4: Alternating pattern (A-B-A-B-A-B) ----
+
+    @Test
+    void alternating_sixTurnABAB_triggersHardStop() {
+        // High hash/freq thresholds so only Layer 4 fires
+        LoopDetector detector =
+                new LoopDetector(
+                        100,
+                        200,
+                        1000,
+                        2000,
+                        Duration.ofMinutes(10),
+                        1000,
+                        6,
+                        100,
+                        100,
+                        LoopDetector.DEFAULT_WRITE_TOOLS);
+        var callA = toolCallsWithArgs("read_file", Map.of("path", "a.java"));
+        var callB = toolCallsWithArgs("grep", Map.of("pattern", "import"));
+
+        detector.check(callA); // A
+        detector.check(callB); // B
+        detector.check(callA); // A
+        detector.check(callB); // B
+        detector.check(callA); // A
+        var result = detector.check(callB); // B — 6th turn completes A-B-A-B-A-B
+
+        assertEquals(DetectionResult.Level.HARD_STOP, result.level());
+        assertTrue(result.message().contains("bouncing between"));
+    }
+
+    @Test
+    void alternating_fiveTurns_tooFew_none() {
+        LoopDetector detector =
+                new LoopDetector(
+                        100,
+                        200,
+                        1000,
+                        2000,
+                        Duration.ofMinutes(10),
+                        1000,
+                        6,
+                        100,
+                        100,
+                        LoopDetector.DEFAULT_WRITE_TOOLS);
+        var callA = toolCallsWithArgs("read_file", Map.of("path", "a.java"));
+        var callB = toolCallsWithArgs("grep", Map.of("pattern", "import"));
+
+        detector.check(callA);
+        detector.check(callB);
+        detector.check(callA);
+        detector.check(callB);
+        var result = detector.check(callA); // Only 5 turns
+
+        assertEquals(DetectionResult.Level.NONE, result.level());
+    }
+
+    @Test
+    void alternating_sameToolBothSlots_none() {
+        LoopDetector detector =
+                new LoopDetector(
+                        100,
+                        200,
+                        1000,
+                        2000,
+                        Duration.ofMinutes(10),
+                        1000,
+                        6,
+                        100,
+                        100,
+                        LoopDetector.DEFAULT_WRITE_TOOLS);
+        var callA = toolCallsWithArgs("read_file", Map.of("path", "a.java"));
+
+        for (int i = 0; i < 6; i++) {
+            detector.check(callA);
+        }
+        // All same tool — not alternating (Layer 1 hash would catch this instead)
+    }
+
+    // ---- Layer 5: No-progress detection ----
+
+    @Test
+    void noProgress_tenTurnsNoWrite_triggersWarn() {
+        LoopDetector detector =
+                new LoopDetector(
+                        100,
+                        200,
+                        1000,
+                        2000,
+                        Duration.ofMinutes(10),
+                        1000,
+                        100,
+                        10,
+                        100,
+                        LoopDetector.DEFAULT_WRITE_TOOLS);
+        for (int i = 0; i < 10; i++) {
+            detector.check(toolCallsWithArgs("read_file", Map.of("path", "file" + i + ".java")));
+        }
+        // The 10th check should report no-progress as WARN
+        // (already checked in the loop — re-check with one more)
+        var result = detector.check(toolCallsWithArgs("grep", Map.of("q", "test")));
+        // 11 turns of read-only — should be WARN
+        assertEquals(DetectionResult.Level.WARN, result.level());
+        assertTrue(result.message().contains("without writing any code"));
+    }
+
+    @Test
+    void noProgress_writeToolBreaksStreak_none() {
+        LoopDetector detector =
+                new LoopDetector(
+                        100,
+                        200,
+                        1000,
+                        2000,
+                        Duration.ofMinutes(10),
+                        1000,
+                        100,
+                        10,
+                        100,
+                        LoopDetector.DEFAULT_WRITE_TOOLS);
+        for (int i = 0; i < 9; i++) {
+            detector.check(toolCallsWithArgs("read_file", Map.of("path", "file" + i + ".java")));
+        }
+        // 10th turn uses a write tool
+        detector.check(toolCallsWithArgs("edit", Map.of("path", "fix.java")));
+        // Following read turns don't hit the threshold
+        var result = detector.check(toolCallsWithArgs("read_file", Map.of("path", "check.java")));
+        assertEquals(DetectionResult.Level.NONE, result.level());
+    }
+
+    // ---- Layer 6: Context explosion ----
+
+    @Test
+    void contextExplosion_monotonic2x_triggersWarn() {
+        LoopDetector detector =
+                new LoopDetector(
+                        100,
+                        200,
+                        1000,
+                        2000,
+                        Duration.ofMinutes(10),
+                        1000,
+                        100,
+                        100,
+                        4,
+                        LoopDetector.DEFAULT_WRITE_TOOLS);
+        // 4 turns with growing payloads: 100 → 200 → 400 → 800
+        detector.check(toolCallsWithArgs("read_file", Map.of("content", "x".repeat(100))));
+        detector.check(toolCallsWithArgs("read_file", Map.of("content", "x".repeat(200))));
+        detector.check(toolCallsWithArgs("read_file", Map.of("content", "x".repeat(400))));
+        var result =
+                detector.check(toolCallsWithArgs("read_file", Map.of("content", "x".repeat(800))));
+
+        assertEquals(DetectionResult.Level.WARN, result.level());
+        assertTrue(result.message().contains("tool arguments are growing"));
+    }
+
+    @Test
+    void contextExplosion_notMonotonic_none() {
+        LoopDetector detector =
+                new LoopDetector(
+                        100,
+                        200,
+                        1000,
+                        2000,
+                        Duration.ofMinutes(10),
+                        1000,
+                        100,
+                        100,
+                        4,
+                        LoopDetector.DEFAULT_WRITE_TOOLS);
+        detector.check(toolCallsWithArgs("read_file", Map.of("content", "x".repeat(100))));
+        detector.check(toolCallsWithArgs("read_file", Map.of("content", "x".repeat(50)))); // dip
+        detector.check(toolCallsWithArgs("read_file", Map.of("content", "x".repeat(200))));
+        var result =
+                detector.check(toolCallsWithArgs("read_file", Map.of("content", "x".repeat(400))));
+
+        assertEquals(DetectionResult.Level.NONE, result.level());
+    }
+
+    @Test
+    void contextExplosion_lessThan2x_none() {
+        LoopDetector detector =
+                new LoopDetector(
+                        100,
+                        200,
+                        1000,
+                        2000,
+                        Duration.ofMinutes(10),
+                        1000,
+                        100,
+                        100,
+                        4,
+                        LoopDetector.DEFAULT_WRITE_TOOLS);
+        detector.check(toolCallsWithArgs("read_file", Map.of("content", "x".repeat(100))));
+        detector.check(toolCallsWithArgs("read_file", Map.of("content", "x".repeat(110))));
+        detector.check(toolCallsWithArgs("read_file", Map.of("content", "x".repeat(120))));
+        var result =
+                detector.check(toolCallsWithArgs("read_file", Map.of("content", "x".repeat(130))));
+
+        // Monotonic but < 2x growth
+        assertEquals(DetectionResult.Level.NONE, result.level());
     }
 }

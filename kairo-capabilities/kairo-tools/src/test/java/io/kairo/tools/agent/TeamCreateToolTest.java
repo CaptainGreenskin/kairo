@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import io.kairo.api.agent.Agent;
 import io.kairo.api.team.Team;
+import io.kairo.api.team.TeamCreateRequest;
 import io.kairo.api.team.TeamManager;
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
@@ -45,14 +46,14 @@ class TeamCreateToolTest {
         RuntimeException exceptionToThrow;
 
         @Override
-        public Team create(String name) {
+        public Team create(TeamCreateRequest request) {
             if (shouldThrow) {
                 throw exceptionToThrow != null
                         ? exceptionToThrow
                         : new RuntimeException("create failed");
             }
-            created.add(name);
-            return new Team(name, List.of(), new InProcessMessageBus());
+            created.add(request.name());
+            return new Team(request.name(), List.of(), new InProcessMessageBus());
         }
 
         @Override

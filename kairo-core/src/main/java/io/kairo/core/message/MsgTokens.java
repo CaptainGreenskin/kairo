@@ -19,26 +19,27 @@ import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import java.util.List;
 
-/** Heuristic token estimation for {@link Msg} objects (~4 chars per token). */
+/** Content-type-aware token estimation for {@link Msg} objects. */
 public final class MsgTokens {
 
     private MsgTokens() {}
 
     /** Estimate token count for a single message. Returns at least 1. */
     public static int estimate(Msg msg) {
-        int charCount = 0;
+        int total = 0;
         for (Content content : msg.contents()) {
             if (content instanceof Content.TextContent tc) {
-                charCount += tc.text().length();
+                total += Math.max(1, tc.text().length() * 2 / 7);
             } else if (content instanceof Content.ThinkingContent tc) {
-                charCount += tc.thinking().length();
+                total += Math.max(1, tc.thinking().length() * 2 / 7);
             } else if (content instanceof Content.ToolUseContent tu) {
-                charCount += tu.toolName().length() + tu.input().toString().length();
+                int len = tu.input() != null ? tu.input().toString().length() : 0;
+                total += Math.max(1, len / 5);
             } else if (content instanceof Content.ToolResultContent tr) {
-                charCount += tr.content().length();
+                total += Math.max(1, tr.content().length() * 2 / 9);
             }
         }
-        return Math.max(1, charCount / 4);
+        return Math.max(1, total);
     }
 
     /** Estimate total token count across a list of messages. */

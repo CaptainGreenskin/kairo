@@ -18,6 +18,7 @@ package io.kairo.tools.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.kairo.api.team.Team;
+import io.kairo.api.team.TeamCreateRequest;
 import io.kairo.api.team.TeamManager;
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolResult;
@@ -42,9 +43,9 @@ class TeamToolsTest {
         final List<String> deleted = new ArrayList<>();
 
         @Override
-        public Team create(String name) {
-            created.add(name);
-            return new Team(name, List.of(), new InProcessMessageBus());
+        public Team create(TeamCreateRequest request) {
+            created.add(request.name());
+            return new Team(request.name(), List.of(), new InProcessMessageBus());
         }
 
         @Override

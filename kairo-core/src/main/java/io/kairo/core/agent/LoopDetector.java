@@ -21,7 +21,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Dual-layer loop detector that identifies repetitive tool call patterns in the ReAct loop.
+ * Six-layer loop detector that identifies repetitive tool call patterns in the ReAct loop.
  *
  * <p><b>Layer 1 — Hash-based detection:</b> Computes a hash of each tool call set (sorted by name
  * with canonicalized arguments). Consecutive identical hashes trigger warnings or hard stops.
@@ -29,9 +29,36 @@ import java.util.stream.Collectors;
  * <p><b>Layer 2 — Frequency-based detection:</b> Tracks per-tool invocation timestamps within a
  * sliding time window. Excessive calls to the same tool within the window trigger alerts.
  *
+ * <p><b>Layer 3 — Tool repetition:</b> Detects when the same (tool, args) key appears in every
+ * response across a sliding window of consecutive responses.
+ *
+ * <p><b>Layer 4 — Alternating pattern:</b> Detects A-B-A-B-A-B patterns where an agent bounces
+ * between two tools without making progress.
+ *
+ * <p><b>Layer 5 — No-progress detection:</b> Flags sessions where no "write" tool (edit, write,
+ * patch) has been called for N consecutive turns.
+ *
+ * <p><b>Layer 6 — Context explosion:</b> Detects monotonically growing tool argument payloads,
+ * indicating the agent is dumping increasingly large context without making headway.
+ *
  * <p>Package-private: not part of the public API.
  */
 class LoopDetector {
+
+    static final Set<String> DEFAULT_WRITE_TOOLS =
+            Set.of(
+                    "write",
+                    "edit",
+                    "multi_edit",
+                    "write_file",
+                    "create_file",
+                    "patch_file",
+                    "apply_diff",
+                    "edit_file",
+                    "batch_write",
+                    "search_replace",
+                    "patch_apply",
+                    "str_replace_editor");
 
     private final int hashWarnThreshold;
     private final int hashHardLimit;
@@ -39,6 +66,10 @@ class LoopDetector {
     private final int freqHardLimit;
     private final Duration freqWindow;
     private final int toolRepeatHardLimit;
+    private final int alternatingWindow;
+    private final int noProgressThreshold;
+    private final int contextExplosionWindow;
+    private final Set<String> writeTools;
 
     // Layer 1: Hash-based detection — ordered list of call-set hashes
     private final List<Integer> callHashes = new ArrayList<>();
@@ -48,6 +79,11 @@ class LoopDetector {
 
     // Layer 3: Tool repetition — per-response (tool, args) key sets for sliding window check
     private final Deque<Set<String>> responseKeyHistory = new ArrayDeque<>();
+
+    // Layer 4-6: Per-turn tracking for alternating / no-progress / context explosion
+    private final Deque<List<String>> turnToolKeys = new ArrayDeque<>();
+    private final Deque<Set<String>> turnToolNames = new ArrayDeque<>();
+    private final Deque<Integer> turnPayloadSizes = new ArrayDeque<>();
 
     private record ToolCallKey(String toolName, String canonicalArgs) {
         @Override
@@ -80,13 +116,41 @@ class LoopDetector {
             int freqWarnThreshold,
             int freqHardLimit,
             Duration freqWindow,
-            int toolRepeatHardLimit) {
+            int toolRepeatHardLimit,
+            int alternatingWindow,
+            int noProgressThreshold,
+            int contextExplosionWindow,
+            Set<String> writeTools) {
         this.hashWarnThreshold = hashWarnThreshold;
         this.hashHardLimit = hashHardLimit;
         this.freqWarnThreshold = freqWarnThreshold;
         this.freqHardLimit = freqHardLimit;
         this.freqWindow = freqWindow;
         this.toolRepeatHardLimit = toolRepeatHardLimit;
+        this.alternatingWindow = alternatingWindow;
+        this.noProgressThreshold = noProgressThreshold;
+        this.contextExplosionWindow = contextExplosionWindow;
+        this.writeTools = writeTools;
+    }
+
+    LoopDetector(
+            int hashWarnThreshold,
+            int hashHardLimit,
+            int freqWarnThreshold,
+            int freqHardLimit,
+            Duration freqWindow,
+            int toolRepeatHardLimit) {
+        this(
+                hashWarnThreshold,
+                hashHardLimit,
+                freqWarnThreshold,
+                freqHardLimit,
+                freqWindow,
+                toolRepeatHardLimit,
+                6,
+                10,
+                4,
+                DEFAULT_WRITE_TOOLS);
     }
 
     /** Create a LoopDetector with sensible defaults. */
@@ -95,24 +159,24 @@ class LoopDetector {
     }
 
     /**
-     * Check the given tool calls against both detection layers.
+     * Check the given tool calls against all detection layers.
      *
      * @param toolCalls the tool calls from the current model response
-     * @return the highest-severity detection result across both layers
+     * @return the highest-severity detection result across all layers
      */
     DetectionResult check(List<Content.ToolUseContent> toolCalls) {
+        // Record turn-level data for Layers 4-6
+        recordTurnData(toolCalls);
+
         DetectionResult hashResult = checkHash(toolCalls);
         DetectionResult freqResult = checkFrequency(toolCalls);
         DetectionResult repeatResult = checkToolRepetition(toolCalls);
+        DetectionResult altResult = checkAlternating();
+        DetectionResult noProgResult = checkNoProgress();
+        DetectionResult explosionResult = checkContextExplosion();
 
-        // Return highest severity: HARD_STOP > WARN > NONE
-        DetectionResult best =
-                hashResult.level().ordinal() >= freqResult.level().ordinal()
-                        ? (hashResult.level() == DetectionResult.Level.NONE
-                                ? freqResult
-                                : hashResult)
-                        : freqResult;
-        return repeatResult.level().ordinal() > best.level().ordinal() ? repeatResult : best;
+        return highest(
+                hashResult, freqResult, repeatResult, altResult, noProgResult, explosionResult);
     }
 
     /** Reset all detection state. */
@@ -120,6 +184,47 @@ class LoopDetector {
         callHashes.clear();
         recentCalls.clear();
         responseKeyHistory.clear();
+        turnToolKeys.clear();
+        turnToolNames.clear();
+        turnPayloadSizes.clear();
+    }
+
+    private static DetectionResult highest(DetectionResult... results) {
+        DetectionResult best = DetectionResult.none();
+        for (DetectionResult r : results) {
+            if (r.level().ordinal() > best.level().ordinal()) {
+                best = r;
+            }
+        }
+        return best;
+    }
+
+    private void recordTurnData(List<Content.ToolUseContent> toolCalls) {
+        List<String> keys = new ArrayList<>();
+        Set<String> names = new HashSet<>();
+        int payloadSize = 0;
+        for (Content.ToolUseContent tc : toolCalls) {
+            String args = tc.input() != null ? tc.input().toString() : "";
+            String key = args.length() <= 200 ? args : args.substring(0, 200);
+            keys.add(tc.toolName() + ":" + key);
+            names.add(tc.toolName());
+            payloadSize += args.length();
+        }
+        turnToolKeys.addLast(keys);
+        turnToolNames.addLast(names);
+        turnPayloadSizes.addLast(payloadSize);
+
+        int maxHistory =
+                Math.max(Math.max(alternatingWindow, noProgressThreshold), contextExplosionWindow);
+        while (turnToolKeys.size() > maxHistory) {
+            turnToolKeys.removeFirst();
+        }
+        while (turnToolNames.size() > maxHistory) {
+            turnToolNames.removeFirst();
+        }
+        while (turnPayloadSizes.size() > maxHistory) {
+            turnPayloadSizes.removeFirst();
+        }
     }
 
     // ---- Layer 1: Hash-based detection ----
@@ -128,7 +233,6 @@ class LoopDetector {
         int hash = computeCallSetHash(toolCalls);
         callHashes.add(hash);
 
-        // Count consecutive identical hashes from the end
         int consecutive = 0;
         for (int i = callHashes.size() - 1; i >= 0; i--) {
             if (callHashes.get(i) == hash) {
@@ -141,26 +245,24 @@ class LoopDetector {
         if (consecutive >= hashHardLimit) {
             return new DetectionResult(
                     DetectionResult.Level.HARD_STOP,
-                    "Loop detected: identical tool call pattern repeated "
+                    "You've called the same tool with identical arguments "
                             + consecutive
-                            + " times consecutively (hard limit: "
-                            + hashHardLimit
-                            + ")");
+                            + " times in a row. The result isn't changing. "
+                            + "Pause, re-read the original problem, and try a fundamentally "
+                            + "different angle — different tool, different file, or ask the "
+                            + "user for clarification.");
         }
         if (consecutive >= hashWarnThreshold) {
             return new DetectionResult(
                     DetectionResult.Level.WARN,
-                    "Possible loop: identical tool call pattern repeated "
+                    "You've repeated the same tool call pattern "
                             + consecutive
-                            + " times consecutively. Consider a different approach.");
+                            + " times. The result isn't changing. "
+                            + "Try a different approach before continuing.");
         }
         return DetectionResult.none();
     }
 
-    /**
-     * Compute a stable hash for a set of tool calls. Tool calls are sorted by name, and each tool's
-     * arguments are canonicalized by sorting map entries.
-     */
     private int computeCallSetHash(List<Content.ToolUseContent> toolCalls) {
         List<String> signatures = new ArrayList<>();
         for (Content.ToolUseContent tc : toolCalls) {
@@ -170,7 +272,6 @@ class LoopDetector {
         return Objects.hash(signatures.toArray());
     }
 
-    /** Canonicalize a tool input map into a stable, sorted string representation. */
     private String canonicalizeArgs(Map<String, Object> input) {
         if (input == null || input.isEmpty()) {
             return "{}";
@@ -280,7 +381,6 @@ class LoopDetector {
             return DetectionResult.none();
         }
 
-        // Find any key that appears in every response in the sliding window
         for (String key : currentKeys) {
             boolean allContain = true;
             for (Set<String> responseKeys : responseKeyHistory) {
@@ -301,5 +401,94 @@ class LoopDetector {
             }
         }
         return DetectionResult.none();
+    }
+
+    // ---- Layer 4: Alternating pattern (A-B-A-B-A-B) ----
+
+    private DetectionResult checkAlternating() {
+        if (turnToolKeys.size() < alternatingWindow) {
+            return DetectionResult.none();
+        }
+        List<List<String>> recent = lastNFromDeque(turnToolKeys, alternatingWindow);
+        for (List<String> turn : recent) {
+            if (turn.size() != 1) return DetectionResult.none();
+        }
+        String a = recent.get(0).get(0);
+        String b = recent.get(1).get(0);
+        if (a.equals(b)) return DetectionResult.none();
+
+        for (int i = 2; i < alternatingWindow; i++) {
+            String expected = (i % 2 == 0) ? a : b;
+            if (!expected.equals(recent.get(i).get(0))) return DetectionResult.none();
+        }
+        String toolA = a.substring(0, a.indexOf(':'));
+        String toolB = b.substring(0, b.indexOf(':'));
+        return new DetectionResult(
+                DetectionResult.Level.HARD_STOP,
+                "You're bouncing between '"
+                        + toolA
+                        + "' and '"
+                        + toolB
+                        + "' without making progress. "
+                        + "Pick one path and commit, or write the fix directly "
+                        + "without more exploration.");
+    }
+
+    // ---- Layer 5: No-progress detection ----
+
+    private DetectionResult checkNoProgress() {
+        if (turnToolNames.size() < noProgressThreshold) {
+            return DetectionResult.none();
+        }
+        List<Set<String>> recent = lastNFromDeque(turnToolNames, noProgressThreshold);
+        for (Set<String> names : recent) {
+            for (String name : names) {
+                if (writeTools.contains(name)) return DetectionResult.none();
+            }
+        }
+        return new DetectionResult(
+                DetectionResult.Level.WARN,
+                "You've made "
+                        + noProgressThreshold
+                        + " tool calls without writing any code. "
+                        + "Make your best-guess fix now — even a 1-line change is better "
+                        + "than another round of exploration. Run the failing test after.");
+    }
+
+    // ---- Layer 6: Context explosion ----
+
+    private DetectionResult checkContextExplosion() {
+        if (turnPayloadSizes.size() < contextExplosionWindow) {
+            return DetectionResult.none();
+        }
+        List<Integer> recent = lastNFromDeque(turnPayloadSizes, contextExplosionWindow);
+        if (recent.get(0) == 0) return DetectionResult.none();
+
+        for (int i = 1; i < contextExplosionWindow; i++) {
+            if (recent.get(i) < recent.get(i - 1)) return DetectionResult.none();
+        }
+        if (recent.get(contextExplosionWindow - 1) < recent.get(0) * 2) {
+            return DetectionResult.none();
+        }
+        return new DetectionResult(
+                DetectionResult.Level.WARN,
+                "Your tool arguments are growing each turn ("
+                        + recent.get(0)
+                        + " → "
+                        + recent.get(contextExplosionWindow - 1)
+                        + " bytes). You're likely stuffing context that isn't helping. "
+                        + "Use a smaller, more targeted call: grep for one symbol, "
+                        + "read one file, edit one location.");
+    }
+
+    private <T> List<T> lastNFromDeque(Deque<T> deque, int n) {
+        List<T> result = new ArrayList<>(n);
+        int skip = deque.size() - n;
+        int i = 0;
+        for (T item : deque) {
+            if (i >= skip) result.add(item);
+            i++;
+        }
+        return result;
     }
 }

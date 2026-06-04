@@ -121,7 +121,8 @@ class MultiAgentAutoConfigurationTest {
         TeamManager custom =
                 new TeamManager() {
                     @Override
-                    public io.kairo.api.team.Team create(String name) {
+                    public io.kairo.api.team.Team create(
+                            io.kairo.api.team.TeamCreateRequest request) {
                         return null;
                     }
 
