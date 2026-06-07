@@ -20,7 +20,6 @@ import io.kairo.api.context.ContextManager;
 import io.kairo.api.evolution.EvolutionConfig;
 import io.kairo.api.execution.ResourceConstraint;
 import io.kairo.api.memory.MemoryStore;
-import io.kairo.api.middleware.Middleware;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.api.tracing.Tracer;
@@ -57,7 +56,6 @@ public record AgentConfig(
         int tokenBudget,
         String modelName,
         List<Object> hooks,
-        List<Middleware> middlewares,
         ContextManager contextManager,
         MemoryStore memoryStore,
         String sessionId,
@@ -113,7 +111,6 @@ public record AgentConfig(
         private int tokenBudget = 200_000;
         private String modelName;
         private final List<Object> hooks = new ArrayList<>();
-        private final List<Middleware> middlewares = new ArrayList<>();
         private ContextManager contextManager;
         private MemoryStore memoryStore;
         private String sessionId;
@@ -230,17 +227,6 @@ public record AgentConfig(
          */
         public Builder addHook(Object hook) {
             this.hooks.add(hook);
-            return this;
-        }
-
-        /**
-         * Add a {@link Middleware} to the pipeline that runs before the agent loop.
-         *
-         * @param middleware the middleware to register
-         * @return this builder
-         */
-        public Builder addMiddleware(Middleware middleware) {
-            this.middlewares.add(middleware);
             return this;
         }
 
@@ -394,7 +380,6 @@ public record AgentConfig(
                     tokenBudget,
                     modelName,
                     List.copyOf(hooks),
-                    List.copyOf(middlewares),
                     contextManager,
                     memoryStore,
                     sessionId,

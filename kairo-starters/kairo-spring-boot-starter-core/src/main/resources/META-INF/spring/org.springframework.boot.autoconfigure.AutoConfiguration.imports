@@ -3,6 +3,5 @@ io.kairo.spring.AgentActuatorAutoConfiguration
 io.kairo.spring.A2aAutoConfiguration
 io.kairo.spring.SnapshotAutoConfiguration
 io.kairo.spring.AgentMetricsAutoConfiguration
-io.kairo.spring.KairoBulkheadAutoConfiguration
 io.kairo.spring.KairoOutboxAutoConfiguration
 io.kairo.spring.KairoDockerSandboxAutoConfiguration

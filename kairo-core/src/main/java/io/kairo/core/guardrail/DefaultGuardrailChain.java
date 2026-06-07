@@ -20,6 +20,7 @@ import io.kairo.api.tracing.NoopTracer;
 import io.kairo.api.tracing.ObservationData;
 import io.kairo.api.tracing.Span;
 import io.kairo.api.tracing.Tracer;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -71,7 +72,7 @@ public class DefaultGuardrailChain implements GuardrailChain {
      */
     public static final Class<Span> SPAN_CONTEXT_KEY = Span.class;
 
-    private final List<GuardrailPolicy> policies;
+    private final ArrayList<GuardrailPolicy> policies;
     private final SecurityEventSink sink;
     private final Tracer tracer;
 
@@ -112,9 +113,25 @@ public class DefaultGuardrailChain implements GuardrailChain {
                             + MAX_POLICIES);
         }
         this.policies =
-                policies.stream().sorted(Comparator.comparingInt(GuardrailPolicy::order)).toList();
+                new ArrayList<>(
+                        policies.stream()
+                                .sorted(Comparator.comparingInt(GuardrailPolicy::order))
+                                .toList());
         this.sink = sink;
         this.tracer = tracer == null ? NoopTracer.INSTANCE : tracer;
+    }
+
+    /**
+     * Append a policy to this chain after construction. Used by kairo-code to inject
+     * context-specific policies (e.g. BashWriteGuard for coordinator mode) that aren't known at
+     * chain-construction time.
+     */
+    public void addPolicy(GuardrailPolicy policy) {
+        if (policies.size() >= MAX_POLICIES) {
+            throw new IllegalStateException("GuardrailChain policy limit reached: " + MAX_POLICIES);
+        }
+        policies.add(policy);
+        policies.sort(Comparator.comparingInt(GuardrailPolicy::order));
     }
 
     @Override

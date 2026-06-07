@@ -1,0 +1,166 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - complementary [ref=e5]:
+      - link "☤ Kairo 控制台 定时任务 + 演化 + 可观测" [ref=e6] [cursor=pointer]:
+        - /url: /dashboard
+        - generic [ref=e7]: ☤ Kairo 控制台
+        - generic [ref=e8]: 定时任务 + 演化 + 可观测
+      - navigation [ref=e9]:
+        - generic [ref=e10]:
+          - generic [ref=e11]: 运行
+          - link "概览 1" [ref=e12] [cursor=pointer]:
+            - /url: /dashboard
+            - img [ref=e13]
+            - generic [ref=e18]: 概览
+            - generic [ref=e19]: "1"
+          - link "聊天 2" [ref=e20] [cursor=pointer]:
+            - /url: /chat
+            - img [ref=e21]
+            - generic [ref=e23]: 聊天
+            - generic [ref=e24]: "2"
+          - link "任务 3" [ref=e25] [cursor=pointer]:
+            - /url: /
+            - img [ref=e26]
+            - generic [ref=e29]: 任务
+            - generic [ref=e30]: "3"
+          - link "看板 4" [ref=e31] [cursor=pointer]:
+            - /url: /board
+            - img [ref=e32]
+            - generic [ref=e42]: 看板
+            - generic [ref=e43]: "4"
+          - link "新建任务 5" [ref=e44] [cursor=pointer]:
+            - /url: /create
+            - img [ref=e45]
+            - generic [ref=e46]: 新建任务
+            - generic [ref=e47]: "5"
+        - generic [ref=e48]:
+          - generic [ref=e49]: 历史
+          - link "演化 6" [ref=e50] [cursor=pointer]:
+            - /url: /evolution
+            - img [ref=e51]
+            - generic [ref=e54]: 演化
+            - generic [ref=e55]: "6"
+          - link "会话 7" [ref=e56] [cursor=pointer]:
+            - /url: /sessions
+            - img [ref=e57]
+            - generic [ref=e61]: 会话
+            - generic [ref=e62]: "7"
+          - link "重放 8" [ref=e63] [cursor=pointer]:
+            - /url: /replay
+            - img [ref=e64]
+            - generic [ref=e67]: 重放
+            - generic [ref=e68]: "8"
+          - link "追踪 9" [ref=e69] [cursor=pointer]:
+            - /url: /trace
+            - img [ref=e70]
+            - generic [ref=e74]: 追踪
+            - generic [ref=e75]: "9"
+          - link "记忆" [ref=e76] [cursor=pointer]:
+            - /url: /memory
+            - img [ref=e77]
+            - generic [ref=e85]: 记忆
+        - generic [ref=e86]:
+          - generic [ref=e87]: 目录
+          - link "技能" [ref=e88] [cursor=pointer]:
+            - /url: /skills
+            - img [ref=e89]
+            - generic [ref=e92]: 技能
+          - link "工具" [ref=e93] [cursor=pointer]:
+            - /url: /tools
+            - img [ref=e94]
+            - generic [ref=e96]: 工具
+          - link "工具历史" [ref=e97] [cursor=pointer]:
+            - /url: /tool-history
+            - img [ref=e98]
+            - generic [ref=e102]: 工具历史
+          - link "工具沙箱" [ref=e103] [cursor=pointer]:
+            - /url: /tool-playground
+            - img [ref=e104]
+            - generic [ref=e106]: 工具沙箱
+          - link "插件" [ref=e107] [cursor=pointer]:
+            - /url: /plugins
+            - img [ref=e108]
+            - generic [ref=e110]: 插件
+          - link "通道" [ref=e111] [cursor=pointer]:
+            - /url: /channels
+            - img [ref=e112]
+            - generic [ref=e116]: 通道
+        - generic [ref=e117]:
+          - generic [ref=e118]: 运维
+          - link "分析" [ref=e119] [cursor=pointer]:
+            - /url: /analytics
+            - img [ref=e120]
+            - generic [ref=e122]: 分析
+          - link "可观测" [ref=e123] [cursor=pointer]:
+            - /url: /observability
+            - img [ref=e124]
+            - generic [ref=e126]: 可观测
+          - link "健康" [ref=e127] [cursor=pointer]:
+            - /url: /health
+            - img [ref=e128]
+            - generic [ref=e130]: 健康
+          - link "系统" [ref=e131] [cursor=pointer]:
+            - /url: /system
+            - img [ref=e132]
+            - generic [ref=e137]: 系统
+          - link "提示词" [ref=e138] [cursor=pointer]:
+            - /url: /system-prompt
+            - img [ref=e139]
+            - generic [ref=e142]: 提示词
+      - generic [ref=e143]:
+        - generic [ref=e144]:
+          - generic "主题" [ref=e145]:
+            - button "☤" [ref=e146] [cursor=pointer]
+            - button "◆" [ref=e147] [cursor=pointer]
+            - button "▣" [ref=e148] [cursor=pointer]
+          - generic [ref=e149]:
+            - button "ZH" [ref=e150] [cursor=pointer]
+            - button "?" [ref=e151] [cursor=pointer]
+        - generic [ref=e152]:
+          - generic [ref=e204]: ● 实时
+          - generic [ref=e153]: kairo-console
+    - generic [ref=e154]:
+      - main [ref=e155]:
+        - generic [ref=e156]:
+          - complementary [ref=e157]:
+            - button "New chat" [disabled] [ref=e158]:
+              - img [ref=e159]
+              - text: New chat
+            - list [ref=e161]:
+              - listitem [ref=e162] [cursor=pointer]:
+                - generic [ref=e163]:
+                  - generic [ref=e164]: 你好！请用shell工具执行 echo hello_from_web_conso…
+                  - generic [ref=e165]:
+                    - button "Rename" [ref=e166]:
+                      - img [ref=e167]
+                    - button "Delete" [ref=e170]:
+                      - img [ref=e171]
+                - generic [ref=e174]: 4 msg · 2026/6/6 12:30:09
+          - generic [ref=e175]:
+            - generic [ref=e176]:
+              - generic [ref=e177]:
+                - heading "你好！请用shell工具执行 echo hello_from_web_conso…" [level=2] [ref=e178]
+                - generic [ref=e179]: "session: web-lqhxdzjb"
+              - button "Interrupt" [ref=e198] [cursor=pointer]
+            - generic [ref=e180]:
+              - generic [ref=e181]:
+                - generic [ref=e182]: user
+                - generic [ref=e183]: 你好！请用shell工具执行 echo hello_from_web_console 并告诉我结果
+              - generic [ref=e184]:
+                - generic [ref=e185]: assistant
+                - generic [ref=e186]: "执行shell命令 `echo hello_from_web_console` 的结果是：hello_from_web_console"
+              - generic [ref=e199]:
+                - generic [ref=e200]: user
+                - generic [ref=e201]: 请执行以下步骤：1.用shell执行 date +%H:%M 获取当前时间 2.用calculator计算 2024*2 3.告诉我时间和计算结果
+              - generic [ref=e202]:
+                - generic [ref=e203]: assistant●
+                - generic [ref=e205]: 当前时间是12:30，计算结果为2024乘以2等于4048
+            - generic [ref=e187]:
+              - textbox "Send a message… (Shift+Enter for newline)" [disabled] [ref=e188]
+              - button "Send" [disabled] [ref=e189]
+      - contentinfo [ref=e190]:
+        - generic [ref=e191]:
+          - generic [ref=e192]: "快捷键:"
+          - text: 1-9 标签·⌘K palette·t 主题·? 帮助
+        - generic [ref=e193]: /chat
+  - region "Notifications alt+T"

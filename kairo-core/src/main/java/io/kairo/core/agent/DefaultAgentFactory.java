@@ -21,7 +21,6 @@ import io.kairo.api.agent.AgentFactory;
 import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.core.hook.DefaultHookChain;
-import io.kairo.core.middleware.DefaultMiddlewarePipeline;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import java.util.ArrayList;
 import java.util.List;
@@ -73,30 +72,23 @@ public class DefaultAgentFactory implements AgentFactory {
     @Override
     public Agent create(AgentConfig config) {
         DefaultHookChain hookChain = new DefaultHookChain();
-        DefaultMiddlewarePipeline pipeline =
-                new DefaultMiddlewarePipeline(
-                        config.middlewares() != null ? config.middlewares() : List.of());
         GracefulShutdownManager sm =
                 shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
-        return new DefaultReActAgent(config, toolExecutor, hookChain, pipeline, sm, guardrailChain);
+        return new DefaultReActAgent(config, toolExecutor, hookChain, sm, guardrailChain);
     }
 
     @Override
     public Agent createSubAgent(Agent parent, AgentConfig config) {
         DefaultHookChain hookChain = new DefaultHookChain();
-        DefaultMiddlewarePipeline pipeline =
-                new DefaultMiddlewarePipeline(
-                        config.middlewares() != null ? config.middlewares() : List.of());
         GracefulShutdownManager sm =
                 shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
 
-        // Inherit parent's conversation history for context
         List<io.kairo.api.message.Msg> parentContext = new ArrayList<>();
         if (parent instanceof DefaultReActAgent reactAgent) {
             parentContext.addAll(reactAgent.conversationHistory());
         }
 
         return new DefaultReActAgent(
-                config, toolExecutor, hookChain, pipeline, sm, parentContext, guardrailChain);
+                config, toolExecutor, hookChain, sm, parentContext, guardrailChain);
     }
 }

@@ -96,7 +96,8 @@ class AgentPerformanceIT {
                         .timeout(Duration.ofSeconds(30))
                         .tokenBudget(1_000_000)
                         .build();
-        return new DefaultReActAgent(config, executor, hookChain, null, null);
+        return new DefaultReActAgent(
+                config, executor, hookChain, null, (io.kairo.api.guardrail.GuardrailChain) null);
     }
 
     /**

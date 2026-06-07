@@ -27,7 +27,6 @@ import io.kairo.api.execution.DurableExecutionStore;
 import io.kairo.api.execution.ResourceConstraint;
 import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.memory.MemoryStore;
-import io.kairo.api.middleware.Middleware;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolRegistry;
@@ -43,7 +42,6 @@ import io.kairo.core.context.DefaultContextManager;
 import io.kairo.core.context.TokenBudgetManager;
 import io.kairo.core.execution.RecoveryHandler;
 import io.kairo.core.hook.DefaultHookChain;
-import io.kairo.core.middleware.DefaultMiddlewarePipeline;
 import io.kairo.core.session.SessionManager;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import java.nio.file.Path;
@@ -84,7 +82,6 @@ public class AgentBuilder {
     private int tokenBudget = 200_000;
     private String modelName;
     private final List<Object> hooks = new ArrayList<>();
-    private final List<Middleware> middlewares = new ArrayList<>();
     private ContextManager contextManager;
     private MemoryStore memoryStore;
     private String sessionId;
@@ -218,14 +215,6 @@ public class AgentBuilder {
     public AgentBuilder hook(Object hookHandler) {
         if (hookHandler != null) {
             this.hooks.add(hookHandler);
-        }
-        return this;
-    }
-
-    /** Register a middleware that runs before the agent loop. */
-    public AgentBuilder middleware(Middleware mw) {
-        if (mw != null) {
-            this.middlewares.add(mw);
         }
         return this;
     }
@@ -686,8 +675,6 @@ public class AgentBuilder {
         DefaultHookChain hookChain = new DefaultHookChain();
 
         // Build middleware pipeline
-        DefaultMiddlewarePipeline middlewarePipeline = new DefaultMiddlewarePipeline(middlewares);
-
         // Default shutdown manager if none provided
         GracefulShutdownManager sm =
                 shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
@@ -697,7 +684,6 @@ public class AgentBuilder {
                         config,
                         toolExecutor,
                         hookChain,
-                        middlewarePipeline,
                         sm,
                         guardrailChain,
                         durableExecutionStore,
@@ -842,10 +828,6 @@ public class AgentBuilder {
 
         for (Object hook : hooks) {
             configBuilder.addHook(hook);
-        }
-
-        for (Middleware mw : middlewares) {
-            configBuilder.addMiddleware(mw);
         }
 
         if (!mcpServerConfigs.isEmpty()) {

@@ -33,8 +33,6 @@ import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.hook.*;
 import io.kairo.api.hook.HookChain;
 import io.kairo.api.message.Msg;
-import io.kairo.api.middleware.MiddlewareContext;
-import io.kairo.api.middleware.MiddlewareRejectException;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolDefinition;
@@ -51,7 +49,6 @@ import io.kairo.core.health.AgentHealthRegistry;
 import io.kairo.core.hook.AgentErrorEvent;
 import io.kairo.core.hook.DefaultHookChain;
 import io.kairo.core.hook.TerminalHookGuard;
-import io.kairo.core.middleware.DefaultMiddlewarePipeline;
 import io.kairo.core.model.ModelFallbackManager;
 import io.kairo.core.prompt.SystemPromptBuilder;
 import io.kairo.core.prompt.SystemPromptResult;
@@ -111,7 +108,6 @@ public class DefaultReActAgent implements Agent {
     private final ContextManager contextManager; // nullable
     private final Tracer tracer;
     private final GracefulShutdownManager shutdownManager;
-    private final DefaultMiddlewarePipeline middlewarePipeline;
     private volatile Instant sessionStartTime;
 
     /** Optional durable execution store for crash recovery (null when durability is disabled). */
@@ -200,15 +196,8 @@ public class DefaultReActAgent implements Agent {
             AgentConfig config,
             ToolExecutor toolExecutor,
             HookChain hookChain,
-            DefaultMiddlewarePipeline middlewarePipeline,
             GracefulShutdownManager shutdownManager) {
-        this(
-                config,
-                toolExecutor,
-                hookChain,
-                middlewarePipeline,
-                shutdownManager,
-                (GuardrailChain) null);
+        this(config, toolExecutor, hookChain, shutdownManager, (GuardrailChain) null);
     }
 
     /**
@@ -217,7 +206,6 @@ public class DefaultReActAgent implements Agent {
      * @param config the agent configuration
      * @param toolExecutor the tool executor for running tools
      * @param hookChain the hook chain for lifecycle events
-     * @param middlewarePipeline the middleware pipeline
      * @param shutdownManager the graceful shutdown manager
      * @param guardrailChain the guardrail chain (null skips guardrail evaluation)
      */
@@ -225,14 +213,12 @@ public class DefaultReActAgent implements Agent {
             AgentConfig config,
             ToolExecutor toolExecutor,
             HookChain hookChain,
-            DefaultMiddlewarePipeline middlewarePipeline,
             GracefulShutdownManager shutdownManager,
             GuardrailChain guardrailChain) {
         this(
                 config,
                 toolExecutor,
                 hookChain,
-                middlewarePipeline,
                 shutdownManager,
                 guardrailChain,
                 null,
@@ -248,7 +234,6 @@ public class DefaultReActAgent implements Agent {
      * @param config the agent configuration
      * @param toolExecutor the tool executor for running tools
      * @param hookChain the hook chain for lifecycle events
-     * @param middlewarePipeline the middleware pipeline
      * @param shutdownManager the graceful shutdown manager
      * @param guardrailChain the guardrail chain (null skips guardrail evaluation)
      * @param durableExecutionStore the durable execution store (null disables durability)
@@ -259,7 +244,6 @@ public class DefaultReActAgent implements Agent {
             AgentConfig config,
             ToolExecutor toolExecutor,
             HookChain hookChain,
-            DefaultMiddlewarePipeline middlewarePipeline,
             GracefulShutdownManager shutdownManager,
             GuardrailChain guardrailChain,
             @javax.annotation.Nullable DurableExecutionStore durableExecutionStore,
@@ -285,12 +269,6 @@ public class DefaultReActAgent implements Agent {
         // Initialize shutdown manager
         this.shutdownManager =
                 shutdownManager != null ? shutdownManager : new GracefulShutdownManager();
-
-        // Initialize middleware pipeline
-        this.middlewarePipeline =
-                middlewarePipeline != null
-                        ? middlewarePipeline
-                        : new DefaultMiddlewarePipeline(List.of());
 
         // Initialize token budget manager — reuse the instance inside DefaultContextManager
         // when present, so that IterationGuards (hard wall) and CompactionTrigger (pressure)
@@ -388,7 +366,6 @@ public class DefaultReActAgent implements Agent {
      * @param config the agent configuration
      * @param toolExecutor the tool executor for running tools
      * @param hookChain the hook chain for lifecycle events
-     * @param middlewarePipeline the middleware pipeline
      * @param shutdownManager the graceful shutdown manager
      * @param toolDependencies user-provided runtime dependencies for tools
      */
@@ -396,16 +373,9 @@ public class DefaultReActAgent implements Agent {
             AgentConfig config,
             ToolExecutor toolExecutor,
             HookChain hookChain,
-            DefaultMiddlewarePipeline middlewarePipeline,
             GracefulShutdownManager shutdownManager,
             Map<String, Object> toolDependencies) {
-        this(
-                config,
-                toolExecutor,
-                hookChain,
-                middlewarePipeline,
-                shutdownManager,
-                (GuardrailChain) null);
+        this(config, toolExecutor, hookChain, shutdownManager, (GuardrailChain) null);
         // Build this agent's ToolContext and propagate it via the Reactor Context in call().
         this.toolContext =
                 new ToolContext(
@@ -419,11 +389,10 @@ public class DefaultReActAgent implements Agent {
             AgentConfig config,
             ToolExecutor toolExecutor,
             HookChain hookChain,
-            DefaultMiddlewarePipeline middlewarePipeline,
             GracefulShutdownManager shutdownManager,
             List<Msg> parentContext,
             GuardrailChain guardrailChain) {
-        this(config, toolExecutor, hookChain, middlewarePipeline, shutdownManager, guardrailChain);
+        this(config, toolExecutor, hookChain, shutdownManager, guardrailChain);
         // Inherit parent context as initial conversation history
         if (parentContext != null) {
             reactLoop.injectMessages(parentContext);
@@ -470,384 +439,341 @@ public class DefaultReActAgent implements Agent {
 
     @Override
     public Mono<Msg> call(Msg input) {
-        MiddlewareContext mwCtx = MiddlewareContext.of(name, config.sessionId(), input);
+        return Mono.defer(
+                        () -> {
+                            Span agentSpan = tracer.startAgentSpan(name, input);
+                            if (config.sessionId() != null) {
+                                agentSpan.setAttribute("langfuse.session.id", config.sessionId());
+                                agentSpan.setAttribute("session.id", config.sessionId());
+                            }
+                            state = AgentState.RUNNING;
+                            interrupted.set(false);
+                            currentIteration.set(0);
+                            runStartMs = System.currentTimeMillis();
 
-        return middlewarePipeline
-                .execute(mwCtx)
-                .then(
-                        Mono.defer(
-                                () -> {
-                                    Span agentSpan = tracer.startAgentSpan(name, input);
-                                    if (config.sessionId() != null) {
-                                        agentSpan.setAttribute(
-                                                "langfuse.session.id", config.sessionId());
-                                        agentSpan.setAttribute("session.id", config.sessionId());
-                                    }
-                                    state = AgentState.RUNNING;
-                                    interrupted.set(false);
-                                    currentIteration.set(0);
-                                    runStartMs = System.currentTimeMillis();
+                            // Initialize per-session diagnostics. Share the agent's
+                            // own iteration + token atomics so AgentDiagnostics returns
+                            // live values — previously the diagnostics had its own
+                            // counters that nobody ever wrote to (always 0).
+                            diagnostics =
+                                    new DefaultAgentDiagnostics(
+                                            this.totalTokensUsed, this.currentIteration);
 
-                                    // Initialize per-session diagnostics. Share the agent's
-                                    // own iteration + token atomics so AgentDiagnostics returns
-                                    // live values — previously the diagnostics had its own
-                                    // counters that nobody ever wrote to (always 0).
-                                    diagnostics =
-                                            new DefaultAgentDiagnostics(
-                                                    this.totalTokensUsed, this.currentIteration);
+                            // Initialize terminal hook guard for exactly-once session-end
+                            // firing
+                            terminalGuard = new TerminalHookGuard(hookChain);
 
-                                    // Initialize terminal hook guard for exactly-once session-end
-                                    // firing
-                                    terminalGuard = new TerminalHookGuard(hookChain);
-
-                                    // Initialize stall detector and subscribe to stall signal
-                                    StallDetector stallDetector = new StallDetector(diagnostics);
-                                    stallDetector.start();
-                                    Disposable stallSub =
-                                            stallDetector
-                                                    .stalled()
-                                                    .doOnSuccess(
-                                                            v -> {
-                                                                // Fire error hook for observability
-                                                                // (matches @OnError handlers)
-                                                                if (hookChain
-                                                                        instanceof
-                                                                        DefaultHookChain dhc) {
-                                                                    dhc.fireOnError(
-                                                                                    AgentErrorEvent
-                                                                                            .stalled(
-                                                                                                    name,
-                                                                                                    Duration
-                                                                                                            .ofMillis(
-                                                                                                                    stallDetector
-                                                                                                                            .idleThresholdMs())))
-                                                                            .onErrorResume(
-                                                                                    e ->
-                                                                                            Mono
-                                                                                                    .empty())
-                                                                            .subscribe();
-                                                                }
-
-                                                                // Fire session-end with proper
-                                                                // SessionEndEvent type
-                                                                // (matches @OnSessionEnd handlers)
-                                                                Duration elapsed =
-                                                                        sessionStartTime != null
-                                                                                ? Duration.between(
-                                                                                        sessionStartTime,
-                                                                                        Instant
-                                                                                                .now())
-                                                                                : Duration.ZERO;
-                                                                SessionEndEvent stallEndEvent =
-                                                                        new SessionEndEvent(
-                                                                                name,
-                                                                                AgentState.FAILED,
-                                                                                currentIteration
-                                                                                        .get(),
-                                                                                totalTokensUsed
-                                                                                        .get(),
-                                                                                elapsed,
-                                                                                "Agent stalled: no"
-                                                                                        + " events for "
-                                                                                        + stallDetector
-                                                                                                .idleThresholdMs()
-                                                                                        + "ms",
-                                                                                () ->
-                                                                                        reactLoop
-                                                                                                .getHistory());
-                                                                terminalGuard
-                                                                        .fireSessionEndOnce(
-                                                                                stallEndEvent)
-                                                                        .onErrorResume(
-                                                                                e -> Mono.empty())
-                                                                        .subscribe();
-                                                            })
-                                                    .subscribe(
-                                                            null,
-                                                            err ->
-                                                                    log.warn(
-                                                                            "Stall detector subscription failed for agent '{}': {}",
-                                                                            name,
-                                                                            err.toString()));
-
-                                    // Register with shutdown manager
-                                    if (!shutdownManager.registerAgent(this)) {
-                                        return Mono.error(
-                                                new IllegalStateException(
-                                                        "Agent '"
-                                                                + name
-                                                                + "' rejected — shutdown in progress"));
-                                    }
-
-                                    // Add user input to conversation history
-                                    reactLoop.injectMessages(List.of(input));
-                                    log.info(
-                                            "Agent '{}' started processing input:" + " {}",
-                                            name,
-                                            input.text()
-                                                    .substring(
-                                                            0,
-                                                            Math.min(80, input.text().length())));
-
-                                    sessionStartTime = Instant.now();
-                                    AgentCallObserver.global().onCallStart(id, name);
-
-                                    // Attempt crash recovery if durable execution is configured
-                                    Mono<Void> recoveryStep = attemptRecovery(config.sessionId());
-
-                                    // Attempt iteration checkpoint restore if checkpoint manager
-                                    // is configured and resume is enabled
-                                    Mono<Void> checkpointRestoreStep = attemptCheckpointRestore();
-
-                                    return recoveryStep
-                                            .then(checkpointRestoreStep)
-                                            .then(sessionResumption.loadSessionIfConfigured())
-                                            .then(skillToolManager.initMcpIfConfigured())
-                                            .then(fireSessionStartBestEffort(input))
-                                            .then(persistExecutionIfConfigured(config.sessionId()))
-                                            .then(reactLoop.runLoop())
-                                            .timeout(config.timeout())
-                                            .onErrorMap(
-                                                    java.util.concurrent.TimeoutException.class,
-                                                    e ->
-                                                            new AgentInterruptedException(
-                                                                    "Agent '"
-                                                                            + name
-                                                                            + "' timed out after "
-                                                                            + config.timeout()))
-                                            .flatMap(
-                                                    result ->
-                                                            updateExecutionStatus(
-                                                                            config.sessionId(),
-                                                                            ExecutionStatus
-                                                                                    .COMPLETED)
-                                                                    .then(
-                                                                            Mono.defer(
-                                                                                    () -> {
-                                                                                        if (result
-                                                                                                        != null
-                                                                                                && result
-                                                                                                                .text()
-                                                                                                        != null) {
-                                                                                            agentSpan
-                                                                                                    .setAttribute(
-                                                                                                            "langfuse.trace.output",
-                                                                                                            result
-                                                                                                                    .text());
-                                                                                            agentSpan
-                                                                                                    .setAttribute(
-                                                                                                            "output.value",
-                                                                                                            result
-                                                                                                                    .text());
-                                                                                        }
-                                                                                        long
-                                                                                                tokens =
-                                                                                                        totalTokensUsed
-                                                                                                                .get();
-                                                                                        agentSpan
-                                                                                                .setAttribute(
-                                                                                                        "agent.tokens_total",
-                                                                                                        tokens);
-                                                                                        agentSpan
-                                                                                                .setAttribute(
-                                                                                                        "agent.iterations",
-                                                                                                        (long)
-                                                                                                                currentIteration
-                                                                                                                        .get());
-                                                                                        agentSpan
-                                                                                                .setStatus(
-                                                                                                        true,
-                                                                                                        "completed");
-                                                                                        state =
-                                                                                                AgentState
-                                                                                                        .COMPLETED;
-                                                                                        AgentHealthRegistry
-                                                                                                .global()
-                                                                                                .deregister(
-                                                                                                        this
-                                                                                                                .id);
-                                                                                        log.info(
-                                                                                                "Agent '{}' completed after {}"
-                                                                                                        + " iterations, {} tokens"
-                                                                                                        + " used",
-                                                                                                name,
-                                                                                                currentIteration
-                                                                                                        .get(),
-                                                                                                totalTokensUsed
-                                                                                                        .get());
-                                                                                        publishAgentDone(
-                                                                                                "completed");
-                                                                                        return fireSessionEndBestEffort(
-                                                                                                        AgentState
-                                                                                                                .COMPLETED,
-                                                                                                        null)
-                                                                                                .thenReturn(
-                                                                                                        result);
-                                                                                    })))
-                                            .onErrorResume(
-                                                    e ->
-                                                            updateExecutionStatus(
-                                                                            config.sessionId(),
-                                                                            ExecutionStatus.FAILED)
+                            // Initialize stall detector and subscribe to stall signal
+                            StallDetector stallDetector = new StallDetector(diagnostics);
+                            stallDetector.start();
+                            Disposable stallSub =
+                                    stallDetector
+                                            .stalled()
+                                            .doOnSuccess(
+                                                    v -> {
+                                                        // Fire error hook for observability
+                                                        // (matches @OnError handlers)
+                                                        if (hookChain
+                                                                instanceof DefaultHookChain dhc) {
+                                                            dhc.fireOnError(
+                                                                            AgentErrorEvent.stalled(
+                                                                                    name,
+                                                                                    Duration
+                                                                                            .ofMillis(
+                                                                                                    stallDetector
+                                                                                                            .idleThresholdMs())))
                                                                     .onErrorResume(
-                                                                            ue -> Mono.empty())
-                                                                    .then(
-                                                                            Mono.defer(
-                                                                                    () -> {
-                                                                                        long
-                                                                                                failTokens =
-                                                                                                        totalTokensUsed
-                                                                                                                .get();
-                                                                                        agentSpan
-                                                                                                .setAttribute(
-                                                                                                        "agent.tokens_total",
-                                                                                                        failTokens);
-                                                                                        agentSpan
-                                                                                                .setAttribute(
-                                                                                                        "agent.iterations",
-                                                                                                        (long)
-                                                                                                                currentIteration
-                                                                                                                        .get());
-                                                                                        tracer
-                                                                                                .recordException(
-                                                                                                        agentSpan,
-                                                                                                        e);
-                                                                                        agentSpan
-                                                                                                .setStatus(
-                                                                                                        false,
-                                                                                                        e
-                                                                                                                .getMessage());
-                                                                                        state =
-                                                                                                AgentState
-                                                                                                        .FAILED;
-                                                                                        AgentHealthRegistry
-                                                                                                .global()
-                                                                                                .deregister(
-                                                                                                        this
-                                                                                                                .id);
-                                                                                        log.error(
-                                                                                                "Agent"
-                                                                                                        + " '{}'"
-                                                                                                        + " failed"
-                                                                                                        + " after"
-                                                                                                        + " {}"
-                                                                                                        + " iterations:"
-                                                                                                        + " {}",
-                                                                                                name,
-                                                                                                currentIteration
-                                                                                                        .get(),
-                                                                                                e
-                                                                                                        .getMessage());
-                                                                                        publishAgentDone(
-                                                                                                "failed: "
-                                                                                                        + e
-                                                                                                                .getMessage());
-                                                                                        Mono<Void>
-                                                                                                onErrorHook =
-                                                                                                        hookChain
-                                                                                                                        instanceof
-                                                                                                                        DefaultHookChain
-                                                                                                                                dhc
-                                                                                                                ? dhc.fireOnError(
-                                                                                                                                AgentErrorEvent
-                                                                                                                                        .of(
-                                                                                                                                                name,
-                                                                                                                                                e))
-                                                                                                                        .onErrorResume(
-                                                                                                                                he -> {
-                                                                                                                                    log
-                                                                                                                                            .warn(
-                                                                                                                                                    "OnError hook failed for agent '{}': {}",
-                                                                                                                                                    name,
-                                                                                                                                                    he
-                                                                                                                                                            .getMessage());
-                                                                                                                                    return Mono
-                                                                                                                                            .empty();
-                                                                                                                                })
-                                                                                                                : Mono
-                                                                                                                        .empty();
-                                                                                        return onErrorHook
-                                                                                                .then(
-                                                                                                        fireSessionEndBestEffort(
-                                                                                                                AgentState
-                                                                                                                        .FAILED,
-                                                                                                                e
-                                                                                                                        .getMessage()))
-                                                                                                .then(
-                                                                                                        Mono
-                                                                                                                .error(
-                                                                                                                        e));
-                                                                                    })))
-                                            .doFinally(
-                                                    signal -> {
-                                                        if (diagnostics != null) {
-                                                            diagnostics.setRunning(false);
+                                                                            e -> Mono.empty())
+                                                                    .subscribe();
                                                         }
-                                                        // Clean up stall detector to prevent
-                                                        // subscription leak
-                                                        stallSub.dispose();
-                                                        stallDetector.dispose();
 
-                                                        agentSpan.end();
-                                                        shutdownManager.unregisterAgent(this);
-                                                        skillToolManager.clearSkillRestrictions();
-                                                        skillToolManager.closeMcpRegistry();
-                                                        AgentHealthRegistry.global()
-                                                                .deregister(this.id);
-                                                        AgentCallObserver.global()
-                                                                .onCallEnd(
-                                                                        id,
+                                                        // Fire session-end with proper
+                                                        // SessionEndEvent type
+                                                        // (matches @OnSessionEnd handlers)
+                                                        Duration elapsed =
+                                                                sessionStartTime != null
+                                                                        ? Duration.between(
+                                                                                sessionStartTime,
+                                                                                Instant.now())
+                                                                        : Duration.ZERO;
+                                                        SessionEndEvent stallEndEvent =
+                                                                new SessionEndEvent(
                                                                         name,
-                                                                        sessionStartTime != null
-                                                                                ? Duration.between(
-                                                                                        sessionStartTime,
-                                                                                        Instant
-                                                                                                .now())
-                                                                                : Duration.ZERO,
-                                                                        state
-                                                                                == AgentState
-                                                                                        .COMPLETED);
+                                                                        AgentState.FAILED,
+                                                                        currentIteration.get(),
+                                                                        totalTokensUsed.get(),
+                                                                        elapsed,
+                                                                        "Agent stalled: no"
+                                                                                + " events for "
+                                                                                + stallDetector
+                                                                                        .idleThresholdMs()
+                                                                                + "ms",
+                                                                        () ->
+                                                                                reactLoop
+                                                                                        .getHistory());
+                                                        terminalGuard
+                                                                .fireSessionEndOnce(stallEndEvent)
+                                                                .onErrorResume(e -> Mono.empty())
+                                                                .subscribe();
                                                     })
-                                            // Expose this agent's span to downstream tool
-                                            // executions via the Reactor Context. Reactor
-                                            // schedulers don't preserve thread-local OTel
-                                            // Context.current(), so a parent passed via
-                                            // ctx is the only reliable way to nest
-                                            // agent.tool spans under agent.run.
-                                            .contextWrite(
-                                                    ctx ->
-                                                            ctx.put(
-                                                                    DefaultToolExecutor
-                                                                            .SPAN_CONTEXT_KEY,
-                                                                    agentSpan))
-                                            // Propagate MutableDiagnostics for hook chain
-                                            // event recording via Reactor Context.
-                                            .contextWrite(
-                                                    ctx -> {
-                                                        if (diagnostics == null) return ctx;
-                                                        return ctx.put(
-                                                                        MutableDiagnostics.class,
-                                                                        (MutableDiagnostics)
-                                                                                diagnostics)
-                                                                .put(
-                                                                        DefaultHookChain
-                                                                                .DIAGNOSTICS_RECORDER_KEY,
-                                                                        (java.util.function
-                                                                                                .Consumer<
-                                                                                        String>)
-                                                                                diagnostics
-                                                                                        ::recordEvent);
-                                                    });
-                                }))
-                .onErrorResume(
-                        MiddlewareRejectException.class,
-                        e -> {
-                            log.warn(
-                                    "Agent '{}' rejected by middleware [{}]: {}",
+                                            .subscribe(
+                                                    null,
+                                                    err ->
+                                                            log.warn(
+                                                                    "Stall detector subscription failed for agent '{}': {}",
+                                                                    name,
+                                                                    err.toString()));
+
+                            // Register with shutdown manager
+                            if (!shutdownManager.registerAgent(this)) {
+                                return Mono.error(
+                                        new IllegalStateException(
+                                                "Agent '"
+                                                        + name
+                                                        + "' rejected — shutdown in progress"));
+                            }
+
+                            // Add user input to conversation history
+                            reactLoop.injectMessages(List.of(input));
+                            log.info(
+                                    "Agent '{}' started processing input:" + " {}",
                                     name,
-                                    e.middlewareName(),
-                                    e.getMessage());
-                            return Mono.error(e);
+                                    input.text().substring(0, Math.min(80, input.text().length())));
+
+                            sessionStartTime = Instant.now();
+                            AgentCallObserver.global().onCallStart(id, name);
+
+                            // Attempt crash recovery if durable execution is configured
+                            Mono<Void> recoveryStep = attemptRecovery(config.sessionId());
+
+                            // Attempt iteration checkpoint restore if checkpoint manager
+                            // is configured and resume is enabled
+                            Mono<Void> checkpointRestoreStep = attemptCheckpointRestore();
+
+                            return recoveryStep
+                                    .then(checkpointRestoreStep)
+                                    .then(sessionResumption.loadSessionIfConfigured())
+                                    .then(skillToolManager.initMcpIfConfigured())
+                                    .then(fireSessionStartBestEffort(input))
+                                    .then(persistExecutionIfConfigured(config.sessionId()))
+                                    .then(reactLoop.runLoop())
+                                    .timeout(config.timeout())
+                                    .onErrorMap(
+                                            java.util.concurrent.TimeoutException.class,
+                                            e ->
+                                                    new AgentInterruptedException(
+                                                            "Agent '"
+                                                                    + name
+                                                                    + "' timed out after "
+                                                                    + config.timeout()))
+                                    .flatMap(
+                                            result ->
+                                                    updateExecutionStatus(
+                                                                    config.sessionId(),
+                                                                    ExecutionStatus.COMPLETED)
+                                                            .then(
+                                                                    Mono.defer(
+                                                                            () -> {
+                                                                                if (result != null
+                                                                                        && result
+                                                                                                        .text()
+                                                                                                != null) {
+                                                                                    agentSpan
+                                                                                            .setAttribute(
+                                                                                                    "langfuse.trace.output",
+                                                                                                    result
+                                                                                                            .text());
+                                                                                    agentSpan
+                                                                                            .setAttribute(
+                                                                                                    "output.value",
+                                                                                                    result
+                                                                                                            .text());
+                                                                                }
+                                                                                long tokens =
+                                                                                        totalTokensUsed
+                                                                                                .get();
+                                                                                agentSpan
+                                                                                        .setAttribute(
+                                                                                                "agent.tokens_total",
+                                                                                                tokens);
+                                                                                agentSpan
+                                                                                        .setAttribute(
+                                                                                                "agent.iterations",
+                                                                                                (long)
+                                                                                                        currentIteration
+                                                                                                                .get());
+                                                                                agentSpan.setStatus(
+                                                                                        true,
+                                                                                        "completed");
+                                                                                state =
+                                                                                        AgentState
+                                                                                                .COMPLETED;
+                                                                                AgentHealthRegistry
+                                                                                        .global()
+                                                                                        .deregister(
+                                                                                                this
+                                                                                                        .id);
+                                                                                log.info(
+                                                                                        "Agent '{}' completed after {}"
+                                                                                                + " iterations, {} tokens"
+                                                                                                + " used",
+                                                                                        name,
+                                                                                        currentIteration
+                                                                                                .get(),
+                                                                                        totalTokensUsed
+                                                                                                .get());
+                                                                                publishAgentDone(
+                                                                                        "completed");
+                                                                                return fireSessionEndBestEffort(
+                                                                                                AgentState
+                                                                                                        .COMPLETED,
+                                                                                                null)
+                                                                                        .thenReturn(
+                                                                                                result);
+                                                                            })))
+                                    .onErrorResume(
+                                            e ->
+                                                    updateExecutionStatus(
+                                                                    config.sessionId(),
+                                                                    ExecutionStatus.FAILED)
+                                                            .onErrorResume(ue -> Mono.empty())
+                                                            .then(
+                                                                    Mono.defer(
+                                                                            () -> {
+                                                                                long failTokens =
+                                                                                        totalTokensUsed
+                                                                                                .get();
+                                                                                agentSpan
+                                                                                        .setAttribute(
+                                                                                                "agent.tokens_total",
+                                                                                                failTokens);
+                                                                                agentSpan
+                                                                                        .setAttribute(
+                                                                                                "agent.iterations",
+                                                                                                (long)
+                                                                                                        currentIteration
+                                                                                                                .get());
+                                                                                tracer
+                                                                                        .recordException(
+                                                                                                agentSpan,
+                                                                                                e);
+                                                                                agentSpan.setStatus(
+                                                                                        false,
+                                                                                        e
+                                                                                                .getMessage());
+                                                                                state =
+                                                                                        AgentState
+                                                                                                .FAILED;
+                                                                                AgentHealthRegistry
+                                                                                        .global()
+                                                                                        .deregister(
+                                                                                                this
+                                                                                                        .id);
+                                                                                log.error(
+                                                                                        "Agent"
+                                                                                                + " '{}'"
+                                                                                                + " failed"
+                                                                                                + " after"
+                                                                                                + " {}"
+                                                                                                + " iterations:"
+                                                                                                + " {}",
+                                                                                        name,
+                                                                                        currentIteration
+                                                                                                .get(),
+                                                                                        e
+                                                                                                .getMessage());
+                                                                                publishAgentDone(
+                                                                                        "failed: "
+                                                                                                + e
+                                                                                                        .getMessage());
+                                                                                Mono<Void>
+                                                                                        onErrorHook =
+                                                                                                hookChain
+                                                                                                                instanceof
+                                                                                                                DefaultHookChain
+                                                                                                                        dhc
+                                                                                                        ? dhc.fireOnError(
+                                                                                                                        AgentErrorEvent
+                                                                                                                                .of(
+                                                                                                                                        name,
+                                                                                                                                        e))
+                                                                                                                .onErrorResume(
+                                                                                                                        he -> {
+                                                                                                                            log
+                                                                                                                                    .warn(
+                                                                                                                                            "OnError hook failed for agent '{}': {}",
+                                                                                                                                            name,
+                                                                                                                                            he
+                                                                                                                                                    .getMessage());
+                                                                                                                            return Mono
+                                                                                                                                    .empty();
+                                                                                                                        })
+                                                                                                        : Mono
+                                                                                                                .empty();
+                                                                                return onErrorHook
+                                                                                        .then(
+                                                                                                fireSessionEndBestEffort(
+                                                                                                        AgentState
+                                                                                                                .FAILED,
+                                                                                                        e
+                                                                                                                .getMessage()))
+                                                                                        .then(
+                                                                                                Mono
+                                                                                                        .error(
+                                                                                                                e));
+                                                                            })))
+                                    .doFinally(
+                                            signal -> {
+                                                if (diagnostics != null) {
+                                                    diagnostics.setRunning(false);
+                                                }
+                                                // Clean up stall detector to prevent
+                                                // subscription leak
+                                                stallSub.dispose();
+                                                stallDetector.dispose();
+
+                                                agentSpan.end();
+                                                shutdownManager.unregisterAgent(this);
+                                                skillToolManager.clearSkillRestrictions();
+                                                skillToolManager.closeMcpRegistry();
+                                                AgentHealthRegistry.global().deregister(this.id);
+                                                AgentCallObserver.global()
+                                                        .onCallEnd(
+                                                                id,
+                                                                name,
+                                                                sessionStartTime != null
+                                                                        ? Duration.between(
+                                                                                sessionStartTime,
+                                                                                Instant.now())
+                                                                        : Duration.ZERO,
+                                                                state == AgentState.COMPLETED);
+                                            })
+                                    // Expose this agent's span to downstream tool
+                                    // executions via the Reactor Context. Reactor
+                                    // schedulers don't preserve thread-local OTel
+                                    // Context.current(), so a parent passed via
+                                    // ctx is the only reliable way to nest
+                                    // agent.tool spans under agent.run.
+                                    .contextWrite(
+                                            ctx ->
+                                                    ctx.put(
+                                                            DefaultToolExecutor.SPAN_CONTEXT_KEY,
+                                                            agentSpan))
+                                    // Propagate MutableDiagnostics for hook chain
+                                    // event recording via Reactor Context.
+                                    .contextWrite(
+                                            ctx -> {
+                                                if (diagnostics == null) return ctx;
+                                                return ctx.put(
+                                                                MutableDiagnostics.class,
+                                                                (MutableDiagnostics) diagnostics)
+                                                        .put(
+                                                                DefaultHookChain
+                                                                        .DIAGNOSTICS_RECORDER_KEY,
+                                                                (java.util.function.Consumer<
+                                                                                String>)
+                                                                        diagnostics::recordEvent);
+                                            });
                         })
                 // Propagate this agent's ToolContext through the Reactor Context so every
                 // downstream tool invocation (even in concurrent agents sharing a single

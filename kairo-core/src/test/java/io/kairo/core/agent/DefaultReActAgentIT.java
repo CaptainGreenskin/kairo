@@ -28,7 +28,6 @@ import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
 import io.kairo.api.tool.*;
 import io.kairo.core.hook.DefaultHookChain;
-import io.kairo.core.middleware.DefaultMiddlewarePipeline;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import io.kairo.core.tool.DefaultPermissionGuard;
 import io.kairo.core.tool.DefaultToolExecutor;
@@ -119,11 +118,7 @@ class DefaultReActAgentIT {
 
     private DefaultReActAgent createAgent(AgentConfig config) {
         return new DefaultReActAgent(
-                config,
-                toolExecutor,
-                hookChain,
-                new DefaultMiddlewarePipeline(List.of()),
-                new GracefulShutdownManager());
+                config, toolExecutor, hookChain, new GracefulShutdownManager());
     }
 
     private void registerEchoTool() {

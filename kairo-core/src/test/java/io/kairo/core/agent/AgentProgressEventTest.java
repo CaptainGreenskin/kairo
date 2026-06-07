@@ -136,7 +136,12 @@ class AgentProgressEventTest {
                 .thenReturn(Mono.just(textResponse("final answer")));
 
         DefaultReActAgent agent =
-                new DefaultReActAgent(config, toolExecutor, hookChain, null, null);
+                new DefaultReActAgent(
+                        config,
+                        toolExecutor,
+                        hookChain,
+                        null,
+                        (io.kairo.api.guardrail.GuardrailChain) null);
         agent.withEventBus(eventBus);
 
         Msg input = Msg.of(MsgRole.USER, "hello");
@@ -159,7 +164,12 @@ class AgentProgressEventTest {
                 .thenReturn(Mono.just(textResponse("final answer")));
 
         DefaultReActAgent agent =
-                new DefaultReActAgent(config, toolExecutor, hookChain, null, null);
+                new DefaultReActAgent(
+                        config,
+                        toolExecutor,
+                        hookChain,
+                        null,
+                        (io.kairo.api.guardrail.GuardrailChain) null);
         // Not setting eventBus — should be null by default
 
         Msg input = Msg.of(MsgRole.USER, "hello");

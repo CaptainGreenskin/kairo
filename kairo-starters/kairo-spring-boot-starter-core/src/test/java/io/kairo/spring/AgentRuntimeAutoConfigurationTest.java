@@ -20,9 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.kairo.api.agent.Agent;
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.message.Msg;
-import io.kairo.api.middleware.Middleware;
-import io.kairo.api.middleware.MiddlewareChain;
-import io.kairo.api.middleware.MiddlewareContext;
 import io.kairo.api.model.ModelConfig;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ModelResponse;
@@ -88,48 +85,6 @@ class AgentRuntimeAutoConfigurationTest {
                     configField.setAccessible(true);
                     AgentConfig config = (AgentConfig) configField.get(agent);
                     assertThat(config.modelName()).isEqualTo("claude-sonnet-4-20250514");
-                });
-    }
-
-    @Test
-    void middlewareBeansAreCollectedIntoDefaultAgent() {
-        Middleware testMiddleware =
-                new Middleware() {
-                    @Override
-                    public String name() {
-                        return "test-mw";
-                    }
-
-                    @Override
-                    public Mono<MiddlewareContext> handle(
-                            MiddlewareContext ctx, MiddlewareChain chain) {
-                        return chain.next(ctx);
-                    }
-                };
-
-        runner.withBean("testMiddleware", Middleware.class, () -> testMiddleware)
-                .run(
-                        context -> {
-                            assertThat(context).hasSingleBean(Agent.class);
-                            Agent agent = context.getBean(Agent.class);
-
-                            Field configField = DefaultReActAgent.class.getDeclaredField("config");
-                            configField.setAccessible(true);
-                            AgentConfig config = (AgentConfig) configField.get(agent);
-                            assertThat(config.middlewares()).hasSize(1);
-                            assertThat(config.middlewares().get(0).name()).isEqualTo("test-mw");
-                        });
-    }
-
-    @Test
-    void agentCreatedWithoutMiddlewareWhenNoneRegistered() {
-        runner.run(
-                context -> {
-                    Agent agent = context.getBean(Agent.class);
-                    Field configField = DefaultReActAgent.class.getDeclaredField("config");
-                    configField.setAccessible(true);
-                    AgentConfig config = (AgentConfig) configField.get(agent);
-                    assertThat(config.middlewares()).isEmpty();
                 });
     }
 

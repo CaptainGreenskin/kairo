@@ -128,7 +128,7 @@ class AgentContextIntegrationTest {
         // estimateTokens uses chars * 4/3, so we need chars > 143123 * 3/4 = ~107342
         // A single message with ~110000 chars should do it
         StringBuilder largeText = new StringBuilder();
-        for (int i = 0; i < 110_000; i++) {
+        for (int i = 0; i < 510_000; i++) {
             largeText.append('x');
         }
         List<Msg> msgs = List.of(Msg.of(MsgRole.USER, largeText.toString()));
@@ -163,7 +163,7 @@ class AgentContextIntegrationTest {
 
         // Large message => high pressure
         StringBuilder largeText = new StringBuilder();
-        for (int i = 0; i < 200_000; i++) {
+        for (int i = 0; i < 600_000; i++) {
             largeText.append('x');
         }
         List<Msg> largeMsgs = List.of(Msg.of(MsgRole.USER, largeText.toString()));

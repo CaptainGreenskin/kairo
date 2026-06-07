@@ -103,6 +103,7 @@ public class DefaultToolExecutor implements ToolExecutor {
     private final ToolApprovalFlow approvalFlow;
     private final GuardrailChain guardrailChain; // nullable — backward compatible
     @Nullable private final KairoEventBus eventBus;
+    @Nullable private volatile Set<String> allowedToolNames;
 
     /** Reactor Context key used to propagate {@link ToolContext} through the reactive pipeline. */
     public static final Class<ToolContext> CONTEXT_KEY = ToolContext.class;
@@ -331,6 +332,15 @@ public class DefaultToolExecutor implements ToolExecutor {
         permissionResolver.setWorkspaceRoot(root);
     }
 
+    /**
+     * Set an optional tool whitelist for defense-in-depth enforcement. When set, any tool NOT in
+     * this set is rejected at execution time, even if it was registered in the registry after
+     * filtering.
+     */
+    public void setAllowedToolNames(@Nullable Set<String> names) {
+        this.allowedToolNames = names != null ? Set.copyOf(names) : null;
+    }
+
     @Override
     public Mono<ToolResult> execute(String toolName, Map<String, Object> input) {
         ToolDefinition definition = registry.get(toolName).orElse(null);
@@ -475,6 +485,19 @@ public class DefaultToolExecutor implements ToolExecutor {
             String toolName, Map<String, Object> input, Duration timeout) {
         return Mono.deferContextual(
                 contextView -> {
+                    // 0. Defense-in-depth: reject tools not in the whitelist
+                    Set<String> allowed = allowedToolNames;
+                    if (allowed != null && !allowed.contains(toolName)) {
+                        log.warn("Tool '{}' blocked by executor whitelist", toolName);
+                        return Mono.just(
+                                ToolResultSanitizer.errorResult(
+                                        toolName,
+                                        "Tool '"
+                                                + toolName
+                                                + "' is not available in this agent's"
+                                                + " tool set."));
+                    }
+
                     // 1. Circuit breaker check
                     String cbKey = circuitBreakerKey(toolName, contextView);
                     if (!circuitBreakerTracker.allowCall(cbKey)) {

@@ -69,7 +69,12 @@ class AgentToolCallCountTest {
     }
 
     private DefaultReActAgent createAgent(AgentConfig config) {
-        return new DefaultReActAgent(config, toolExecutor, new DefaultHookChain(), null, null);
+        return new DefaultReActAgent(
+                config,
+                toolExecutor,
+                new DefaultHookChain(),
+                null,
+                (io.kairo.api.guardrail.GuardrailChain) null);
     }
 
     @Test

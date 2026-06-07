@@ -195,10 +195,10 @@ class DefaultContextManagerTest {
                 new CompactionPipeline((io.kairo.api.model.ModelProvider) null);
         DefaultContextManager cm = new DefaultContextManager(budget, pipeline, 0.90f);
 
-        cm.addMessage(userMsg("m1", "x".repeat(50_000), 85_000));
+        cm.addMessage(userMsg("m1", "x".repeat(100_000), 85_000));
         assertFalse(cm.needsCompaction(cm.getMessages()));
 
-        cm.addMessage(userMsg("m2", "y".repeat(20_000), 10_000));
+        cm.addMessage(userMsg("m2", "y".repeat(160_000), 10_000));
         assertTrue(cm.needsCompaction(cm.getMessages()));
     }
 
@@ -210,7 +210,7 @@ class DefaultContextManagerTest {
                 new CompactionPipeline((io.kairo.api.model.ModelProvider) null);
         DefaultContextManager cm = new DefaultContextManager(budget, pipeline, -1.0f);
 
-        cm.addMessage(userMsg("m1", "x".repeat(56_000), 81_000));
+        cm.addMessage(userMsg("m1", "x".repeat(230_000), 81_000));
         assertTrue(cm.needsCompaction(cm.getMessages()));
     }
 

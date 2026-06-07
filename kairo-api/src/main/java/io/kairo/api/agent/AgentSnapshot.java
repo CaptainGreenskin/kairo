@@ -26,11 +26,8 @@ import java.util.Map;
  *
  * <p>Captures the state necessary to resume an agent from where it left off: conversation history,
  * iteration progress, token usage, and lifecycle state. Runtime dependencies (ModelProvider,
- * ToolExecutor, HookChain, MiddlewarePipeline) are <strong>not</strong> included — they are
- * re-injected via {@code AgentBuilder.restoreFrom()} during restoration.
- *
- * <p>Middleware state is intentionally excluded: middleware is a stateless cross-cutting concern
- * that is re-executed fresh on every {@link Agent#call(Msg)} invocation.
+ * ToolExecutor, HookChain) are <strong>not</strong> included — they are re-injected via {@code
+ * AgentBuilder.restoreFrom()} during restoration.
  *
  * @param agentId unique agent identifier
  * @param agentName human-readable agent name

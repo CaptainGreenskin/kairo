@@ -89,8 +89,8 @@ class TokenBudgetManagerV2Test {
         String text = "a".repeat(300);
         List<Msg> messages = List.of(Msg.of(MsgRole.USER, text));
 
-        // Fallback: totalChars * 4 / 3 = 300 * 4 / 3 = 400
-        assertEquals(400, mgr.estimateTokens(messages));
+        // Fallback: HeuristicTokenEstimator text rate = chars / 3.5 = 300 / 3.5 ≈ 85
+        assertEquals(85, mgr.estimateTokens(messages));
     }
 
     @Test
@@ -101,8 +101,8 @@ class TokenBudgetManagerV2Test {
         String text = "a".repeat(120);
         List<Msg> messages = List.of(Msg.of(MsgRole.USER, text));
 
-        // chars * 4 / 3 = 120 * 4 / 3 = 160
-        assertEquals(160, mgr.estimateTokens(messages));
+        // HeuristicTokenEstimator: 120 / 3.5 ≈ 34
+        assertEquals(34, mgr.estimateTokens(messages));
     }
 
     @Test
@@ -116,9 +116,9 @@ class TokenBudgetManagerV2Test {
         List<Msg> messages = List.of(Msg.of(MsgRole.USER, text));
 
         double pressure = mgr.getPressure(messages);
-        // estimated tokens = 1000 * 4 / 3 = 1333
-        // pressure = 1333 / 170_616 ≈ 0.00781
-        double expectedPressure = (1000.0 * 4 / 3) / 170_616;
+        // HeuristicTokenEstimator: 1000 / 3.5 ≈ 285
+        // pressure = 285 / 170_616 ≈ 0.00167
+        double expectedPressure = Math.round(1000.0 / 3.5) / 170_616.0;
         assertEquals(expectedPressure, pressure, 0.001);
     }
 
@@ -130,8 +130,8 @@ class TokenBudgetManagerV2Test {
         String text = "a".repeat(300);
         List<Msg> messages = List.of(Msg.of(MsgRole.USER, text));
 
-        // effective = 170_616 (post-reconciliation), estimated = 300 * 4 / 3 = 400
-        assertEquals(170_616 - 400, mgr.getRemainingBudget(messages));
+        // effective = 170_616, estimated = 300 / 3.5 ≈ 85
+        assertEquals(170_616 - 85, mgr.getRemainingBudget(messages));
     }
 
     @Test
@@ -148,8 +148,8 @@ class TokenBudgetManagerV2Test {
         // Advance turn — usage becomes stale
         mgr.advanceTurn();
         int fallback = mgr.estimateTokens(messages);
-        // Should now use char-based: "test".length() * 4 / 3 = 4 * 4 / 3 = 5
-        assertEquals("test".length() * 4 / 3, fallback);
+        // HeuristicTokenEstimator: "test".length()=4, 4/3.5 ≈ 1
+        assertEquals(1, fallback);
     }
 
     @Test

@@ -24,7 +24,6 @@ import io.kairo.api.execution.DurableExecutionStore;
 import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.guardrail.GuardrailPolicy;
 import io.kairo.api.guardrail.SecurityEventSink;
-import io.kairo.api.middleware.Middleware;
 import io.kairo.api.model.ModelProvider;
 import io.kairo.api.routing.RoutingPolicy;
 import io.kairo.api.tool.PermissionGuard;
@@ -263,8 +262,6 @@ class CoreAutoConfiguration {
             AgentRuntimeProperties properties,
             KairoEventBus kairoEventBus,
             @org.springframework.beans.factory.annotation.Autowired(required = false)
-                    List<Middleware> middlewares,
-            @org.springframework.beans.factory.annotation.Autowired(required = false)
                     DurableExecutionStore durableExecutionStore,
             @org.springframework.beans.factory.annotation.Autowired(required = false)
                     RecoveryHandler recoveryHandler,
@@ -291,12 +288,6 @@ class CoreAutoConfiguration {
                         .shutdownManager(gracefulShutdownManager)
                         .guardrailChain(guardrailChain)
                         .eventBus(kairoEventBus);
-
-        if (middlewares != null) {
-            for (Middleware mw : middlewares) {
-                builder.middleware(mw);
-            }
-        }
 
         // Wire durable execution if enabled
         if (durableProperties != null
