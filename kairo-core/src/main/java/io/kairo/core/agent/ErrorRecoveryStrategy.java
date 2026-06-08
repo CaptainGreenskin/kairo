@@ -47,8 +47,8 @@ public class ErrorRecoveryStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(ErrorRecoveryStrategy.class);
 
-    static final int MAX_RETRY_ATTEMPTS = 3;
-    static final Duration BASE_BACKOFF = Duration.ofSeconds(1);
+    static final int MAX_RETRY_ATTEMPTS = 2;
+    static final Duration BASE_BACKOFF = Duration.ofSeconds(2);
     static final Duration MAX_BACKOFF = Duration.ofSeconds(60);
 
     private final ApiErrorClassifierImpl errorClassifier = new ApiErrorClassifierImpl();
@@ -238,7 +238,7 @@ public class ErrorRecoveryStrategy {
     /** Handle rate-limiting by waiting the specified duration before retry. */
     Mono<ModelResponse> handleRateLimited(
             List<Msg> messages, ModelConfig modelConfig, ClassifiedError err, int retryCount) {
-        Duration wait = err.retryAfter() != null ? err.retryAfter() : Duration.ofSeconds(5);
+        Duration wait = err.retryAfter() != null ? err.retryAfter() : Duration.ofSeconds(15);
         log.info("Rate limited — waiting {} before retry", wait);
         return Mono.delay(wait).then(callModelWithRecovery(messages, modelConfig, retryCount + 1));
     }

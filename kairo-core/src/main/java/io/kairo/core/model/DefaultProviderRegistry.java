@@ -50,7 +50,13 @@ public final class DefaultProviderRegistry implements ProviderRegistry {
         r.registerApiKeyOnly("gemini", ProviderPresets::gemini);
         r.registerApiKeyOnly("google", ProviderPresets::gemini);
         r.registerApiKeyOnly("qwen", ProviderPresets::qwen);
-        r.registerApiKeyOnly("glm", ProviderPresets::glm);
+        r.register(
+                "glm",
+                spec ->
+                        spec.baseUrl() != null && !spec.baseUrl().isBlank()
+                                ? new OpenAIProvider(
+                                        spec.apiKey(), spec.baseUrl(), "/chat/completions")
+                                : ProviderPresets.glm(spec.apiKey()));
         r.registerApiKeyOnly("deepseek", ProviderPresets::deepseek);
         r.registerApiKeyOnly("minimax", ProviderPresets::minimax);
         r.registerApiKeyOnly("kimi", ProviderPresets::kimi);

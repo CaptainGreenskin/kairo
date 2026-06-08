@@ -46,13 +46,13 @@ public final class ProviderRetry {
     private static final Logger log = LoggerFactory.getLogger(ProviderRetry.class);
 
     /** Default number of retry attempts (excluding the initial try). */
-    public static final long DEFAULT_MAX_ATTEMPTS = 3;
+    public static final long DEFAULT_MAX_ATTEMPTS = 2;
 
     /** Default minimum backoff between retries. */
-    public static final Duration DEFAULT_MIN_BACKOFF = Duration.ofSeconds(1);
+    public static final Duration DEFAULT_MIN_BACKOFF = Duration.ofSeconds(5);
 
     /** Default cap on backoff growth. */
-    public static final Duration DEFAULT_MAX_BACKOFF = Duration.ofSeconds(4);
+    public static final Duration DEFAULT_MAX_BACKOFF = Duration.ofSeconds(30);
 
     /** Default jitter fraction (0.0–1.0) applied to computed backoff. */
     public static final double DEFAULT_JITTER = 0.25;
@@ -63,7 +63,7 @@ public final class ProviderRetry {
      */
     static final RetryConfig LEGACY_DEFAULTS =
             RetryConfig.builder()
-                    .maxAttempts(4) // 3 retries + 1 initial = Retry.backoff(3, ...)
+                    .maxAttempts(3) // 2 retries + 1 initial = Retry.backoff(2, ...)
                     .initialBackoff(DEFAULT_MIN_BACKOFF)
                     .maxBackoff(DEFAULT_MAX_BACKOFF)
                     .jitter(DEFAULT_JITTER)
