@@ -21,6 +21,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
 
 import io.kairo.api.agent.AgentConfig;
+import io.kairo.api.cost.NoopCostTracker;
 import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.hook.HookChain;
 import io.kairo.api.hook.HookResult;
@@ -120,7 +121,8 @@ class ReActLoopTest {
                         null, // contextManager
                         null, // guardrailChain
                         null, // eventBus
-                        null); // continuationStrategy
+                        null,
+                        NoopCostTracker.INSTANCE); // continuationStrategy
 
         ModelConfig modelConfig =
                 ModelConfig.builder()
@@ -529,7 +531,8 @@ class ReActLoopTest {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        NoopCostTracker.INSTANCE);
 
         ModelConfig modelConfig =
                 ModelConfig.builder()
@@ -581,7 +584,8 @@ class ReActLoopTest {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        NoopCostTracker.INSTANCE);
 
         ModelConfig modelConfig =
                 ModelConfig.builder()
@@ -637,7 +641,8 @@ class ReActLoopTest {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        NoopCostTracker.INSTANCE);
 
         ModelConfig modelConfig =
                 ModelConfig.builder()
@@ -702,7 +707,8 @@ class ReActLoopTest {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        NoopCostTracker.INSTANCE);
 
         ModelConfig modelConfig =
                 ModelConfig.builder()

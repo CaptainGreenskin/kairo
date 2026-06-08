@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 import io.kairo.api.agent.AgentConfig;
+import io.kairo.api.cost.NoopCostTracker;
 import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.hook.HookChain;
 import io.kairo.api.message.Msg;
@@ -79,7 +80,8 @@ class IterationGuardsTest {
                 null,
                 null,
                 null,
-                null);
+                null,
+                NoopCostTracker.INSTANCE);
     }
 
     @Test

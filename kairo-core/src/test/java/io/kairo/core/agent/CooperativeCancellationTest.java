@@ -22,6 +22,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 import io.kairo.api.agent.AgentConfig;
+import io.kairo.api.cost.NoopCostTracker;
 import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.hook.HookChain;
 import io.kairo.api.hook.HookResult;
@@ -132,7 +133,8 @@ class CooperativeCancellationTest {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        NoopCostTracker.INSTANCE);
 
         ModelConfig modelConfig =
                 ModelConfig.builder()

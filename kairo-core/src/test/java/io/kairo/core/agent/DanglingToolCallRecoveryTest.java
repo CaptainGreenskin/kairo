@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 import io.kairo.api.agent.AgentConfig;
+import io.kairo.api.cost.NoopCostTracker;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
@@ -82,7 +83,8 @@ class DanglingToolCallRecoveryTest {
                         null, // contextManager
                         null,
                         null, // eventBus
-                        null); // continuationStrategy
+                        null, // continuationStrategy
+                        NoopCostTracker.INSTANCE);
 
         ModelConfig modelConfig =
                 ModelConfig.builder()

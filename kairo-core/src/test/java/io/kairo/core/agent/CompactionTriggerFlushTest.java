@@ -23,6 +23,7 @@ import static org.mockito.Mockito.atLeastOnce;
 
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.cost.NoopCostTracker;
 import io.kairo.api.memory.MemoryEntry;
 import io.kairo.api.memory.MemoryScope;
 import io.kairo.api.memory.MemoryStore;
@@ -101,7 +102,8 @@ class CompactionTriggerFlushTest {
                         null,
                         null,
                         null,
-                        null);
+                        null,
+                        NoopCostTracker.INSTANCE);
         ModelConfig modelConfig =
                 ModelConfig.builder()
                         .model("test-model")

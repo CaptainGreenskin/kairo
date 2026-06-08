@@ -84,6 +84,8 @@ io.kairo.evolution.*← 进化机制
 | `LspService` | `io.kairo.api.lsp.LspService` | LSP 诊断子系统：snapshotBaseline + notifyChange + diagnosticsSince，让 tool impl 可挂载「这次编辑是否引入新错误」到结果，v1.3 @Experimental |
 | `LanguageServerRegistry` | `io.kairo.api.lsp.LanguageServerRegistry` | 语言服务器注册表，按扩展名路由 + workspace root 解析（marker → .git → file parent） |
 | `AcpAgent` | `io.kairo.api.acp.AcpAgent` | Agent Client Protocol server handler — 编辑器通过 JSON-RPC over stdio 驱动 kairo agent。MVP: initialize / session.new / session.prompt，v1.3 @Experimental |
+| `CostTracker` | `io.kairo.api.cost.CostTracker` | 累计 token 用量 & 成本估算（v0.10 @Experimental） |
+| `ModelCatalog` | `io.kairo.api.model.ModelCatalog` | 模型名 / 别名 → provider + 能力解析（v0.10 @Experimental） |
 
 ### Hook 生命周期（10个点）
 

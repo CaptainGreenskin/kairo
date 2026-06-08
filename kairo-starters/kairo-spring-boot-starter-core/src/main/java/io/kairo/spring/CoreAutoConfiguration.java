@@ -240,6 +240,20 @@ class CoreAutoConfiguration {
 
     // ---- Agent Factory ----
 
+    // ---- Cost Tracking & Model Catalog ----
+
+    @Bean
+    @ConditionalOnMissingBean(io.kairo.api.cost.CostTracker.class)
+    io.kairo.api.cost.CostTracker costTracker() {
+        return new io.kairo.core.cost.DefaultCostTracker();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(io.kairo.api.model.ModelCatalog.class)
+    io.kairo.api.model.ModelCatalog modelCatalog() {
+        return io.kairo.core.model.DefaultModelCatalog.withBuiltIns();
+    }
+
     @Bean
     @ConditionalOnMissingBean
     AgentFactory agentFactory(
@@ -261,6 +275,7 @@ class CoreAutoConfiguration {
             GuardrailChain guardrailChain,
             AgentRuntimeProperties properties,
             KairoEventBus kairoEventBus,
+            io.kairo.api.cost.CostTracker costTracker,
             @org.springframework.beans.factory.annotation.Autowired(required = false)
                     DurableExecutionStore durableExecutionStore,
             @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -287,7 +302,8 @@ class CoreAutoConfiguration {
                         .tokenBudget(agentProps.getTokenBudget())
                         .shutdownManager(gracefulShutdownManager)
                         .guardrailChain(guardrailChain)
-                        .eventBus(kairoEventBus);
+                        .eventBus(kairoEventBus)
+                        .costTracker(costTracker);
 
         // Wire durable execution if enabled
         if (durableProperties != null

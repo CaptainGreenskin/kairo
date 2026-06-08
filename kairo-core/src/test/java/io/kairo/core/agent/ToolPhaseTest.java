@@ -25,6 +25,7 @@ import static org.mockito.Mockito.when;
 
 import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.agent.IterationSignal;
+import io.kairo.api.cost.NoopCostTracker;
 import io.kairo.api.hook.HookChain;
 import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
@@ -104,7 +105,8 @@ class ToolPhaseTest {
                 null,
                 null,
                 null,
-                null);
+                null,
+                NoopCostTracker.INSTANCE);
     }
 
     private ToolPhase newPhase(List<Msg> history) {

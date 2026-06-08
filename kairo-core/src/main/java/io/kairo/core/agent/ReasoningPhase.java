@@ -276,6 +276,9 @@ public class ReasoningPhase {
             ctx.tokenBudgetManager().recordModelUsage(response.usage());
             totalTokensUsed.set(ctx.tokenBudgetManager().totalAccountedTokens());
 
+            String model = response.model() != null ? response.model() : ctx.config().modelName();
+            ctx.costTracker().recordUsage(model, response.usage());
+
             log.info(
                     "[Iteration {}] input={} output={} cache_read={} cache_write={}",
                     currentIteration.get(),

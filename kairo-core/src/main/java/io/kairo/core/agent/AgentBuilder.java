@@ -21,13 +21,18 @@ import io.kairo.api.agent.AgentConfig;
 import io.kairo.api.agent.AgentSnapshot;
 import io.kairo.api.agent.SystemPromptContributor;
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.cost.CostTracker;
 import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.evolution.EvolutionConfig;
 import io.kairo.api.execution.DurableExecutionStore;
 import io.kairo.api.execution.ResourceConstraint;
 import io.kairo.api.guardrail.GuardrailChain;
 import io.kairo.api.memory.MemoryStore;
+import io.kairo.api.model.ModelCatalog;
+import io.kairo.api.model.ModelInfo;
 import io.kairo.api.model.ModelProvider;
+import io.kairo.api.model.ProviderRegistry;
+import io.kairo.api.model.ProviderSpec;
 import io.kairo.api.tool.ToolExecutor;
 import io.kairo.api.tool.ToolRegistry;
 import io.kairo.api.tool.UserApprovalHandler;
@@ -42,6 +47,8 @@ import io.kairo.core.context.DefaultContextManager;
 import io.kairo.core.context.TokenBudgetManager;
 import io.kairo.core.execution.RecoveryHandler;
 import io.kairo.core.hook.DefaultHookChain;
+import io.kairo.core.model.DefaultModelCatalog;
+import io.kairo.core.model.DefaultProviderRegistry;
 import io.kairo.core.session.SessionManager;
 import io.kairo.core.shutdown.GracefulShutdownManager;
 import java.nio.file.Path;
@@ -111,6 +118,11 @@ public class AgentBuilder {
     @javax.annotation.Nullable private java.util.function.Consumer<String> textDeltaConsumer;
     @javax.annotation.Nullable private KairoEventBus eventBus;
     @javax.annotation.Nullable private AgentContinuationStrategy continuationStrategy;
+    @javax.annotation.Nullable private CostTracker costTracker;
+    @javax.annotation.Nullable private String apiKey;
+    @javax.annotation.Nullable private String baseUrl;
+    @javax.annotation.Nullable private ModelCatalog modelCatalog;
+    @javax.annotation.Nullable private ProviderRegistry providerRegistry;
     @javax.annotation.Nullable private io.kairo.api.workspace.Workspace workspace;
 
     private AgentBuilder() {}
@@ -291,6 +303,72 @@ public class AgentBuilder {
      */
     public AgentBuilder tracer(Tracer tracer) {
         this.tracer = tracer;
+        return this;
+    }
+
+    /**
+     * Set the cost tracker for cumulative token usage and cost estimation.
+     *
+     * <p>When not set, defaults to {@link io.kairo.api.cost.NoopCostTracker#INSTANCE}.
+     *
+     * @param costTracker the cost tracker implementation
+     * @return this builder
+     */
+    public AgentBuilder costTracker(CostTracker costTracker) {
+        this.costTracker = costTracker;
+        return this;
+    }
+
+    /**
+     * Set the API key for automatic provider resolution.
+     *
+     * <p>When {@link #model(ModelProvider)} is not called, the builder uses this key together with
+     * {@link #modelName(String)} to auto-construct a {@link ModelProvider} via {@link ModelCatalog}
+     * and {@link ProviderRegistry}.
+     *
+     * @param apiKey the API key
+     * @return this builder
+     */
+    public AgentBuilder apiKey(String apiKey) {
+        this.apiKey = apiKey;
+        return this;
+    }
+
+    /**
+     * Override the base URL for automatic provider resolution.
+     *
+     * @param baseUrl the base URL (e.g., "https://api.openai.com")
+     * @return this builder
+     */
+    public AgentBuilder baseUrl(String baseUrl) {
+        this.baseUrl = baseUrl;
+        return this;
+    }
+
+    /**
+     * Set a custom {@link ModelCatalog} for model name resolution.
+     *
+     * <p>When not set, {@link DefaultModelCatalog#withBuiltIns()} is used during auto-resolution.
+     *
+     * @param catalog the model catalog
+     * @return this builder
+     */
+    public AgentBuilder modelCatalog(ModelCatalog catalog) {
+        this.modelCatalog = catalog;
+        return this;
+    }
+
+    /**
+     * Set a custom {@link ProviderRegistry} for provider construction.
+     *
+     * <p>When not set, {@link DefaultProviderRegistry#withBuiltIns()} is used during
+     * auto-resolution.
+     *
+     * @param registry the provider registry
+     * @return this builder
+     */
+    public AgentBuilder providerRegistry(ProviderRegistry registry) {
+        this.providerRegistry = registry;
         return this;
     }
 
@@ -689,7 +767,8 @@ public class AgentBuilder {
                         durableExecutionStore,
                         recoveryHandler,
                         recoveryOnStartup,
-                        continuationStrategy);
+                        continuationStrategy,
+                        costTracker);
 
         // Wire ToolContext with workspace and dependencies so tools resolve paths correctly
         if (workspace != null || !toolDependencies.isEmpty()) {
@@ -774,7 +853,29 @@ public class AgentBuilder {
      */
     private AgentConfig buildConfig() {
         Objects.requireNonNull(name, "Agent name must not be null");
-        Objects.requireNonNull(modelProvider, "ModelProvider must not be null");
+
+        // Auto-resolve: if modelProvider is not set but modelName + apiKey are, construct one
+        if (modelProvider == null && modelName != null && !modelName.isBlank() && apiKey != null) {
+            ModelCatalog catalog =
+                    this.modelCatalog != null
+                            ? this.modelCatalog
+                            : DefaultModelCatalog.withBuiltIns();
+            java.util.Optional<ModelInfo> info = catalog.resolve(modelName);
+            if (info.isPresent()) {
+                ProviderRegistry pr =
+                        this.providerRegistry != null
+                                ? this.providerRegistry
+                                : DefaultProviderRegistry.withBuiltIns();
+                ProviderSpec spec = ProviderSpec.of(apiKey, baseUrl).withModel(modelName);
+                modelProvider = pr.create(info.get().providerName(), spec);
+            }
+        }
+
+        if (modelProvider == null) {
+            throw new IllegalStateException(
+                    "ModelProvider is required. Either call .model(provider) or set "
+                            + ".modelName(\"model\").apiKey(\"key\") for auto-resolution.");
+        }
 
         if (modelName == null || modelName.isBlank()) {
             throw new IllegalStateException(

@@ -23,6 +23,8 @@ import io.kairo.api.agent.AgentState;
 import io.kairo.api.agent.IterationCheckpoint;
 import io.kairo.api.agent.SystemPromptContributor;
 import io.kairo.api.context.ContextManager;
+import io.kairo.api.cost.CostTracker;
+import io.kairo.api.cost.NoopCostTracker;
 import io.kairo.api.event.AgentProgressEvent;
 import io.kairo.api.event.KairoEventBus;
 import io.kairo.api.exception.AgentInterruptedException;
@@ -107,6 +109,7 @@ public class DefaultReActAgent implements Agent {
     private final SystemPromptResult systemPromptResult;
     private final ContextManager contextManager; // nullable
     private final Tracer tracer;
+    private final CostTracker costTracker;
     private final GracefulShutdownManager shutdownManager;
     private volatile Instant sessionStartTime;
 
@@ -224,6 +227,7 @@ public class DefaultReActAgent implements Agent {
                 null,
                 null,
                 false,
+                null,
                 null);
     }
 
@@ -239,6 +243,8 @@ public class DefaultReActAgent implements Agent {
      * @param durableExecutionStore the durable execution store (null disables durability)
      * @param recoveryHandler the recovery handler (null disables recovery)
      * @param recoveryOnStartup whether to attempt recovery on startup
+     * @param continuationStrategy the continuation strategy (null disables continuation)
+     * @param costTracker the cost tracker (null defaults to noop)
      */
     public DefaultReActAgent(
             AgentConfig config,
@@ -250,8 +256,8 @@ public class DefaultReActAgent implements Agent {
             @javax.annotation.Nullable RecoveryHandler recoveryHandler,
             boolean recoveryOnStartup,
             @javax.annotation.Nullable
-                    io.kairo.core.agent.continuation.AgentContinuationStrategy
-                            continuationStrategy) {
+                    io.kairo.core.agent.continuation.AgentContinuationStrategy continuationStrategy,
+            @javax.annotation.Nullable CostTracker costTracker) {
         this.id = UUID.randomUUID().toString();
         this.name = config.name();
         this.state = AgentState.IDLE;
@@ -265,6 +271,9 @@ public class DefaultReActAgent implements Agent {
 
         // Initialize tracer from config with NoopTracer fallback
         this.tracer = config.tracer() != null ? config.tracer() : new NoopTracer();
+
+        // Initialize cost tracker with NoopCostTracker fallback
+        this.costTracker = costTracker != null ? costTracker : NoopCostTracker.INSTANCE;
 
         // Initialize shutdown manager
         this.shutdownManager =
@@ -320,7 +329,8 @@ public class DefaultReActAgent implements Agent {
                         this.contextManager,
                         guardrailChain,
                         null, // eventBus set later via withEventBus()
-                        continuationStrategy);
+                        continuationStrategy,
+                        this.costTracker);
         // Durable execution support
         this.durableExecutionStore = durableExecutionStore;
         this.recoveryHandler = recoveryHandler;
@@ -914,6 +924,15 @@ public class DefaultReActAgent implements Agent {
      */
     public long totalTokensUsed() {
         return totalTokensUsed.get();
+    }
+
+    /**
+     * Return the cost tracker configured for this agent.
+     *
+     * @return the cost tracker, never {@code null} (defaults to {@link NoopCostTracker})
+     */
+    public CostTracker costTracker() {
+        return costTracker;
     }
 
     @Override

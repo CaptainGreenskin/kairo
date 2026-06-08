@@ -80,8 +80,33 @@ class AgentBuilderTest {
     @Test
     void missingModelProviderThrows() {
         assertThrows(
-                NullPointerException.class,
+                IllegalStateException.class,
                 () -> AgentBuilder.create().name("test").modelName("test-model").build());
+    }
+
+    @Test
+    void autoResolveWithModelNameAndApiKey() {
+        Agent agent =
+                AgentBuilder.create()
+                        .name("auto-resolve-test")
+                        .modelName("claude-sonnet-4-20250514")
+                        .apiKey("sk-test-key")
+                        .toolExecutor(mock(io.kairo.api.tool.ToolExecutor.class))
+                        .build();
+        assertNotNull(agent);
+        assertEquals("auto-resolve-test", agent.name());
+    }
+
+    @Test
+    void autoResolveUnknownModelFallsToError() {
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                        AgentBuilder.create()
+                                .name("test")
+                                .modelName("totally-unknown-xyz")
+                                .apiKey("sk-test")
+                                .build());
     }
 
     @Test

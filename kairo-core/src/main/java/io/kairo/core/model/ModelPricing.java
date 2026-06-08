@@ -15,6 +15,7 @@
  */
 package io.kairo.core.model;
 
+import io.kairo.api.model.ModelResponse;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -68,11 +69,22 @@ public final class ModelPricing {
                     Map.entry("claude-3-7-sonnet", new Price(3.00, 15.00)),
                     Map.entry("claude-3-5-sonnet", new Price(3.00, 15.00)),
                     Map.entry("claude-3-5-haiku", new Price(0.80, 4.00)),
+                    Map.entry("claude-3-opus", new Price(15.00, 75.00)),
+                    Map.entry("claude-3-haiku", new Price(0.25, 1.25)),
 
                     // ---- Google Gemini ----
                     Map.entry("gemini-2.5-pro", new Price(1.25, 5.00)),
                     Map.entry("gemini-2.5-flash", new Price(0.075, 0.30)),
-                    Map.entry("gemini-2.0-flash", new Price(0.10, 0.40)));
+                    Map.entry("gemini-2.0-flash", new Price(0.10, 0.40)),
+
+                    // ---- DeepSeek ----
+                    Map.entry("deepseek-chat", new Price(0.27, 1.10)),
+                    Map.entry("deepseek-coder", new Price(0.14, 0.28)),
+
+                    // ---- Qwen (CNY → USD via CNY_USD_RATE) ----
+                    Map.entry("qwen-max", new Price(2.40 * CNY_USD_RATE, 9.60 * CNY_USD_RATE)),
+                    Map.entry("qwen-plus", new Price(0.40 * CNY_USD_RATE, 1.20 * CNY_USD_RATE)),
+                    Map.entry("qwen-turbo", new Price(0.05 * CNY_USD_RATE, 0.20 * CNY_USD_RATE)));
 
     private ModelPricing() {}
 
@@ -99,6 +111,44 @@ public final class ModelPricing {
         }
         double cost =
                 (inputTokens * price.inputPerMillionUsd + outputTokens * price.outputPerMillionUsd)
+                        / 1_000_000.0;
+        return Optional.of(cost);
+    }
+
+    /**
+     * Compute total cost in USD for a single invocation, including cache token discounts.
+     *
+     * <p>Cache-read tokens are priced at 10% of the regular input rate; cache-creation tokens at
+     * 125% (Anthropic pricing convention). Non-Anthropic providers that report zero cache tokens
+     * fall back to the same result as {@link #estimateUsd(String, long, long)}.
+     *
+     * @param modelName canonical model identifier (case-insensitive)
+     * @param usage the full usage record from a model response
+     * @return total cost USD, or empty if the model is unknown or all counts are zero
+     */
+    public static Optional<Double> estimateUsd(String modelName, ModelResponse.Usage usage) {
+        if (usage == null) {
+            return Optional.empty();
+        }
+        if (modelName == null || modelName.isBlank()) {
+            return Optional.empty();
+        }
+        long in = usage.inputTokens();
+        long out = usage.outputTokens();
+        long cacheRead = usage.cacheReadTokens();
+        long cacheCreate = usage.cacheCreationTokens();
+        if (in <= 0 && out <= 0 && cacheRead <= 0 && cacheCreate <= 0) {
+            return Optional.empty();
+        }
+        Price price = lookup(modelName);
+        if (price == null) {
+            return Optional.empty();
+        }
+        double cost =
+                (in * price.inputPerMillionUsd
+                                + out * price.outputPerMillionUsd
+                                + cacheRead * price.inputPerMillionUsd * 0.1
+                                + cacheCreate * price.inputPerMillionUsd * 1.25)
                         / 1_000_000.0;
         return Optional.of(cost);
     }
