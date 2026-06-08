@@ -6,18 +6,22 @@ Kairo 不是封装层 — 它是基础设施。正如 Netty 之于网络、Jacks
 
 ## OS 概念映射
 
-| OS 概念 | Kairo 映射 | 说明 |
-|---------|-----------|------|
-| 内存管理 | Context | 上下文窗口 = 有限内存，需要智能压缩 |
-| 系统调用 | Tool | 21+ 专用工具，Agent 与外部世界的接口 |
-| 进程 | Agent | ReAct 循环驱动的独立执行单元 |
-| 文件系统 | Memory | 持久化知识存储（文件 / 内存） |
-| 信号处理 | Hook | 10 个钩子点，支持 CONTINUE/MODIFY/SKIP/ABORT/INJECT 决策 |
-| 可执行文件 | Skill | Markdown 格式的即插即用能力包 |
-| 作业调度 | Task + Team | 多 Agent 任务编排与团队协作 |
-| IPC | A2A 协议 | Agent-to-Agent 通信，跨 Agent 调用 |
-| 中间件 | 中间件管道 | 声明式请求/响应拦截 |
-| 检查点 | 快照 | Agent 状态序列化与恢复 |
+| OS 概念 | Kairo 映射 | 说明 | 状态 |
+|---------|-----------|------|------|
+| 内存管理 | Context | 上下文窗口 = 有限内存，需要智能压缩 | 已实现 |
+| 系统调用 | Tool | 56 个内置工具，Agent 与外部世界的接口 | 已实现 |
+| 进程 | Agent | ReAct 循环驱动的独立执行单元 | 已实现 |
+| 文件系统 | Memory | 持久化知识存储（文件 / 内存） | 已实现 |
+| 信号处理 | Hook | 10 个钩子点，支持 CONTINUE/MODIFY/SKIP/ABORT/INJECT 决策 | 已实现 |
+| 可执行文件 | Skill | Markdown 格式的即插即用能力包 | 已实现 |
+| 作业调度 | Cron + Team | 定时任务 + 多 Agent 团队编排 | 已实现 |
+| IPC | A2A 协议 | Agent-to-Agent 通信，跨 Agent 调用 | 已实现 |
+| 中间件 | 中间件管道 | 声明式请求/响应拦截 | 已实现 |
+| 检查点 | 快照 | Agent 状态序列化与恢复 | 已实现 |
+| 包管理器 | Plugin | 安装/启用/禁用 skills、hooks、MCP 服务器、agents（兼容 Claude Code 格式） | 已实现 |
+| 网络 | Gateway | 多 Channel 路由、会话管理、流式传输、镜像 | 已实现 |
+| 设备驱动 | Channel | IM 适配器层（钉钉已交付，飞书/Slack/Telegram 规划中） | 已实现 |
+| Cron | Cron | 定时任务调度执行 | 已实现 |
 
 ## 为什么选择 Kairo
 

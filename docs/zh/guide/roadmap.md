@@ -3,24 +3,30 @@
 | 版本 | 主题 | 状态 |
 |------|------|------|
 | v0.1–v0.4 | 核心运行时 + SPI + A2A + 中间件 + 快照 | ✅ 已完成 |
-| v0.5 | 会记忆的 Agent — Memory SPI + Embedding + 检查点/回滚 | 下一个 |
-| v0.6 | 安全的 Agent — Guardrail SPI + 团队模式 | 计划中 |
+| v0.5 | 会记忆的 Agent — Memory SPI + Embedding + 检查点/回滚 | ✅ 已实现 |
+| v0.6 | 安全的 Agent — Guardrail SPI + 团队模式 | ✅ 已实现 |
 | v0.7.0 | Guardrail SPI + MCP 安全 + 结构化异常 | ✅ 已完成 |
 | v0.7.1 | Tool Result Budget + 结构化可观测性 | ✅ 已完成 |
 | v0.8 | 持久化执行 MVP + 执行约束 SPI + 成本感知路由 | ✅ 已实现 |
 | v0.9 | 平台能力补缺口 + Channel SPI / Event Stream / OTel Exporter | ✅ 已实现 |
 | v0.10 | 核心重构波次（事件总线 + capability 配置形状 + Hook 统一入口 + SPI 脚手架） | ✅ 已实现 |
 | v0.10.1 | 专家团队编排 MVP（`TeamCoordinator` + `EvaluationStrategy` SPI + 可选 starter） | ✅ 已实现 |
+| v1.0.0-RC1 | SPI 稳定化 | ✅ 已发布 |
+| v1.0.0-RC2 | 文档与示例完善 | ✅ 已发布 |
+| v1.0.0 | Java Agent 标准 | ✅ 已发布 |
+| v1.1.0 | SPI 基础 | ✅ 已发布 |
+| v1.1.1 | Kairo Code 品牌更新 | ✅ 已发布 |
+| v1.2 | Plugin + Gateway + Cron + LSP + ACP | 进行中 |
 
 ## v0.1–v0.4：核心运行时（已完成）
 
 基础已就位：ReAct 引擎、SPI 架构、21 个内置工具、上下文压缩、模型提供者（Anthropic、GLM、Qwen、GPT）、A2A 协议、中间件管道、Agent 快照以及 Spring Boot 集成。
 
-## v0.5：会记忆的 Agent（下一个）
+## v0.5：会记忆的 Agent（已实现）
 
 Memory SPI，基于 Embedding 的检索、持久化检查点/回滚，以及持久执行支持。
 
-## v0.6：安全的 Agent（计划中）
+## v0.6：安全的 Agent（已实现）
 
 Guardrail SPI 用于输入/输出验证、团队协作模式和增强的权限管理。
 
@@ -71,3 +77,27 @@ v0.9.0 GA 合并两条线交付：
 - **Starter 需显式开启** `kairo.expert-team.enabled=true`，仅引入 starter 本身不会装配 coordinator（与 ADR-015 "专家团队属于高阶 + 策略敏感能力" 的口径一致）。
 
 Kickoff：`docs/roadmap/v0.10-expert-team-kickoff.md`。验证证据：`docs/roadmap/v0.10-expert-team-verification.md`。
+
+## v1.0.0-RC1：SPI 稳定化（已发布）
+
+完整的 `kairo-api` 注解审查 — 197 个类型中 119 个 `@Stable` + 78 个 `@Experimental`。japicmp 二进制兼容性门禁。`kairo-core` 覆盖率提升至 77.4%。
+
+## v1.0.0-RC2：文档与示例完善（已发布）
+
+API 参考文档（每语言 7 页）、双语对齐、ObservabilityExample、README 审计。
+
+## v1.0.0：Java Agent 标准（已发布）
+
+企业安全：`kairo-security-pii` 模块，含 PiiRedactionPolicy（EMAIL/PHONE/CREDIT_CARD/SSN/API_KEY/JWT）、JdbcAuditEventSink（追加式审计）、ComplianceReportCollector（每次运行的 Markdown 合规证据）。已发布到 Maven Central。
+
+## v1.1.0：SPI 基础（已发布）
+
+四个新 SPI 包：ExecutionSandbox（安全命令执行）、Workspace（路径穿越防御）、TenantContext（多租户上下文传播）、Bridge（WebSocket IDE 集成）。全部为 v1.0 表面的纯增量。
+
+## v1.1.1：Kairo Code 品牌更新（已发布）
+
+ConsoleApprovalHandler 取消安全性（Mono.create + 可中断轮询）。配套 kairo-code 从 agentcode 重命名。
+
+## v1.2：Plugin + Gateway + Cron + LSP + ACP（进行中）
+
+Plugin SPI（兼容 Claude Code 格式，5 种安装来源）。Gateway 模块多 Channel 路由。Cron 调度器。LSP 诊断。Agent Client Protocol 编辑器集成。

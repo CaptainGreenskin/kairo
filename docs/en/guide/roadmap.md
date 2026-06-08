@@ -11,10 +11,16 @@
 | v0.9 | Gap-Only Platform Capabilities + Channel SPI / Event Stream / OTel Exporter | Implemented |
 | v0.10 | Core Refactor Waves (event bus + capability-shaped configs + hook consolidation scaffolding) | Implemented |
 | v0.10.1 | Expert Team Orchestration MVP (TeamCoordinator + EvaluationStrategy SPIs + opt-in starter) | Implemented |
+| v1.0.0-RC1 | SPI Stabilization | Released |
+| v1.0.0-RC2 | Docs + Examples Completeness | Released |
+| v1.0.0 | The Java Agent Standard | Released |
+| v1.1.0 | SPI Foundations | Released |
+| v1.1.1 | Kairo Code Rebrand | Released |
+| v1.2 | Plugin + Gateway + Cron + LSP + ACP | In Progress |
 
 ## v0.1–v0.4: Core Runtime (Implemented)
 
-The foundation is in place: ReAct engine, SPI architecture, 21 built-in tools, context compaction, model providers (Anthropic, GLM, Qwen, GPT), A2A Protocol, Middleware Pipeline, Agent Snapshot, and Spring Boot integration.
+The foundation is in place: ReAct engine, SPI architecture, 56 built-in tools, context compaction, model providers (Anthropic, GLM, Qwen, GPT), A2A Protocol, Middleware Pipeline, Agent Snapshot, and Spring Boot integration.
 
 ## v0.5: Agents That Remember (Implemented)
 
@@ -71,3 +77,27 @@ Key semantics:
 - **Starter activation** requires `kairo.expert-team.enabled=true`; installing the starter alone is deliberately not enough.
 
 Kickoff: `docs/roadmap/v0.10-expert-team-kickoff.md`. Verification evidence: `docs/roadmap/v0.10-expert-team-verification.md`.
+
+## v1.0.0-RC1: SPI Stabilization (Released)
+
+Full `kairo-api` annotation pass — 119 `@Stable` + 78 `@Experimental` across 197 types. japicmp binary compatibility gate. `kairo-core` coverage uplift to 77.4%.
+
+## v1.0.0-RC2: Docs + Examples Completeness (Released)
+
+API Reference docs (7 pages per locale), bilingual parity, ObservabilityExample, README audit.
+
+## v1.0.0: The Java Agent Standard (Released)
+
+Enterprise security: `kairo-security-pii` module with PiiRedactionPolicy (EMAIL/PHONE/CREDIT_CARD/SSN/API_KEY/JWT), JdbcAuditEventSink (append-only audit), ComplianceReportCollector (per-run Markdown evidence). Published to Maven Central.
+
+## v1.1.0: SPI Foundations (Released)
+
+Four new SPI packages: ExecutionSandbox (safe command execution), Workspace (path-traversal defense), TenantContext (multi-tenant propagation), Bridge (WebSocket IDE integration). All purely additive on v1.0 surface.
+
+## v1.1.1: Kairo Code Rebrand (Released)
+
+ConsoleApprovalHandler cancellation safety (Mono.create + interruptible polling). Companion kairo-code rebrand from agentcode.
+
+## v1.2: Plugin + Gateway + Cron + LSP + ACP (In Progress)
+
+Plugin SPI (Claude Code format compatible, 5 install sources). Gateway module for multi-channel routing. Cron scheduler. LSP diagnostics. Agent Client Protocol for editor integration.

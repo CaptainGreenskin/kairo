@@ -4,7 +4,7 @@
 
 - **ReAct Engine** — `DefaultReActAgent` implements the full Reasoning-Acting cycle with configurable iteration limits, streaming responses, and multi-layer error recovery
 - **6-Stage Context Compaction** — Progressive pipeline (Snip → Micro → Collapse → Auto → Partial → CircuitBreaker) with "Facts First" strategy to preserve raw context as long as possible
-- **21 Built-in Tools** — File ops (Read/Write/Edit/Glob/Grep), execution (Bash/Monitor), interaction (AskUser), skills (SkillList/SkillLoad), and agent ops (Spawn/Message/Task/Team/Plan)
+- **56 Built-in Tools** — File ops (Read/Write/Edit/Glob/Grep/Tree/Diff/BatchRead/BatchWrite/SearchReplace/PatchApply/JsonQuery/TemplateRender), execution (Bash/Monitor/Mvn/Sleep/VerifyExecution), web (WebFetch/WebSearch/Http/OpenApiHttp), git (Git/Github), interaction (AskUser), skills (SkillList/SkillLoad/SkillManage), agent ops (AgentSpawn/SendMessage/TeamCreate/TeamDelete/Task*/Todo*/Workflow), plan mode (EnterPlanMode/ExitPlanMode/ListPlans), memory (Memory*/TeamMemory*), cron (Cron*), and code intelligence (Lsp)
 - **Read/Write Partition** — READ_ONLY tools execute in parallel, WRITE/SYSTEM_CHANGE tools serialize automatically
 - **Human-in-the-Loop** — Three-state permission model (ALLOWED/ASK/DENIED) with `PermissionGuard`
 - **Multi-Agent Orchestration** — `TeamCoordinator` SPI with expert-team (plan → generate → evaluate) default, plus in-process MessageBus
@@ -21,6 +21,15 @@
 - **Plan Mode** — Separate planning from execution; write tools blocked during planning
 - **Model Harness** — Deep Anthropic integration + OpenAI-compatible fallback for GLM, Qwen, GPT, etc.
 - **Session Persistence** — File-based state serialization with TTL cleanup
+- **Plugin System** — Claude Code format compatible plugin system with 5 install sources (LocalPath/GitHub/GitUrl/GitSubdir/Npm)
+- **Gateway** — Multi-channel routing, session management, streaming, mirroring via Gateway SPI
+- **Execution Sandbox** — ExecutionSandbox SPI with LocalProcessSandbox default
+- **Workspace Provider** — WorkspaceProvider SPI with path-traversal defense
+- **Tenant Context** — TenantContextHolder with Reactor context propagation
+- **Bridge SPI** — WebSocket-based IDE integration (5-op catalog)
+- **ACP** — Agent Client Protocol for editor integration (JSON-RPC over stdio)
+- **LSP Diagnostics** — Post-edit baseline diff ("did this edit introduce new errors?")
+- **Cron Scheduler** — Built-in scheduled task execution
 
 ## Model Support
 

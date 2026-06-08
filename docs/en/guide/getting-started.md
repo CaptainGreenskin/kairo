@@ -13,9 +13,9 @@ Use the Kairo BOM for version management:
 <dependencyManagement>
     <dependencies>
         <dependency>
-            <groupId>io.github.captainreenskin</groupId>
+            <groupId>io.github.captaingreenskin</groupId>
             <artifactId>kairo-bom</artifactId>
-            <version>0.5.0-SNAPSHOT</version>
+            <version>0.8.0</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -24,11 +24,11 @@ Use the Kairo BOM for version management:
 
 <dependencies>
     <dependency>
-        <groupId>io.github.captainreenskin</groupId>
+        <groupId>io.github.captaingreenskin</groupId>
         <artifactId>kairo-core</artifactId>
     </dependency>
     <dependency>
-        <groupId>io.github.captainreenskin</groupId>
+        <groupId>io.github.captaingreenskin</groupId>
         <artifactId>kairo-tools</artifactId>
     </dependency>
 </dependencies>
@@ -77,7 +77,21 @@ Add the starter dependency and configure via `application.yml`:
 </dependency>
 ```
 
-Add per-feature starters as needed: `kairo-spring-boot-starter-mcp`, `-multi-agent`, `-evolution`, `-expert-team`, `-event-stream`, `-channel`, `-channel-dingtalk`, `-observability`.
+Add per-feature starters as needed. All 13 available starters:
+
+- `kairo-spring-boot-starter-core`
+- `kairo-spring-boot-starter-mcp`
+- `kairo-spring-boot-starter-multi-agent`
+- `kairo-spring-boot-starter-evolution`
+- `kairo-spring-boot-starter-expert-team`
+- `kairo-spring-boot-starter-event-stream`
+- `kairo-spring-boot-starter-gateway`
+- `kairo-spring-boot-starter-channel-dingtalk`
+- `kairo-spring-boot-starter-observability`
+- `kairo-spring-boot-starter-plugin`
+- `kairo-spring-boot-starter-cron`
+- `kairo-spring-boot-starter-lsp`
+- `kairo-spring-boot-starter-acp`
 
 ```yaml
 kairo:

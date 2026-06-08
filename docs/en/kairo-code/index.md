@@ -69,8 +69,6 @@ Kairo Code learns from each session — accumulating memory and knowledge, and r
 
 ### Approval Mode
 
-![Approval Mode Dropdown](/images/kairo-code/20-approval-mode-dropdown.png)
-
 Control how tools run with Manual, Auto-safe, and YOLO approval modes, backed by hook-based safety controls:
 
 ![Tool Approval Demo](/images/kairo-code/video/demo-approval.gif)

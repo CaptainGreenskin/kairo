@@ -4,7 +4,7 @@
 
 - **ReAct 引擎** — `DefaultReActAgent` 实现完整的推理-行动循环，支持可配置迭代上限、流式响应和多层错误恢复
 - **6 级上下文压缩管道** — 渐进式管道（Snip → Micro → Collapse → Auto → Partial → 熔断器），采用"Facts First"策略尽可能保留原始上下文
-- **21 个内置工具** — 文件操作（Read/Write/Edit/Glob/Grep）、执行（Bash/Monitor）、交互（AskUser）、技能（SkillList/SkillLoad）、Agent 操作（Spawn/Message/Task/Team/Plan）
+- **56 个内置工具** — 文件操作（Read/Write/Edit/Glob/Grep/Patch/MultiEdit/NotebookRead/NotebookEdit）、执行（Bash/Monitor）、Web（WebFetch/WebSearch）、Git（GitLog/GitDiff/GitShow/GitBlame/GitStash/GitCommit）、交互（AskUser/TodoRead/TodoWrite）、技能（SkillList/SkillLoad/SkillManage）、Agent 操作（Spawn/Message/Team/Plan）、计划模式（PlanRead/PlanWrite）、记忆（MemoryRead/MemoryWrite）、Cron（CronList/CronCreate/CronDelete）、代码智能（LspDiagnostics/LspReferences/LspDefinition）
 - **读写分区** — READ_ONLY 工具并行执行，WRITE/SYSTEM_CHANGE 工具自动串行化
 - **人机协作** — 三态权限模型（ALLOWED/ASK/DENIED），通过 `PermissionGuard` 控制
 - **多 Agent 编排** — `TeamCoordinator` SPI（默认 expert-team 编排：plan → generate → evaluate）和进程内 MessageBus
@@ -21,6 +21,15 @@
 - **计划模式** — 规划与执行分离，规划期间写工具被阻止
 - **模型适配** — 深度 Anthropic 集成 + OpenAI 兼容回退（GLM、Qwen、GPT 等）
 - **会话持久化** — 基于文件的状态序列化，支持 TTL 自动清理
+- **插件系统** — 兼容 Claude Code 格式的插件系统，5 种安装来源（LocalPath/GitHub/GitUrl/GitSubdir/Npm），支持 skills、hooks、MCP 服务器、agents 组件
+- **网关** — 通过 Gateway SPI 实现多 Channel 路由、会话管理、流式传输、镜像
+- **执行沙箱** — ExecutionSandbox SPI，默认 LocalProcessSandbox，安全命令执行
+- **工作空间提供者** — WorkspaceProvider SPI，路径穿越防御
+- **租户上下文** — TenantContextHolder，Reactor 上下文传播，多租户隔离
+- **Bridge SPI** — 基于 WebSocket 的 IDE 集成（5 个操作目录）
+- **ACP** — Agent Client Protocol 编辑器集成（基于 stdio 的 JSON-RPC，支持 initialize/session.new/session.prompt）
+- **LSP 诊断** — 编辑后基线 diff（"这次编辑是否引入了新错误？"），snapshotBaseline + notifyChange + diagnosticsSince
+- **Cron 调度器** — 内置定时任务执行，通过 CronList/CronCreate/CronDelete 工具管理
 
 ## 模型支持
 

@@ -2,7 +2,7 @@
 
 ## Module Overview
 
-26 leaf modules grouped under three reactor-only aggregators (`kairo-capabilities` / `kairo-transports` / `kairo-starters`). Foundation modules stay flat at the top.
+31 leaf modules grouped under three reactor-only aggregators (`kairo-capabilities` / `kairo-transports` / `kairo-starters`). Foundation modules stay flat at the top.
 
 ```
 kairo-parent
@@ -10,7 +10,7 @@ kairo-parent
 ├── kairo-api                       — SPI interface layer (zero implementation deps)
 ├── kairo-core                      — Core runtime (ReAct, compaction, providers)
 │
-├── kairo-capabilities/             — vertical capability cohort (8 modules)
+├── kairo-capabilities/             — vertical capability cohort (12 modules)
 │   ├── kairo-tools                 — built-in tool suite
 │   ├── kairo-mcp                   — MCP protocol integration
 │   ├── kairo-multi-agent           — A2A protocol + team coordination
@@ -18,25 +18,33 @@ kairo-parent
 │   ├── kairo-evolution             — self-evolution pipeline + governance
 │   ├── kairo-expert-team           — plan/generate/evaluate coordinator
 │   ├── kairo-observability         — OpenTelemetry exporter
-│   └── kairo-security-pii          — PII redaction + JDBC audit + compliance
+│   ├── kairo-security-pii          — PII redaction + JDBC audit + compliance
+│   ├── kairo-plugin                — Plugin system (Claude Code format compatible)
+│   ├── kairo-cron                  — Scheduled task scheduler
+│   ├── kairo-gateway               — Multi-channel routing / session / streaming / mirror
+│   ├── kairo-lsp                   — LSP diagnostics subsystem (post-edit baseline diff)
+│   └── kairo-acp                   — Agent Client Protocol (editor integration via JSON-RPC over stdio)
 │
-├── kairo-transports/               — I/O boundary cohort (5 modules)
+├── kairo-transports/               — I/O boundary cohort (4 modules)
 │   ├── kairo-event-stream          — KairoEventBus filtering + backpressure
 │   ├── kairo-event-stream-sse      — SSE transport
 │   ├── kairo-event-stream-ws       — WebSocket transport
-│   ├── kairo-channel               — Channel SPI + LoopbackChannel + TCK
 │   └── kairo-channel-dingtalk      — DingTalk webhook + signature verifier
 │
-├── kairo-starters/                 — Spring Boot starter cohort (9 modules)
+├── kairo-starters/                 — Spring Boot starter cohort (13 modules)
 │   ├── kairo-spring-boot-starter-core
 │   ├── kairo-spring-boot-starter-mcp
 │   ├── kairo-spring-boot-starter-multi-agent
 │   ├── kairo-spring-boot-starter-evolution
 │   ├── kairo-spring-boot-starter-expert-team
 │   ├── kairo-spring-boot-starter-event-stream
-│   ├── kairo-spring-boot-starter-channel
 │   ├── kairo-spring-boot-starter-channel-dingtalk
-│   └── kairo-spring-boot-starter-observability
+│   ├── kairo-spring-boot-starter-observability
+│   ├── kairo-spring-boot-starter-gateway
+│   ├── kairo-spring-boot-starter-plugin
+│   ├── kairo-spring-boot-starter-cron
+│   ├── kairo-spring-boot-starter-lsp
+│   └── kairo-spring-boot-starter-acp
 │
 └── kairo-examples                  — example applications
 ```
@@ -58,12 +66,18 @@ The core runtime engine. Includes:
 
 ### kairo-tools
 
-17 built-in tools organized by category:
-- **File ops** — Read, Write, Edit, Glob, Grep
-- **Execution** — Bash, Monitor
+56 built-in tools organized by category:
+- **File ops** — Read, Write, Edit, Glob, Grep, Tree, Diff, BatchRead, BatchWrite, SearchReplace, PatchApply, JsonQuery, TemplateRender
+- **Execution** — Bash, Monitor, Mvn, Sleep, VerifyExecution
+- **Web** — WebFetch, WebSearch, Http, OpenApiHttp
+- **Git** — Git, Github
 - **Interaction** — AskUser
 - **Skills** — SkillList, SkillLoad, SkillManage
-- **Agent ops** — Spawn, Message, Team, Plan
+- **Agent ops** — AgentSpawn, SendMessage, TeamCreate, TeamDelete, Task*, Todo*, Workflow
+- **Plan mode** — EnterPlanMode, ExitPlanMode, ListPlans
+- **Memory** — Memory*, TeamMemory*
+- **Cron** — Cron*
+- **Code intelligence** — Lsp
 
 ### kairo-mcp
 
@@ -82,4 +96,24 @@ OpenTelemetry tracing integration centered on distributed tracing (span tree + a
 
 ### kairo-spring-boot-starter-* (per-feature)
 
-Spring Boot auto-configuration is split into nine per-feature starters under `kairo-starters/`. Start with `kairo-spring-boot-starter-core`; add `-mcp`, `-multi-agent`, `-evolution`, `-expert-team`, `-event-stream`, `-channel`, `-channel-dingtalk`, or `-observability` as needed.
+Spring Boot auto-configuration is split into thirteen per-feature starters under `kairo-starters/`. Start with `kairo-spring-boot-starter-core`; add `-mcp`, `-multi-agent`, `-evolution`, `-expert-team`, `-event-stream`, `-channel-dingtalk`, `-observability`, `-gateway`, `-plugin`, `-cron`, `-lsp`, or `-acp` as needed.
+
+### kairo-plugin
+
+Plugin system compatible with the Claude Code plugin file format (`plugin.json` / `SKILL.md` / `hooks.json` / `.mcp.json`). Supports 5 install sources: LocalPath, GitHub, GitUrl, GitSubdir, and Npm.
+
+### kairo-cron
+
+Scheduled task scheduler with flexible scheduling support for recurring agent operations.
+
+### kairo-gateway
+
+Multi-channel routing, session management, streaming, and mirroring via the `Gateway` SPI. Sits above individual `Channel` adapters.
+
+### kairo-lsp
+
+LSP diagnostics subsystem. Provides `snapshotBaseline` + `notifyChange` + `diagnosticsSince` so tool implementations can report whether an edit introduced new errors (post-edit baseline diff).
+
+### kairo-acp
+
+Agent Client Protocol server handler. Editors (e.g. Zed) drive a Kairo agent as a subprocess via JSON-RPC over stdio. MVP operations: `initialize`, `session.new`, `session.prompt`.
