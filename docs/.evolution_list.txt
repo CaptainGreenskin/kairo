@@ -1,7 +1,0 @@
-file '/Users/liulihan/IdeaProjects/sre/claude/kairo/docs/public/images/kairo-code/14-self-evolution-sidebar.png'
-duration 2.5
-file '/Users/liulihan/IdeaProjects/sre/claude/kairo/docs/public/images/kairo-code/15-hook-configuration-sidebar.png'
-duration 2.5
-file '/Users/liulihan/IdeaProjects/sre/claude/kairo/docs/public/images/kairo-code/06-main-chat-interface.png'
-duration 2.5
-file '/Users/liulihan/IdeaProjects/sre/claude/kairo/docs/public/images/kairo-code/06-main-chat-interface.png'
