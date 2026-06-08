@@ -469,6 +469,12 @@ public class DefaultReActAgent implements Agent {
                                     new DefaultAgentDiagnostics(
                                             this.totalTokensUsed, this.currentIteration);
 
+                            // Initialize per-session hook context for stateful hooks
+                            if (hookChain instanceof io.kairo.core.hook.DefaultHookChain dhc) {
+                                dhc.setSessionContext(
+                                        new io.kairo.core.hook.DefaultHookSessionContext(this.id));
+                            }
+
                             // Initialize terminal hook guard for exactly-once session-end
                             // firing
                             terminalGuard = new TerminalHookGuard(hookChain);
@@ -829,6 +835,12 @@ public class DefaultReActAgent implements Agent {
                         () -> reactLoop.getHistory());
         return terminalGuard
                 .fireSessionEndOnce(event)
+                .doFinally(
+                        signal -> {
+                            if (hookChain instanceof io.kairo.core.hook.DefaultHookChain dhc) {
+                                dhc.setSessionContext(null);
+                            }
+                        })
                 .onErrorResume(
                         e -> {
                             log.warn(

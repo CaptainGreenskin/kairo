@@ -77,6 +77,7 @@ public class DefaultHookChain implements HookChain {
     private final Map<String, AtomicLong> decisionsByOutcome = new ConcurrentHashMap<>();
     private final AtomicLong externalHookFailures = new AtomicLong();
     private final AtomicLong totalDurationNanos = new AtomicLong();
+    private volatile io.kairo.api.hook.HookSessionContext sessionContext;
 
     /** Backward-compatible constructor — no tracer, so hook spans are NoopSpan (no-op). */
     public DefaultHookChain() {
@@ -90,6 +91,15 @@ public class DefaultHookChain implements HookChain {
      */
     public DefaultHookChain(Tracer tracer) {
         this.tracer = tracer == null ? NoopTracer.INSTANCE : tracer;
+    }
+
+    /**
+     * Set the per-session hook context. Called by the agent at session start; cleared at session
+     * end. Hook methods with a second {@link io.kairo.api.hook.HookSessionContext} parameter
+     * receive this automatically.
+     */
+    public void setSessionContext(io.kairo.api.hook.HookSessionContext context) {
+        this.sessionContext = context;
     }
 
     @Override
@@ -337,7 +347,7 @@ public class DefaultHookChain implements HookChain {
                         Span span = beginHookSpan(parent, phase.name(), am);
                         long start = System.nanoTime();
                         try {
-                            Object result = am.method().invoke(am.handler(), current);
+                            Object result = invokeHookMethod(am, current);
                             recordSuccess(
                                     span, phase.name(), am, "CONTINUE", System.nanoTime() - start);
                             if (result != null && event.getClass().isInstance(result)) {
@@ -391,7 +401,7 @@ public class DefaultHookChain implements HookChain {
                         Span span = beginHookSpan(parent, phase.name(), am);
                         long start = System.nanoTime();
                         try {
-                            Object result = am.method().invoke(am.handler(), current);
+                            Object result = invokeHookMethod(am, current);
                             String decisionLabel = "CONTINUE";
                             if (result instanceof HookResult<?> hr) {
                                 HookResult<T> typed = (HookResult<T>) hr;
@@ -596,7 +606,7 @@ public class DefaultHookChain implements HookChain {
         List<AnnotatedMethod> result = new ArrayList<>();
         for (Object handler : handlers) {
             for (Method method : handler.getClass().getMethods()) {
-                if (method.getParameterCount() != 1) continue;
+                if (!isHookMethod(method)) continue;
                 HookHandler unified = method.getAnnotation(HookHandler.class);
                 if (unified != null && unified.value() == phase) {
                     method.setAccessible(true);
@@ -643,7 +653,7 @@ public class DefaultHookChain implements HookChain {
                         Span span = beginHookSpan(parent, phaseLabel, am);
                         long start = System.nanoTime();
                         try {
-                            Object result = am.method().invoke(am.handler(), current);
+                            Object result = invokeHookMethod(am, current);
                             recordSuccess(
                                     span, phaseLabel, am, "CONTINUE", System.nanoTime() - start);
                             if (result != null && event.getClass().isInstance(result)) {
@@ -712,7 +722,7 @@ public class DefaultHookChain implements HookChain {
                         Span span = beginHookSpan(parent, phaseLabel, am);
                         long start = System.nanoTime();
                         try {
-                            Object result = am.method().invoke(am.handler(), current);
+                            Object result = invokeHookMethod(am, current);
                             String decisionLabel = "CONTINUE";
 
                             if (result instanceof HookResult<?> hr) {
@@ -846,7 +856,7 @@ public class DefaultHookChain implements HookChain {
 
         for (Object handler : handlers) {
             for (Method method : handler.getClass().getMethods()) {
-                if (method.getParameterCount() != 1) {
+                if (!isHookMethod(method)) {
                     continue;
                 }
 
@@ -911,6 +921,28 @@ public class DefaultHookChain implements HookChain {
 
     /** Internal record holding a handler, its annotated method, and the execution order. */
     private record AnnotatedMethod(Object handler, Method method, int order) {}
+
+    private static boolean isHookMethod(Method method) {
+        int paramCount = method.getParameterCount();
+        if (paramCount == 1) return true;
+        if (paramCount == 2) {
+            return io.kairo.api.hook.HookSessionContext.class.isAssignableFrom(
+                    method.getParameterTypes()[1]);
+        }
+        return false;
+    }
+
+    private Object invokeHookMethod(AnnotatedMethod am, Object event)
+            throws IllegalAccessException, InvocationTargetException {
+        if (am.method().getParameterCount() == 2) {
+            io.kairo.api.hook.HookSessionContext ctx =
+                    sessionContext != null
+                            ? sessionContext
+                            : io.kairo.api.hook.NoopHookSessionContext.INSTANCE;
+            return am.method().invoke(am.handler(), event, ctx);
+        }
+        return am.method().invoke(am.handler(), event);
+    }
 
     // ==================== OBSERVATION ====================
 

@@ -86,6 +86,7 @@ io.kairo.evolution.*← 进化机制
 | `AcpAgent` | `io.kairo.api.acp.AcpAgent` | Agent Client Protocol server handler — 编辑器通过 JSON-RPC over stdio 驱动 kairo agent。MVP: initialize / session.new / session.prompt，v1.3 @Experimental |
 | `CostTracker` | `io.kairo.api.cost.CostTracker` | 累计 token 用量 & 成本估算（v0.10 @Experimental） |
 | `ModelCatalog` | `io.kairo.api.model.ModelCatalog` | 模型名 / 别名 → provider + 能力解析（v0.10 @Experimental） |
+| `HookSessionContext` | `io.kairo.api.hook.HookSessionContext` | per-session hook 键值状态存储（v0.11 @Experimental） |
 
 ### Hook 生命周期（10个点）
 
