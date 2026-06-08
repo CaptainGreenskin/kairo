@@ -22,17 +22,29 @@ features:
     details: Thought→Action→Observation loop with 6-stage context compaction and intelligent token management.
   - icon: "\U0001F50C"
     title: SPI-Driven Architecture
-    details: Every capability is an SPI — Model, Tool, Memory, Skill, MCP, A2A. Extend without modifying core.
+    details: 16 SPIs with @Stable / @Experimental annotations. 119 stable types, japicmp-enforced compatibility.
   - icon: ⚡
     title: Reactive Inside
     details: Built on Project Reactor. Non-blocking throughout, but pragmatic blocking APIs when you need them.
   - icon: "\U0001F6E1️"
     title: Production-Safe
-    details: Circuit breaker, cooperative cancellation, loop detection, permission guards, and middleware pipeline.
+    details: Circuit breaker, loop detection, cooperative cancellation, permission guards, PII redaction, and JDBC audit trail.
+  - icon: "\U0001F9E9"
+    title: Plugin System
+    details: Claude Code format compatible. Install plugins from local, GitHub, Git, or npm. Skills, hooks, MCP, agents.
+  - icon: "\U0001F310"
+    title: Gateway & Channel
+    details: Multi-channel routing, session management, streaming, and mirroring. DingTalk shipped, Slack/Feishu planned.
   - icon: "\U0001F91D"
     title: A2A Protocol
     details: Google ADK-compatible Agent-to-Agent communication. AgentCard discovery, in-process and remote invocation.
-  - icon: "\U0001F4F8"
-    title: Agent Snapshot
-    details: Save and restore agent state. Foundation for checkpoint, rollback, and durable execution.
+  - icon: "\U0001F4BB"
+    title: Kairo Code
+    details: A production coding agent CLI built entirely on Kairo — 56 tools, skill system, multi-agent teams, IDE bridge.
+  - icon: "\U0001F916"
+    title: Kairo Assistant
+    details: Self-hosted multi-channel personal AI assistant — 50+ tools, 8 messaging channels, self-evolution, OpenAI-compatible API.
+  - icon: "\U0001F510"
+    title: Execution Sandbox
+    details: ExecutionSandbox SPI for safe command execution. LocalProcess default, Docker/K8s pluggable.
 ---

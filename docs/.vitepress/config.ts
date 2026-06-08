@@ -26,6 +26,13 @@ export default defineConfig({
               { text: 'Features', link: '/en/guide/features' },
             ],
           },
+          {
+            text: 'Ecosystem',
+            items: [
+              { text: 'Kairo Code', link: '/en/kairo-code/' },
+              { text: 'Kairo Assistant', link: '/en/kairo-assistant/' },
+            ],
+          },
           { text: 'API Reference', link: '/en/api/' },
           { text: 'Roadmap', link: '/en/guide/roadmap' },
         ],
@@ -39,6 +46,13 @@ export default defineConfig({
                 { text: 'Architecture', link: '/en/guide/architecture' },
                 { text: 'Features', link: '/en/guide/features' },
                 { text: 'Roadmap', link: '/en/guide/roadmap' },
+              ],
+            },
+            {
+              text: 'Plugin System',
+              items: [
+                { text: 'Plugins', link: '/en/guide/plugins' },
+                { text: 'Plugin Compatibility', link: '/en/guide/plugin-compatibility' },
               ],
             },
             {
@@ -70,6 +84,24 @@ export default defineConfig({
               ],
             },
           ],
+          '/en/kairo-code/': [
+            {
+              text: 'Kairo Code',
+              items: [
+                { text: 'Overview', link: '/en/kairo-code/' },
+                { text: 'Getting Started', link: '/en/kairo-code/getting-started' },
+                { text: 'Architecture', link: '/en/kairo-code/architecture' },
+              ],
+            },
+          ],
+          '/en/kairo-assistant/': [
+            {
+              text: 'Kairo Assistant',
+              items: [
+                { text: 'Overview', link: '/en/kairo-assistant/' },
+              ],
+            },
+          ],
         },
         socialLinks: [
           { icon: 'github', link: 'https://github.com/CaptainGreenskin/kairo' },
@@ -91,6 +123,13 @@ export default defineConfig({
               { text: '特性', link: '/zh/guide/features' },
             ],
           },
+          {
+            text: '生态',
+            items: [
+              { text: 'Kairo Code', link: '/zh/kairo-code/' },
+              { text: 'Kairo Assistant', link: '/zh/kairo-assistant/' },
+            ],
+          },
           { text: 'API 参考', link: '/zh/api/' },
           { text: '路线图', link: '/zh/guide/roadmap' },
         ],
@@ -104,6 +143,13 @@ export default defineConfig({
                 { text: '架构', link: '/zh/guide/architecture' },
                 { text: '特性', link: '/zh/guide/features' },
                 { text: '路线图', link: '/zh/guide/roadmap' },
+              ],
+            },
+            {
+              text: '插件系统',
+              items: [
+                { text: '插件', link: '/zh/guide/plugins' },
+                { text: '插件兼容性', link: '/zh/guide/plugin-compatibility' },
               ],
             },
             {
@@ -132,6 +178,24 @@ export default defineConfig({
                 { text: 'ToolHandler', link: '/zh/api/ToolHandler' },
                 { text: 'Msg', link: '/zh/api/Msg' },
                 { text: 'KairoException', link: '/zh/api/KairoException' },
+              ],
+            },
+          ],
+          '/zh/kairo-code/': [
+            {
+              text: 'Kairo Code',
+              items: [
+                { text: '概览', link: '/zh/kairo-code/' },
+                { text: '快速开始', link: '/zh/kairo-code/getting-started' },
+                { text: '架构', link: '/zh/kairo-code/architecture' },
+              ],
+            },
+          ],
+          '/zh/kairo-assistant/': [
+            {
+              text: 'Kairo Assistant',
+              items: [
+                { text: '概览', link: '/zh/kairo-assistant/' },
               ],
             },
           ],

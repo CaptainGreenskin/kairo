@@ -63,10 +63,6 @@ Kairo Code learns from each session — accumulating memory and knowledge, and r
 
 ![Self-Evolution Demo](/images/kairo-code/video/demo-evolution.gif)
 
-### Memory Panel
-
-![Memory Panel](/images/kairo-code/18-memory-panel.png)
-
 ### Approval Mode
 
 Control how tools run with Manual, Auto-safe, and YOLO approval modes, backed by hook-based safety controls:
