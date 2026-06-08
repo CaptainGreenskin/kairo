@@ -59,6 +59,10 @@ Kairo Code 同时提供桌面工作台，集成了聊天 Agent、文件浏览器
 
 ![自进化侧边栏](/images/kairo-code/14-self-evolution-sidebar.png)
 
+Kairo Code 从每次会话中学习 —— 持续积累记忆与知识，并通过 hook 系统优化行为：
+
+![自进化演示](/images/kairo-code/video/demo-evolution.gif)
+
 ### 记忆面板
 
 ![记忆面板](/images/kairo-code/18-memory-panel.png)
@@ -67,9 +71,19 @@ Kairo Code 同时提供桌面工作台，集成了聊天 Agent、文件浏览器
 
 ![审批模式下拉菜单](/images/kairo-code/20-approval-mode-dropdown.png)
 
+通过手动、自动安全、YOLO 三种审批模式控制工具运行方式，并由基于 hook 的安全控制保障：
+
+![工具审批演示](/images/kairo-code/video/demo-approval.gif)
+
 ### 浅色主题
 
 ![浅色主题界面](/images/kairo-code/19-light-theme-interface.png)
+
+### Agent 工作区
+
+完整的类 IDE 工作区 —— 聊天 Agent、文件浏览器、源代码管理与主题协同工作：
+
+![Agent 工作区演示](/images/kairo-code/video/demo-team.gif)
 
 ## 核心特性
 

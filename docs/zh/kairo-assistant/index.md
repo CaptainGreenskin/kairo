@@ -97,6 +97,10 @@ React 管理控制台提供对助手的全面可观测与控制 —— 会话、
 
 ![看板](/images/kairo-assistant/console-board.png)
 
+使用 cron 表达式调度周期性目标，并在控制台中监控：
+
+![定时调度演示](/images/kairo-assistant/video/demo-cron.gif)
+
 ### 技能与自进化
 
 ![技能](/images/kairo-assistant/console-skills.png)

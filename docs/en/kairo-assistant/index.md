@@ -97,6 +97,10 @@ The React admin console provides full visibility and control over the assistant 
 
 ![Kanban Board](/images/kairo-assistant/console-board.png)
 
+Schedule recurring goals with cron expressions and monitor them from the console:
+
+![Cron Scheduling Demo](/images/kairo-assistant/video/demo-cron.gif)
+
 ### Skills & Self-Evolution
 
 ![Skills](/images/kairo-assistant/console-skills.png)

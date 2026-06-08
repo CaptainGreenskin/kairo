@@ -59,6 +59,10 @@ Kairo Code also ships as a desktop workspace with an integrated chat agent, file
 
 ![Self-Evolution Sidebar](/images/kairo-code/14-self-evolution-sidebar.png)
 
+Kairo Code learns from each session — accumulating memory and knowledge, and refining behavior through the hook system:
+
+![Self-Evolution Demo](/images/kairo-code/video/demo-evolution.gif)
+
 ### Memory Panel
 
 ![Memory Panel](/images/kairo-code/18-memory-panel.png)
@@ -67,9 +71,19 @@ Kairo Code also ships as a desktop workspace with an integrated chat agent, file
 
 ![Approval Mode Dropdown](/images/kairo-code/20-approval-mode-dropdown.png)
 
+Control how tools run with Manual, Auto-safe, and YOLO approval modes, backed by hook-based safety controls:
+
+![Tool Approval Demo](/images/kairo-code/video/demo-approval.gif)
+
 ### Light Theme
 
 ![Light Theme Interface](/images/kairo-code/19-light-theme-interface.png)
+
+### Agent Workspace
+
+A full IDE-like workspace — chat agent, file explorer, source control, and theming working together:
+
+![Agent Workspace Demo](/images/kairo-code/video/demo-team.gif)
 
 ## Key Features
 
