@@ -549,8 +549,6 @@ public class DefaultReActAgent implements Agent {
                                                         + "' rejected — shutdown in progress"));
                             }
 
-                            // Add user input to conversation history
-                            reactLoop.injectMessages(List.of(input));
                             log.info(
                                     "Agent '{}' started processing input:" + " {}",
                                     name,
@@ -563,11 +561,20 @@ public class DefaultReActAgent implements Agent {
                             Mono<Void> recoveryStep = attemptRecovery(config.sessionId());
 
                             // Attempt iteration checkpoint restore if checkpoint manager
-                            // is configured and resume is enabled
+                            // is configured and resume is enabled. Must run BEFORE
+                            // injecting the user message so the restored history is not
+                            // overwritten by replaceHistory().
                             Mono<Void> checkpointRestoreStep = attemptCheckpointRestore();
+
+                            // Inject user input AFTER checkpoint restore so it appends
+                            // to the restored history rather than being overwritten.
+                            Mono<Void> injectStep =
+                                    Mono.fromRunnable(
+                                            () -> reactLoop.injectMessages(List.of(input)));
 
                             return recoveryStep
                                     .then(checkpointRestoreStep)
+                                    .then(injectStep)
                                     .then(sessionResumption.loadSessionIfConfigured())
                                     .then(skillToolManager.initMcpIfConfigured())
                                     .then(fireSessionStartBestEffort(input))
