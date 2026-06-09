@@ -55,7 +55,7 @@ public class GlobTool implements SyncTool {
     @ToolParam(description = "The glob pattern to match (e.g. '**/*.java')", required = true)
     private String pattern;
 
-    @ToolParam(description = "The directory to search in", required = true)
+    @ToolParam(description = "The directory to search in (defaults to workspace root)")
     private String path;
 
     @Override
@@ -71,7 +71,7 @@ public class GlobTool implements SyncTool {
             return error("Parameter 'pattern' is required");
         }
         if (searchPath == null || searchPath.isBlank()) {
-            return error("Parameter 'path' is required");
+            searchPath = ".";
         }
 
         Path dir = workspaceRoot.resolve(searchPath);
