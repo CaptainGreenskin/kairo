@@ -131,7 +131,7 @@ export default defineConfig({
             ],
           },
           { text: 'API 参考', link: '/zh/api/' },
-          { text: 'ATA 系列', link: '/zh/ata/01-agent-os' },
+          { text: '深度系列', link: '/zh/ata/01-agent-os' },
           { text: '路线图', link: '/zh/guide/roadmap' },
         ],
         sidebar: {
@@ -194,7 +194,7 @@ export default defineConfig({
           ],
           '/zh/ata/': [
             {
-              text: 'ATA 系列：Agent 的操作系统',
+              text: '深度系列：Agent 的操作系统',
               items: [
                 { text: '序：写给构建 Agent 的人', link: '/zh/ata/00-prologue' },
                 { text: '一、为什么 Agent 需要一个操作系统', link: '/zh/ata/01-agent-os' },
@@ -204,9 +204,10 @@ export default defineConfig({
                 { text: '五、SPI 设计哲学', link: '/zh/ata/05-spi-philosophy' },
                 { text: '六、Hook：Agent 的治理层', link: '/zh/ata/06-hooks' },
                 { text: '七、长任务与进程隔离', link: '/zh/ata/07-long-tasks' },
-                { text: '八、从 CLI 到桌面', link: '/zh/ata/08-kairo-code' },
-                { text: '九、多智能体的全貌', link: '/zh/ata/09-multi-agent' },
-                { text: '十、前沿：分布式与自进化', link: '/zh/ata/10-frontier' },
+                { text: '八、Session：Agent 的进程管理', link: '/zh/ata/08-session' },
+                { text: '九、从 CLI 到桌面', link: '/zh/ata/09-kairo-code' },
+                { text: '十、多智能体的全貌', link: '/zh/ata/10-multi-agent' },
+                { text: '十一、前沿：分布式与自进化', link: '/zh/ata/11-frontier' },
               ],
             },
           ],
