@@ -49,11 +49,11 @@ import java.util.concurrent.TimeUnit;
  */
 public final class StreamIdleWatchdog implements AutoCloseable {
 
-    // Reasoning models (GLM-5.1 thinking, o1) routinely take 60–120 s before the first
-    // chunk on a long-output turn (e.g. generating docs after a multi-tool research phase).
-    // 180 s leaves headroom for those models while still bounding genuine hangs. Override
+    // Reasoning models (GLM-5.1 thinking, o1) routinely take 60–180 s before the first
+    // chunk on complex tasks (API design, multi-step planning). 300 s matches the max
+    // duration to avoid premature timeout on legitimate long-thinking turns. Override
     // via KAIRO_STREAM_IDLE_TIMEOUT_MS for tighter SLAs.
-    private static final long DEFAULT_IDLE_MS = 180_000L;
+    private static final long DEFAULT_IDLE_MS = 300_000L;
 
     /**
      * Resolved idle timeout in milliseconds from {@code KAIRO_STREAM_IDLE_TIMEOUT_MS}. Invalid or

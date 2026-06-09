@@ -555,7 +555,40 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                                 currentState,
                                                 outcomes,
                                                 warnings)
-                                        .thenReturn(step.stepId()))
+                                        .thenReturn(step.stepId())
+                                        .onErrorResume(
+                                                ex -> {
+                                                    log.warn(
+                                                            "Expert step '{}' failed, skipping: {}",
+                                                            step.stepId(),
+                                                            ex.getMessage());
+                                                    warnings.add(
+                                                            "Step '"
+                                                                    + step.stepId()
+                                                                    + "' failed: "
+                                                                    + ex.getMessage());
+                                                    outcomes.add(
+                                                            new StepOutcome(
+                                                                    step.stepId(),
+                                                                    "",
+                                                                    new EvaluationVerdict(
+                                                                            VerdictOutcome.FAIL,
+                                                                            "Step failed: "
+                                                                                    + ex
+                                                                                            .getMessage(),
+                                                                            0.0),
+                                                                    0));
+                                                    publish(
+                                                            team,
+                                                            request,
+                                                            TeamEventType.STEP_COMPLETED,
+                                                            Map.of(
+                                                                    "stepId",
+                                                                    step.stepId(),
+                                                                    "status",
+                                                                    "skipped"));
+                                                    return Mono.just(step.stepId());
+                                                }))
                 .then(
                         Mono.defer(
                                 () ->
