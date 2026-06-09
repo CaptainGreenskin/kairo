@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * In-memory {@link ProviderRegistry}. {@link #withBuiltIns()} pre-registers all entries in {@link
@@ -50,13 +51,7 @@ public final class DefaultProviderRegistry implements ProviderRegistry {
         r.registerApiKeyOnly("gemini", ProviderPresets::gemini);
         r.registerApiKeyOnly("google", ProviderPresets::gemini);
         r.registerApiKeyOnly("qwen", ProviderPresets::qwen);
-        r.register(
-                "glm",
-                spec ->
-                        spec.baseUrl() != null && !spec.baseUrl().isBlank()
-                                ? new OpenAIProvider(
-                                        spec.apiKey(), spec.baseUrl(), "/chat/completions")
-                                : ProviderPresets.glm(spec.apiKey()));
+        r.registerApiKeyOnly("glm", ProviderPresets::glm);
         r.registerApiKeyOnly("deepseek", ProviderPresets::deepseek);
         r.registerApiKeyOnly("minimax", ProviderPresets::minimax);
         r.registerApiKeyOnly("kimi", ProviderPresets::kimi);
@@ -103,6 +98,23 @@ public final class DefaultProviderRegistry implements ProviderRegistry {
                     return new OpenAIProvider(spec.apiKey(), spec.baseUrl());
                 });
         return r;
+    }
+
+    @Override
+    public void registerApiKeyOnly(String name, Function<String, ModelProvider> factory) {
+        register(
+                name,
+                spec -> {
+                    if (spec.apiKey() == null || spec.apiKey().isBlank()) {
+                        throw new IllegalArgumentException(
+                                "Provider '" + name + "' requires an API key");
+                    }
+                    if (spec.baseUrl() != null && !spec.baseUrl().isBlank()) {
+                        return new OpenAIProvider(
+                                spec.apiKey(), spec.baseUrl(), "/chat/completions");
+                    }
+                    return factory.apply(spec.apiKey());
+                });
     }
 
     @Override

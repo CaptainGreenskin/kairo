@@ -171,8 +171,8 @@ class OpenAIProviderTest {
 
     @Test
     void rateLimitRetry429() {
-        // Enqueue 429 three times, then success
-        for (int i = 0; i < 3; i++) {
+        // Enqueue 429 twice, then success (maxAttempts=3 → 2 retries + 1 initial)
+        for (int i = 0; i < 2; i++) {
             server.enqueue(new MockResponse().setResponseCode(429).setBody("Rate limited"));
         }
         String success =

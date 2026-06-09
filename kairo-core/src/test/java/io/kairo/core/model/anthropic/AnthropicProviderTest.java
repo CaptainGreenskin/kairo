@@ -175,7 +175,7 @@ class AnthropicProviderTest {
 
     @Test
     void rateLimitRetry() {
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 2; i++) {
             server.enqueue(new MockResponse().setResponseCode(429).setBody("Rate limited"));
         }
         String success =

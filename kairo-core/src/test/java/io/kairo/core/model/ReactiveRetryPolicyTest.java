@@ -382,8 +382,8 @@ class ReactiveRetryPolicyTest {
                 .expectError()
                 .verify(Duration.ofSeconds(30));
 
-        // Legacy defaults: maxAttempts=4 (3 retries + 1 initial)
-        assertEquals(4, attempts.get());
+        // Legacy defaults: maxAttempts=3 (2 retries + 1 initial)
+        assertEquals(3, attempts.get());
     }
 
     // ---- isTransientProviderError ----

@@ -133,18 +133,18 @@ class ProviderRetryTest {
     // ---- Default constants ----
 
     @Test
-    void defaultMaxAttemptsIsThree() {
-        assertEquals(3L, ProviderRetry.DEFAULT_MAX_ATTEMPTS);
+    void defaultMaxAttemptsIsTwo() {
+        assertEquals(2L, ProviderRetry.DEFAULT_MAX_ATTEMPTS);
     }
 
     @Test
-    void defaultMinBackoffIsOneSecond() {
-        assertEquals(Duration.ofSeconds(1), ProviderRetry.DEFAULT_MIN_BACKOFF);
+    void defaultMinBackoffIsFiveSeconds() {
+        assertEquals(Duration.ofSeconds(5), ProviderRetry.DEFAULT_MIN_BACKOFF);
     }
 
     @Test
-    void defaultMaxBackoffIsFourSeconds() {
-        assertEquals(Duration.ofSeconds(4), ProviderRetry.DEFAULT_MAX_BACKOFF);
+    void defaultMaxBackoffIsThirtySeconds() {
+        assertEquals(Duration.ofSeconds(30), ProviderRetry.DEFAULT_MAX_BACKOFF);
     }
 
     @Test

@@ -43,6 +43,7 @@ public class StallDetector {
     private final AgentDiagnostics diagnostics;
     private final Sinks.One<Void> stallSignal = Sinks.one();
     private final AtomicBoolean started = new AtomicBoolean(false);
+    private final AtomicBoolean paused = new AtomicBoolean(false);
     private volatile Disposable poller;
 
     public StallDetector(AgentDiagnostics diagnostics) {
@@ -71,6 +72,10 @@ public class StallDetector {
                                         dispose();
                                         return;
                                     }
+                                    if (paused.get()
+                                            || diagnostics.activeToolInvocation().isPresent()) {
+                                        return;
+                                    }
                                     long idle = diagnostics.msSinceLastEvent();
                                     if (idle >= idleThresholdMs) {
                                         log.warn(
@@ -95,6 +100,17 @@ public class StallDetector {
     /** Returns the configured idle threshold in milliseconds. */
     public long idleThresholdMs() {
         return idleThresholdMs;
+    }
+
+    /** Pause stall detection (e.g., while waiting for user approval). */
+    public void pause() {
+        paused.set(true);
+    }
+
+    /** Resume stall detection and reset the event clock. */
+    public void resume() {
+        diagnostics.recordEvent("approval_completed");
+        paused.set(false);
     }
 
     /** Dispose the internal poller. Safe to call multiple times. */
