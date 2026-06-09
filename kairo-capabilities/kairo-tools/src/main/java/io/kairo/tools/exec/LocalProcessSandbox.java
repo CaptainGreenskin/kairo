@@ -101,7 +101,9 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
                 Map<String, String> environment = pb.environment();
                 environment.putAll(request.env());
             }
+            pb.environment().putIfAbsent("PYTHONUNBUFFERED", "1");
             Process process = pb.start();
+            process.getOutputStream().close();
             return new LocalHandle(process, request, idleTimeout);
         } catch (IOException e) {
             throw new IllegalStateException(
@@ -155,6 +157,7 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
             this.reader = new Thread(this::pumpAndComplete, "kairo-sandbox-reader");
             this.reader.setDaemon(true);
             this.reader.start();
+            scheduler.submit(this::waitForProcessExit);
         }
 
         @Override
@@ -219,6 +222,20 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
                 destroyTree();
                 reader.interrupt();
                 completeExit();
+            }
+        }
+
+        private void waitForProcessExit() {
+            try {
+                process.waitFor();
+                Thread.sleep(500);
+                if (!exitEmitted.get()) {
+                    log.debug("Process exited but reader still blocked — killing descendants");
+                    destroyTree();
+                    reader.interrupt();
+                }
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
             }
         }
 
