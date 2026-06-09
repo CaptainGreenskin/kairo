@@ -468,6 +468,91 @@ Kairo：`ResourceConstraint` 链限制 Agent 的资源消耗（迭代次数、to
 
 Kairo：执行完成后，`updateStatus(COMPLETED)`、`WorkspaceProvider.release()` 清理工作空间、Git merge 收集结果。
 
+## 任务完成保障——不完成就不停
+
+长任务最隐蔽的失败模式不是崩溃，而是**早退**。
+
+Agent 改了三个文件，觉得任务完成了，输出一段总结就停了。但还有两个文件没改。用户以为任务完成，跑了测试才发现——编译不过。
+
+这种"自以为完成"的早退，在 SWE-bench 的评测中暴露得尤为明显。我跑过一个 pytest 的修复用例（`pytest-dev__pytest-5787`），Agent 38 秒就退出了，产出是空 diff——它读了报错信息，觉得"需要更多上下文"，然后就停了。不是崩溃，不是超时，是模型自己决定"我做不了，算了"。
+
+另一个极端是 `sphinx-doc__sphinx-8548`：Agent 跑了 51 分钟，在同一组文件上反复阅读和思考，始终没产出 patch。不是循环——每次读的角度略有不同。但也不是进展——51 分钟后还是零修改。
+
+这两个案例代表了长任务的两类早退：**过早放弃**和**过度探索**。
+
+### AgentContinuationStrategy：模型说停的时候再想想
+
+Kairo 的解决方案是 `AgentContinuationStrategy`——一个可插拔的 SPI，在模型每次准备停下来时（输出了文本但没有工具调用），被 ReAct 循环咨询：
+
+```java
+public interface AgentContinuationStrategy {
+    Mono<ContinuationDecision> decide(ContinuationContext ctx);
+}
+```
+
+返回五种决策：`Pass`（无意见）、`Terminate`（允许停止）、`Nudge`（注入消息强制继续）、`CompactAndRetry`（压缩上下文后重试）、`Escalate`（不可恢复的错误）。
+
+三个内置策略按优先级链式执行：
+
+**FinishReasonRecoveryStrategy**（最高优先级）。当模型输出被截断（`StopReason.MAX_TOKENS`）时，注入提示："你的上一条回复因长度限制被截断了。从断点处直接继续，不要重复已说的内容。"最多重试 3 次。
+
+**PendingTodoNudgeStrategy**。检查会话中是否有未完成的 TODO 或未执行的计划步骤。如果有，注入："还有未完成的任务。继续执行计划。每一轮回复必须至少调用一个工具。不要只输出文本——现在就调用工具。"这个策略**没有 per-session nudge 上限**——对长任务来说，todo 没做完就是没做完，不该因为"催了太多次"就放弃。跑飞的防护交给 LoopDetector 和迭代预算。
+
+**RecentToolActivityStrategy**。检测模型"中途停下来叙述"的行为。如果最近 3 轮还在积极调用工具，突然输出了一段不到 200 字符的纯文本——大概率不是真的完成了，而是模型在"喘口气"。注入："你刚才工具调用的节奏很好。继续执行——不要停下来叙述。现在就调用下一个工具。"
+
+三个策略组合成 `CompositeContinuationStrategy`，配合两道全局守卫：Plan 模式下直接放行（Plan 模式本来就只读不写），迭代预算耗尽时强制停止。
+
+### 一个诚实的 war story
+
+kairo-code 最初集成了完整的 `CompositeContinuationStrategy`（PendingTodoNudge + RecentToolActivity 全开）。结果在 Web 会话中出了大问题——Agent 进入了"无限催促循环"：模型输出一段总结，Nudge 策略说"你还没做完，继续"，模型被迫再输出一段，Nudge 又说"还没完"……循环不止。代码注释写的是 `"一直不停止"（infinite nudge loop）`。
+
+最终 kairo-code 禁用了通用的 continuation strategy，只保留了 `PendingBackgroundTaskStrategy`——它专门解决一个特定问题：父 Agent 在子 Agent 还在后台跑的时候不能停。它不是"催"模型继续，而是**阻塞等待**子任务完成通知（最长 300 秒），然后把通知注入对话。
+
+这个经历教会我一件事：**任务完成保障的难点不在于"检测未完成"，而在于"区分真的没完成和模型认为自己完成了"。** 如果模型认为自己完成了但 Nudge 不同意，模型不会去做新的事——它会重复总结上一轮做过的事。这就变成了循环，而不是进展。
+
+PRE_COMPLETE Hook（`HookPhase.PRE_COMPLETE`，类比 Claude Code 的 `preventContinuation`）提供了另一个介入点。和 Continuation Strategy 不同，Hook 可以注入**具体的指令**——不是笼统地说"你还没做完"，而是"你修改了 UserService 但没更新它的测试文件，请补充"。具体的指令比笼统的催促有效得多。
+
+### 自动恢复检测
+
+CLI 启动时，`AutoResumeDetector` 扫描最近 24 小时内的会话 JSONL 文件。如果发现某个会话没有 `session_end` 标记——说明上次是非正常退出（崩溃、断网、终端关闭）。它会提示用户："发现中断的会话，是否恢复？"
+
+恢复逻辑从 JSONL 重建对话历史，通过 snapshot 机制注入到新会话中。Agent 回到断点位置，带着之前的全部上下文继续工作。配合 DurableExecutionStore 的 checkpoint，大部分已执行的工具调用不需要重放。
+
+## SWE-bench 与测评体系
+
+一个 Agent 框架说自己"能处理复杂任务"，怎么证明？
+
+### SWE-bench Verified
+
+SWE-bench 是当前 Code Agent 最权威的评测基准——从真实的 GitHub issue 出发，要求 Agent 定位 bug、理解代码、生成 patch。每个用例都有对应的测试套件验证 patch 的正确性。
+
+kairo-code 接入了 SWE-bench 评测，通过外部 `kairo-code-eval` 仓库驱动。评测协议定义在 `external-runner-protocol.md` 中：CLI fat jar 模式执行，退出码语义明确（0=成功，1=配置错误，2=超时，130=中断），每次会话结束写 `KAIRO_SESSION_RESULT.json` 包含迭代次数、token 用量、耗时等指标。
+
+跑 SWE-bench 暴露了两类典型失败模式。regression fixture 目前追踪了两个：
+
+- `pytest-dev__pytest-5787`：Agent 38 秒退出，空 diff——**过早放弃**
+- `sphinx-doc__sphinx-8548`：Agent 跑了 51 分钟，空 diff——**过度探索**
+
+这两个案例直接推动了 Continuation Strategy 和 LoopDetector 的改进。38 秒早退的问题用 PendingTodoNudge 可以缓解；51 分钟过度探索的问题用无进展检测（第五层 LoopDetector）可以捕获。
+
+### Cross-Executor 基准对比
+
+除了 SWE-bench，kairo-code 还有一个交叉对比基准：在相同的 bug 修复任务上，同时运行 kairo-code 和 Claude Code CLI，对比退出码、耗时、测试通过率、工具调用次数、token 用量和估算成本。结果输出为 Markdown 报告。
+
+这种 A/B 对比的价值在于：**它不是在说"我们比 Claude Code 好"，而是在定位"我们在哪些方面还有差距"。** 当 kairo-code 在某个用例上比 Claude Code 多花了 3 倍 token 但结果相同，说明工具调用效率有优化空间。当 kairo-code 在某个用例上失败而 Claude Code 成功，regression fixture 就多了一个追踪项。
+
+### SessionMetricsCollector
+
+每次会话结束后，`SessionMetricsCollector` 收集结构化的指标：工具调用分布、冗余文件读取（同一个文件被读了几次）、无工具调用的空迭代次数、Hook 介入次数。这些指标写入 `KAIRO_SESSION_RESULT.json`，供测评 harness 分析。
+
+冗余文件读取是一个有趣的效率指标。一个好的 Agent 应该记住它读过的文件内容——如果同一个文件被读了 3 次，说明上下文压缩在不该压缩的地方压缩了，或者 Agent 的推理链路有断裂。
+
+### 进化基准
+
+框架层面，`EvolutionBenchmarkRunner` 跑 N 轮基准挑战，每轮之间触发自进化。衡量的是：自进化的 skill 提取是否真的提升了后续轮次的成功率。`SkillEvalRunner` 配合 `TriggerDecider` 评估进化出的 skill 触发准确率。
+
+坦白讲，测评体系还很初级。SWE-bench 的覆盖面有限（regression fixture 只有 2 个），交叉对比基准只在内部跑过几次，进化基准还没有持续集成。一个成熟的 Agent 框架应该有 CI 集成的每日测评、多维度的质量仪表盘、回归检测自动告警。这些都是后续要补的基础设施。
+
 ## 分布式的前瞻
 
 以上所有机制——Worktree 隔离、DurableExecution 持久化、ResourceConstraint 治理——目前都运行在单机上。但设计时预留了分布式的扩展点。
