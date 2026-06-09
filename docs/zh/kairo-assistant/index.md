@@ -121,6 +121,32 @@ React 管理控制台提供对助手的全面可观测与控制 —— 会话、
 
 ![可观测性](/images/kairo-assistant/console-observability.png)
 
+![追踪视图](/images/kairo-assistant/console-trace.png)
+
+### 系统与配置
+
+![系统提示词](/images/kairo-assistant/console-system-prompt.png)
+
+![系统信息](/images/kairo-assistant/console-system.png)
+
+![健康检查](/images/kairo-assistant/console-health.png)
+
+![渠道管理](/images/kairo-assistant/console-channels.png)
+
+![插件管理](/images/kairo-assistant/console-plugins.png)
+
+### 工具调试
+
+![工具 Playground](/images/kairo-assistant/console-tool-playground.png)
+
+![工具历史](/images/kairo-assistant/console-tool-history.png)
+
+### 会话创建与回放
+
+![创建会话](/images/kairo-assistant/console-create.png)
+
+![会话回放](/images/kairo-assistant/console-replay.png)
+
 ## 架构
 
 ```

@@ -121,6 +121,32 @@ Schedule recurring goals with cron expressions and monitor them from the console
 
 ![Observability](/images/kairo-assistant/console-observability.png)
 
+![Trace View](/images/kairo-assistant/console-trace.png)
+
+### System & Configuration
+
+![System Prompt](/images/kairo-assistant/console-system-prompt.png)
+
+![System Info](/images/kairo-assistant/console-system.png)
+
+![Health](/images/kairo-assistant/console-health.png)
+
+![Channels](/images/kairo-assistant/console-channels.png)
+
+![Plugins](/images/kairo-assistant/console-plugins.png)
+
+### Tool Playground
+
+![Tool Playground](/images/kairo-assistant/console-tool-playground.png)
+
+![Tool History](/images/kairo-assistant/console-tool-history.png)
+
+### Session Create & Replay
+
+![Create Session](/images/kairo-assistant/console-create.png)
+
+![Session Replay](/images/kairo-assistant/console-replay.png)
+
 ## Architecture
 
 ```

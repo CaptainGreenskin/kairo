@@ -39,6 +39,36 @@ Kairo Code 不是任何现有编程 Agent 的 fork。它是一个 **Java 原生*
 
 ![成本追踪](/images/kairo-code/cost-tracking.png)
 
+### Web UI
+
+#### 欢迎与配置
+
+![欢迎页面](/images/kairo-code/01-welcome-screen.png)
+
+![API 配置](/images/kairo-code/02-api-config.png)
+
+![打开项目](/images/kairo-code/05-open-project.png)
+
+#### 聊天界面
+
+![聊天界面](/images/kairo-code/06-main-chat-interface.png)
+
+#### 工作区 — 资源管理器、搜索、版本控制
+
+![资源管理器](/images/kairo-code/11-explorer-sidebar.png)
+
+![版本控制](/images/kairo-code/13-source-control-sidebar.png)
+
+#### 自进化与 Hook 配置
+
+![自进化](/images/kairo-code/14-self-evolution-sidebar.png)
+
+![Hook 配置](/images/kairo-code/15-hook-configuration-sidebar.png)
+
+#### 浅色主题
+
+![浅色主题](/images/kairo-code/19-light-theme-interface.png)
+
 ## 桌面应用
 
 Kairo Code 同时提供桌面工作台，集成了聊天 Agent、文件浏览器、源代码管理和自进化工具。

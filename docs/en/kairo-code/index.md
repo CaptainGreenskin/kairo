@@ -39,6 +39,36 @@ Kairo Code is not a fork of any existing coding agent. It is a **Java-native** c
 
 ![Cost Tracking](/images/kairo-code/cost-tracking.png)
 
+### Web UI
+
+#### Welcome & Setup
+
+![Welcome Screen](/images/kairo-code/01-welcome-screen.png)
+
+![API Configuration](/images/kairo-code/02-api-config.png)
+
+![Open Project](/images/kairo-code/05-open-project.png)
+
+#### Chat Interface
+
+![Chat Interface](/images/kairo-code/06-main-chat-interface.png)
+
+#### Workspace — Explorer, Search, Source Control
+
+![Explorer](/images/kairo-code/11-explorer-sidebar.png)
+
+![Source Control](/images/kairo-code/13-source-control-sidebar.png)
+
+#### Self-Evolution & Hook Configuration
+
+![Self-Evolution](/images/kairo-code/14-self-evolution-sidebar.png)
+
+![Hook Configuration](/images/kairo-code/15-hook-configuration-sidebar.png)
+
+#### Light Theme
+
+![Light Theme](/images/kairo-code/19-light-theme-interface.png)
+
 ## Desktop App
 
 Kairo Code also ships as a desktop workspace with an integrated chat agent, file explorer, source control, and self-evolution tooling.
