@@ -107,9 +107,8 @@ public class StallDetector {
         paused.set(true);
     }
 
-    /** Resume stall detection and reset the event clock. */
+    /** Resume stall detection. */
     public void resume() {
-        diagnostics.recordEvent("approval_completed");
         paused.set(false);
     }
 
