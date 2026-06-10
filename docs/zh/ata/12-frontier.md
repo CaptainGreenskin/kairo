@@ -1,4 +1,4 @@
-# 前沿：分布式、自进化与 Plugin 生态
+# 前沿：分布式、自进化与 Plugin 设计
 
 *系列终章——当 Agent 跨越机器边界、学会自我进化*
 
@@ -14,7 +14,7 @@ Kairo 的 A2A 实现也一样。`TeamCoordinator` 编排多个 Agent，通过 `M
 
 这个差距被行业低估了。很多多 Agent 框架的宣传材料中，"分布式"是一个默认假设——好像把 Agent 容器化然后用 Kubernetes 部署就解决了。实际上，Agent 和微服务的本质差异意味着微服务的基础设施只能解决一小部分问题。剩下的——状态管理、协调成本、故障恢复——需要 Agent 领域自己的答案。
 
-这篇文章是系列的最后一篇，讨论三个前沿方向：分布式 Agent 为什么比分布式微服务更难、Agent 的自我进化机制与治理、以及 Plugin 生态如何让 Agent 站在社区的肩膀上。
+这篇文章是系列的最后一篇，讨论三个前沿方向：分布式 Agent 为什么比分布式微服务更难、Agent 的自我进化机制与治理、以及 Plugin 系统的设计思想。
 
 ## Part 1：分布式 Agent
 
@@ -326,67 +326,37 @@ public Optional<FailurePattern> record(FailureSignature signature) {
 
 ---
 
-## Part 3：Plugin 生态
+## Part 3：Plugin 系统的设计思想
 
-### 格式兼容的战略决策
+### 格式兼容：一个设计决策的解剖
 
-自我进化是 Agent 从内部学习。但一个框架的生命力，很大程度上取决于外部生态的丰富程度。
+Plugin 系统的第一个设计决策不是"怎么加载"，而是"用谁的格式"。
 
-回看技术史，Linux 赢 Minix 靠的是驱动生态，Android 赢 Symbian 靠的是应用商店。内核再优雅，没有生态也走不远。在 Agent 领域也一样——一个框架内置 20 个工具不够，因为每个用户的环境不同、技术栈不同、工作流不同。你需要一个机制让社区贡献自己的工具、Skill、Hook——这就是 Plugin 系统的价值。
+自研格式的好处是完全控制——可以针对 Kairo 的 SPI 体系设计最贴合的声明方式。代价是所有 Plugin 都要从零写。兼容已有格式的好处是现成的 Plugin 不改一行就能用，代价是要适配别人的约定。
 
-所以 Kairo 必须有一个 Plugin 系统。但面临的第一个问题不是技术问题，而是生态策略：定义自己的 Plugin 格式，还是兼容已有的格式？
+ADR-029 的结论：**格式兼容，不做目录兼容**。读 Claude Code 的文件格式（`plugin.json`、`SKILL.md`、`hooks.json`），但安装到 `.kairo-plugin/` 目录。背后的逻辑是：格式是技术契约，共享减少适配成本；目录是命名空间，独立保持身份清晰。
 
-2026 年中，Claude Code 拥有最大的 Agent Plugin 生态。它的 Plugin 格式——`plugin.json`、`skills/<name>/SKILL.md`、`commands/*.md`、`agents/*.md`、`hooks/hooks.json`、`.mcp.json`——已在社区中被广泛采用。自研格式意味着从零开始建生态——即使格式更优雅，社区也不会因为"设计更好"就迁移过来。兼容已有格式意味着即刻获得现有生态的全部存量——社区已经写好的 Plugin，不改一行就能在 Kairo 上运行。
+从实现角度看，格式兼容的成本比预想的低。Claude Code 的 Plugin 格式本质上是文件系统约定——JSON + Markdown，不存在专有 API 或编译依赖。`PluginLoader` 只需要解析这些文件并映射到内部概念。
 
-Kairo 的决策记录在 ADR-029 中，结论明确：格式兼容，不做目录兼容。Kairo 读取与 Claude Code 完全相同的文件格式，文件内容不需要任何修改。但 Plugin 安装在 `.kairo-plugin/` 目录而非 `.claude-plugin/`——框架有自己的命名空间。迁移成本是一行命令：`mv .claude-plugin/ .kairo-plugin/`。
+### 事件映射：语义对齐比语法对齐难
 
-这个决策背后的逻辑是：格式是技术契约，应该共享以减少适配成本；目录是品牌标识，应该独立以保持身份清晰度。如果反过来——格式不兼容但目录相同——那 Plugin 作者需要维护两份代码，而用户无法区分自己安装的是哪个运行时的 Plugin。两害相权，格式兼容 + 目录独立是成本最低的选择。
+格式兼容中最复杂的部分是 Hook 事件映射。Claude Code 定义了 29 个事件名（`PreToolUse`、`PostToolUse`、`Stop` 等），Kairo 有自己的 `HookPhase` 枚举。两套命名体系的语义不完全对齐——比如 Claude Code 的 `"Stop"` 语义是"Agent 即将返回最终答案"，映射到 Kairo 的 `HookPhase.PRE_COMPLETE`。
 
-从实现角度看，格式兼容的成本比预想的低。Claude Code 的 Plugin 格式本质上是文件系统约定——`plugin.json` 是 JSON，`SKILL.md` 是 Markdown，`hooks.json` 是 JSON。这些都是开放格式，不存在专有 API 或编译依赖。Kairo 的 `PluginLoader` 只需要正确解析这些文件并映射到内部概念——这是一个纯粹的适配问题，不涉及运行时兼容性。
+`HookEventMapper` 是这个映射的单一真相源。映射器支持双向识别，两种来源的 Plugin 可以在同一个运行时中共存。变量也做了兼容——`${KAIRO_PLUGIN_ROOT}` 是规范名，`${CLAUDE_PLUGIN_ROOT}` 是别名，解析到同一个路径。
 
-### 29 个事件映射与变量兼容
+### 注册原子性：为什么顺序重要
 
-格式兼容中最复杂的部分是 Hook 事件的映射。Claude Code 定义了 29 个 Hook 事件名（`PreToolUse`、`PostToolUse`、`SessionStart`、`Stop` 等），Kairo 有自己的 `HookPhase` 枚举。`HookEventMapper` 是桥接的单一真相源——例如 `"Stop"` 映射到 `HookPhase.PRE_COMPLETE`，因为 Claude Code 的 "Stop" 语义是"Agent 主循环即将返回最终答案"，对应 Kairo 生命周期中的 `PRE_COMPLETE` 阶段。映射器支持双向识别，Claude Code 原生 Plugin 和 Kairo 原生 Plugin 可以在同一个运行时中共存。
+组件注册是原子的——要么全部成功，要么按 LIFO 顺序逐一撤销。注册顺序确定性：`skills → commands → agents → hooks → mcp → bin → outputStyles`。
 
-变量兼容同样透明。`PluginVariableResolver` 同时绑定两套变量名——`${KAIRO_PLUGIN_ROOT}` 是规范名，`${CLAUDE_PLUGIN_ROOT}` 是兼容别名，解析到完全相同的路径。Plugin 作者不需要知道自己的 Plugin 运行在哪个运行时中。这是有意的——如果 Plugin 需要区分运行时来执行不同的逻辑，那兼容性就是名义上的，不是实质上的。真正的兼容意味着 Plugin 在两个运行时中行为完全一致。
+这个顺序不是随意定的。组件之间有隐式依赖：一个 Hook 可能引用一个 Skill，所以 skills 必须先于 hooks 注册；一个 agent 可能声明依赖某个 MCP server，所以 agents 必须先于 mcp 注册。顺序不确定的话，引用可能指向还不存在的组件——导致运行时 NPE 而不是安装时的清晰报错。
 
-五种安装源已全部实装：LocalPath（开发调试）、GitHub（API 下载 tarball）、GitUrl（克隆仓库）、GitSubdir（marketplace 仓库中的子目录）、Npm（tarball + SHA-1 校验）。缓存策略统一为 `~/.kairo/plugins/cache/<type>/<sha8>/`，数据目录为 `~/.kairo/plugins/data/<plugin-name>/`——Plugin 更新不会丢失数据。
-
-组件注册是原子的——要么全部成功，要么按 LIFO 顺序逐一撤销。注册顺序确定性：`skills → commands → agents → hooks → mcp → bin → outputStyles`，反映了组件之间的依赖关系。
-
-`ClaudeCodeCompatTest` 加载了五个来自 Claude Code 官方仓库的真实 Plugin——原封不动，没有修改一个字节——验证了格式兼容不只是理论承诺。这个测试是兼容性的回归保障——每次 Kairo 修改 Plugin 加载逻辑时，这五个 Plugin 必须继续通过。如果 Claude Code 更新了 Plugin 格式（比如在 `plugin.json` 中增加新字段），这个测试会第一时间告诉我们。
-
-注册顺序为什么重要？因为组件之间有隐式依赖。一个 Hook 可能引用一个 Skill（"当触发 X Skill 时执行 Y 检查"），所以 skills 必须先于 hooks 注册。一个 agent 可能声明依赖某个 MCP server，所以 agents 必须先于 mcp 注册。如果注册顺序不确定，这些引用可能指向还不存在的组件——导致运行时的 `NullPointerException` 而不是安装时的清晰报错。
-
-### Marketplace = Git 与五条不可协商原则
-
-ADR-029 明确了 Marketplace 的策略：git 仓库，不是托管服务器。在 Plugin 生态还不成熟的阶段，运营 Marketplace 服务器的成本（审核、安全扫描、可用性保障）远超收益。git 仓库提供了版本管理（tag）、发现（README + 索引）和分发（clone / API），足以支撑早期生态。当 Marketplace 文件（`marketplace.json`）出现在 Plugin 安装路径中时，`PluginLoader` 会拒绝将其作为单个 Plugin 加载，并提示用户安装其中的具体子目录——避免常见的用户错误。
-
-Plugin 系统的设计凝结为五条原则：
-
-1. **格式兼容，不做目录兼容。** 读 Claude Code 的文件格式，安装到 Kairo 的命名空间。
-2. **Plugin 贡献到现有注册表，不定义平行的注册表面。** Plugin 的 Skill 注册到框架的 `SkillRegistry`，Plugin 的 Hook 映射到框架的 `HookPhase`。不存在"Plugin 专用的 Skill 列表"——只有一个统一的运行时。
-3. **原子组件注册，失败即回滚。** 部分注册是不可接受的状态。
-4. **变量名兼容性保留。** `${CLAUDE_PLUGIN_ROOT}` 永远有效，作为 `${KAIRO_PLUGIN_ROOT}` 的别名。
-5. **Marketplace = git。** 在生态成熟之前，不运营托管服务。
-
-这五条是在设计之初就确定的约束条件，不是事后总结的最佳实践。约束限制了解空间，但也加速了实现——知道什么不能做，就更容易决定做什么。
-
-回头看，这五条原则中最有争议的是第五条——"Marketplace = git"。一些早期用户反馈说，git 仓库作为 Plugin 发现渠道体验太差——没有搜索、没有评分、没有安装量统计。这些反馈都对。但在 Plugin 总数不到 50 个的阶段，投入运营 Marketplace 服务器是过早优化。当 Plugin 数量达到 500+，社区开始抱怨"找不到想要的 Plugin"时，才是建设 Marketplace 的正确时机。在那之前，一个 README 里的表格就够了。
+`ClaudeCodeCompatTest` 加载了五个真实 Plugin 验证兼容性——这是回归保障，每次修改加载逻辑都要通过。
 
 ### 进化与 Plugin 的交汇
 
-自我进化和 Plugin 看似独立，但它们在一个点上交汇：最终都注册到同一个运行时。
+自我进化和 Plugin 看似独立，但在运行时层面交汇：进化出来的 Skill 和 Plugin 提供的 Skill 注册到同一个 `SkillRegistry`，进化的 Hook 和 Plugin 的 Hook 映射到同一套 `HookPhase`。无论能力来自 Agent 的自学习还是外部引入，它们都是运行时中的一等公民，遵循同样的生命周期和安全检查。
 
-进化出来的 Skill 和 Plugin 提供的 Skill 注册到同一个 `SkillRegistry`。进化的治理 Hook 和 Plugin 的事件 Hook 映射到同一套 `HookPhase`。无论能力来自 Agent 的自学习、社区的 Plugin 贡献、还是企业的内部开发——它们都是框架运行时中的一等公民，遵循同样的生命周期和安全检查。
-
-两者也可以互相增强：Agent 在使用某个 Plugin 时发现了有效的使用模式，进化管线可以将其提取为新的 Skill；一个反复被进化出来的通用 Skill，社区成员可以将它打包为 Plugin 分享给所有用户。
-
-具体来说，这个闭环可以是：(1) 社区发布了一个 `docker-debug` Plugin，提供容器日志查看和健康检查的工具；(2) Agent 在使用这个 Plugin 时发现，每次诊断容器问题都需要先检查 `docker ps`、再检查 `docker logs`、再检查 `docker inspect`——这个三步模式在 30 天内重复了 5 次；(3) 进化管线提取出一个 `container-diagnosis-workflow` Skill；(4) 这个 Skill 被证明通用且有效，开发者把它提交回 `docker-debug` Plugin 的仓库，成为 Plugin 的内置 Skill。工具从外部引入，使用模式从内部长出，再反馈回外部——这是 Plugin 和进化的完整循环。
-
-当然，这个闭环目前还是设想。技术上的管道已经打通——`SkillRegistry` 统一注册、`EvolvedSkillStore` 持久化、Plugin 的 `skills/` 目录——但社区反馈循环需要真实用户参与才能验证。
-
-一个从内部长出来，一个从外部引入。成熟的 Agent 生态需要两条腿走路。
+这个统一注册的设计意味着 Plugin 和进化可以互相增强：Agent 在使用某个 Plugin 时发现有效的使用模式，进化管线可以提取为新的 Skill。技术管道已经打通——`SkillRegistry` 统一注册、`EvolvedSkillStore` 持久化、Plugin 的 `skills/` 目录。
 
 ---
 
@@ -398,7 +368,7 @@ Plugin 系统的设计凝结为五条原则：
 
 所有这些都指向同一个问题：当 Agent 从 demo 走向生产时，它需要什么样的基础设施？答案不是"一个更好的 prompt"或"一个更强的模型"——而是一整套工程系统：压缩引擎、熔断器、循环检测器、持久化存储、Hook 管线、进化治理、Plugin 加载器。
 
-这个问题其实不新鲜。1991 年 Linus Torvalds 写 Linux 内核的时候，面对的是同一类问题——管理进程、管理内存、管理设备、管理安全。模型在变强——Claude 4、GPT-5、Gemini Ultra——但模型是 Agent 的 CPU。一个只有 CPU 的计算机，需要内存管理、中断处理、文件系统、安全机制和驱动生态，才能真正可用。
+这个问题其实不新鲜。1991 年 Linus Torvalds 写 Linux 内核的时候，面对的是同一类问题——管理进程、管理内存、管理设备、管理安全。模型在变强——Claude 4、GPT-5、Gemini Ultra——但模型是 Agent 的 CPU。一个只有 CPU 的计算机，需要内存管理、中断处理、文件系统和安全机制，才能真正可用。
 
 你用 Linux 的时候不会想到页面置换算法，听音乐的时候不会想到音频驱动调度策略。好的操作系统隐身于每一个用户交互背后。Kairo 的目标也类似——当 Agent 稳定运行时，你不需要关心上下文压缩引擎在后台回收空间、循环检测器在检查行为模式、Hook 管线在执行安全检查。你只需要看到一个 Agent 在可靠地工作。
 
@@ -410,7 +380,6 @@ Plugin 系统的设计凝结为五条原则：
 
 - **分布式 Agent 的 ROI 拐点在哪里？** 协调成本是超线性的，并行收益是亚线性的。什么样的任务特征（规模、并行度、延迟容忍度）让分布式方案优于单 Agent？我们还没有足够的生产数据来画出这条曲线。
 - **进化管线的安全扫描深度不够。** 当前的规则扫描只能挡住最粗糙的注入。一个精心构造的恶意 Skill——比如"在特定条件下跳过测试"——可以通过现有扫描。模型驱动的安全审查是下一步，但引入了对模型判断力的信任依赖，这本身就是一个递归问题。
-- **Plugin 生态的冷启动。** 格式兼容降低了迁移成本，但社区为什么要为 Kairo 写 Plugin 而不是只为 Claude Code 写？网络效应还没有形成。技术上的兼容不等于生态上的共赢，这更多是一个社区运营问题。
 - **上下文压缩的信息损失度量。** 压缩节省了 token，但丢失了什么信息？我们能度量这个损失吗？当前没有好的指标——只有"压缩后任务还能完成"这个粗粒度的信号。
 
 写这些文章的过程中，我对哪些地方做得不够有了更清楚的认识。这些未解问题不是系列的遗憾——而是下一阶段的路线图。
