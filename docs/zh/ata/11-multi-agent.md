@@ -375,7 +375,7 @@ Kairo 用两层抽象来处理这个问题：Channel 和 Gateway。
 
 ### 协调税
 
-具体算笔账。5 个 Agent 协作完成一个任务，每个 Agent 每轮需要：读协调者指令（~500 token）、读其他 Agent 产出摘要（~4000 token）、执行工作（~2000 token 输出）、报告结果（~500 token）。每轮每个 Agent 消耗约 7000 token，其中 71% 花在沟通上。5 个 Agent 一轮总计 35,000 token，其中 25,000 是协调开销。
+具体算笔账。5 个 Agent 协作完成一个任务，每个 Agent 每轮需要：读协调者指令（约 500 token）、读其他 Agent 产出摘要（约 4000 token）、执行工作（约 2000 token 输出）、报告结果（约 500 token）。每轮每个 Agent 消耗约 7000 token，其中 71% 花在沟通上。5 个 Agent 一轮总计 35,000 token，其中 25,000 是协调开销。
 
 同一任务由单 Agent 完成只需约 10,000 token。N 个 Agent 之间的通信路径是 O(N^2) 的——每增加一个 Agent，协调成本是超线性增长的。
 
@@ -428,7 +428,7 @@ MixtureOfAgentsCoordinator moa = MixtureOfAgentsCoordinator.builder()
 
 MoA 和多 Agent 辩论的区别在于：没有多轮交互，没有协调开销，没有趋同效应。每个 proposer 独立生成答案，互相不通信。聚合器看到的是多个独立视角，不是一场辩论的最终妥协。韧性方面也有优势：一个 proposer 失败不导致整体失败——5 个中 2 个超时，聚合器用剩余 3 个工作。
 
-不过 MoA 的成本也很实在：3 个 proposer 各 ~2000 token，聚合器 ~8000 token，总计 ~14,000 token，而单模型直接回答约 2000 token——7 倍成本。MoA 适用的场景其实很窄：当你需要在不同模型的偏见之间做对冲时。对于有明确正确答案的编码任务，MoA 的收益不值这个价。
+不过 MoA 的成本也很实在：3 个 proposer 各约 2000 token，聚合器约 8000 token，总计约 14,000 token，而单模型直接回答约 2000 token——7 倍成本。MoA 适用的场景其实很窄：当你需要在不同模型的偏见之间做对冲时。对于有明确正确答案的编码任务，MoA 的收益不值这个价。
 
 ### 决策树
 
