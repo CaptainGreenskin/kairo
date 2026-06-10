@@ -601,7 +601,13 @@ public class DefaultReActAgent implements Agent {
                                                                             currentIteration.get(),
                                                                             snap)
                                                                     .onErrorResume(
-                                                                            e -> Mono.empty());
+                                                                            e -> {
+                                                                                log.warn(
+                                                                                        "Final checkpoint save failed: {}",
+                                                                                        e
+                                                                                                .getMessage());
+                                                                                return Mono.empty();
+                                                                            });
                                                 }
                                                 return finalCheckpoint.then(
                                                         updateExecutionStatus(
