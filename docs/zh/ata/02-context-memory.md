@@ -26,7 +26,7 @@
 
 Code Agent 把这个问题推到了极端。对话 Agent 处理短文本，用户消息通常不超过 200 token。RAG Agent 检索文档片段，每段几百 token。Code Agent？读一个源文件 5000 token，编译输出 3000 token，测试结果 2000 token，grep 搜索 4000 token。每一轮工具调用消耗的上下文是对话 Agent 的 10 到 50 倍。
 
-更麻烦的是"验证死亡螺旋"（verification death spiral）。Agent 修改了一段代码，运行测试——失败了，读取错误信息，修改代码，再运行测试——另一个错误。每一轮修复-验证循环，上下文只增不减。三轮之后，窗口已经被测试输出填满了，Agent 忘记了最初的需求是什么。
+第一篇定义的验证死亡螺旋在这里表现得最明显——每一轮修复-验证循环，上下文只增不减。三轮之后，窗口已经被测试输出填满了，Agent 忘记了最初的需求是什么。
 
 上下文管理对 Code Agent 是底线需求。没有压缩引擎的 Code Agent，在第三个文件就撞上窗口限制。有压缩但设计粗糙的 Agent，会在压缩时丢掉决定性的信息——比如"为什么选方案 A 而不是方案 B"。
 
@@ -150,7 +150,7 @@ LLM 生成的结构化摘要。这是第一个需要模型调用的阶段。Kair
 
 用类比来说，这是"拔电源重启"。谁都不想走到这一步，但必须有这一步。
 
-![6-Stage Context Compaction Pipeline](/images/ata/compaction-pipeline.png)
+![6-Stage Context Compaction Pipeline](../../public/images/ata/compaction-pipeline.png)
 
 ### 设计哲学: 事实优先
 
@@ -225,13 +225,7 @@ Kairo 的 `RoutingPolicy` SPI（ADR-013）实现了成本感知路由。`ModelTi
 
 ### 11,000 Token 的固定税
 
-最后一个上下文经济学的话题：工具 schema 的成本。
-
-Kairo 的 56 个工具，每个工具的 JSON Schema 约 200 token。算下来，系统提示中有 11,000 token 的固定开销——还没开始工作，上下文窗口就被吃掉了 5.5%。这笔"税"在每次模型调用中都要支付（prompt cache 让实际成本降了 90%，但窗口占用是实打实的）。
-
-Claude Code 面对同样的问题，做法是 `ToolSearch`——不在系统提示中列出所有工具 schema，而是提供一个搜索工具，让模型按需查找。这大幅减少了 system prompt 的大小，但引入了额外的工具调用开销——需要一轮额外的交互来发现可用工具。
-
-Kairo 目前还没实现动态工具加载，所有 56 个工具的 schema 始终在系统提示中。我的判断是在 prompt cache 命中的前提下，11K token 的固定开销暂时可以接受。但随着 Plugin 生态引入更多工具，工具数量从 56 涨到 100、200 的时候，动态加载就不是可选的了。
+还有一个上下文经济学话题值得提及：56 个工具的 JSON Schema 在系统提示中占了约 11,000 token 的固定开销。这笔"税"与 prompt cache 的交互、动态工具加载的可能性，将在第四篇《工具是 Agent 的系统调用》中详细讨论。
 
 ---
 

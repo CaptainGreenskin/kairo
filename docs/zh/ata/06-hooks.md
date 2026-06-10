@@ -425,6 +425,8 @@ private static final Map<String, HookPhase> COMPAT = Map.ofEntries(
 
 我做了一个务实的选择：所有 Hook 都是可选的。框架零 Hook 也能运行。你按需添加，每添加一个都清楚它的代价。这好过"默认开启所有治理，你按需关闭"——因为后者的代价是隐性的，你不知道自己关闭了什么，直到出问题。
 
+Hook 能治理 Agent 运行中的每一步决策——但如果进程本身崩了呢？长时间运行的任务需要的不是更细的决策控制，而是不同层面的韧性。
+
 *下一篇：《长任务与进程隔离——Worktree、Checkpoint 与持久化执行》*
 
 ---
