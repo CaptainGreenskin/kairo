@@ -590,70 +590,86 @@ public class DefaultReActAgent implements Agent {
                                                                     + "' timed out after "
                                                                     + config.timeout()))
                                     .flatMap(
-                                            result ->
-                                                    updateExecutionStatus(
-                                                                    config.sessionId(),
-                                                                    ExecutionStatus.COMPLETED)
-                                                            .then(
-                                                                    Mono.defer(
-                                                                            () -> {
-                                                                                if (result != null
-                                                                                        && result
-                                                                                                        .text()
-                                                                                                != null) {
+                                            result -> {
+                                                Mono<Void> finalCheckpoint = Mono.empty();
+                                                if (checkpointManager != null) {
+                                                    List<Msg> snap =
+                                                            List.copyOf(reactLoop.getHistory());
+                                                    finalCheckpoint =
+                                                            checkpointManager
+                                                                    .save(
+                                                                            currentIteration.get(),
+                                                                            snap)
+                                                                    .onErrorResume(
+                                                                            e -> Mono.empty());
+                                                }
+                                                return finalCheckpoint.then(
+                                                        updateExecutionStatus(
+                                                                        config.sessionId(),
+                                                                        ExecutionStatus.COMPLETED)
+                                                                .then(
+                                                                        Mono.defer(
+                                                                                () -> {
+                                                                                    if (result
+                                                                                                    != null
+                                                                                            && result
+                                                                                                            .text()
+                                                                                                    != null) {
+                                                                                        agentSpan
+                                                                                                .setAttribute(
+                                                                                                        "langfuse.trace.output",
+                                                                                                        result
+                                                                                                                .text());
+                                                                                        agentSpan
+                                                                                                .setAttribute(
+                                                                                                        "output.value",
+                                                                                                        result
+                                                                                                                .text());
+                                                                                    }
+                                                                                    long tokens =
+                                                                                            totalTokensUsed
+                                                                                                    .get();
                                                                                     agentSpan
                                                                                             .setAttribute(
-                                                                                                    "langfuse.trace.output",
-                                                                                                    result
-                                                                                                            .text());
+                                                                                                    "agent.tokens_total",
+                                                                                                    tokens);
                                                                                     agentSpan
                                                                                             .setAttribute(
-                                                                                                    "output.value",
-                                                                                                    result
-                                                                                                            .text());
-                                                                                }
-                                                                                long tokens =
-                                                                                        totalTokensUsed
-                                                                                                .get();
-                                                                                agentSpan
-                                                                                        .setAttribute(
-                                                                                                "agent.tokens_total",
-                                                                                                tokens);
-                                                                                agentSpan
-                                                                                        .setAttribute(
-                                                                                                "agent.iterations",
-                                                                                                (long)
-                                                                                                        currentIteration
-                                                                                                                .get());
-                                                                                agentSpan.setStatus(
-                                                                                        true,
-                                                                                        "completed");
-                                                                                state =
-                                                                                        AgentState
-                                                                                                .COMPLETED;
-                                                                                AgentHealthRegistry
-                                                                                        .global()
-                                                                                        .deregister(
-                                                                                                this
-                                                                                                        .id);
-                                                                                log.info(
-                                                                                        "Agent '{}' completed after {}"
-                                                                                                + " iterations, {} tokens"
-                                                                                                + " used",
-                                                                                        name,
-                                                                                        currentIteration
-                                                                                                .get(),
-                                                                                        totalTokensUsed
-                                                                                                .get());
-                                                                                publishAgentDone(
-                                                                                        "completed");
-                                                                                return fireSessionEndBestEffort(
-                                                                                                AgentState
-                                                                                                        .COMPLETED,
-                                                                                                null)
-                                                                                        .thenReturn(
-                                                                                                result);
-                                                                            })))
+                                                                                                    "agent.iterations",
+                                                                                                    (long)
+                                                                                                            currentIteration
+                                                                                                                    .get());
+                                                                                    agentSpan
+                                                                                            .setStatus(
+                                                                                                    true,
+                                                                                                    "completed");
+                                                                                    state =
+                                                                                            AgentState
+                                                                                                    .COMPLETED;
+                                                                                    AgentHealthRegistry
+                                                                                            .global()
+                                                                                            .deregister(
+                                                                                                    this
+                                                                                                            .id);
+                                                                                    log.info(
+                                                                                            "Agent '{}' completed after {}"
+                                                                                                    + " iterations, {} tokens"
+                                                                                                    + " used",
+                                                                                            name,
+                                                                                            currentIteration
+                                                                                                    .get(),
+                                                                                            totalTokensUsed
+                                                                                                    .get());
+                                                                                    publishAgentDone(
+                                                                                            "completed");
+                                                                                    return fireSessionEndBestEffort(
+                                                                                                    AgentState
+                                                                                                            .COMPLETED,
+                                                                                                    null)
+                                                                                            .thenReturn(
+                                                                                                    result);
+                                                                                })));
+                                            })
                                     .onErrorResume(
                                             e ->
                                                     updateExecutionStatus(
