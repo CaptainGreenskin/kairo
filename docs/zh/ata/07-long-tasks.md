@@ -184,6 +184,25 @@ public interface DurableExecutionStore {
 - `listPending`：启动时扫描所有未完成的执行，决定是否恢复
 - `updateStatus`：更新执行状态（RUNNING / PAUSED / COMPLETED / FAILED / RECOVERING）
 
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant Store as DurableExecutionStore
+    participant FS as 文件系统
+    
+    Agent->>Store: persist(execution)
+    loop ReAct 循环
+        Agent->>FS: 工具执行（读/写文件）
+        Agent->>Store: appendEvent(MODEL_CALL_RESPONSE)
+        Agent->>Store: appendEvent(TOOL_CALL_RESPONSE)
+        Agent->>Store: appendEvent(ITERATION_COMPLETE) ← 安全点
+    end
+    Note over Agent: 💥 进程崩溃
+    Agent->>Store: recover(executionId)
+    Store-->>Agent: 从最近的 ITERATION_COMPLETE 恢复
+    Agent->>Agent: 从安全点继续执行
+```
+
 ### 什么被记录了
 
 `DurableExecution` 是聚合根，它的核心是一个有序的事件列表。每个事件是一个 `ExecutionEvent`，包含六个字段：
@@ -221,6 +240,18 @@ hash_0 = SHA256("GENESIS" + canonical_json_payload)
 hash_n = SHA256(hash_{n-1} + canonical_json_payload)
 ```
 
+```mermaid
+flowchart LR
+    G["GENESIS"] --> H0["hash_0<br/>SHA256(GENESIS + payload_0)"]
+    H0 --> H1["hash_1<br/>SHA256(hash_0 + payload_1)"]
+    H1 --> H2["hash_2<br/>SHA256(hash_1 + payload_2)"]
+    H2 --> H3["hash_3<br/>SHA256(hash_2 + payload_3)"]
+    H3 --> HN["..."]
+    
+    style H1 fill:#f66,stroke:#333
+    H1 -.- T["如果 payload_1 被篡改<br/>hash_1 ~ hash_N 全部失效"]
+```
+
 每个事件的哈希依赖于前一个事件的哈希。直接后果是：如果事件日志中的任何一条记录被篡改——修改了内容、删除了记录、或者插入了伪造的记录——后续所有事件的哈希都会失效。
 
 恢复时，系统首先验证整条哈希链。如果验证失败，抛出 `ExecutionCorruptedException`，拒绝恢复。宁可让 Agent 从头开始，也不从一个被污染的状态恢复——基于错误状态恢复可能造成更大的损害。
@@ -230,6 +261,18 @@ hash_n = SHA256(hash_{n-1} + canonical_json_payload)
 ### 恢复协议
 
 当进程重启时，恢复分四步：
+
+```mermaid
+flowchart TD
+    A[进程重启] --> B[扫描未完成的执行<br/>listPending]
+    B --> C{找到安全点?<br/>ITERATION_COMPLETE}
+    C -->|是| D[验证哈希链完整性]
+    C -->|否| E[从头开始执行]
+    D --> F{链完整?}
+    F -->|是| G[加载检查点快照]
+    F -->|否| H[抛出 ExecutionCorruptedException<br/>拒绝恢复]
+    G --> I[从安全点恢复 ReAct 循环]
+```
 
 1. **找到安全点**：在事件日志中查找最近的 `ITERATION_COMPLETE` 事件
 2. **验证完整性**：从创世事件到安全点，逐条验证哈希链

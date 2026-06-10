@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitepress'
+import { withMermaid } from 'vitepress-plugin-mermaid'
 
-export default defineConfig({
+export default withMermaid(defineConfig({
   title: 'Kairo',
   description: 'The Agent OS for Java',
   base: '/',
@@ -227,4 +228,5 @@ export default defineConfig({
       },
     },
   },
-})
+  mermaid: {},
+}))

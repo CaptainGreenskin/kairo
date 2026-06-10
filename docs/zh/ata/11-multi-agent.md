@@ -16,6 +16,29 @@
 
 每往上一层，能解决的问题更复杂，但引入的成本也更高。选哪一层，取决于你愿意为协调付出多少额外的 token。
 
+```mermaid
+flowchart TB
+    subgraph L3["第三层：Expert Team"]
+        direction LR
+        P[Plan Agent] --> G[Generate Agent]
+        G --> E[Evaluate Agent]
+        E -->|不通过| G
+    end
+    subgraph L2["第二层：Team Coordination"]
+        direction LR
+        L[Leader] --> W1[Worker 1]
+        L --> W2[Worker 2]
+        L --> W3[Worker 3]
+    end
+    subgraph L1["第一层：Subagent"]
+        direction LR
+        M[Main Agent] --> S1[Sub Agent]
+    end
+    
+    L1 -.->|复杂度↑ 成本↑| L2
+    L2 -.->|复杂度↑ 成本↑| L3
+```
+
 ### Layer 1: Subagent — 上下文隔离
 
 一个 Agent 正在实现用户认证。它先搜索代码库，了解现有的安全配置——grep 了 20 个文件，读了 5 个关键的类，分析了依赖关系。这些搜索和分析产生了大约 50,000 token 的输出，但这些输出只有分析阶段需要。一旦得出结论，50,000 token 的原始输出就成了噪音，挤占后续推理的空间。
@@ -95,6 +118,27 @@ IDLE → PLANNING → PLAN_READY → GENERATING ⇄ EVALUATING → COMPLETED / F
 ```
 
 九个状态，每个状态转换都经过验证——非法转换触发 `IllegalStateException`。结合第六篇讨论的 Hook 治理体系（30 个生命周期点 × 5 种决策），多 Agent 编排的每一步都可以被拦截和治理。`EVALUATING → GENERATING` 这条回边是评审-修订循环：Evaluator 判定产出不合格，状态回到 GENERATING，同一个 Agent 带着评审反馈重新生成。循环有预算限制（`maxFeedbackRounds`），超出后根据风险等级决定是降级通过还是直接失败。
+
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> PLANNING : 收到任务
+    PLANNING --> PLAN_READY : Plan 生成完毕
+    PLAN_READY --> GENERATING : 开始代码生成
+    GENERATING --> EVALUATING : 生成完毕，提交评审
+    EVALUATING --> GENERATING : 评审不通过，重新生成
+    EVALUATING --> COMPLETED : 评审通过
+    EVALUATING --> DEGRADED : 多轮评审仍不通过，降级输出
+    PLANNING --> FAILED : Plan 生成失败
+    GENERATING --> FAILED : 生成超时/错误
+    PLANNING --> TIMEOUT : 超时
+    GENERATING --> TIMEOUT : 超时
+    EVALUATING --> TIMEOUT : 超时
+    COMPLETED --> [*]
+    DEGRADED --> [*]
+    FAILED --> [*]
+    TIMEOUT --> [*]
+```
 
 `PLAN_READY` 状态支持计划预览模式——Coordinator 先生成计划，等待人类确认后再执行。这是人机协同的接入点。
 
@@ -397,6 +441,21 @@ MoA 和多 Agent 辩论的区别在于：没有多轮交互，没有协调开销
 **问题 4：任务是否需要不同领域的专业知识？** 是且知识差异显著 → 领域专家 Agent。否则 → 单个强模型 + 好的 system prompt。
 
 我估计 80% 的 Code Agent 任务在第一个问题就结束了——任务放得进单个上下文窗口，不需要多 Agent。
+
+```mermaid
+flowchart TD
+    A[新任务] --> B{单 Agent<br/>能完成吗?}
+    B -->|能| C[用单 Agent]
+    B -->|不能| D{为什么不能?}
+    D -->|上下文窗口不够| E[拆任务 + Subagent]
+    D -->|需要并行加速| F{任务可独立拆分?}
+    D -->|需要多角色协作| G[Expert Team<br/>plan/generate/evaluate]
+    F -->|是| H[Team + Worktree 隔离]
+    F -->|否| I[串行执行<br/>不要强行并行]
+    
+    style C fill:#4CAF50,color:#fff
+    style I fill:#FF9800,color:#fff
+```
 
 ## 行业对比
 

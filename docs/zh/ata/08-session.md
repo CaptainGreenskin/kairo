@@ -37,6 +37,21 @@ Agent 的 Session 就是它的"进程"。这个类比在设计过程中反复指
 | `/proc` | `SessionMetadata`（轻量查询） | 不加载消息体就能看概况 |
 | OOM Killer | `ConcurrencyLimitExceededException` | 过载保护 |
 
+```mermaid
+stateDiagram-v2
+    [*] --> Created : 新消息到达
+    Created --> Active : getOrCreate()
+    Active --> Active : 处理消息
+    Active --> Idle : 无消息 > 空闲期
+    Idle --> Active : 新消息到达
+    Idle --> Evicted : 超过 idleTtl (60min)
+    Active --> Evicted : 池容量超限 (LRU)
+    Evicted --> Persisted : saveSession()
+    Persisted --> Resumed : loadSession() + 压缩注入
+    Resumed --> Active : 新会话开始
+    Evicted --> [*] : cleanupExpired()
+```
+
 不过这个类比有一个地方成立不了。OS 进程的休眠和唤醒是**无损**的——swap 到磁盘再换回来，每一个 bit 都一样。但 Agent Session 的"休眠"必然是**有损**的——上下文窗口有限，你不可能把上次 200 条消息原封不动塞回去。这意味着 Agent 的 Session 恢复本质上是一种**有选择的遗忘**：决定哪些记住、哪些丢掉。
 
 OS 从来不需要做这种选择。这是 Agent Session 管理比传统进程管理更难的根本原因。
@@ -160,6 +175,26 @@ class SessionResumption {
                 });
     }
 }
+```
+
+```mermaid
+sequenceDiagram
+    participant Old as 旧会话
+    participant Compact as SessionMemoryCompact
+    participant Store as MemoryStore
+    participant New as 新会话
+    participant Agent as Agent
+    
+    Old->>Compact: 会话结束 → saveSession()
+    Compact->>Compact: CompactionModelFork 压缩<br/>(独立模型调用, 6维摘要)
+    Compact->>Store: 存储摘要 (key=session-{id})
+    Note over Old: 会话关闭
+    
+    New->>Store: loadSession(sessionId)
+    Store-->>New: 返回压缩摘要
+    New->>New: 包裹 <memory-context> 标签
+    New->>Agent: injectMessages() 注入
+    Agent->>Agent: 带着"记忆"继续工作
 ```
 
 几个实现上的考量：
