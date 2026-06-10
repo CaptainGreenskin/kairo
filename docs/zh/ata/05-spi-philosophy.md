@@ -18,6 +18,30 @@ Kairo 的第一版有 7 个 SPI 只存活到了 v0.3 就被砍掉。
 
 Kairo 的扩展性分三层，每层的工程挑战不一样。
 
+```mermaid
+flowchart TB
+    subgraph L3["零侵入层 Zero-invasion"]
+        direction LR
+        Z1["Spring Boot Starter<br/>自动装配"]
+        Z2["环境变量<br/>覆盖配置"]
+    end
+    subgraph L2["组合层 Compose"]
+        direction LR
+        C1["Middleware 链<br/>有序 · 可插入 · 可短路"]
+        C2["Hook 组合<br/>多 Hook 决策合并"]
+    end
+    subgraph L1["替换层 Replace"]
+        direction LR
+        R1["ModelProvider"]
+        R2["ToolExecutor"]
+        R3["ContextManager"]
+        R4["MemoryStore"]
+    end
+    
+    L1 ---|一个SPI=一个实现| L1
+    L3 --> L2 --> L1
+```
+
 ### 第一层：替换（Replace）
 
 替换是最直接的扩展模式：拔掉一个实现，插入另一个，系统行为改变但契约不变。
@@ -274,6 +298,22 @@ Kairo 的每一个 SPI 方法都返回 Project Reactor 的 `Mono<T>` 或 `Flux<T
 3. 需要组合优于继承。SPI 的价值在于组合——让不同的实现可以在运行时被替换和组装。如果你不需要这种运行时灵活性，一个 `abstract class` 就够了。
 
 4. 扩展点需要与实现解耦。如果扩展逻辑和核心逻辑总是一起改，那么拆到两个接口只是在制造仪式感（ceremony），没有真正解耦。
+
+```mermaid
+flowchart TD
+    A[候选抽象] --> B{至少两个<br/>已知实现?}
+    B -->|否| X[拒绝：等有第二个实现再说]
+    B -->|是| C{替换频率<br/>≥ 每季度一次?}
+    C -->|否| Y[拒绝：硬编码就好]
+    C -->|是| D{能用现有<br/>SPI 组合?}
+    D -->|能| Z[拒绝：不新增抽象]
+    D -->|不能| E[准入：创建新 SPI]
+    
+    style E fill:#4CAF50,color:#fff
+    style X fill:#FF9800,color:#fff
+    style Y fill:#FF9800,color:#fff
+    style Z fill:#FF9800,color:#fff
+```
 
 ### 被拒绝的抽象
 

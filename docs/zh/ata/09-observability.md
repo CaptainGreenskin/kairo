@@ -52,6 +52,26 @@ agent:kairo-code                           ← 根 span：一次完整的 Agent 
   ...
 ```
 
+```mermaid
+flowchart TD
+    Root["agent:kairo-code"] --> I0["iteration-0"]
+    Root --> I1["iteration-1"]
+    Root --> I2["iteration-2"]
+    
+    I0 --> R0["reasoning:claude-sonnet"]
+    I0 --> T0["tool:ReadFile"]
+    I0 --> T1["tool:EditFile"]
+    
+    I1 --> R1["reasoning:claude-sonnet"]
+    I1 --> H1["hook:security-check"]
+    I1 --> T2["tool:BashExec"]
+    I1 --> G1["guardrail:pii-scan"]
+    
+    I2 --> R2["reasoning:claude-sonnet"]
+    I2 --> T3["tool:WriteFile"]
+    R2 -.-> CP["compaction triggered"]
+```
+
 每个 span 类型对应 `Tracer` SPI 上的一个工厂方法：
 
 ```java
@@ -177,6 +197,16 @@ public interface CostTracker {
 一个值得注意的细节：cache token 的定价不是简单的 input 价。Anthropic 的 cache-read token 按 input 价的 10% 计费，cache-creation token 按 125% 计费。`ModelPricing` 内置了这个逻辑。其他提供商如果有不同的 cache 定价模型，目前的估算会有偏差——这个定价表是硬编码的，没有动态更新机制。
 
 成本数据有两条出路：`CostTracker.summary()` 给 CLI 的 `:cost` 命令用，span 级的 token/cost 属性给 Langfuse 和 OTel 后端用。
+
+```mermaid
+flowchart LR
+    MC[模型调用完成] --> A[CostTracker<br/>累计记账<br/>AtomicLong/DoubleAdder]
+    MC --> B[TracingModelProvider<br/>span 级记录]
+    
+    A --> C[":cost 命令<br/>CLI 实时查看"]
+    B --> D["OTel 后端<br/>Jaeger / Tempo"]
+    B --> E["Langfuse<br/>langfuse.cost_details"]
+```
 
 ---
 

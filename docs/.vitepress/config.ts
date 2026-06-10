@@ -133,6 +133,7 @@ export default withMermaid(defineConfig({
           },
           { text: 'API 参考', link: '/zh/api/' },
           { text: '深度系列', link: '/zh/ata/01-agent-os' },
+          { text: 'ADR', link: '/adr/' },
           { text: '路线图', link: '/zh/guide/roadmap' },
         ],
         sidebar: {
