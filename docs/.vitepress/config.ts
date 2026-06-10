@@ -207,7 +207,7 @@ export default withMermaid(defineConfig({
                 { text: '六、Hook：Agent 的治理层', link: '/zh/ata/06-hooks' },
                 { text: '七、长任务与进程隔离', link: '/zh/ata/07-long-tasks' },
                 { text: '八、Session：Agent 的进程管理', link: '/zh/ata/08-session' },
-                { text: '九、可观测性：Agent 的 strace', link: '/zh/ata/09-observability' },
+                { text: '九、可观测性：Agent 出了问题怎么查', link: '/zh/ata/09-observability' },
                 { text: '十、从 CLI 到桌面', link: '/zh/ata/10-kairo-code' },
                 { text: '十一、多智能体的全貌', link: '/zh/ata/11-multi-agent' },
                 { text: '十二、前沿：分布式、自进化与 Plugin 设计', link: '/zh/ata/12-frontier' },
