@@ -1210,10 +1210,14 @@ public class DefaultReActAgent implements Agent {
             builder.segments(systemPromptResult.segments());
         }
 
-        // Add tool definitions from the registry
+        // Add tool definitions — only core tools send full schemas;
+        // deferred tools are announced by name in the system prompt
+        // and invoked via search_tools + execute_tool meta-tools.
         if (config.toolRegistry() != null) {
-            List<ToolDefinition> tools = config.toolRegistry().getAll();
-            builder.tools(tools);
+            List<ToolDefinition> allTools = config.toolRegistry().getAll();
+            List<ToolDefinition> coreTools =
+                    io.kairo.core.tool.DeferredToolFilter.coreOnly(allTools);
+            builder.tools(coreTools);
         }
 
         return builder.build();

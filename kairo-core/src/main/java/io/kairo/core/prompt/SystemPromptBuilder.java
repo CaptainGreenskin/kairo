@@ -388,8 +388,12 @@ public class SystemPromptBuilder {
             return null;
         }
 
+        List<ToolDefinition> coreTools = io.kairo.core.tool.DeferredToolFilter.coreOnly(tools);
+        List<ToolDefinition> deferredTools =
+                io.kairo.core.tool.DeferredToolFilter.deferredOnly(tools);
+
         Map<ToolCategory, List<ToolDefinition>> grouped =
-                tools.stream().collect(Collectors.groupingBy(ToolDefinition::category));
+                coreTools.stream().collect(Collectors.groupingBy(ToolDefinition::category));
 
         StringBuilder sb = new StringBuilder();
         sb.append("## Available Tools\n\n");
@@ -402,6 +406,14 @@ public class SystemPromptBuilder {
                     sb.append("\n\n  Usage guidance: ").append(tool.usageGuidance());
                 }
                 sb.append("\n");
+            }
+            sb.append("\n");
+        }
+
+        if (!deferredTools.isEmpty()) {
+            sb.append("## Additional Tools (use search_tools to discover, execute_tool to call)\n");
+            for (ToolDefinition tool : deferredTools) {
+                sb.append("- ").append(tool.name()).append("\n");
             }
             sb.append("\n");
         }
