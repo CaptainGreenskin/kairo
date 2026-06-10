@@ -26,21 +26,7 @@ flowchart LR
 
 ### 第一阶段：CLI（REPL）
 
-最简单的形态。一个终端循环：读取用户输入，发送给 Agent，把结果打印到终端。
-
-```bash
-java -jar kairo-code-cli.jar
-```
-
-```text
-Kairo Code v0.1.0
-Model: claude-sonnet-4-20250514
-Working directory: /home/user/project
-
-> 创建一个 Calculator Java 类，包含加减乘除方法，并编写 JUnit 5 测试。
-```
-
-不需要 Web 服务器，不需要数据库，不需要 Docker。一个 JVM 进程，一个 API Key，你就有了一个能读写文件、执行命令、运行测试的 Coding Agent。
+最简单的形态——一个终端循环：读取用户输入，发送给 Agent，把结果打印到终端。不需要 Web 服务器，不需要数据库，不需要 Docker。一个 JVM 进程加一个 API Key，你就有了一个能读写文件、执行命令、运行测试的 Coding Agent。
 
 CLI 阶段暴露了框架的第一批问题。
 

@@ -109,23 +109,10 @@ Kairo 的工具集在 Claude Code 的基础上扩展到了 56 个，覆盖 9 个
                   + "The original text must be unique in the file.",
       category = ToolCategory.FILE_AND_CODE,
       sideEffect = ToolSideEffect.WRITE)
-public class EditTool implements SyncTool {
-
-    @ToolParam(description = "The absolute path of the file to edit",
-               required = true)
-    private String path;
-
-    @ToolParam(description = "The exact text to find and replace",
-               required = true)
-    private String originalText;
-
-    @ToolParam(description = "The replacement text",
-               required = true)
-    private String newText;
-}
+public class EditTool implements SyncTool { ... }
 ```
 
-这段代码可以多看两眼。`@Tool` 注解上的 `description` 不只是给开发者看的——它会被序列化成 JSON Schema 的一部分，注入模型的系统提示。`@ToolParam` 的 `description` 同理。注解文本本身就是 prompt 工程。写 "The exact text to find and replace" 还是写 "The original text"，直接影响模型填充参数的准确率。
+这段注解值得多看两眼。`@Tool` 的 `description` 不只是给开发者看的——它会被序列化成 JSON Schema 的一部分，注入模型的系统提示。每个 `@ToolParam` 的 `description` 同理。注解文本本身就是 prompt 工程。写 "The exact text to find and replace" 还是写 "The original text"，直接影响模型填充参数的准确率——实测中加上 "exact" 一词后，模型提供不完整原文的频率下降了约 30%。
 
 ### 命令执行（5 个）
 
@@ -143,21 +130,7 @@ Tier 1 是灾难性命令，无条件拦截。`rm -rf /`、`mkfs`、`dd of=/dev/
 
 Tier 2 是危险命令，需要审批。`git push --force`、`git reset --hard`、`chmod 777 /`、`shutdown`。这些命令触发 `ApprovalGate` 流程——运行时暂停执行，等待人类决策。人类可以批准、拒绝、或修改命令后批准。
 
-```java
-// 灾难性检查：无条件拦截
-Optional<String> catastrophic = commandPolicy.checkCatastrophic(cmd);
-if (catastrophic.isPresent()) {
-    return Flux.just(new ToolEvent.Final(error(catastrophic.get())));
-}
-
-// 危险检查：触发审批流程
-if (commandPolicy.isDangerous(cmd)) {
-    return Flux.concat(
-        Flux.just(new ToolEvent.NeedsApproval(cmd, reason)),
-        gate.get().await(cmd, reason)
-            .flatMapMany(decision -> handleDecision(decision, ...)));
-}
-```
+执行流程是两步短路：先检查灾难性命令（`checkCatastrophic`），命中则无条件拦截，不走审批也不询问用户；未命中再检查危险命令（`isDangerous`），命中则挂起等待人类决策。两步都未命中，才放行执行。之所以分两步而不是统一走审批，是因为 Tier 1 的命令（`rm -rf /`、fork bomb）风险太高，人类在疲劳状态下可能误批准——硬阻断消除了这个可能性。
 
 `ApprovalGate.Decision` 是一个 sealed interface——`Approved` 或 `Rejected`，没有第三种可能。`Approved` 可以携带修改后的参数（`editedArgs`）——用户可以在批准前编辑命令。这个设计来自一个真实场景：Agent 想执行 `git push --force origin main`，用户看到后，把 `--force` 改成 `--force-with-lease` 再批准。
 
@@ -224,44 +197,15 @@ if (commandPolicy.isDangerous(cmd)) {
 
 工具的 JSON Schema 同时做两件事：参数校验和模型引导。
 
-当 Kairo 启动时，每个 `@Tool` 注解的类被扫描，`@ToolParam` 字段被收集，生成一份 JSON Schema。这份 schema 被序列化后注入模型的系统提示。模型每次推理时，都能"看到"所有工具的完整定义。
+当 Kairo 启动时，每个 `@Tool` 注解的类被扫描，`@ToolParam` 字段被收集，生成一份 JSON Schema——包含 `name`、`description`、以及每个参数的类型和描述。这份 schema 被序列化后注入模型的系统提示。模型每次推理时，都能"看到"所有工具的完整定义。以 `edit` 工具为例，生成的 schema 包含 `path`、`originalText`、`newText` 三个参数，每个参数的 `description` 都经过精心措辞。
 
-```json
-{
-  "name": "edit",
-  "description": "Make precise text replacements in a file. The original text must be unique in the file.",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "path": {
-        "type": "string",
-        "description": "The absolute path of the file to edit"
-      },
-      "originalText": {
-        "type": "string",
-        "description": "The exact text to find and replace"
-      },
-      "newText": {
-        "type": "string",
-        "description": "The replacement text"
-      }
-    },
-    "required": ["path", "originalText", "newText"]
-  }
-}
-```
-
-这段 JSON 大约 200 token。乘以 56 个工具，系统提示中光工具定义就占了约 11,000 token。第一次算出这个数字的时候有点发愁——光工具描述就吃掉这么多上下文？验了几遍，数字确实没错。
+单个工具的 schema 大约 200 token。乘以 56 个工具，系统提示中光工具定义就占了约 11,000 token。第一次算出这个数字的时候有点发愁——光工具描述就吃掉这么多上下文？验了几遍，数字确实没错。
 
 11,000 token 在 200K 窗口的模型上占 5.5% 的预算。在对话进行到后期、上下文已经被代码和工具输出填满的时候，这 5.5% 可能就是压缩引擎能不能保留关键信息的分水岭。
 
 但这笔账算下来还是值得的——schema 的每一行都在替你做 prompt 工程。
 
-拿 `"description": "The exact text to find and replace"` 这 9 个英文单词举例，它做了三件事：告诉模型这个参数的语义是"原文"，不是行号、不是正则、不是文件名。"exact" 这个词减少了模型"大概猜一下"的倾向。"find" 告诉模型这个文本会被用来定位——所以它必须足够独特。
-
-好的 schema 描述减少幻觉参数，差的 schema 描述导致模型猜测。我在实践中观察到：把 EditTool 的 `originalText` 描述从 `"The text to replace"` 改成 `"The exact text to find and replace"` 后，模型提供不完整原文（缺少空格、换行、缩进）的频率下降了约 30%。一个词的差别，效果差这么多，有点出乎意料。
-
-所以工具的 schema 对模型来说就是 prompt。description 不是给人看的注释——它是给模型看的指令。
+拿 `"description": "The exact text to find and replace"` 这 9 个英文单词举例：`"exact"` 减少了模型"大概猜一下"的倾向，`"find"` 暗示文本会被用来定位所以必须足够独特。好的 schema 描述减少幻觉参数，差的 schema 描述导致模型猜测。工具的 schema 对模型来说就是 prompt——description 不是给人看的注释，是给模型看的指令。
 
 `usageGuidance` 字段把这个理念推得更远。它允许在工具描述之外附加使用指南——比如 "Use for quick file reads; for large files use GrepTool instead" 或 "Danger: may modify system state"。这些指南不影响参数校验，但直接影响模型的工具选择策略。
 
@@ -276,42 +220,11 @@ if (commandPolicy.isDangerous(cmd)) {
 
 工具设计中最重要的元数据不是名称，不是描述，不是参数——是副作用分类。
 
-Kairo 定义了三个级别：
-
-```java
-public enum ToolSideEffect {
-    /** Safe for parallel execution: Read, Grep, Glob, List. */
-    READ_ONLY,
-    /** Must serialize: Write, Edit. */
-    WRITE,
-    /** Must serialize + may need approval: Bash, shell commands. */
-    SYSTEM_CHANGE
-}
-```
-
-三个 enum 值，驱动了整个运行时的调度和安全决策。
+Kairo 定义了三个级别：`READ_ONLY`（安全并行：Read、Grep、Glob）、`WRITE`（必须串行：Write、Edit）、`SYSTEM_CHANGE`（串行且可能需审批：Bash、Shell）。三个 enum 值，驱动了整个运行时的调度和安全决策。
 
 ### 并行执行
 
-`ToolPartitioner` 根据副作用分类将一批工具调用拆分为两组：parallel 和 serial。
-
-```java
-public static Partition partition(
-        List<Content.ToolUseContent> toolUses,
-        Function<String, ToolSideEffect> sideEffectResolver) {
-    List<Content.ToolUseContent> parallel = new ArrayList<>();
-    List<Content.ToolUseContent> serial = new ArrayList<>();
-    for (Content.ToolUseContent t : toolUses) {
-        ToolSideEffect sideEffect = sideEffectResolver.apply(t.toolName());
-        if (sideEffect == ToolSideEffect.READ_ONLY) {
-            parallel.add(t);
-        } else {
-            serial.add(t);
-        }
-    }
-    return new Partition(parallel, serial);
-}
-```
+`ToolPartitioner` 根据副作用分类将一批工具调用拆分为两组：`READ_ONLY` 进并行组，`WRITE` 和 `SYSTEM_CHANGE` 进串行组。分类逻辑只有一个 `if`——核心决策是"这个操作能不能安全地和其他操作同时跑"。之所以没有更细粒度的分类（比如区分"只读文件系统"和"只读网络"），是因为在实践中三级分类已经覆盖了绝大多数调度需求，更细的分类只会增加工具注册时的认知负担。
 
 READ_ONLY 工具并行执行，WRITE 和 SYSTEM_CHANGE 工具串行执行。并行完成后再开始串行。最终结果按原始调用顺序合并——模型不知道底层的执行顺序变了。
 
@@ -343,17 +256,7 @@ flowchart TD
 
 `PermissionGuard` 是一个 SPI——不同的部署场景可以插入不同的实现。开发环境可以宽松一些（允许所有 WRITE 操作）。生产环境可以严格一些（每个 SYSTEM_CHANGE 都需要审批）。CI/CD 环境可以完全自动化（所有操作都允许，但加审计日志）。
 
-`PermissionDecision` 是一个结构化记录：
-
-```java
-public record PermissionDecision(
-        boolean allowed,
-        String reason,    // 拒绝原因（allowed=true 时为 null）
-        String policyId   // 哪条策略做的决策
-) {}
-```
-
-`reason` 告诉 Agent 为什么被拒绝——这样 Agent 可以调整策略重试，而不是盲目地重复同一个操作。`policyId` 提供审计线索。这个 record 的设计看着简单，但少了 `reason` 字段，Agent 碰到拒绝就只能瞎猜原因。
+`PermissionDecision` 记录了三个字段：`allowed`（是否放行）、`reason`（拒绝原因）和 `policyId`（哪条策略做的决策）。看着简单，但 `reason` 字段的存在至关重要——没有它，Agent 碰到拒绝就只能瞎猜原因，无法调整策略重试。`policyId` 则提供了审计线索，让运维能追溯到底是哪条规则拦截了操作。
 
 ### 计划模式
 
@@ -381,14 +284,7 @@ public static final OutputBudgetConfig DEFAULT =
 ...[truncated by ToolResultBudget: originalTokens=12500, keptTokens=2048]
 ```
 
-预算的计算是动态的——根据剩余上下文预算按比例分配，不是固定的截断阈值。
-
-```java
-// 总预算 = 剩余上下文 × 35%，限制在 [256, 8192] token
-int totalBudgetTokens = boundedTotalBudget(remainingBudget);
-// 每条结果预算 = 总预算 / 结果数，限制在 [96, 2048] token
-int perResultBudgetTokens = boundedPerResultBudget(totalBudgetTokens, results.size());
-```
+预算的计算是动态的——取剩余上下文的 35%（限制在 256-8192 token）作为总预算，再按结果数均分（每条限制在 96-2048 token）。不是固定的截断阈值，而是根据当前上下文压力自适应调整。
 
 为什么是 35%？工具结果之后，模型还需要空间来推理和生成下一轮的工具调用。如果工具结果占了剩余上下文的 80%，模型的推理质量会严重下降。35% 是试出来的经验值——一开始设的 50%，发现推理质量掉得明显，调到 30% 又觉得工具信息不够。最终 35% 是个还算平衡的点。
 
@@ -428,55 +324,15 @@ Devin 的方式接近"一个 bash 工具"的极端——在一个沙箱化的云
 
 ## 工具的结构化输出
 
-工具不只返回字符串。Kairo 的 `ToolOutput` 是一个 sealed hierarchy：
+工具不只返回字符串。Kairo 的 `ToolOutput` 是一个 sealed interface，用四种 record 覆盖所有返回场景：`Text`（给模型看的文本，最常见）、`Structured`（给程序消费的键值对——可观测性、审计、回放）、`Binary`（图片、压缩包等二进制数据）、`Truncated`（预算治理的产物——保留可见部分，附带完整输出的 URI）。选择 sealed 而不是普通接口，是因为编译器能强制消费者穷举所有变体——新增一种输出类型时，所有未处理的地方都会编译报错，不会有遗漏。
 
-```java
-public sealed interface ToolOutput {
-    record Text(String content) implements ToolOutput {}
-    record Structured(Map<String, Object> data) implements ToolOutput {}
-    record Binary(byte[] data, String mime) implements ToolOutput {}
-    record Truncated(String visible, long totalBytes, Optional<URI> fullOutput)
-            implements ToolOutput {}
-}
-```
-
-`Text` 是最常见的——给模型看的文本。`Structured` 是给程序消费的键值对——可观测性、审计、回放。`Binary` 处理图片、压缩包等二进制数据。`Truncated` 是预算治理的产物——保留可见部分，附带完整输出的 URI。
-
-`ToolResult` 在 `ToolOutput` 之上附加了元数据、结局（`ToolOutcome`）和提示（`Hint`）：
-
-```java
-public record Hint(HintLevel level, String message, Optional<String> suggestedFix) {
-    public enum HintLevel { INFO, WARNING, ERROR }
-}
-```
-
-`Hint` 是一个容易被忽略但实际很有用的设计。当 bash 命令返回非零退出码时，`BashErrorEnricher` 分析输出，生成可操作的提示——"npm install failed: try running with --legacy-peer-deps" 或 "Permission denied: ensure the file is not read-only"。这些提示不是工具结果的一部分（不占上下文预算），而是附加的元数据，帮助 Agent 理解错误并调整策略。
+`ToolResult` 在 `ToolOutput` 之上附加了元数据、结局（`ToolOutcome`）和提示（`Hint`）。`Hint` 是一个容易被忽略但实际很有用的设计——三个级别（INFO / WARNING / ERROR），每个提示包含消息和可选的修复建议。当 bash 命令返回非零退出码时，`BashErrorEnricher` 分析输出，生成可操作的提示——"npm install failed: try running with --legacy-peer-deps" 或 "Permission denied: ensure the file is not read-only"。关键设计决策：这些提示不占上下文预算，而是附加的元数据。这意味着即使工具结果被预算截断了，修复建议依然完整可见——Agent 不会因为上下文压力而丢失"怎么修"的信息。
 
 ## 工具的相关性评分
 
 56 个工具的 schema 占用前面提到的 11,000 token。一个自然的想法是：能不能只加载相关的工具？
 
-`ToolRelevanceScorer` 尝试做这件事。它用 TF-IDF 风格的词项重叠来评分工具与查询的相关性：
-
-```java
-public static double score(ToolDefinition tool, String query,
-                           List<ToolDefinition> allTools) {
-    Set<String> queryTerms = tokenize(query);
-    Map<String, Double> idfWeights = computeIdf(queryTerms, allTools);
-    Set<String> toolTerms = tokenize(buildSearchText(tool));
-
-    double weightedMatches = 0.0;
-    double totalWeight = 0.0;
-    for (String term : queryTerms) {
-        double weight = idfWeights.getOrDefault(term, 1.0);
-        totalWeight += weight;
-        if (toolTerms.contains(term)) {
-            weightedMatches += weight;
-        }
-    }
-    return totalWeight > 0.0 ? weightedMatches / totalWeight : 0.0;
-}
-```
+`ToolRelevanceScorer` 尝试做这件事。思路是 TF-IDF 风格的词项重叠——对查询中的每个词，用 IDF 权重区分"到处出现的通用词"（如 "file"、"tool"）和"只在少数工具中出现的特征词"（如 "diagnostic"、"cron"），然后计算加权匹配分。
 
 IDF 权重惩罚出现在多个工具中的常见词（如 "tool"、"file"、"the"），提升稀有的、有区分力的词。如果用户说 "search for error in Java files"，"search" 匹配 grep 和 glob，但 "error" 只匹配 grep——IDF 给 "error" 更高的权重，grep 得分更高。
 

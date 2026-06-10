@@ -139,15 +139,7 @@ HookResult<PreActingEvent> onPreActing(PreActingEvent event) {
 }
 ```
 
-ABORT 有一个特殊的语义：它会**短路整个 Hook 链**。当一个 Hook 返回 ABORT 时，后续的 Hook 不再执行。原因很直接——当安全违规被检测到时，你不希望后续的 Hook（可能是一个宽松的审计 Hook）有机会把决策"降级"回 CONTINUE。
-
-在 `DefaultHookChain` 的实现中：
-
-```java
-if (typed.decision() == HookResult.Decision.ABORT) {
-    return Mono.just(typed);  // 立即返回，不再遍历后续 handler
-}
-```
+ABORT 有一个特殊的语义：它会**短路整个 Hook 链**。当一个 Hook 返回 ABORT 时，后续的 Hook 不再执行——收到 ABORT 立即返回，不再遍历后续 handler。这个设计是单向的：安全决策只能升级，不能降级。和操作系统中 MAC（强制访问控制）的思路一致——你不希望一个宽松的审计 Hook 有机会把前面的安全裁定覆盖掉。
 
 ### MODIFY：改写参数
 
@@ -295,23 +287,9 @@ MODIFY。因为 MODIFY 的优先级（2）高于 CONTINUE（0）。
 
 ABORT。优先级 4 胜出。而且 ABORT 直接短路——PII Hook 的 MODIFY 结果被丢弃。
 
-合并规则很简洁：
+合并规则只有三条：ABORT 优先且不可覆盖；其余按优先级数值取高者；Modified input 取最后一个写入者，Injected message 取第一个注入者。
 
-```java
-private <T> HookResult<T> mergeResults(HookResult<T> a, HookResult<T> b) {
-    if (a.decision() == HookResult.Decision.ABORT) return a;
-    if (b.decision() == HookResult.Decision.ABORT) return b;
-    
-    HookResult.Decision winner = 
-        a.decision().priority() >= b.decision().priority() 
-            ? a.decision() : b.decision();
-    // ... 合并 event、reason、context、input、message
-}
-```
-
-ABORT 优先，不可覆盖。其余按优先级数值取高者。Modified input 取最后一个写入者。Injected message 取第一个注入者。
-
-这套规则的核心思路是：**安全决策不被宽松决策覆盖**。如果任何一个 Hook 认为操作不安全，整个链条立即停止。这和操作系统中 MAC（强制访问控制）的思路类似——安全标签只能升级，不能降级。
+"最后写入者赢"和"第一注入者赢"看起来不对称，但这是有意的设计。MODIFY 通常是累积性的——PII Hook 脱敏后，安全 Hook 可能还要做进一步修改，后者应该看到前者的结果。INJECT 则相反——第一个注入的消息定义了 Agent 的下一步方向，后续注入可能产生冲突的指令。宁可只听第一个声音，也不让 Agent 被矛盾的指令困住。
 
 ## 有状态的 Hook：HookSessionContext
 
@@ -369,27 +347,9 @@ Agent agent = AgentBuilder.create()
 
 **RepetitiveToolGuard**——重复工具检测。在 `POST_REASONING` 阶段触发。当同一个工具被连续调用 4 次以上时，注入"考虑换个方法"的提示。这不同于 `LoopDetector`（那是检测完全相同的输入/输出循环）——`RepetitiveToolGuard` 检测的是工具级别的固化：Agent 反复 `grep` 同一个关键词，换着姿势但找不到答案。
 
-四个守卫共享一个设计模式——`GuardHook<E>` 抽象基类的双阈值机制：
+四个守卫共享一个设计模式——`GuardHook<E>` 抽象基类的双阈值 + fire-once 机制：每个阈值只触发一次 INJECT。第一次到达警告线时注入"开始收尾"，之后即使持续超限也不再重复——避免对话历史被守卫消息淹没。Force 阈值同理，到了直接注入"立即停止"。
 
-```java
-protected final HookResult<E> evaluate(E event) {
-    int value = currentValue(event);
-    
-    if (value >= forceThreshold && !forceFired) {
-        forceFired = true;
-        return HookResult.inject(event, Msg.of(MsgRole.USER, forceMessage(value)), hookName());
-    }
-    
-    if (value >= warnThreshold && !warnFired) {
-        warnFired = true;
-        return HookResult.inject(event, Msg.of(MsgRole.USER, warnMessage(value)), hookName());
-    }
-    
-    return HookResult.proceed(event);
-}
-```
-
-注意 `fire-once` 语义：每个阈值只触发一次。第一次到达警告线时注入警告，之后即使持续超限也不再重复——避免对话历史被守卫消息淹没。Force 阈值同理。
+fire-once 的设计来自一个真实的翻车：早期版本没有这个限制，Agent 每轮都收到"你已超过预算"的注入消息，对话历史的 30% 都是守卫消息，Agent 把更多精力花在"回应警告"而不是"完成任务"上。
 
 三种预设覆盖不同的运行模式：
 
@@ -407,19 +367,7 @@ protected final HookResult<E> evaluate(E event) {
 
 Claude Code 的 plugin 生态中，hooks.json 使用驼峰命名：`PreToolUse`、`PostToolUse`、`SessionStart`、`Stop`。Kairo 的 `HookPhase` 使用下划线大写：`PRE_ACTING`、`POST_ACTING`、`SESSION_START`、`PRE_COMPLETE`。
 
-两套命名需要一个翻译层。`HookEventMapper` 维护了一张映射表：
-
-```java
-private static final Map<String, HookPhase> COMPAT = Map.ofEntries(
-    Map.entry("PreToolUse",     HookPhase.PRE_ACTING),
-    Map.entry("PostToolUse",    HookPhase.POST_ACTING),
-    Map.entry("Stop",           HookPhase.PRE_COMPLETE),
-    Map.entry("SessionStart",   HookPhase.SESSION_START),
-    // ... 29 entries total
-);
-```
-
-其中 `"Stop" → PRE_COMPLETE` 这个映射值得说一下。Claude Code 中的 "Stop" 事件，语义是"Agent 的主循环即将返回最终答案"——这正是 Kairo 的 `PRE_COMPLETE`。名字不同，概念对齐。
+两套命名需要一个翻译层。`HookEventMapper` 维护了一张 29 条的映射表，把 Claude Code 的驼峰事件名转换为 Kairo 的 `HookPhase`。大多数映射是直觉性的（`PreToolUse` → `PRE_ACTING`），但 `"Stop" → PRE_COMPLETE` 值得说一下——Claude Code 中的 "Stop" 事件，语义是"Agent 的主循环即将返回最终答案"，这正是 Kairo 的 `PRE_COMPLETE`。名字不同，概念对齐。
 
 有两个 Claude Code 事件在 Kairo 中没有直接对应的 `HookPhase`：`Elicitation` 和 `ElicitationResult`。它们被路由到了 `NOTIFICATION` 作为近似替代。这是个务实的降级方案——等未来 SPI 扩展时再给它们独立的阶段。
 

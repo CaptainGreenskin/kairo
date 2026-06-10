@@ -32,25 +32,7 @@ Agent 需要自己的可观测性基础设施。这就是操作系统里 `strace
 
 Kairo 的 tracing 设计遵循一个原则：**span 的层级结构必须和 Agent 的执行结构一一对应。** 不是按 HTTP 请求拆 span，而是按 ReAct 循环的每一步拆。
 
-span 树长这样：
-
-```text
-agent:kairo-code                           ← 根 span：一次完整的 Agent 调用
-  ├── iteration-0                          ← 第一轮 ReAct 循环
-  │     ├── reasoning:claude-sonnet-4-6  ← 模型推理
-  │     ├── tool:ReadFile                  ← 工具调用
-  │     └── tool:EditFile                  ← 工具调用
-  ├── iteration-1
-  │     ├── reasoning:claude-sonnet-4-6
-  │     ├── hook:security-check            ← Hook 介入
-  │     ├── tool:BashExec
-  │     └── guardrail:pii-scan             ← 护栏检查
-  ├── iteration-2
-  │     ├── reasoning:claude-sonnet-4-6
-  │     │     └── [compaction triggered]    ← 压缩事件
-  │     └── tool:WriteFile
-  ...
-```
+span 树的层级结构直接反映了 Agent 的执行语义：根 span 对应一次完整 Agent 调用，其下每个 iteration 子 span 对应一轮 ReAct 循环，再下面是 reasoning（模型推理）、tool（工具调用）、hook（治理拦截）、guardrail（安全检查）等类型的子 span。压缩事件嵌套在 reasoning span 内——这让你能在 trace 中看到"上下文窗口在哪一步被压缩了"。这种 span 拆分方式的设计意图是：调试时你可以按 Agent 的认知步骤逐层展开，而不是面对一个扁平的 HTTP 请求列表。
 
 ```mermaid
 flowchart TD

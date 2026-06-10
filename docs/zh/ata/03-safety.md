@@ -124,19 +124,14 @@ flowchart TD
 
 **第一层：哈希匹配。** 最直接的检测。每一轮模型响应中的工具调用集合被排序、规范化后计算哈希值。如果连续 N 轮产生了相同的哈希——说明 Agent 在用完全相同的参数调用完全相同的工具，却期待不同的结果。默认阈值：3 次连续重复触发警告，5 次触发强制停止。
 
+核心思路只有两步——把每轮的工具调用签名排序后取哈希：
+
 ```java
-// LoopDetector — 哈希计算核心逻辑
-private int computeCallSetHash(List<Content.ToolUseContent> toolCalls) {
-    List<String> signatures = new ArrayList<>();
-    for (Content.ToolUseContent tc : toolCalls) {
-        signatures.add(tc.toolName() + ":" + canonicalizeArgs(tc.input()));
-    }
-    Collections.sort(signatures);         // 排序消除顺序差异
-    return Objects.hash(signatures.toArray());
-}
+Collections.sort(signatures);         // 排序消除顺序差异
+return Objects.hash(signatures.toArray());
 ```
 
-参数规范化（canonicalization）是这一层容易出问题的地方。相同的 JSON 参数可能有不同的键顺序——`{"file": "a.java", "content": "..."}` 和 `{"content": "...", "file": "a.java"}` 语义上完全相同。通过 `TreeMap` 排序和递归规范化，确保语义等价的调用产生相同的哈希。这个细节不处理好，检测率会掉一大截。
+排序消除了调用顺序的差异（模型可能以不同顺序请求相同的工具组合），哈希让比较变成 O(1)。但参数规范化（canonicalization）是这一层容易出问题的地方。相同的 JSON 参数可能有不同的键顺序——`{"file": "a.java", "content": "..."}` 和 `{"content": "...", "file": "a.java"}` 语义上完全相同。通过 `TreeMap` 排序和递归规范化，确保语义等价的调用产生相同的哈希。这个细节不处理好，检测率会掉一大截。
 
 **第二层：频率检测。** 滑动时间窗口内，同一个工具被调用的次数超过阈值则触发告警。默认配置：10 分钟窗口内，同一工具调用 50 次触发警告，100 次触发强制停止。这一层抓的不是"完全重复"，而是"异常高频"——Agent 可能每次调用的参数略有不同，但对 `bash` 工具的狂轰滥炸本身就是失控的信号。
 
@@ -250,19 +245,7 @@ public enum ToolSideEffect {
 
 Plan Mode 利用这个分类实现了安全隔离——当 Agent 进入 Plan Mode 时，所有 `WRITE` 和 `SYSTEM_CHANGE` 工具被直接阻断。Agent 只能读取和分析，不能修改任何东西。
 
-有一个设计决定容易被忽略：未注册的工具默认被分类为 `SYSTEM_CHANGE`，也就是最严格的级别。不认识的东西，按最危险的对待。
-
-```java
-public ToolSideEffect resolveSideEffect(String toolName) {
-    var def = registry.get(toolName);
-    if (def.isEmpty()) {
-        log.warn("Tool '{}' has no registered definition, "
-                 + "defaulting to SYSTEM_CHANGE", toolName);
-        return ToolSideEffect.SYSTEM_CHANGE;
-    }
-    return def.get().sideEffect();
-}
-```
+有一个设计决定容易被忽略：未注册的工具默认被分类为 `SYSTEM_CHANGE`，也就是最严格的级别。不认识的东西，按最危险的对待。这是一个"默认安全"的选择——宁可误拦合法工具（开发者可以补注册），也不放过未知工具。
 
 #### 第二层：权限三态模型
 
@@ -281,23 +264,7 @@ public ToolSideEffect resolveSideEffect(String toolName) {
 3. **类别级默认**（`setDefaultPermission`）—— 按 SideEffect 类别设定
 4. **模式默认**（`PermissionMode.defaultPermission`）—— 当前运行模式的默认策略
 
-`UserApprovalHandler` 是一个 SPI——审批的 UI 是可插拔的。默认实现在终端弹出确认提示，但你可以替换成 Web UI 弹窗、钉钉消息确认、甚至自动化审批流。
-
-```java
-public Mono<ToolResult> approveIfNeeded(ToolInvocation invocation) {
-    var permission = permissionResolver.resolvePermission(
-        invocation.toolName(), sideEffect, invocation.input());
-
-    return switch (permission) {
-        case ALLOWED -> executor.execute(invocation.toolName(), invocation.input());
-        case DENIED  -> Mono.just(errorResult("Tool denied by permission policy"));
-        case ASK     -> approvalHandler.requestApproval(request)
-                            .flatMap(result -> result.approved()
-                                ? executor.execute(...)
-                                : Mono.just(errorResult("Denied by user")));
-    };
-}
-```
+`UserApprovalHandler` 是一个 SPI——审批的 UI 是可插拔的。默认实现在终端弹出确认提示，但你可以替换成 Web UI 弹窗、钉钉消息确认、甚至自动化审批流。核心流程是一个 `switch` 表达式：ALLOWED 直接执行，DENIED 直接拒绝并返回原因，ASK 挂起等待人类决策后再继续。整个流程是响应式的——ASK 分支不会阻塞线程，而是返回一个 `Mono` 等待审批结果。
 
 还有一个容易忽略的设计：工作空间边界检测。当工具的目标路径逃逸出项目根目录时，即使原本是 ALLOWED 的写操作，也会被自动升级到 ASK。路径解析会跟踪符号链接——一个看似在项目内的路径，如果通过 symlink 指向 `/etc/`，同样会被拦截。
 
@@ -325,25 +292,7 @@ public interface GuardrailPolicy {
 
 策略链作用在四个边界点上：`PRE_MODEL`、`POST_MODEL`、`PRE_TOOL`、`POST_TOOL`。你可以在模型调用前过滤提示注入，在模型返回后审查输出，在工具执行前检查参数，在工具返回后清洗结果。
 
-这里和 Claude Code 有一个实质性的区别。Claude Code 的 YOLO 分类器逻辑是内置的，用户不能修改或扩展。Kairo 的 GuardrailPolicy 是 SPI——你实现自己的分类逻辑，注册进链就行。
-
-一个具体的例子：金融行业的合规要求可能禁止 Agent 访问某些特定的目录（比如 `/data/pii/`）。在 Claude Code 中，你没有办法实现这个限制。在 Kairo 中：
-
-```java
-public class ComplianceGuardrailPolicy implements GuardrailPolicy {
-    @Override
-    public Mono<GuardrailDecision> evaluate(GuardrailContext context) {
-        if (context.phase() != GuardrailPhase.PRE_TOOL) {
-            return Mono.just(GuardrailDecision.allow(name()));
-        }
-        if (violatesCompliancePolicy(context)) {
-            return Mono.just(GuardrailDecision.deny(
-                "Access denied by compliance policy", name()));
-        }
-        return Mono.just(GuardrailDecision.allow(name()));
-    }
-}
-```
+这里和 Claude Code 有一个实质性的区别。Claude Code 的 YOLO 分类器逻辑是内置的，用户不能修改或扩展。Kairo 的 GuardrailPolicy 是 SPI——你实现自己的分类逻辑，注册进链就行。比如金融行业的合规要求可能禁止 Agent 访问 `/data/pii/` 目录——在 Claude Code 中做不到，在 Kairo 中只需要实现一个 `GuardrailPolicy`，在 `PRE_TOOL` 阶段检查路径，违规则返回 DENY。几十行代码就能把企业合规规则注入 Agent 的决策链中。为什么选 SPI 而不是配置文件？因为合规逻辑往往涉及运行时上下文（谁在调用、调用了什么、上下文中有没有敏感数据），纯静态配置覆盖不了。
 
 空链是零开销的——如果没有注册任何策略，`DefaultGuardrailChain` 直接返回 ALLOW，不做任何计算。
 
@@ -361,21 +310,7 @@ public enum McpSecurityPolicy {
 }
 ```
 
-`McpStaticGuardrailPolicy` 的 `order()` 返回 `Integer.MIN_VALUE`——它是整个 GuardrailChain 中最先执行的策略。在任何业务策略有机会评估之前，MCP 静态策略就已经做出了判断。
-
-```yaml
-# application.yml
-kairo:
-  mcp:
-    servers:
-      my-server:
-        security-policy: DENY_SAFE
-        allowed-tools:
-          - search
-          - read-file
-        denied-tools:
-          - execute-command
-```
+`McpStaticGuardrailPolicy` 的 `order()` 返回 `Integer.MIN_VALUE`——它是整个 GuardrailChain 中最先执行的策略。在任何业务策略有机会评估之前，MCP 静态策略就已经做出了判断。实际使用中，每个 MCP server 在配置中声明安全策略（`DENY_SAFE` 或 `DENY_ALL`）并显式列出允许和拒绝的工具名单。
 
 `DENY_ALL` 是应急开关。当你发现某个 MCP server 可能被入侵时，一行配置就能立即切断所有来自该 server 的工具调用，无需重启、无需改代码。
 
@@ -424,13 +359,6 @@ Tier 2（危险级 —— 需要审批）：
 Tier 1 是硬阻断——无论用户设置了什么权限，这些命令永远不会被执行。Tier 2 触发审批流。用户还可以通过环境变量 `KAIRO_COMMAND_SAFETY_BLOCKLIST` 添加自定义的正则模式。
 
 完整的工具执行管线，六层按顺序排列：
-
-```text
-CircuitBreaker → ActiveToolConstraints → PlanMode(Layer1) 
-  → PermissionGuard(Layer2) → Guardrail/PRE_TOOL(Layer3+4+6) 
-  → Execution → Guardrail/POST_TOOL(Layer3) 
-  → ToolResultBudget(Layer5) → Sanitize
-```
 
 ```mermaid
 flowchart LR
