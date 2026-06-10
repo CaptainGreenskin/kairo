@@ -13,6 +13,7 @@ import io.kairo.api.model.ModelProvider;
 import io.kairo.api.model.ProviderFactory;
 import io.kairo.api.model.ProviderRegistry;
 import io.kairo.api.model.ProviderSpec;
+import io.kairo.core.model.anthropic.AnthropicProvider;
 import io.kairo.core.model.openai.OpenAIProvider;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -46,7 +47,18 @@ public final class DefaultProviderRegistry implements ProviderRegistry {
     /** Factory with every built-in preset registered. */
     public static DefaultProviderRegistry withBuiltIns() {
         DefaultProviderRegistry r = new DefaultProviderRegistry();
-        r.registerApiKeyOnly("anthropic", ProviderPresets::anthropic);
+        r.register(
+                "anthropic",
+                spec -> {
+                    if (spec.apiKey() == null || spec.apiKey().isBlank()) {
+                        throw new IllegalArgumentException(
+                                "Provider 'anthropic' requires an API key");
+                    }
+                    if (spec.baseUrl() != null && !spec.baseUrl().isBlank()) {
+                        return new AnthropicProvider(spec.apiKey(), spec.baseUrl());
+                    }
+                    return ProviderPresets.anthropic(spec.apiKey());
+                });
         r.registerApiKeyOnly("openai", ProviderPresets::openai);
         r.registerApiKeyOnly("gemini", ProviderPresets::gemini);
         r.registerApiKeyOnly("google", ProviderPresets::gemini);
