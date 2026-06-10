@@ -110,8 +110,34 @@ public class AnthropicHttpClient {
         } catch (Exception ignored) {
         }
         HttpRequest request = buildHttpRequest(jsonBody);
-        return httpClient.sendAsync(
-                request, HttpResponse.BodyHandlers.fromLineSubscriber(lineSubscriber));
+        return httpClient
+                .sendAsync(request, HttpResponse.BodyHandlers.ofInputStream())
+                .thenAcceptAsync(
+                        resp -> {
+                            log.info(
+                                    "[ANTHROPIC-SSE] Response received, status={}",
+                                    resp.statusCode());
+                            try (var reader =
+                                    new java.io.BufferedReader(
+                                            new java.io.InputStreamReader(
+                                                    resp.body(),
+                                                    java.nio.charset.StandardCharsets.UTF_8))) {
+                                lineSubscriber.onSubscribe(
+                                        new Flow.Subscription() {
+                                            public void request(long n) {}
+
+                                            public void cancel() {}
+                                        });
+                                String line;
+                                while ((line = reader.readLine()) != null) {
+                                    lineSubscriber.onNext(line);
+                                }
+                                lineSubscriber.onComplete();
+                            } catch (Exception e) {
+                                lineSubscriber.onError(e);
+                            }
+                        })
+                .thenApply(v -> (HttpResponse<Void>) null);
     }
 
     /**
