@@ -356,7 +356,7 @@ public static final OutputBudgetConfig DEFAULT =
 
 超出预算的输出被截断，保留可见部分，附加元数据说明：
 
-```
+```text
 ...[truncated by ToolResultBudget: originalTokens=12500, keptTokens=2048]
 ```
 

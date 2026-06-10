@@ -34,7 +34,7 @@ Kairo 的 tracing 设计遵循一个原则：**span 的层级结构必须和 Age
 
 span 树长这样：
 
-```
+```text
 agent:kairo-code                           ← 根 span：一次完整的 Agent 调用
   ├── iteration-0                          ← 第一轮 ReAct 循环
   │     ├── reasoning:claude-sonnet-4-6  ← 模型推理

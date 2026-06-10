@@ -201,7 +201,7 @@ Claude Code 的做法是三态权限模型（ALLOWED / ASK / DENIED）配合 Hoo
 
 全球 80% 的企业后端系统运行在 JVM 上。当一家企业想让 Agent 深度集成到现有技术栈——访问内部 API、操作数据库、执行部署管线——它需要的不是一个外部服务，而是一个可以嵌入到现有 Java 应用中的库。
 
-```
+```java
 // 这是一个完整的 Agent 应用
 Agent agent = AgentFactory.create(config);
 Mono<Msg> result = agent.call(Msg.user("重构这个模块"));
