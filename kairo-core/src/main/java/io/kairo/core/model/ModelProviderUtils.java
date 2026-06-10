@@ -38,7 +38,10 @@ public final class ModelProviderUtils {
      * @return a new HttpClient instance
      */
     public static HttpClient createHttpClient(Duration connectTimeout) {
-        return HttpClient.newBuilder().connectTimeout(connectTimeout).build();
+        return HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(connectTimeout)
+                .build();
     }
 
     /**

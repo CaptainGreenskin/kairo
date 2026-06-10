@@ -39,7 +39,7 @@ public class AnthropicHttpClient {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicHttpClient.class);
     private static final String ANTHROPIC_VERSION = "2023-06-01";
-    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(120);
+    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(300);
 
     private final HttpClient httpClient;
     private final String baseUrl;
@@ -82,6 +82,11 @@ public class AnthropicHttpClient {
      * @return a Mono that emits the raw response body on success
      */
     public Mono<String> sendRequest(String jsonBody) {
+        try {
+            java.nio.file.Files.writeString(
+                    java.nio.file.Path.of("/tmp/kairo-anthropic-request.json"), jsonBody);
+        } catch (Exception ignored) {
+        }
         HttpRequest request = buildHttpRequest(jsonBody);
         return Mono.fromFuture(
                         () -> httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()))
@@ -97,6 +102,13 @@ public class AnthropicHttpClient {
      */
     public CompletableFuture<HttpResponse<Void>> sendStreamingRequest(
             String jsonBody, Flow.Subscriber<String> lineSubscriber) {
+        try {
+            java.nio.file.Files.writeString(
+                    java.nio.file.Path.of("/tmp/kairo-anthropic-stream.json"), jsonBody);
+            log.info(
+                    "[ANTHROPIC-STREAM] Sending streaming request, bodySize={}", jsonBody.length());
+        } catch (Exception ignored) {
+        }
         HttpRequest request = buildHttpRequest(jsonBody);
         return httpClient.sendAsync(
                 request, HttpResponse.BodyHandlers.fromLineSubscriber(lineSubscriber));

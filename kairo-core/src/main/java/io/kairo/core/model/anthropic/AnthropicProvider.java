@@ -121,7 +121,10 @@ public class AnthropicProvider
         this.requestBuilder = new AnthropicRequestBuilder(this.objectMapper);
         this.responseParser = new AnthropicResponseParser(this.objectMapper);
         this.errorClassifier = new AnthropicErrorClassifier();
+        this.isProxy = !normalizedBaseUrl.contains("api.anthropic.com");
     }
+
+    private final boolean isProxy;
 
     @Override
     public String name() {
@@ -170,6 +173,9 @@ public class AnthropicProvider
 
     @Override
     public Flux<ModelResponse> stream(List<Msg> messages, ModelConfig config) {
+        if (isProxy) {
+            return call(messages, config).flux();
+        }
         return Flux.deferContextual(
                         ctx -> {
                             try {
