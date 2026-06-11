@@ -15,7 +15,7 @@
  */
 package io.kairo.api.guardrail;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 
 /**
  * SPI for recording security events emitted during guardrail evaluation.
@@ -29,7 +29,7 @@ import io.kairo.api.Experimental;
  *
  * @since v0.7 (Experimental)
  */
-@Experimental("Security Observability — contract may change before v1.2.0 stabilization")
+@Stable(value = "Security Observability", since = "1.2.0")
 public interface SecurityEventSink {
 
     /**

@@ -15,7 +15,7 @@
  */
 package io.kairo.api.evolution;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
@@ -38,7 +38,7 @@ import javax.annotation.Nullable;
  * @param usageCount number of times the skill has been applied
  * @since v0.9 (Experimental)
  */
-@Experimental("Self-Evolution SPI — contract may change before v1.2.0 stabilization")
+@Stable(value = "Self-Evolution SPI", since = "1.2.0")
 public record EvolvedSkill(
         String name,
         String version,

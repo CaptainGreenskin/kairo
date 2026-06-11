@@ -15,7 +15,7 @@
  */
 package io.kairo.api.evolution;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 import io.kairo.api.memory.MemoryEntry;
 import java.util.List;
 import java.util.Optional;
@@ -29,7 +29,7 @@ import java.util.Optional;
  * @param reviewNotes human-readable notes from the review process
  * @since v0.9 (Experimental)
  */
-@Experimental("Self-Evolution SPI — contract may change before v1.2.0 stabilization")
+@Stable(value = "Self-Evolution SPI", since = "1.2.0")
 public record EvolutionOutcome(
         Optional<EvolvedSkill> skillToCreate,
         Optional<EvolvedSkill> skillToPatch,

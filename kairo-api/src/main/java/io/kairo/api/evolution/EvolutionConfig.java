@@ -15,7 +15,7 @@
  */
 package io.kairo.api.evolution;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 import javax.annotation.Nullable;
 
 /**
@@ -31,7 +31,7 @@ import javax.annotation.Nullable;
  * @param reviewModelName optional model name override for evolution review calls
  * @since v0.9 (Experimental)
  */
-@Experimental("Self-Evolution SPI — contract may change before v1.2.0 stabilization")
+@Stable(value = "Self-Evolution SPI", since = "1.2.0")
 public record EvolutionConfig(
         @Nullable EvolutionPolicy evolutionPolicy,
         @Nullable EvolvedSkillStore evolvedSkillStore,

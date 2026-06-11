@@ -15,7 +15,7 @@
  */
 package io.kairo.api.guardrail;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 import java.time.Instant;
 import java.util.Map;
 
@@ -35,7 +35,7 @@ import java.util.Map;
  * @param attributes key-value pairs from the guardrail context metadata for observability
  * @since v0.7 (Experimental)
  */
-@Experimental("Security Observability — contract may change before v1.2.0 stabilization")
+@Stable(value = "Security Observability", since = "1.2.0")
 public record SecurityEvent(
         Instant timestamp,
         SecurityEventType type,

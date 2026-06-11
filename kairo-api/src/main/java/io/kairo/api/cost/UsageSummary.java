@@ -15,7 +15,7 @@
  */
 package io.kairo.api.cost;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 
 /**
  * Immutable snapshot of cumulative token usage and estimated cost across model calls.
@@ -30,7 +30,7 @@ import io.kairo.api.Experimental;
  * @param estimatedCostUsd estimated total cost in USD based on public pricing
  * @param callCount number of model calls recorded
  */
-@Experimental("CostTracker SPI v0.10")
+@Stable(value = "CostTracker SPI", since = "1.2.0")
 public record UsageSummary(
         long inputTokens,
         long outputTokens,

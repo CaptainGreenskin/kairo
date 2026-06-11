@@ -15,7 +15,7 @@
  */
 package io.kairo.api.evolution;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 
 /**
  * SPI for determining when the evolution subsystem should trigger reviews.
@@ -25,7 +25,7 @@ import io.kairo.api.Experimental;
  *
  * @since v0.9 (Experimental)
  */
-@Experimental("Self-Evolution Trigger SPI — contract may change before v1.2.0 stabilization")
+@Stable(value = "Self-Evolution Trigger SPI", since = "1.2.0")
 public interface EvolutionTrigger {
 
     boolean shouldReviewSkill(EvolutionContext context);

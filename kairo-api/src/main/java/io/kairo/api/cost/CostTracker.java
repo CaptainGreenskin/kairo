@@ -15,7 +15,7 @@
  */
 package io.kairo.api.cost;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 import io.kairo.api.model.ModelResponse;
 
 /**
@@ -30,7 +30,7 @@ import io.kairo.api.model.ModelResponse;
  * @see NoopCostTracker
  * @see UsageSummary
  */
-@Experimental("CostTracker SPI v0.10")
+@Stable(value = "CostTracker SPI", since = "1.2.0")
 public interface CostTracker {
 
     /**

@@ -15,7 +15,7 @@
  */
 package io.kairo.api.evolution;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 import reactor.core.publisher.Mono;
 
 /**
@@ -26,7 +26,7 @@ import reactor.core.publisher.Mono;
  *
  * @since v0.9 (Experimental)
  */
-@Experimental("Self-Evolution SPI — contract may change before v1.2.0 stabilization")
+@Stable(value = "Self-Evolution SPI", since = "1.2.0")
 public interface EvolutionPolicy {
 
     Mono<EvolutionOutcome> review(EvolutionContext context);

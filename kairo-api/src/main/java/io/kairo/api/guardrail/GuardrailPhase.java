@@ -15,14 +15,14 @@
  */
 package io.kairo.api.guardrail;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 
 /**
  * The boundary point at which a guardrail policy is evaluated.
  *
  * @since v0.7 (Experimental)
  */
-@Experimental("Guardrail SPI — contract may change before v1.2.0 stabilization")
+@Stable(value = "Guardrail SPI", since = "1.2.0")
 public enum GuardrailPhase {
 
     /** Before the messages are sent to the model. */

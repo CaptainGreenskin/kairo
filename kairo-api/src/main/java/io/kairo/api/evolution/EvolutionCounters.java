@@ -15,7 +15,7 @@
  */
 package io.kairo.api.evolution;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 
 /**
  * Monotonic counters tracking evolution-related events within a session.
@@ -25,7 +25,7 @@ import io.kairo.api.Experimental;
  * @param consecutiveFailures consecutive failure count
  * @since v0.9 (Experimental)
  */
-@Experimental("Self-Evolution SPI — contract may change before v1.2.0 stabilization")
+@Stable(value = "Self-Evolution SPI", since = "1.2.0")
 public record EvolutionCounters(
         int turnSinceLastMemoryReview,
         int toolLoopIterationsSinceLastSkillReview,

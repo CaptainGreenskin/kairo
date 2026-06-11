@@ -15,7 +15,7 @@
  */
 package io.kairo.api.guardrail;
 
-import io.kairo.api.Experimental;
+import io.kairo.api.Stable;
 import reactor.core.publisher.Mono;
 
 /**
@@ -29,7 +29,7 @@ import reactor.core.publisher.Mono;
  *
  * @since v0.7 (Experimental)
  */
-@Experimental("Guardrail SPI — contract may change before v1.2.0 stabilization")
+@Stable(value = "Guardrail SPI", since = "1.2.0")
 public interface GuardrailPolicy {
 
     /**
