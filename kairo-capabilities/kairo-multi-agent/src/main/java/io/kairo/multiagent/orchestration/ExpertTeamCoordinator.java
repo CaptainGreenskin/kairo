@@ -572,11 +572,15 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                                                     step.stepId(),
                                                                     "",
                                                                     new EvaluationVerdict(
-                                                                            VerdictOutcome.FAIL,
+                                                                            VerdictOutcome
+                                                                                    .REVIEW_EXCEEDED,
+                                                                            0.0,
                                                                             "Step failed: "
                                                                                     + ex
                                                                                             .getMessage(),
-                                                                            0.0),
+                                                                            java.util.List.of(),
+                                                                            java.time.Instant
+                                                                                    .now()),
                                                                     0));
                                                     publish(
                                                             team,

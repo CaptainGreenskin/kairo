@@ -13,6 +13,7 @@ import io.kairo.api.tool.*;
 import io.kairo.core.tool.DeferredToolFilter;
 import java.util.List;
 import java.util.Map;
+import reactor.core.publisher.Mono;
 
 /**
  * Searches deferred tools by keyword. Returns matching tool names, descriptions, and input schemas
@@ -32,15 +33,15 @@ public class SearchToolsTool implements SyncTool {
     private String query;
 
     @Override
-    public ToolResult execute(Map<String, Object> input, ToolContext ctx) {
+    public Mono<ToolResult> execute(Map<String, Object> input, ToolContext ctx) {
         String q = ((String) input.getOrDefault("query", "")).toLowerCase().trim();
         if (q.isBlank()) {
-            return ToolResult.error(ctx.agentId(), "Parameter 'query' is required");
+            return Mono.just(ToolResult.error(ctx.agentId(), "Parameter 'query' is required"));
         }
 
         ToolRegistry registry = (ToolRegistry) ctx.dependencies().get("toolRegistry");
         if (registry == null) {
-            return ToolResult.error(ctx.agentId(), "Tool registry not available");
+            return Mono.just(ToolResult.error(ctx.agentId(), "Tool registry not available"));
         }
 
         List<ToolDefinition> deferred = DeferredToolFilter.deferredOnly(registry.getAll());
@@ -54,15 +55,16 @@ public class SearchToolsTool implements SyncTool {
                         .toList();
 
         if (matches.isEmpty()) {
-            return ToolResult.success(
-                    ctx.agentId(),
-                    "No deferred tools matching '"
-                            + q
-                            + "'. Available: "
-                            + deferred.stream()
-                                    .map(ToolDefinition::name)
-                                    .reduce((a, b) -> a + ", " + b)
-                                    .orElse("none"));
+            return Mono.just(
+                    ToolResult.success(
+                            ctx.agentId(),
+                            "No deferred tools matching '"
+                                    + q
+                                    + "'. Available: "
+                                    + deferred.stream()
+                                            .map(ToolDefinition::name)
+                                            .reduce((a, b) -> a + ", " + b)
+                                            .orElse("none")));
         }
 
         StringBuilder sb = new StringBuilder();
@@ -77,7 +79,7 @@ public class SearchToolsTool implements SyncTool {
                     .append(t.name())
                     .append("\", \"params\": {...}})\n\n");
         }
-        return ToolResult.success(ctx.agentId(), sb.toString());
+        return Mono.just(ToolResult.success(ctx.agentId(), sb.toString()));
     }
 
     private static String formatSchema(JsonSchema schema) {
