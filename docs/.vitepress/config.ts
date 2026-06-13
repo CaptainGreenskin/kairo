@@ -168,6 +168,9 @@ export default withMermaid(defineConfig({
               items: [
                 { text: 'v0.6 → v0.7', link: '/zh/guide/upgrade-v0.6-to-v0.7' },
                 { text: 'v0.7 → v0.8', link: '/zh/guide/upgrade-v0.7-to-v0.8' },
+                { text: 'v0.8 → v0.9', link: '/zh/guide/upgrade-v0.8-to-v0.9' },
+                { text: 'v0.9 → v1.0', link: '/zh/guide/upgrade-v0.9-to-v1.0' },
+                { text: 'v1.0 → v1.1', link: '/zh/guide/upgrade-v1.0-to-v1.1' },
               ],
             },
           ],
