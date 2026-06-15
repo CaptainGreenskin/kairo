@@ -174,6 +174,8 @@ public class AnnotationToolScanner {
             return "boolean";
         } else if (List.class.isAssignableFrom(type)) {
             return "array";
+        } else if (Map.class.isAssignableFrom(type)) {
+            return "object";
         } else {
             return "string";
         }

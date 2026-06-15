@@ -75,7 +75,7 @@ public class AnthropicProvider
             } catch (NumberFormatException ignored) {
             }
         }
-        return Duration.ofSeconds(30);
+        return Duration.ofSeconds(300);
     }
 
     private final ObjectMapper objectMapper;
@@ -254,6 +254,9 @@ public class AnthropicProvider
      */
     @Override
     public Flux<StreamChunk> streamRaw(List<Msg> messages, ModelConfig config) {
+        if (isProxy) {
+            return call(messages, config).flatMapMany(this::modelResponseToChunks);
+        }
         return Flux.deferContextual(
                         ctx -> {
                             try {
@@ -390,5 +393,32 @@ public class AnthropicProvider
     @Override
     public ProviderPipeline.ErrorClassifier errorClassifier() {
         return errorClassifier;
+    }
+
+    private Flux<StreamChunk> modelResponseToChunks(ModelResponse resp) {
+        List<StreamChunk> chunks = new java.util.ArrayList<>();
+        if (resp.contents() != null) {
+            for (var content : resp.contents()) {
+                if (content instanceof io.kairo.api.message.Content.TextContent tc) {
+                    chunks.add(StreamChunk.text(tc.text()));
+                } else if (content instanceof io.kairo.api.message.Content.ThinkingContent tc) {
+                    chunks.add(StreamChunk.thinking(tc.thinking()));
+                } else if (content instanceof io.kairo.api.message.Content.ToolUseContent tu) {
+                    chunks.add(StreamChunk.toolUseStart(tu.toolId(), tu.toolName()));
+                    String argsJson = "{}";
+                    try {
+                        argsJson = objectMapper.writeValueAsString(tu.input());
+                    } catch (Exception ignored) {
+                    }
+                    chunks.add(StreamChunk.toolUseDelta(tu.toolId(), argsJson));
+                    chunks.add(StreamChunk.toolUseEnd(tu.toolId()));
+                }
+            }
+        }
+        if (resp.usage() != null) {
+            chunks.add(StreamChunk.usage(resp.usage().inputTokens(), resp.usage().outputTokens()));
+        }
+        chunks.add(StreamChunk.done());
+        return Flux.fromIterable(chunks);
     }
 }

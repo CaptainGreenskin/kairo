@@ -192,6 +192,8 @@ public class ReasoningPhase {
         log.debug(
                 "Agent '{}' iteration {}: calling model", ctx.agentName(), currentIteration.get());
 
+        repairOrphanedToolUses();
+
         // Emit MODEL_CALL_REQUEST before the model call (best-effort)
         Mono<Void> preEmit =
                 emitBestEffort(
@@ -231,8 +233,21 @@ public class ReasoningPhase {
                                                             finalMessages, finalConfig, 0));
                                 });
 
-        return guards.withCooperativeCancellation(preEmit.then(responseMono))
-                .flatMap(response -> evaluatePostModelGuardrail(response))
+        return guards.withCooperativeCancellation(
+                        preEmit.then(responseMono)
+                                .transformDeferredContextual(
+                                        (mono, ctxView) -> {
+                                            MutableDiagnostics diag =
+                                                    ctxView.getOrDefault(
+                                                            MutableDiagnostics.class, null);
+                                            if (diag instanceof DefaultAgentDiagnostics dad) {
+                                                return mono.doOnSubscribe(
+                                                                s -> dad.setActiveModelCall(true))
+                                                        .doFinally(
+                                                                s -> dad.setActiveModelCall(false));
+                                            }
+                                            return mono;
+                                        }))
                 .doOnError(
                         GuardrailDenyException.class,
                         e -> log.warn("Guardrail denied: {}", e.getMessage()))
@@ -614,8 +629,18 @@ public class ReasoningPhase {
                             java.util.function.Consumer<String> thinkingConsumer =
                                     (java.util.function.Consumer<String>)
                                             ctxView.getOrDefault(THINKING_DELTA_KEY, null);
+                            @SuppressWarnings("unchecked")
+                            java.util.function.Consumer<String> diagnosticsRecorder =
+                                    (java.util.function.Consumer<String>)
+                                            ctxView.getOrDefault(
+                                                    io.kairo.core.hook.DefaultHookChain
+                                                            .DIAGNOSTICS_RECORDER_KEY,
+                                                    null);
                             return flux.doOnNext(
                                     chunk -> {
+                                        if (diagnosticsRecorder != null) {
+                                            diagnosticsRecorder.accept("stream_chunk");
+                                        }
                                         if (chunk.type() == io.kairo.api.model.StreamChunkType.TEXT
                                                 && chunk.content() != null) {
                                             textAccumulator.append(chunk.content());
@@ -942,6 +967,54 @@ public class ReasoningPhase {
      * Best-effort event emission — errors are logged and swallowed so that event emission failures
      * never break the ReAct loop.
      */
+    private void repairOrphanedToolUses() {
+        for (int i = 0; i < conversationHistory.size(); i++) {
+            Msg msg = conversationHistory.get(i);
+            if (msg.role() != MsgRole.ASSISTANT) continue;
+
+            List<String> toolUseIds =
+                    msg.contents().stream()
+                            .filter(Content.ToolUseContent.class::isInstance)
+                            .map(c -> ((Content.ToolUseContent) c).toolId())
+                            .toList();
+            if (toolUseIds.isEmpty()) continue;
+
+            Set<String> answeredIds = new java.util.HashSet<>();
+            for (int j = i + 1; j < conversationHistory.size(); j++) {
+                Msg next = conversationHistory.get(j);
+                if (next.role() == MsgRole.ASSISTANT) break;
+                for (Content c : next.contents()) {
+                    if (c instanceof Content.ToolResultContent trc) {
+                        answeredIds.add(trc.toolUseId());
+                    }
+                }
+            }
+
+            List<String> missing =
+                    toolUseIds.stream().filter(id -> !answeredIds.contains(id)).toList();
+            if (!missing.isEmpty()) {
+                log.warn(
+                        "Repairing {} orphaned tool_use(s) at message {}: {}",
+                        missing.size(),
+                        i,
+                        missing);
+                List<Content> resultContents =
+                        missing.stream()
+                                .map(
+                                        id ->
+                                                (Content)
+                                                        new Content.ToolResultContent(
+                                                                id,
+                                                                "Tool call interrupted — no result"
+                                                                        + " available",
+                                                                true))
+                                .toList();
+                Msg repairMsg = Msg.builder().role(MsgRole.TOOL).contents(resultContents).build();
+                conversationHistory.add(i + 1, repairMsg);
+            }
+        }
+    }
+
     private Mono<Void> emitBestEffort(ExecutionEventType type, String payloadJson) {
         if (eventEmitter == null) {
             return Mono.empty();

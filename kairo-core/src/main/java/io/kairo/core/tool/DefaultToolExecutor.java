@@ -359,7 +359,26 @@ public class DefaultToolExecutor implements ToolExecutor {
                             ctxView.hasKey(SPAN_CONTEXT_KEY) ? ctxView.get(SPAN_CONTEXT_KEY) : null;
                     Span toolSpan = tracer.startToolSpan(parent, toolName, input);
                     long startMs = System.currentTimeMillis();
+                    @SuppressWarnings("unchecked")
+                    java.util.function.Consumer<String> recorder =
+                            (java.util.function.Consumer<String>)
+                                    ctxView.getOrDefault(
+                                            io.kairo.core.hook.DefaultHookChain
+                                                    .DIAGNOSTICS_RECORDER_KEY,
+                                            null);
                     return executeInternal(toolName, input, timeout)
+                            .doOnSubscribe(
+                                    s -> {
+                                        if (recorder != null) {
+                                            recorder.accept("tool_start:" + toolName);
+                                        }
+                                    })
+                            .doOnNext(
+                                    r -> {
+                                        if (recorder != null) {
+                                            recorder.accept("tool_end:" + toolName);
+                                        }
+                                    })
                             .map(DefaultToolExecutor::applyResultBudget)
                             .flatMap(result -> enforceBudget(result, toolName))
                             .doOnSuccess(

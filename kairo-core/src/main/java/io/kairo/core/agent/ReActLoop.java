@@ -96,6 +96,7 @@ class ReActLoop {
     @Nullable private volatile IterationCheckpointManager checkpointManager;
     @Nullable private volatile KairoEventBus eventBus;
     @Nullable private volatile CompactionTrigger compactionTrigger;
+    @Nullable private volatile StallDetector stallDetector;
 
     // Decomposed phase collaborators
     private final IterationGuards guards;
@@ -254,6 +255,10 @@ class ReActLoop {
 
     void setTextDeltaConsumer(java.util.function.Consumer<String> consumer) {
         this.textDeltaConsumer = consumer;
+    }
+
+    void setStallDetector(@Nullable StallDetector stallDetector) {
+        this.stallDetector = stallDetector;
     }
 
     void setEventBus(@Nullable KairoEventBus eventBus) {
@@ -420,6 +425,23 @@ class ReActLoop {
                 sig.getClass().getSimpleName(),
                 extractReason(sig));
 
+        return Mono.deferContextual(
+                ctxView -> {
+                    @SuppressWarnings("unchecked")
+                    java.util.function.Consumer<String> recorder =
+                            (java.util.function.Consumer<String>)
+                                    ctxView.getOrDefault(
+                                            io.kairo.core.hook.DefaultHookChain
+                                                    .DIAGNOSTICS_RECORDER_KEY,
+                                            null);
+                    if (recorder != null) {
+                        recorder.accept("signal:" + sig.getClass().getSimpleName());
+                    }
+                    return dispatchSignalInternal(sig);
+                });
+    }
+
+    private Mono<Msg> dispatchSignalInternal(IterationSignal sig) {
         return switch (sig) {
             case IterationSignal.ToolCallsRequested tcr -> {
                 consecutiveSkips.set(0); // non-Skip → reset
@@ -428,8 +450,18 @@ class ReActLoop {
                 if (loopResult != null) {
                     yield dispatchSignal(loopResult);
                 }
-                // Clean — proceed with tool execution
-                yield toolPhase.execute(tcr.calls()).flatMap(this::dispatchSignal);
+                // Clean — proceed with tool execution; pause stall detector during
+                // tool execution (bash can block for minutes compiling/running servers)
+                yield Mono.fromRunnable(
+                                () -> {
+                                    if (stallDetector != null) stallDetector.pause();
+                                })
+                        .then(toolPhase.execute(tcr.calls()))
+                        .doFinally(
+                                s -> {
+                                    if (stallDetector != null) stallDetector.resume();
+                                })
+                        .flatMap(this::dispatchSignal);
             }
             case IterationSignal.ContinueAfterTools ignored -> {
                 consecutiveSkips.set(0);
