@@ -1,0 +1,88 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - img "kairo-code" [ref=e7]
+        - text: kairo-code
+      - button "New workspace" [ref=e9] [cursor=pointer]:
+        - img [ref=e10]
+        - text: New workspace
+    - generic [ref=e11]:
+      - button "Session stats" [ref=e13] [cursor=pointer]:
+        - img [ref=e14]
+      - button "Export session" [disabled] [ref=e17]:
+        - img [ref=e18]
+      - generic [ref=e21]:
+        - button "Toggle primary sidebar" [ref=e22] [cursor=pointer]:
+          - img [ref=e23]
+        - button "Toggle bottom panel" [ref=e25] [cursor=pointer]:
+          - img [ref=e26]
+        - button "Toggle chat sidebar" [pressed] [ref=e28] [cursor=pointer]:
+          - img [ref=e29]
+  - generic [ref=e31]:
+    - navigation "Activity Bar" [ref=e32]:
+      - button "Explorer" [ref=e33] [cursor=pointer]:
+        - img [ref=e34]
+      - button "Search" [ref=e38] [cursor=pointer]:
+        - img [ref=e39]
+      - button "Source Control" [ref=e42] [cursor=pointer]:
+        - img [ref=e43]
+      - generic [ref=e47]:
+        - button "Self-Evolution Lessons" [ref=e48] [cursor=pointer]:
+          - img [ref=e49]
+        - button "Hook Configuration" [ref=e59] [cursor=pointer]:
+          - img [ref=e60]
+    - complementary "Chat sidebar" [ref=e62]:
+      - generic [ref=e63]:
+        - generic [ref=e64]:
+          - button "Show sessions panel" [ref=e65] [cursor=pointer]:
+            - img [ref=e66]
+          - button "New chat" [ref=e68] [cursor=pointer]:
+            - img [ref=e69]
+        - generic [ref=e72]:
+          - generic [ref=e73]:
+            - generic "Context usage 0%" [ref=e74]:
+              - img [ref=e75]
+              - generic [ref=e78]: 0%
+            - button "New Chat" [ref=e79] [cursor=pointer]:
+              - img [ref=e80]
+              - text: New Chat
+          - textbox "Plan and build, @ for context, ⇧Tab for plan mode" [active] [ref=e81]
+          - generic [ref=e82]:
+            - generic [ref=e83]:
+              - button "Approval mode" [ref=e85] [cursor=pointer]:
+                - img [ref=e86]
+                - generic [ref=e88]: Manual
+                - img [ref=e89]
+              - button "Agent" [ref=e91] [cursor=pointer]:
+                - img [ref=e92]
+                - generic [ref=e95]: Agent
+            - generic [ref=e96]:
+              - button "Attach image" [ref=e97] [cursor=pointer]:
+                - img [ref=e98]
+              - button "Send" [disabled] [ref=e100]:
+                - img [ref=e101]
+  - contentinfo "Status Bar" [ref=e104]:
+    - generic [ref=e105]:
+      - button "Memory" [ref=e106] [cursor=pointer]:
+        - img [ref=e107]
+      - button "Shell" [ref=e110] [cursor=pointer]:
+        - img [ref=e111]
+      - button "Bookmarks" [ref=e113] [cursor=pointer]:
+        - img [ref=e114]
+      - button "Timeline" [ref=e116] [cursor=pointer]:
+        - img [ref=e117]
+      - button "Export" [ref=e120] [cursor=pointer]:
+        - img [ref=e121]
+      - button "MCP" [ref=e124] [cursor=pointer]:
+        - img [ref=e125]
+      - button "Settings" [ref=e127] [cursor=pointer]:
+        - img [ref=e128]
+      - link "GitHub" [ref=e131] [cursor=pointer]:
+        - /url: https://github.com/CaptainGreenskin/kairo-code
+        - img [ref=e132]
+      - button "Toggle theme" [ref=e135] [cursor=pointer]:
+        - img [ref=e136]
+      - button "Shortcuts" [ref=e142] [cursor=pointer]:
+        - img [ref=e143]
+  - button "diag" [ref=e146] [cursor=pointer]

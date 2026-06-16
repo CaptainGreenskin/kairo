@@ -1,0 +1,3 @@
+- generic [ref=e2]:
+  - generic [ref=e7]: kairo-code — ~/projects/my-app
+  - generic [ref=e8]: "kairo-code> :help Available commands: :help List available commands :clear Reset conversation context :model Show or switch the current model :cost Show token usage and estimated cost :plan Toggle Plan Mode (blocks write tools) :skill Manage skills (list / load / unload) :snapshot Save / list / delete session snapshots :memory Manage persistent memories :expert Launch expert team (plan / confirm) :plugin Manage plugins (install / enable / disable) :mcp Manage MCP servers :cron Manage scheduled cron tasks :lsp LSP diagnostics :doctor Run diagnostics and health checks :exit Exit the REPL kairo-code> _"

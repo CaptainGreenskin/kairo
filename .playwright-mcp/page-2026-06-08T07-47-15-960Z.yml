@@ -1,0 +1,3 @@
+- generic [ref=e2]:
+  - generic [ref=e7]: kairo-code 鈥� ~/projects/spring-app
+  - generic [ref=e8]: "kairo-code> Find all TODO comments in src/ [model] in=2,847 out=42 context: [鈻堚枅鈻戔枒鈻戔枒鈻戔枒鈻戔枒鈻戔枒鈻戔枒鈻戔枒鈻戔枒鈻戔枒] 8% tool: grep pattern: TODO path: src/ include: *.java Found 3 matches across 2 files: src/main/java/com/example/UserService.java:42 // TODO: Add input validation for email field src/main/java/com/example/OrderController.java:87 // TODO: Implement pagination for large result sets src/main/java/com/example/OrderController.java:134 // TODO: Add rate limiting to this endpoint 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ turns=1 tokens in=3,241 out=156 elapsed=2.3s kairo-code>"

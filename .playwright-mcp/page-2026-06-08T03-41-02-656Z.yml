@@ -1,0 +1,65 @@
+- generic [ref=e3]:
+  - link "Skip to content" [ref=e4] [cursor=pointer]:
+    - /url: "#VPContent"
+  - banner:
+    - generic:
+      - generic:
+        - generic:
+          - link "Kairo" [ref=e6] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e7]: Kairo
+          - button "extra navigation" [ref=e10] [cursor=pointer]
+  - generic [ref=e13]:
+    - generic [ref=e15]:
+      - generic [ref=e16]:
+        - heading "Kairo The Agent OS for Java" [level=1] [ref=e17]:
+          - generic [ref=e18]: Kairo
+          - generic [ref=e19]: The Agent OS for Java
+        - paragraph [ref=e20]: Production-grade Agent infrastructure. SPI-driven. Reactive inside, pragmatic outside.
+        - generic [ref=e21]:
+          - link "Get Started" [ref=e23] [cursor=pointer]:
+            - /url: /en/guide/getting-started.html
+          - link "View on GitHub" [ref=e25] [cursor=pointer]:
+            - /url: https://github.com/CaptainGreenskin/kairo
+      - img "Kairo" [ref=e29]
+    - generic [ref=e32]:
+      - article [ref=e35]:
+        - generic [ref=e36]: 🧠
+        - heading "ReAct Engine" [level=2] [ref=e37]
+        - paragraph [ref=e38]: Thought→Action→Observation loop with 6-stage context compaction and intelligent token management.
+      - article [ref=e41]:
+        - generic [ref=e42]: 🔌
+        - heading "SPI-Driven Architecture" [level=2] [ref=e43]
+        - paragraph [ref=e44]: 16 SPIs with @Stable / @Experimental annotations. 119 stable types, japicmp-enforced compatibility.
+      - article [ref=e47]:
+        - generic [ref=e48]: ⚡
+        - heading "Reactive Inside" [level=2] [ref=e49]
+        - paragraph [ref=e50]: Built on Project Reactor. Non-blocking throughout, but pragmatic blocking APIs when you need them.
+      - article [ref=e53]:
+        - generic [ref=e54]: 🛡️
+        - heading "Production-Safe" [level=2] [ref=e55]
+        - paragraph [ref=e56]: Circuit breaker, loop detection, cooperative cancellation, permission guards, PII redaction, and JDBC audit trail.
+      - article [ref=e59]:
+        - generic [ref=e60]: 🧩
+        - heading "Plugin System" [level=2] [ref=e61]
+        - paragraph [ref=e62]: Claude Code format compatible. Install plugins from local, GitHub, Git, or npm. Skills, hooks, MCP, agents.
+      - article [ref=e65]:
+        - generic [ref=e66]: 🌐
+        - heading "Gateway & Channel" [level=2] [ref=e67]
+        - paragraph [ref=e68]: Multi-channel routing, session management, streaming, and mirroring. DingTalk shipped, Slack/Feishu planned.
+      - article [ref=e71]:
+        - generic [ref=e72]: 🤝
+        - heading "A2A Protocol" [level=2] [ref=e73]
+        - paragraph [ref=e74]: Google ADK-compatible Agent-to-Agent communication. AgentCard discovery, in-process and remote invocation.
+      - article [ref=e77]:
+        - generic [ref=e78]: 💻
+        - heading "Kairo Code" [level=2] [ref=e79]
+        - paragraph [ref=e80]: A production coding agent CLI built entirely on Kairo — 56 tools, skill system, multi-agent teams, IDE bridge.
+      - article [ref=e83]:
+        - generic [ref=e84]: 🤖
+        - heading "Kairo Assistant" [level=2] [ref=e85]
+        - paragraph [ref=e86]: Self-hosted multi-channel personal AI assistant — 50+ tools, 8 messaging channels, self-evolution, OpenAI-compatible API.
+      - article [ref=e89]:
+        - generic [ref=e90]: 🔐
+        - heading "Execution Sandbox" [level=2] [ref=e91]
+        - paragraph [ref=e92]: ExecutionSandbox SPI for safe command execution. LocalProcess default, Docker/K8s pluggable.
