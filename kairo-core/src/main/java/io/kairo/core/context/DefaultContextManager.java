@@ -284,7 +284,7 @@ public class DefaultContextManager implements ContextManager {
             return Mono.just(msgs);
         }
 
-        float effectivePressure = force ? Math.max(pressure, 0.85f) : pressure;
+        float effectivePressure = force ? Math.max(pressure, 0.95f) : pressure;
         CompactionConfig config = new CompactionConfig(budgetManager.remaining(), true, null);
 
         return compactionPipeline
