@@ -968,6 +968,14 @@ public class DefaultReActAgent implements Agent {
         return totalTokensUsed.get();
     }
 
+    public io.kairo.api.context.ContextManager contextManager() {
+        return contextManager;
+    }
+
+    public void replaceHistory(List<Msg> newHistory) {
+        reactLoop.replaceHistory(newHistory);
+    }
+
     /**
      * Return the cost tracker configured for this agent.
      *

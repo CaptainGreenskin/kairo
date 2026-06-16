@@ -268,23 +268,33 @@ public class DefaultContextManager implements ContextManager {
      * @return a Mono emitting the (possibly compacted) message list
      */
     public Mono<List<Msg>> compactMessages(List<Msg> msgs) {
-        float pressure = (float) budgetManager.getPressure(msgs);
-        log.info("Compaction requested for {} messages, pressure: {}", msgs.size(), pressure);
+        return compactMessages(msgs, false);
+    }
 
-        if (pressure < compactionPressureThreshold) {
+    public Mono<List<Msg>> compactMessages(List<Msg> msgs, boolean force) {
+        float pressure = (float) budgetManager.getPressure(msgs);
+        log.info(
+                "Compaction requested for {} messages, pressure: {}, force: {}",
+                msgs.size(),
+                pressure,
+                force);
+
+        if (!force && pressure < compactionPressureThreshold) {
             log.info("Pressure below {} — no compaction needed", compactionPressureThreshold);
             return Mono.just(msgs);
         }
 
+        float effectivePressure = force ? Math.max(pressure, 0.85f) : pressure;
         CompactionConfig config = new CompactionConfig(budgetManager.remaining(), true, null);
 
         return compactionPipeline
-                .execute(msgs, verbatimMessageIds, pressure, config)
+                .execute(msgs, verbatimMessageIds, effectivePressure, config)
                 .map(
                         result -> {
                             log.info(
-                                    "Compaction of external messages complete: saved {} tokens",
-                                    result.tokensSaved());
+                                    "Compaction complete: saved {} tokens (force={})",
+                                    result.tokensSaved(),
+                                    force);
                             return result.compactedMessages();
                         })
                 .defaultIfEmpty(msgs);
