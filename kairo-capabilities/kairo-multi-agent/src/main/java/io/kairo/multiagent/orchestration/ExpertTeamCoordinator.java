@@ -391,7 +391,37 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                                         currentState,
                                                         outcomes,
                                                         warnings)
-                                                .thenReturn(step.stepId()))
+                                                .thenReturn(step.stepId())
+                                                .onErrorResume(
+                                                        e -> {
+                                                            log.warn(
+                                                                    "Step '{}' failed: {}",
+                                                                    step.stepId(),
+                                                                    e.getMessage());
+                                                            warnings.add(
+                                                                    "Step '"
+                                                                            + step.description()
+                                                                            + "' failed: "
+                                                                            + e.getMessage());
+                                                            outcomes.add(
+                                                                    new StepOutcome(
+                                                                            step.stepId(),
+                                                                            "",
+                                                                            new EvaluationVerdict(
+                                                                                    VerdictOutcome
+                                                                                            .REVIEW_EXCEEDED,
+                                                                                    0.0,
+                                                                                    "Step failed: "
+                                                                                            + e
+                                                                                                    .getMessage(),
+                                                                                    java.util.List
+                                                                                            .of(),
+                                                                                    java.time
+                                                                                            .Instant
+                                                                                            .now()),
+                                                                            0));
+                                                            return Mono.just(step.stepId());
+                                                        }))
                         .then(
                                 Mono.defer(
                                         () ->
