@@ -79,6 +79,16 @@ public interface Agent {
     String name();
 
     /**
+     * Returns the total tokens consumed by this agent across all iterations. Resets on each {@link
+     * #call} invocation for stateless proxies.
+     *
+     * @return total tokens used, or 0 if not tracked
+     */
+    default long totalTokensUsed() {
+        return 0;
+    }
+
+    /**
      * Returns the current lifecycle state of this agent.
      *
      * @return the current {@link AgentState}, never {@code null}
