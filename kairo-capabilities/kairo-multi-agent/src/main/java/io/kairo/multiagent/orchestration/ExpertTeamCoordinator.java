@@ -657,6 +657,9 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                 Map.of("stepId", step.stepId(), "roleId", step.assignedRole().roleId()));
 
         int maxRounds = request.config().maxFeedbackRounds();
+        // Snapshot token count before this step so we can compute the delta after.
+        Agent stepAgent = bindings.get(step.assignedRole().roleId());
+        long tokensBefore = stepAgent != null ? stepAgent.totalTokensUsed() : 0;
         // Collect the outputs of the steps this one depends on, to feed into the worker's prompt.
         // DagExecutor guarantees a step's whole dependency layer has completed before it starts,
         // so every dependsOn outcome is already present in the shared list.
@@ -697,9 +700,10 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                                     + "' auto-passed with warning: "
                                                     + verdict.feedback());
                                 }
-                                Agent stepAgent = bindings.get(step.assignedRole().roleId());
                                 long stepTokens =
-                                        stepAgent != null ? stepAgent.totalTokensUsed() : 0;
+                                        stepAgent != null
+                                                ? stepAgent.totalTokensUsed() - tokensBefore
+                                                : 0;
                                 Map<String, Object> completedAttrs = new LinkedHashMap<>();
                                 completedAttrs.put("stepId", step.stepId());
                                 completedAttrs.put("attempts", result.attempt());
