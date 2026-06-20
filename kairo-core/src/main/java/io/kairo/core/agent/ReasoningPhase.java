@@ -192,6 +192,8 @@ public class ReasoningPhase {
         log.debug(
                 "Agent '{}' iteration {}: calling model", ctx.agentName(), currentIteration.get());
 
+        repairOrphanedToolUses();
+
         // Emit MODEL_CALL_REQUEST before the model call (best-effort)
         Mono<Void> preEmit =
                 emitBestEffort(
@@ -231,8 +233,21 @@ public class ReasoningPhase {
                                                             finalMessages, finalConfig, 0));
                                 });
 
-        return guards.withCooperativeCancellation(preEmit.then(responseMono))
-                .flatMap(response -> evaluatePostModelGuardrail(response))
+        return guards.withCooperativeCancellation(
+                        preEmit.then(responseMono)
+                                .transformDeferredContextual(
+                                        (mono, ctxView) -> {
+                                            MutableDiagnostics diag =
+                                                    ctxView.getOrDefault(
+                                                            MutableDiagnostics.class, null);
+                                            if (diag instanceof DefaultAgentDiagnostics dad) {
+                                                return mono.doOnSubscribe(
+                                                                s -> dad.setActiveModelCall(true))
+                                                        .doFinally(
+                                                                s -> dad.setActiveModelCall(false));
+                                            }
+                                            return mono;
+                                        }))
                 .doOnError(
                         GuardrailDenyException.class,
                         e -> log.warn("Guardrail denied: {}", e.getMessage()))
@@ -604,6 +619,7 @@ public class ReasoningPhase {
         // tokens instead of the char-count estimate. Order: usage frame arrives BEFORE [DONE], so
         // the AtomicReference is always populated before executeStreamingTools reads it.
         var textAccumulator = new StringBuilder();
+        var thinkingAccumulator = new StringBuilder();
         java.util.concurrent.atomic.AtomicReference<int[]> usageRef =
                 new java.util.concurrent.atomic.AtomicReference<>();
         java.util.function.Consumer<String> deltaConsumer = textDeltaConsumerSupplier.get();
@@ -614,8 +630,18 @@ public class ReasoningPhase {
                             java.util.function.Consumer<String> thinkingConsumer =
                                     (java.util.function.Consumer<String>)
                                             ctxView.getOrDefault(THINKING_DELTA_KEY, null);
+                            @SuppressWarnings("unchecked")
+                            java.util.function.Consumer<String> diagnosticsRecorder =
+                                    (java.util.function.Consumer<String>)
+                                            ctxView.getOrDefault(
+                                                    io.kairo.core.hook.DefaultHookChain
+                                                            .DIAGNOSTICS_RECORDER_KEY,
+                                                    null);
                             return flux.doOnNext(
                                     chunk -> {
+                                        if (diagnosticsRecorder != null) {
+                                            diagnosticsRecorder.accept("stream_chunk");
+                                        }
                                         if (chunk.type() == io.kairo.api.model.StreamChunkType.TEXT
                                                 && chunk.content() != null) {
                                             textAccumulator.append(chunk.content());
@@ -625,13 +651,23 @@ public class ReasoningPhase {
                                         } else if (chunk.type()
                                                         == io.kairo.api.model.StreamChunkType
                                                                 .THINKING
-                                                && chunk.content() != null
-                                                && thinkingConsumer != null) {
-                                            try {
-                                                thinkingConsumer.accept(chunk.content());
-                                            } catch (Exception ignored) {
-                                                // Never let a UI sink failure abort the reasoning
-                                                // stream.
+                                                && chunk.content() != null) {
+                                            thinkingAccumulator.append(chunk.content());
+                                            // Reasoning-only models (GLM-5.2 coding) put all
+                                            // content in reasoning_content with empty content.
+                                            // Stream thinking deltas as text so the UI shows
+                                            // output in real time; textAccumulator is populated
+                                            // in doOnComplete only if no TEXT chunks arrived.
+                                            if (deltaConsumer != null) {
+                                                deltaConsumer.accept(chunk.content());
+                                            }
+                                            if (thinkingConsumer != null) {
+                                                try {
+                                                    thinkingConsumer.accept(chunk.content());
+                                                } catch (Exception ignored) {
+                                                    // Never let a UI sink failure abort the
+                                                    // reasoning stream.
+                                                }
                                             }
                                         } else if (chunk.type()
                                                         == io.kairo.api.model.StreamChunkType.USAGE
@@ -660,7 +696,12 @@ public class ReasoningPhase {
             return fallbackModelCall(messages, modelConfig);
         }
         return executeStreamingTools(
-                messages, modelConfig, detectedTools, textAccumulator, usageRef);
+                messages,
+                modelConfig,
+                detectedTools,
+                textAccumulator,
+                thinkingAccumulator,
+                usageRef);
     }
 
     private Mono<ModelResponse> fallbackModelCall(List<Msg> messages, ModelConfig modelConfig) {
@@ -673,6 +714,7 @@ public class ReasoningPhase {
             ModelConfig modelConfig,
             Flux<DetectedToolCall> detectedTools,
             StringBuilder textAccumulator,
+            StringBuilder thinkingAccumulator,
             java.util.concurrent.atomic.AtomicReference<int[]> usageRef) {
         var streamingExecutor = new StreamingToolExecutor(ctx.toolExecutor());
         // Track tool call ID → tool name AND original args for building the synthetic response.
@@ -709,6 +751,11 @@ public class ReasoningPhase {
                             // provider gave us real usage we override the per-builder estimate
                             // below.
                             String accumulated = textAccumulator.toString();
+                            // Reasoning-only models (GLM-5.2 coding) put all content
+                            // in reasoning_content. Promote thinking to text when empty.
+                            if (accumulated.isEmpty() && !thinkingAccumulator.isEmpty()) {
+                                accumulated = thinkingAccumulator.toString();
+                            }
                             // Source of truth = what the detector saw, NOT what executeEager
                             // returned. MiniMax / Zhipu can race the executor (finish_reason in
                             // same SSE chunk as tool_calls) — the detector emits the tool but
@@ -942,6 +989,54 @@ public class ReasoningPhase {
      * Best-effort event emission — errors are logged and swallowed so that event emission failures
      * never break the ReAct loop.
      */
+    private void repairOrphanedToolUses() {
+        for (int i = 0; i < conversationHistory.size(); i++) {
+            Msg msg = conversationHistory.get(i);
+            if (msg.role() != MsgRole.ASSISTANT) continue;
+
+            List<String> toolUseIds =
+                    msg.contents().stream()
+                            .filter(Content.ToolUseContent.class::isInstance)
+                            .map(c -> ((Content.ToolUseContent) c).toolId())
+                            .toList();
+            if (toolUseIds.isEmpty()) continue;
+
+            Set<String> answeredIds = new java.util.HashSet<>();
+            for (int j = i + 1; j < conversationHistory.size(); j++) {
+                Msg next = conversationHistory.get(j);
+                if (next.role() == MsgRole.ASSISTANT) break;
+                for (Content c : next.contents()) {
+                    if (c instanceof Content.ToolResultContent trc) {
+                        answeredIds.add(trc.toolUseId());
+                    }
+                }
+            }
+
+            List<String> missing =
+                    toolUseIds.stream().filter(id -> !answeredIds.contains(id)).toList();
+            if (!missing.isEmpty()) {
+                log.warn(
+                        "Repairing {} orphaned tool_use(s) at message {}: {}",
+                        missing.size(),
+                        i,
+                        missing);
+                List<Content> resultContents =
+                        missing.stream()
+                                .map(
+                                        id ->
+                                                (Content)
+                                                        new Content.ToolResultContent(
+                                                                id,
+                                                                "Tool call interrupted — no result"
+                                                                        + " available",
+                                                                true))
+                                .toList();
+                Msg repairMsg = Msg.builder().role(MsgRole.TOOL).contents(resultContents).build();
+                conversationHistory.add(i + 1, repairMsg);
+            }
+        }
+    }
+
     private Mono<Void> emitBestEffort(ExecutionEventType type, String payloadJson) {
         if (eventEmitter == null) {
             return Mono.empty();

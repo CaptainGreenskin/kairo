@@ -1,0 +1,16 @@
+- generic [ref=e64]:
+  - img [ref=e65]
+  - heading "打开一个项目" [level=2] [ref=e67]
+  - paragraph [ref=e68]: 输入项目路径或浏览选择
+  - generic [ref=e70]:
+    - generic [ref=e71]:
+      - img [ref=e72]
+      - textbox "/path/to/your/project" [ref=e74]
+    - button "浏览" [ref=e75] [cursor=pointer]
+  - generic [ref=e76]:
+    - button "上一步" [ref=e77] [cursor=pointer]:
+      - img [ref=e78]
+      - text: 上一步
+    - button "稍后再选" [ref=e80] [cursor=pointer]:
+      - img [ref=e81]
+      - text: 稍后再选

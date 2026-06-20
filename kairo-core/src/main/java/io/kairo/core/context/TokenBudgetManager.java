@@ -253,7 +253,11 @@ public class TokenBudgetManager {
         }
         updateFromApiUsage(usage);
         if (lastAccountedUsageTurn != currentTurn) {
-            usedTokens.set(usage.inputTokens() + usage.outputTokens());
+            // Use API-reported input tokens as ground truth (reflects actual prompt
+            // size after compaction). Don't blindly overwrite — if compaction freed
+            // tokens between turns, the API input_tokens already accounts for that.
+            int apiTotal = usage.inputTokens() + usage.outputTokens();
+            usedTokens.set(apiTotal);
             lastAccountedUsageTurn = currentTurn;
         }
     }

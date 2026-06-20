@@ -38,6 +38,8 @@ final class DefaultAgentDiagnostics implements AgentDiagnostics, MutableDiagnost
     private final AtomicLong lastEventAtEpochMs = new AtomicLong(System.currentTimeMillis());
     private final ConcurrentHashMap<String, AtomicLong> eventCountsMap = new ConcurrentHashMap<>();
     private final AtomicReference<ToolInvocationSnapshot> activeTool = new AtomicReference<>();
+    private volatile boolean activeModelCall = false;
+    private volatile long modelCallStartMs = 0;
     private volatile String traceId;
     private volatile String currentSpanId;
     // Token + iteration counters are owned by DefaultReActAgent / ReActLoop /
@@ -144,5 +146,25 @@ final class DefaultAgentDiagnostics implements AgentDiagnostics, MutableDiagnost
     @Override
     public void setCurrentIteration(int iteration) {
         this.currentIteration.set(iteration);
+    }
+
+    private static final long MODEL_CALL_HARD_LIMIT_MS = 600_000L; // 10 minutes
+
+    boolean isActiveModelCall() {
+        if (!activeModelCall) return false;
+        if (modelCallStartMs > 0
+                && System.currentTimeMillis() - modelCallStartMs > MODEL_CALL_HARD_LIMIT_MS) {
+            activeModelCall = false;
+            return false;
+        }
+        return true;
+    }
+
+    void setActiveModelCall(boolean active) {
+        this.activeModelCall = active;
+        this.modelCallStartMs = active ? System.currentTimeMillis() : 0;
+        if (active) {
+            recordEvent("model_call_start");
+        }
     }
 }

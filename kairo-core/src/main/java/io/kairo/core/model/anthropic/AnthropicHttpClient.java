@@ -88,8 +88,25 @@ public class AnthropicHttpClient {
         } catch (Exception ignored) {
         }
         HttpRequest request = buildHttpRequest(jsonBody);
+        log.info("[ANTHROPIC-CALL] Sending non-streaming request, bodySize={}", jsonBody.length());
         return Mono.fromFuture(
-                        () -> httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()))
+                        () ->
+                                httpClient
+                                        .sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                                        .orTimeout(
+                                                DEFAULT_TIMEOUT.toSeconds(),
+                                                java.util.concurrent.TimeUnit.SECONDS))
+                .doOnNext(
+                        resp ->
+                                log.info(
+                                        "[ANTHROPIC-CALL] Response received, status={}",
+                                        resp.statusCode()))
+                .doOnError(
+                        e ->
+                                log.warn(
+                                        "[ANTHROPIC-CALL] Request failed: {} - {}",
+                                        e.getClass().getSimpleName(),
+                                        e.getMessage()))
                 .flatMap(this::dispatchResponse);
     }
 

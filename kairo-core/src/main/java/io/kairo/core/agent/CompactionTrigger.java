@@ -134,8 +134,8 @@ class CompactionTrigger {
                                                 .flatMap(
                                                         compacted -> {
                                                             if (compacted != null
-                                                                    && compacted.size()
-                                                                            < previousSize) {
+                                                                    && !compacted.equals(
+                                                                            conversationHistory)) {
                                                                 reactLoop.replaceHistory(compacted);
                                                                 int messagesSaved =
                                                                         previousSize

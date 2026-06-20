@@ -36,14 +36,16 @@ import reactor.core.publisher.Sinks;
  */
 public class StallDetector {
     private static final Logger log = LoggerFactory.getLogger(StallDetector.class);
-    private static final long DEFAULT_IDLE_MS = 120_000L;
+    private static final long DEFAULT_IDLE_MS = 300_000L;
     private static final Duration CHECK_INTERVAL = Duration.ofSeconds(5);
 
     private final long idleThresholdMs;
     private final AgentDiagnostics diagnostics;
     private final Sinks.One<Void> stallSignal = Sinks.one();
     private final AtomicBoolean started = new AtomicBoolean(false);
+    private static final long PAUSE_HARD_LIMIT_MS = 600_000L; // 10 minutes
     private final AtomicBoolean paused = new AtomicBoolean(false);
+    private volatile long pausedAtMs = 0;
     private volatile Disposable poller;
 
     public StallDetector(AgentDiagnostics diagnostics) {
@@ -72,8 +74,22 @@ public class StallDetector {
                                         dispose();
                                         return;
                                     }
-                                    if (paused.get()
-                                            || diagnostics.activeToolInvocation().isPresent()) {
+                                    boolean isPaused = paused.get();
+                                    if (isPaused
+                                            && pausedAtMs > 0
+                                            && System.currentTimeMillis() - pausedAtMs
+                                                    > PAUSE_HARD_LIMIT_MS) {
+                                        log.warn(
+                                                "Stall detector pause exceeded hard limit ({}ms),"
+                                                        + " force-resuming",
+                                                PAUSE_HARD_LIMIT_MS);
+                                        paused.set(false);
+                                        isPaused = false;
+                                    }
+                                    if (isPaused
+                                            || diagnostics.activeToolInvocation().isPresent()
+                                            || (diagnostics instanceof DefaultAgentDiagnostics dad
+                                                    && dad.isActiveModelCall())) {
                                         return;
                                     }
                                     long idle = diagnostics.msSinceLastEvent();
@@ -105,6 +121,7 @@ public class StallDetector {
     /** Pause stall detection (e.g., while waiting for user approval). */
     public void pause() {
         paused.set(true);
+        pausedAtMs = System.currentTimeMillis();
     }
 
     /** Resume stall detection. */

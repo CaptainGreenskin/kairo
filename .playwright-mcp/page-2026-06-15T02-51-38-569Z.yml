@@ -1,0 +1,159 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - img "kairo-code" [ref=e7]
+        - text: kairo-code
+      - generic [ref=e8]:
+        - button "default" [ref=e10] [cursor=pointer]:
+          - img [ref=e11]
+          - generic [ref=e13]: default
+          - img [ref=e14]
+        - 'generic "Session: Hi" [ref=e16]': Hi
+      - generic "Connected" [ref=e17]
+    - generic [ref=e19]:
+      - generic [ref=e23]: "534"
+      - button "Session stats" [ref=e25] [cursor=pointer]:
+        - img [ref=e26]
+      - button "Export session" [ref=e29] [cursor=pointer]:
+        - img [ref=e30]
+      - generic [ref=e33]:
+        - button "Toggle primary sidebar" [ref=e34] [cursor=pointer]:
+          - img [ref=e35]
+        - button "Toggle bottom panel" [ref=e37] [cursor=pointer]:
+          - img [ref=e38]
+        - button "Toggle chat sidebar" [pressed] [ref=e40] [cursor=pointer]:
+          - img [ref=e41]
+  - generic [ref=e43]:
+    - navigation "Activity Bar" [ref=e44]:
+      - button "Explorer" [ref=e45] [cursor=pointer]:
+        - img [ref=e46]
+      - button "Search" [ref=e50] [cursor=pointer]:
+        - img [ref=e51]
+      - button "Source Control" [ref=e54] [cursor=pointer]:
+        - img [ref=e55]
+      - generic [ref=e59]:
+        - button "Self-Evolution Lessons" [ref=e60] [cursor=pointer]:
+          - img [ref=e61]
+        - button "Hook Configuration" [ref=e71] [cursor=pointer]:
+          - img [ref=e72]
+    - complementary "Chat sidebar" [ref=e74]:
+      - generic [ref=e75]:
+        - generic [ref=e76]:
+          - button "Show sessions panel" [ref=e77] [cursor=pointer]:
+            - img [ref=e78]
+          - generic "请列出你所有可用的工具名，特别确认你是否有 search_tools 和 execute_tool" [ref=e80] [cursor=pointer]:
+            - img [ref=e81]
+            - generic [ref=e83]: 请列出你所有可用的工具名，特别确认你是否有 search_tools 和 execute_tool
+            - button "Close 请列出你所有可用的工具名，特别确认你是否有 search_tools 和 execute_tool" [ref=e84]:
+              - img [ref=e85]
+          - generic "列出你所有工具名，确认 search_tools 和 execute_tool 是否可用" [ref=e88] [cursor=pointer]:
+            - img [ref=e89]
+            - generic [ref=e91]: 列出你所有工具名，确认 search_tools 和 execute_tool 是否可用
+            - button "Close 列出你所有工具名，确认 search_tools 和 execute_tool 是否可用" [ref=e92]:
+              - img [ref=e93]
+          - generic "列出你所有工具名，确认 search_tools 和 execute_tool 是否可用" [ref=e96] [cursor=pointer]:
+            - img [ref=e97]
+            - generic [ref=e99]: 列出你所有工具名，确认 search_tools 和 execute_tool 是否可用
+            - button "Close 列出你所有工具名，确认 search_tools 和 execute_tool 是否可用" [ref=e100]:
+              - img [ref=e101]
+          - generic "列出你所有工具名" [ref=e104] [cursor=pointer]:
+            - img [ref=e105]
+            - generic [ref=e107]: 列出你所有工具名
+            - button "Close 列出你所有工具名" [ref=e108]:
+              - img [ref=e109]
+          - generic "Hihi" [ref=e112] [cursor=pointer]:
+            - img [ref=e113]
+            - generic [ref=e115]: Hihi
+            - button "Close Hihi" [ref=e116]:
+              - img [ref=e117]
+          - generic "Hi" [ref=e120] [cursor=pointer]:
+            - img [ref=e121]
+            - generic [ref=e123]: Hi
+            - button "Close Hi" [ref=e124]:
+              - img [ref=e125]
+          - generic "Hi" [ref=e128] [cursor=pointer]:
+            - img [ref=e129]
+            - generic [ref=e131]: Hi
+            - button "Close Hi" [ref=e132]:
+              - img [ref=e133]
+          - button "New chat" [ref=e136] [cursor=pointer]:
+            - img [ref=e137]
+        - generic [ref=e140]:
+          - generic [ref=e143]:
+            - generic [ref=e313]:
+              - paragraph [ref=e314]: 在当前工作目录创建一个 Java 项目：实现一个简单的 TodoApp REST API，包含 Todo 的增删改查。要求：1) 用纯 Java + HttpServer（不用 Spring），2) 包含 TodoService 和 TodoController，3) 写一个 main 方法启动在 9090 端口，4) 写完后用 bash 编译运行并 curl 测试增删改查是否正常
+              - button "Edit message" [ref=e315] [cursor=pointer]:
+                - img [ref=e316]
+            - generic [ref=e323]:
+              - generic [ref=e324]:
+                - button "Thought for a while" [ref=e325] [cursor=pointer]:
+                  - img [ref=e326]
+                  - generic [ref=e336]: Thought for a while
+                  - img [ref=e337]
+                - generic [ref=e339]: "Let me create a simple Java TodoApp REST API project using pure Java HttpServer. I'll plan the structure first, then implement it. Project structure: ``` /Users/liulihan/kairo-workspace/todo-app/ ├── src/ │ └── main/ │ └── java/ │ └── com/ │ └── todo/ │ ├── Main.java │ ├── model/ │ │ └── Todo.java │ ├── service/ │ │ └── TodoService.java │ └── controller/ │ └── TodoController.java ``` I'll use the built-in `HttpServer` from the JDK and design a REST API with standard CRUD endpoints for todos. Since there are no external dependencies, I can just compile everything with javac. Now I'm starting to build out the model and service classes to handle the todo operations. ```"
+              - generic [ref=e341]:
+                - generic [ref=e342] [cursor=pointer]:
+                  - generic [ref=e343]:
+                    - generic "done" [ref=e344]
+                    - code [ref=e345]: bash
+                    - generic [ref=e346]: execute
+                    - generic [ref=e347]:
+                      - img [ref=e348]
+                      - text: Done
+                  - generic [ref=e350]:
+                    - generic [ref=e351]: 1.5s
+                    - img [ref=e353]
+                - button "Show input" [ref=e355] [cursor=pointer]
+          - button "thinking..." [ref=e360]:
+            - generic [ref=e365]: thinking...
+        - generic [ref=e199]:
+          - generic [ref=e200]:
+            - generic "Context usage 0%" [ref=e201]:
+              - img [ref=e202]
+              - generic [ref=e205]: 0%
+            - button "New Chat" [ref=e206] [cursor=pointer]:
+              - img [ref=e207]
+              - text: New Chat
+          - textbox "Plan and build, @ for context, ⇧Tab for plan mode" [ref=e208]
+          - generic [ref=e209]:
+            - generic [ref=e210]:
+              - button "Approval mode" [ref=e212] [cursor=pointer]:
+                - img [ref=e213]
+                - generic [ref=e215]: Manual
+                - img [ref=e216]
+              - button "Agent" [disabled] [ref=e218]:
+                - img [ref=e219]
+                - generic [ref=e222]: Agent
+                - img [ref=e223]
+            - generic [ref=e226]:
+              - button "Attach image" [ref=e227] [cursor=pointer]:
+                - img [ref=e228]
+              - button "Stop" [ref=e306] [cursor=pointer]:
+                - img [ref=e307]
+  - contentinfo "Status Bar" [ref=e234]:
+    - generic "Connected" [ref=e236]:
+      - generic [ref=e238]: Connected
+    - generic [ref=e239]:
+      - button "Memory" [ref=e240] [cursor=pointer]:
+        - img [ref=e241]
+      - button "Shell" [ref=e244] [cursor=pointer]:
+        - img [ref=e245]
+      - button "Bookmarks" [ref=e247] [cursor=pointer]:
+        - img [ref=e248]
+      - button "Timeline" [ref=e250] [cursor=pointer]:
+        - img [ref=e251]
+      - button "Export" [ref=e254] [cursor=pointer]:
+        - img [ref=e255]
+      - button "MCP" [ref=e258] [cursor=pointer]:
+        - img [ref=e259]
+      - button "Settings" [ref=e261] [cursor=pointer]:
+        - img [ref=e262]
+      - link "GitHub" [ref=e265] [cursor=pointer]:
+        - /url: https://github.com/CaptainGreenskin/kairo-code
+        - img [ref=e266]
+      - button "Toggle theme" [ref=e269] [cursor=pointer]:
+        - img [ref=e270]
+      - button "Shortcuts" [ref=e276] [cursor=pointer]:
+        - img [ref=e277]
+  - button "diag" [ref=e280] [cursor=pointer]

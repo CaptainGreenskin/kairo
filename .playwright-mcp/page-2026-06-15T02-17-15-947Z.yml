@@ -1,0 +1,125 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - img "kairo-code" [ref=e7]
+        - text: kairo-code
+      - generic [ref=e8]:
+        - button "default" [ref=e10] [cursor=pointer]:
+          - img [ref=e11]
+          - generic [ref=e13]: default
+          - img [ref=e14]
+        - 'generic "Session: 列出你所有工具名" [ref=e246]': 列出你所有工具名
+      - generic "Connected" [ref=e247]
+    - generic [ref=e20]:
+      - button "Session stats" [ref=e22] [cursor=pointer]:
+        - img [ref=e23]
+      - button "Export session" [ref=e26] [cursor=pointer]:
+        - img [ref=e27]
+      - generic [ref=e30]:
+        - button "Toggle primary sidebar" [ref=e31] [cursor=pointer]:
+          - img [ref=e32]
+        - button "Toggle bottom panel" [ref=e34] [cursor=pointer]:
+          - img [ref=e35]
+        - button "Toggle chat sidebar" [pressed] [ref=e37] [cursor=pointer]:
+          - img [ref=e38]
+  - generic [ref=e41]:
+    - navigation "Activity Bar" [ref=e42]:
+      - button "Explorer" [ref=e43] [cursor=pointer]:
+        - img [ref=e44]
+      - button "Search" [ref=e48] [cursor=pointer]:
+        - img [ref=e49]
+      - button "Source Control" [ref=e52] [cursor=pointer]:
+        - img [ref=e53]
+      - generic [ref=e57]:
+        - button "Self-Evolution Lessons" [ref=e58] [cursor=pointer]:
+          - img [ref=e59]
+        - button "Hook Configuration" [ref=e69] [cursor=pointer]:
+          - img [ref=e70]
+    - complementary "Chat sidebar" [ref=e72]:
+      - generic [ref=e73]:
+        - generic [ref=e74]:
+          - button "Show sessions panel" [ref=e75] [cursor=pointer]:
+            - img [ref=e76]
+          - generic "请列出你所有可用的工具名，特别确认你是否有 search_tools 和 execute_tool" [ref=e78] [cursor=pointer]:
+            - img [ref=e79]
+            - generic [ref=e81]: 请列出你所有可用的工具名，特别确认你是否有 search_tools 和 execute_tool
+            - button "Close 请列出你所有可用的工具名，特别确认你是否有 search_tools 和 execute_tool" [ref=e82]:
+              - img [ref=e83]
+          - generic "列出你所有工具名，确认 search_tools 和 execute_tool 是否可用" [ref=e86] [cursor=pointer]:
+            - img [ref=e87]
+            - generic [ref=e89]: 列出你所有工具名，确认 search_tools 和 execute_tool 是否可用
+            - button "Close 列出你所有工具名，确认 search_tools 和 execute_tool 是否可用" [ref=e90]:
+              - img [ref=e91]
+          - generic "列出你所有工具名，确认 search_tools 和 execute_tool 是否可用" [ref=e94] [cursor=pointer]:
+            - img [ref=e95]
+            - generic [ref=e97]: 列出你所有工具名，确认 search_tools 和 execute_tool 是否可用
+            - button "Close 列出你所有工具名，确认 search_tools 和 execute_tool 是否可用" [ref=e98]:
+              - img [ref=e99]
+          - generic "列出你所有工具名" [ref=e250] [cursor=pointer]:
+            - img [ref=e251]
+            - generic [ref=e253]: 列出你所有工具名
+            - button "Close 列出你所有工具名" [ref=e254]:
+              - img [ref=e255]
+          - button "New chat" [ref=e102] [cursor=pointer]:
+            - img [ref=e103]
+        - generic [ref=e260]:
+          - generic [ref=e267]:
+            - paragraph [ref=e268]: 列出你所有工具名
+            - button "Edit message" [ref=e269] [cursor=pointer]:
+              - img [ref=e270]
+          - generic [ref=e277]:
+            - button "thinking.. ▾" [ref=e278] [cursor=pointer]:
+              - generic [ref=e283]: thinking..
+              - generic [ref=e284]: ▾
+            - generic [ref=e285]: The user wants a list of all my tool names.
+        - generic [ref=e287]:
+          - generic [ref=e288]:
+            - generic "Context usage 0%" [ref=e289]:
+              - img [ref=e290]
+              - generic [ref=e293]: 0%
+            - button "New Chat" [ref=e294] [cursor=pointer]:
+              - img [ref=e295]
+              - text: New Chat
+          - textbox "Plan and build, @ for context, ⇧Tab for plan mode" [active] [ref=e296]
+          - generic [ref=e297]:
+            - generic [ref=e298]:
+              - button "Approval mode" [ref=e300] [cursor=pointer]:
+                - img [ref=e301]
+                - generic [ref=e303]: Manual
+                - img [ref=e304]
+              - button "Agent" [disabled] [ref=e306]:
+                - img [ref=e307]
+                - generic [ref=e310]: Agent
+                - img [ref=e311]
+            - generic [ref=e314]:
+              - button "Attach image" [ref=e315] [cursor=pointer]:
+                - img [ref=e316]
+              - button "Stop" [ref=e318] [cursor=pointer]:
+                - img [ref=e319]
+  - contentinfo "Status Bar" [ref=e165]:
+    - generic "Connected" [ref=e321]:
+      - generic [ref=e323]: Connected
+    - generic [ref=e170]:
+      - button "Memory" [ref=e171] [cursor=pointer]:
+        - img [ref=e172]
+      - button "Shell" [ref=e175] [cursor=pointer]:
+        - img [ref=e176]
+      - button "Bookmarks" [ref=e178] [cursor=pointer]:
+        - img [ref=e179]
+      - button "Timeline" [ref=e181] [cursor=pointer]:
+        - img [ref=e182]
+      - button "Export" [ref=e185] [cursor=pointer]:
+        - img [ref=e186]
+      - button "MCP" [ref=e189] [cursor=pointer]:
+        - img [ref=e190]
+      - button "Settings" [ref=e192] [cursor=pointer]:
+        - img [ref=e193]
+      - link "GitHub" [ref=e196] [cursor=pointer]:
+        - /url: https://github.com/CaptainGreenskin/kairo-code
+        - img [ref=e197]
+      - button "Toggle theme" [ref=e200] [cursor=pointer]:
+        - img [ref=e201]
+      - button "Shortcuts" [ref=e207] [cursor=pointer]:
+        - img [ref=e208]
+  - button "diag" [ref=e211] [cursor=pointer]

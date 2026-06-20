@@ -55,9 +55,17 @@ public class OpenAIResponseParser implements ProviderPipeline.ResponseParser<Str
             finishReason = choice.path("finish_reason").asText(null);
             JsonNode message = choice.path("message");
 
-            // Text content
+            // Text content — fall back to reasoning_content for reasoning models
+            // (e.g. GLM-5.2) that return the actual answer in reasoning_content
+            // and leave content empty.
             String textContent = message.path("content").asText(null);
-            if (textContent != null) {
+            if (textContent == null || textContent.isBlank()) {
+                String reasoning = message.path("reasoning_content").asText(null);
+                if (reasoning != null && !reasoning.isBlank()) {
+                    textContent = reasoning;
+                }
+            }
+            if (textContent != null && !textContent.isBlank()) {
                 contents.add(new Content.TextContent(textContent));
             }
 

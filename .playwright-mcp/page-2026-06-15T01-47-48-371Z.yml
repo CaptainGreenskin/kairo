@@ -1,0 +1,22 @@
+- generic [ref=e36]:
+  - heading "配置 API Key" [level=2] [ref=e37]
+  - paragraph [ref=e38]: 填写你的 Anthropic API Key
+  - generic [ref=e39]:
+    - generic [ref=e40]:
+      - generic [ref=e41]: API Key
+      - generic [ref=e42]:
+        - textbox "sk-..." [ref=e43]
+        - button [ref=e44] [cursor=pointer]:
+          - img [ref=e45]
+    - generic [ref=e48]:
+      - generic [ref=e49]: Model
+      - textbox "claude-sonnet-4-20250514" [ref=e50]
+    - generic [ref=e51]:
+      - generic [ref=e52]: Base URL
+      - textbox "https://api.anthropic.com" [ref=e53]
+    - button "测试连接" [disabled] [ref=e55]
+  - generic [ref=e56]:
+    - button "上一步" [ref=e57] [cursor=pointer]:
+      - img [ref=e58]
+      - text: 上一步
+    - button "下一步" [disabled] [ref=e60]

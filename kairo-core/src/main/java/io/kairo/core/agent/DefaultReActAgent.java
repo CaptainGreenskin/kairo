@@ -481,6 +481,7 @@ public class DefaultReActAgent implements Agent {
 
                             // Initialize stall detector and subscribe to stall signal
                             StallDetector stallDetector = new StallDetector(diagnostics);
+                            reactLoop.setStallDetector(stallDetector);
                             stallDetector.start();
                             Disposable stallSub =
                                     stallDetector
@@ -965,6 +966,14 @@ public class DefaultReActAgent implements Agent {
      */
     public long totalTokensUsed() {
         return totalTokensUsed.get();
+    }
+
+    public io.kairo.api.context.ContextManager contextManager() {
+        return contextManager;
+    }
+
+    public void replaceHistory(List<Msg> newHistory) {
+        reactLoop.replaceHistory(newHistory);
     }
 
     /**

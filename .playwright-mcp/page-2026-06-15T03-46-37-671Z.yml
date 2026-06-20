@@ -1,0 +1,256 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - img "kairo-code" [ref=e7]
+        - text: kairo-code
+      - generic [ref=e8]:
+        - button "default" [ref=e10] [cursor=pointer]:
+          - img [ref=e11]
+          - generic [ref=e13]: default
+          - img [ref=e14]
+        - 'generic "Session: 帮我设计并实现一个 Java LRU Cache，支持 get/put/delete、TTL…" [ref=e280]': 帮我设计并实现一个 Java LRU Cache，支持 get/put/delete、TTL…
+      - generic "Connected" [ref=e16]
+    - generic [ref=e18]:
+      - button "Session stats" [ref=e20] [cursor=pointer]:
+        - img [ref=e21]
+      - button "1" [ref=e317] [cursor=pointer]:
+        - img [ref=e318]
+        - generic [ref=e322]: "1"
+      - button "Export session" [ref=e24] [cursor=pointer]:
+        - img [ref=e25]
+      - generic [ref=e28]:
+        - button "Toggle primary sidebar" [ref=e29] [cursor=pointer]:
+          - img [ref=e30]
+        - button "Toggle bottom panel" [ref=e32] [cursor=pointer]:
+          - img [ref=e33]
+        - button "Toggle chat sidebar" [pressed] [ref=e35] [cursor=pointer]:
+          - img [ref=e36]
+  - generic [ref=e38]:
+    - navigation "Activity Bar" [ref=e39]:
+      - button "Explorer" [ref=e40] [cursor=pointer]:
+        - img [ref=e41]
+      - button "Search" [ref=e45] [cursor=pointer]:
+        - img [ref=e46]
+      - button "Source Control" [ref=e49] [cursor=pointer]:
+        - img [ref=e50]
+      - generic [ref=e54]:
+        - button "Self-Evolution Lessons" [ref=e55] [cursor=pointer]:
+          - img [ref=e56]
+        - button "Hook Configuration" [ref=e66] [cursor=pointer]:
+          - img [ref=e67]
+    - complementary "Chat sidebar" [ref=e69]:
+      - generic [ref=e70]:
+        - generic [ref=e71]:
+          - button "Show sessions panel" [ref=e72] [cursor=pointer]:
+            - img [ref=e73]
+          - generic "请列出你所有可用的工具名，特别确认你是否有 search_tools 和 execute_tool" [ref=e75] [cursor=pointer]:
+            - img [ref=e76]
+            - generic [ref=e78]: 请列出你所有可用的工具名，特别确认你是否有 search_tools 和 execute_tool
+            - button "Close 请列出你所有可用的工具名，特别确认你是否有 search_tools 和 execute_tool" [ref=e79]:
+              - img [ref=e80]
+          - generic "列出你所有工具名，确认 search_tools 和 execute_tool 是否可用" [ref=e83] [cursor=pointer]:
+            - img [ref=e84]
+            - generic [ref=e86]: 列出你所有工具名，确认 search_tools 和 execute_tool 是否可用
+            - button "Close 列出你所有工具名，确认 search_tools 和 execute_tool 是否可用" [ref=e87]:
+              - img [ref=e88]
+          - generic "列出你所有工具名，确认 search_tools 和 execute_tool 是否可用" [ref=e91] [cursor=pointer]:
+            - img [ref=e92]
+            - generic [ref=e94]: 列出你所有工具名，确认 search_tools 和 execute_tool 是否可用
+            - button "Close 列出你所有工具名，确认 search_tools 和 execute_tool 是否可用" [ref=e95]:
+              - img [ref=e96]
+          - generic "列出你所有工具名" [ref=e99] [cursor=pointer]:
+            - img [ref=e100]
+            - generic [ref=e102]: 列出你所有工具名
+            - button "Close 列出你所有工具名" [ref=e103]:
+              - img [ref=e104]
+          - generic "Hihi" [ref=e107] [cursor=pointer]:
+            - img [ref=e108]
+            - generic [ref=e110]: Hihi
+            - button "Close Hihi" [ref=e111]:
+              - img [ref=e112]
+          - generic "Hi" [ref=e115] [cursor=pointer]:
+            - img [ref=e116]
+            - generic [ref=e118]: Hi
+            - button "Close Hi" [ref=e119]:
+              - img [ref=e120]
+          - generic "Hi" [ref=e123] [cursor=pointer]:
+            - img [ref=e124]
+            - generic [ref=e126]: Hi
+            - button "Close Hi" [ref=e127]:
+              - img [ref=e128]
+          - generic "在当前工作目录创建一个 Java TodoApp REST API（纯 Java…" [ref=e131] [cursor=pointer]:
+            - img [ref=e132]
+            - generic [ref=e134]: 在当前工作目录创建一个 Java TodoApp REST API（纯 Java…
+            - button "Close 在当前工作目录创建一个 Java TodoApp REST API（纯 Java…" [ref=e135]:
+              - img [ref=e136]
+          - generic "用纯 Java HttpServer 创建一个 TodoApp REST…" [ref=e139] [cursor=pointer]:
+            - img [ref=e140]
+            - generic [ref=e142]: 用纯 Java HttpServer 创建一个 TodoApp REST…
+            - button "Close 用纯 Java HttpServer 创建一个 TodoApp REST…" [ref=e143]:
+              - img [ref=e144]
+          - generic "用纯 Java HttpServer 写一个 TodoApp REST…" [ref=e147] [cursor=pointer]:
+            - img [ref=e148]
+            - generic [ref=e150]: 用纯 Java HttpServer 写一个 TodoApp REST…
+            - button "Close 用纯 Java HttpServer 写一个 TodoApp REST…" [ref=e151]:
+              - img [ref=e152]
+          - generic "帮我设计并实现一个 Java LRU Cache，支持 get/put/delete、TTL…" [ref=e282] [cursor=pointer]:
+            - img [ref=e156]
+            - generic [ref=e158]: 帮我设计并实现一个 Java LRU Cache，支持 get/put/delete、TTL…
+            - button "Close 帮我设计并实现一个 Java LRU Cache，支持 get/put/delete、TTL…" [ref=e283]:
+              - img [ref=e160]
+          - button "New chat" [ref=e163] [cursor=pointer]:
+            - img [ref=e164]
+        - generic [ref=e286]:
+          - generic [ref=e289]:
+            - generic [ref=e327]:
+              - paragraph [ref=e328]: 帮我设计并实现一个 Java LRU Cache，支持 get/put/delete、TTL 过期、线程安全，写单元测试。先制定计划再实现。
+              - button "Edit message" [ref=e329] [cursor=pointer]:
+                - img [ref=e330]
+            - generic [ref=e337]:
+              - generic [ref=e338]:
+                - button "Thought briefly" [ref=e339] [cursor=pointer]:
+                  - img [ref=e340]
+                  - generic [ref=e350]: Thought briefly
+                  - img [ref=e351]
+                - generic [ref=e353]: The user wants me to design and implement a Java LRU Cache with get/put/delete, TTL expiration, thread safety, and unit tests. They want a plan first, then implementation.
+              - generic [ref=e354]:
+                - button "4 tool calls · enter_plan_mode, tree, batch_read, +1 more · 0.0s" [ref=e355]:
+                  - img [ref=e356]
+                  - generic [ref=e358]: 4 tool calls
+                  - generic [ref=e359]: ·
+                  - generic [ref=e360]: enter_plan_mode, tree, batch_read, +1 more
+                  - generic [ref=e361]: ·
+                  - generic [ref=e362]: 0.0s
+                - generic [ref=e368]:
+                  - generic [ref=e369]:
+                    - generic [ref=e370] [cursor=pointer]:
+                      - generic [ref=e371]:
+                        - generic "done" [ref=e372]
+                        - code [ref=e373]: enter_plan_mode
+                        - generic [ref=e374]: tool
+                        - generic [ref=e375]:
+                          - img [ref=e376]
+                          - text: Done
+                      - generic [ref=e378]:
+                        - generic [ref=e379]: 0.0s
+                        - img [ref=e381]
+                    - button "Show input" [ref=e383] [cursor=pointer]
+                    - generic [ref=e384]:
+                      - generic [ref=e385]:
+                        - text: "Entered Plan Mode (Plan: 027b3325) Available tools in Plan Mode (read-only only): - Read: Read file contents - Grep: Search for patterns"
+                        - generic [ref=e386]: ... and 4 more lines
+                      - button "▾ Show 4 more lines" [ref=e387] [cursor=pointer]
+                  - generic [ref=e388]:
+                    - generic [ref=e389] [cursor=pointer]:
+                      - generic [ref=e390]:
+                        - generic "done" [ref=e391]
+                        - code [ref=e392]: tree
+                        - generic [ref=e393]: tool
+                        - generic [ref=e394]:
+                          - img [ref=e395]
+                          - text: Done
+                      - generic [ref=e397]:
+                        - generic [ref=e398]: 0.0s
+                        - img [ref=e400]
+                    - button "Show input" [ref=e402] [cursor=pointer]
+                    - generic [ref=e403]:
+                      - generic [ref=e404]:
+                        - text: kairo-workspace/ ├── .kairo/ │ └── todos.json ├── .kairo-code/ │ └── sessions/
+                        - generic [ref=e405]: ... and 228 more lines
+                      - button "▾ Show 228 more lines" [ref=e406] [cursor=pointer]
+                  - generic [ref=e407]:
+                    - generic [ref=e408] [cursor=pointer]:
+                      - generic [ref=e409]:
+                        - generic "done" [ref=e410]
+                        - code [ref=e411]: batch_read
+                        - generic [ref=e412]: tool
+                        - generic [ref=e413]:
+                          - img [ref=e414]
+                          - text: Done
+                      - generic [ref=e416]:
+                        - generic [ref=e417]: 0.0s
+                        - img [ref=e419]
+                    - button "Show input" [ref=e421] [cursor=pointer]
+                    - generic [ref=e422]:
+                      - generic [ref=e423]:
+                        - text: === /Users/liulihan/kairo-workspace/pom.xml === <?xml version="1.0" encoding="UTF-8"?> <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+                        - generic [ref=e424]: ... and 62 more lines
+                      - button "▾ Show 62 more lines" [ref=e425] [cursor=pointer]
+                  - generic [ref=e426]:
+                    - generic [ref=e427] [cursor=pointer]:
+                      - generic [ref=e428]:
+                        - generic "done" [ref=e429]
+                        - code [ref=e430]: glob
+                        - generic [ref=e431]: tool
+                        - generic [ref=e432]:
+                          - img [ref=e433]
+                          - text: Done
+                      - generic [ref=e435]:
+                        - generic [ref=e436]: 0.0s
+                        - img [ref=e438]
+                    - button "Show input" [ref=e440] [cursor=pointer]
+                    - generic [ref=e442]: /Users/liulihan/kairo-workspace/src/test/java/StringUtilsTest.java /Users/liulihan/kairo-workspace/src/main/java/StringUtils.java
+          - button "thinking.." [ref=e447]:
+            - generic [ref=e452]: thinking..
+        - button "Scroll to bottom" [ref=e454] [cursor=pointer]:
+          - img [ref=e455]
+          - generic [ref=e457]: Jump to latest
+        - generic [ref=e247]:
+          - generic [ref=e458]:
+            - img [ref=e459]
+            - generic [ref=e462]: Plan mode active — agent is researching read-only
+            - generic [ref=e463]: ⇧Tab
+          - generic [ref=e248]:
+            - generic [ref=e249]:
+              - generic "Context usage 0%" [ref=e250]:
+                - img [ref=e251]
+                - generic [ref=e254]: 0%
+              - button "New Chat" [ref=e255] [cursor=pointer]:
+                - img [ref=e256]
+                - text: New Chat
+            - textbox "Plan and build, @ for context, ⇧Tab for plan mode" [active] [ref=e257]
+            - generic [ref=e258]:
+              - generic [ref=e259]:
+                - button "Approval mode" [ref=e261] [cursor=pointer]:
+                  - img [ref=e262]
+                  - generic [ref=e264]: Manual
+                  - img [ref=e265]
+                - button "Agent" [disabled] [ref=e267]:
+                  - img [ref=e268]
+                  - generic [ref=e271]: Agent
+                  - img [ref=e310]
+                - button "plan mode" [ref=e464] [cursor=pointer]:
+                  - img [ref=e465]
+                  - text: plan mode
+              - generic [ref=e272]:
+                - button "Attach image" [ref=e273] [cursor=pointer]:
+                  - img [ref=e274]
+                - button "Stop" [ref=e313] [cursor=pointer]:
+                  - img [ref=e314]
+  - contentinfo "Status Bar" [ref=e199]:
+    - generic "Connected" [ref=e201]:
+      - generic [ref=e203]: Connected
+    - generic [ref=e204]:
+      - button "Memory" [ref=e205] [cursor=pointer]:
+        - img [ref=e206]
+      - button "Shell" [ref=e209] [cursor=pointer]:
+        - img [ref=e210]
+      - button "Bookmarks" [ref=e212] [cursor=pointer]:
+        - img [ref=e213]
+      - button "Timeline" [ref=e215] [cursor=pointer]:
+        - img [ref=e216]
+      - button "Export" [ref=e219] [cursor=pointer]:
+        - img [ref=e220]
+      - button "MCP" [ref=e223] [cursor=pointer]:
+        - img [ref=e224]
+      - button "Settings" [ref=e226] [cursor=pointer]:
+        - img [ref=e227]
+      - link "GitHub" [ref=e230] [cursor=pointer]:
+        - /url: https://github.com/CaptainGreenskin/kairo-code
+        - img [ref=e231]
+      - button "Toggle theme" [ref=e234] [cursor=pointer]:
+        - img [ref=e235]
+      - button "Shortcuts" [ref=e241] [cursor=pointer]:
+        - img [ref=e242]
+  - button "diag" [ref=e245] [cursor=pointer]

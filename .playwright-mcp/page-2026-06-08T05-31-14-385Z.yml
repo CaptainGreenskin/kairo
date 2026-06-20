@@ -1,0 +1,8 @@
+- generic [ref=e2]:
+  - generic [ref=e7]: kairo-code — ~/projects/my-app
+  - generic [ref=e8]:
+    - text: kairo-code> :plan on ⚠ Plan Mode ON 鈥� write tools (edit, write, bash) are blocked. The agent can only read and analyze. Toggle off with :plan off.
+    - generic [ref=e9]: kairo-code [plan]>
+    - text: "Add user authentication with JWT to this Spring Boot app [model] in=5,230 out=312 cache_read=4,512 context: [鈻堚枅鈻堚枅鈻戔枒鈻戔枒鈻戔枒鈻戔枒鈻戔枒鈻戔枒鈻戔枒鈻戔枒] 22% Implementation Plan 1. Add Dependencies spring-boot-starter-security + jjwt-api/impl/jackson 2. Create JwtTokenProvider Generate / validate / parse JWT tokens File: src/main/java/com/example/security/JwtTokenProvider.java 3. Create JwtAuthenticationFilter Extract token from Authorization header, validate, set context File: src/main/java/com/example/security/JwtAuthFilter.java 4. Configure SecurityFilterChain Disable CSRF, add JWT filter, permit /auth/** endpoints File: src/main/java/com/example/config/SecurityConfig.java 5. Create AuthController POST /auth/login 鈫� returns JWT, POST /auth/register File: src/main/java/com/example/controller/AuthController.java Estimated: 5 files, ~280 lines of code Run :plan off and re-send to execute this plan."
+    - generic [ref=e10]: kairo-code [plan]>
+    - text: _
