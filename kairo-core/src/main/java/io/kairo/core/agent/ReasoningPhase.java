@@ -619,6 +619,7 @@ public class ReasoningPhase {
         // tokens instead of the char-count estimate. Order: usage frame arrives BEFORE [DONE], so
         // the AtomicReference is always populated before executeStreamingTools reads it.
         var textAccumulator = new StringBuilder();
+        var thinkingAccumulator = new StringBuilder();
         java.util.concurrent.atomic.AtomicReference<int[]> usageRef =
                 new java.util.concurrent.atomic.AtomicReference<>();
         java.util.function.Consumer<String> deltaConsumer = textDeltaConsumerSupplier.get();
@@ -650,13 +651,23 @@ public class ReasoningPhase {
                                         } else if (chunk.type()
                                                         == io.kairo.api.model.StreamChunkType
                                                                 .THINKING
-                                                && chunk.content() != null
-                                                && thinkingConsumer != null) {
-                                            try {
-                                                thinkingConsumer.accept(chunk.content());
-                                            } catch (Exception ignored) {
-                                                // Never let a UI sink failure abort the reasoning
-                                                // stream.
+                                                && chunk.content() != null) {
+                                            thinkingAccumulator.append(chunk.content());
+                                            // Reasoning-only models (GLM-5.2 coding) put all
+                                            // content in reasoning_content with empty content.
+                                            // Stream thinking deltas as text so the UI shows
+                                            // output in real time; textAccumulator is populated
+                                            // in doOnComplete only if no TEXT chunks arrived.
+                                            if (deltaConsumer != null) {
+                                                deltaConsumer.accept(chunk.content());
+                                            }
+                                            if (thinkingConsumer != null) {
+                                                try {
+                                                    thinkingConsumer.accept(chunk.content());
+                                                } catch (Exception ignored) {
+                                                    // Never let a UI sink failure abort the
+                                                    // reasoning stream.
+                                                }
                                             }
                                         } else if (chunk.type()
                                                         == io.kairo.api.model.StreamChunkType.USAGE
@@ -685,7 +696,12 @@ public class ReasoningPhase {
             return fallbackModelCall(messages, modelConfig);
         }
         return executeStreamingTools(
-                messages, modelConfig, detectedTools, textAccumulator, usageRef);
+                messages,
+                modelConfig,
+                detectedTools,
+                textAccumulator,
+                thinkingAccumulator,
+                usageRef);
     }
 
     private Mono<ModelResponse> fallbackModelCall(List<Msg> messages, ModelConfig modelConfig) {
@@ -698,6 +714,7 @@ public class ReasoningPhase {
             ModelConfig modelConfig,
             Flux<DetectedToolCall> detectedTools,
             StringBuilder textAccumulator,
+            StringBuilder thinkingAccumulator,
             java.util.concurrent.atomic.AtomicReference<int[]> usageRef) {
         var streamingExecutor = new StreamingToolExecutor(ctx.toolExecutor());
         // Track tool call ID → tool name AND original args for building the synthetic response.
@@ -734,6 +751,11 @@ public class ReasoningPhase {
                             // provider gave us real usage we override the per-builder estimate
                             // below.
                             String accumulated = textAccumulator.toString();
+                            // Reasoning-only models (GLM-5.2 coding) put all content
+                            // in reasoning_content. Promote thinking to text when empty.
+                            if (accumulated.isEmpty() && !thinkingAccumulator.isEmpty()) {
+                                accumulated = thinkingAccumulator.toString();
+                            }
                             // Source of truth = what the detector saw, NOT what executeEager
                             // returned. MiniMax / Zhipu can race the executor (finish_reason in
                             // same SSE chunk as tool_calls) — the detector emits the tool but

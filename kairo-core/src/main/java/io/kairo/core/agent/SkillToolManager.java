@@ -153,7 +153,9 @@ class SkillToolManager {
 
     /** Clear skill tool constraints on the executor (called on agent completion). */
     void clearSkillRestrictions() {
-        toolExecutor.clearAllowedTools();
+        if (toolExecutor != null) {
+            toolExecutor.clearAllowedTools();
+        }
     }
 
     /**
