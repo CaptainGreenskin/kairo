@@ -280,6 +280,11 @@ public class McpClientRegistry implements Closeable {
         return Collections.unmodifiableSet(clients.keySet());
     }
 
+    /** Returns the async client for a given server name, or null if not registered. */
+    public McpAsyncClient getAsyncClient(String serverName) {
+        return clients.get(serverName);
+    }
+
     /** Returns all tool definitions across all registered servers. */
     public Flux<ToolDefinition> getAllToolDefinitions() {
         return Flux.fromIterable(toolGroups.values())

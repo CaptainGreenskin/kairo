@@ -23,6 +23,7 @@ import io.kairo.api.tool.ToolCategory;
 import io.kairo.api.tool.ToolContext;
 import io.kairo.api.tool.ToolParam;
 import io.kairo.api.tool.ToolResult;
+import io.kairo.api.tool.ToolSideEffect;
 import io.kairo.skill.SkillLoader;
 import io.kairo.skill.SkillMarkdownParser;
 import java.util.HashMap;
@@ -41,7 +42,8 @@ import reactor.core.publisher.Mono;
         description =
                 "Load and activate a skill by name. Skills provide specialized instructions for specific tasks. "
                         + "Use skill_list first to see available skills.",
-        category = ToolCategory.SKILL)
+        category = ToolCategory.SKILL,
+        sideEffect = ToolSideEffect.WRITE)
 public class SkillLoadTool implements SyncTool {
 
     @ToolParam(description = "Name of the skill to load", required = true)
