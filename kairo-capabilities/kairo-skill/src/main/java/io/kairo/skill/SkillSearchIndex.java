@@ -179,14 +179,65 @@ public class SkillSearchIndex {
 
     private static String[] tokenize(String text) {
         String lower = text.toLowerCase(Locale.ROOT);
-        String[] tokens = TOKEN_SPLITTER.split(lower);
         List<String> filtered = new ArrayList<>();
-        for (String t : tokens) {
-            if (t.length() >= 2 && !STOP_WORDS.contains(t)) {
-                filtered.add(stem(t));
+
+        // CJK bigram segmentation for Chinese/Japanese/Korean characters
+        StringBuilder cjkBuffer = new StringBuilder();
+        StringBuilder latinBuffer = new StringBuilder();
+        for (int i = 0; i < lower.length(); i++) {
+            char c = lower.charAt(i);
+            if (isCjk(c)) {
+                flushLatin(latinBuffer, filtered);
+                cjkBuffer.append(c);
+            } else {
+                flushCjkBigrams(cjkBuffer, filtered);
+                if (Character.isLetterOrDigit(c)) {
+                    latinBuffer.append(c);
+                } else {
+                    flushLatin(latinBuffer, filtered);
+                }
             }
         }
+        flushCjkBigrams(cjkBuffer, filtered);
+        flushLatin(latinBuffer, filtered);
+
         return filtered.toArray(String[]::new);
+    }
+
+    private static boolean isCjk(char c) {
+        Character.UnicodeBlock block = Character.UnicodeBlock.of(c);
+        return block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
+                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
+                || block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
+                || block == Character.UnicodeBlock.HIRAGANA
+                || block == Character.UnicodeBlock.KATAKANA
+                || block == Character.UnicodeBlock.HANGUL_SYLLABLES;
+    }
+
+    private static void flushCjkBigrams(StringBuilder buf, List<String> out) {
+        if (buf.length() == 0) return;
+        String s = buf.toString();
+        // Unigrams for single chars
+        for (int i = 0; i < s.length(); i++) {
+            out.add(String.valueOf(s.charAt(i)));
+        }
+        // Bigrams for better matching
+        for (int i = 0; i < s.length() - 1; i++) {
+            out.add(s.substring(i, i + 2));
+        }
+        buf.setLength(0);
+    }
+
+    private static void flushLatin(StringBuilder buf, List<String> out) {
+        if (buf.length() < 2) {
+            buf.setLength(0);
+            return;
+        }
+        String word = buf.toString();
+        buf.setLength(0);
+        if (!STOP_WORDS.contains(word)) {
+            out.add(stem(word));
+        }
     }
 
     private static String stem(String word) {
