@@ -697,13 +697,18 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                                     + "' auto-passed with warning: "
                                                     + verdict.feedback());
                                 }
+                                Agent stepAgent = bindings.get(step.assignedRole().roleId());
+                                long stepTokens =
+                                        stepAgent != null ? stepAgent.totalTokensUsed() : 0;
+                                Map<String, Object> completedAttrs = new LinkedHashMap<>();
+                                completedAttrs.put("stepId", step.stepId());
+                                completedAttrs.put("attempts", result.attempt());
+                                completedAttrs.put("tokensUsed", stepTokens);
                                 publish(
                                         team,
                                         request,
                                         TeamEventType.STEP_COMPLETED,
-                                        Map.of(
-                                                "stepId", step.stepId(),
-                                                "attempts", result.attempt()));
+                                        completedAttrs);
                                 return Mono.empty();
                             }
 
