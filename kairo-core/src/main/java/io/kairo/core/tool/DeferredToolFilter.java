@@ -24,31 +24,47 @@ import java.util.Set;
 @Experimental("Deferred tool loading; v0.13")
 public final class DeferredToolFilter {
 
+    // Core tools: full schema sent to model every API call (~22 tools).
+    // Selection criteria: used in >50% of conversations.
+    // Everything else is deferred (name-only, discovered via search_tools).
+    //
+    // Removed from core (can be discovered on demand):
+    //   batch_read, batch_write — read/write cover the same; saves ~400 tokens
+    //   diff — only code-review scenarios
+    //   search_replace — edit covers the same
+    //   todo_read — model rarely reads todos explicitly
+    //
+    // Added to core (Claude Code has them, high frequency):
+    //   web_fetch, web_search — research tasks
+    //   ask_user — interactive clarification
     private static final Set<String> CORE_TOOL_NAMES =
             Set.of(
+                    // File operations
                     "read",
                     "write",
                     "edit",
                     "glob",
                     "grep",
-                    "batch_read",
-                    "batch_write",
-                    "diff",
                     "tree",
                     "bash",
-                    "search_replace",
+                    // Task & planning
                     "todo_write",
-                    "todo_read",
                     "task_create",
                     "task_list",
                     "task_update",
                     "task_get",
                     "enter_plan_mode",
                     "exit_plan_mode",
-                    "search_tools",
-                    "execute_tool",
+                    // Memory
                     "memory_read",
-                    "memory_write");
+                    "memory_write",
+                    // Web & interaction
+                    "web_fetch",
+                    "web_search",
+                    "ask_user",
+                    // Meta (deferred tool system)
+                    "search_tools",
+                    "execute_tool");
 
     private DeferredToolFilter() {}
 
