@@ -120,7 +120,7 @@ public class GitTool implements SyncTool {
 
         try {
             ProcessBuilder pb =
-                    new ProcessBuilder("/bin/sh", "-c", fullCommand)
+                    new ProcessBuilder(io.kairo.core.util.ShellCommand.buildCommand(fullCommand))
                             .directory(workDir.toFile())
                             .redirectErrorStream(true);
 

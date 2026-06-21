@@ -19,7 +19,6 @@ import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -68,11 +67,7 @@ public class MemoryDirectoryManager {
             tmpFile = memoryDir.resolve(file.name() + TMP_SUFFIX);
 
             Files.writeString(tmpFile, content);
-            Files.move(
-                    tmpFile,
-                    targetFile,
-                    StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.ATOMIC_MOVE);
+            io.kairo.core.util.SafeFileOps.atomicMove(tmpFile, targetFile);
 
             log.debug("Wrote memory file: {}", file.name());
             regenerateIndexInternal();
@@ -211,11 +206,7 @@ public class MemoryDirectoryManager {
             Path indexFile = memoryDir.resolve(INDEX_FILE);
             Path tmpFile = memoryDir.resolve(INDEX_FILE + ".tmp");
             Files.writeString(tmpFile, sb.toString());
-            Files.move(
-                    tmpFile,
-                    indexFile,
-                    StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.ATOMIC_MOVE);
+            io.kairo.core.util.SafeFileOps.atomicMove(tmpFile, indexFile);
         } catch (IOException e) {
             log.warn("Failed to regenerate {}: {}", INDEX_FILE, e.getMessage());
         }

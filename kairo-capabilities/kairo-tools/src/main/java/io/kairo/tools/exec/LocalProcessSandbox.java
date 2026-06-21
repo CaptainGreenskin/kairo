@@ -94,7 +94,9 @@ public final class LocalProcessSandbox implements ExecutionSandbox {
                     "workspaceRoot is not a directory: " + request.workspaceRoot());
         }
         try {
-            ProcessBuilder pb = new ProcessBuilder("/bin/sh", "-c", request.command());
+            ProcessBuilder pb =
+                    new ProcessBuilder(
+                            io.kairo.core.util.ShellCommand.buildCommand(request.command()));
             pb.redirectErrorStream(true);
             pb.directory(request.workspaceRoot().toFile());
             if (!request.env().isEmpty()) {
