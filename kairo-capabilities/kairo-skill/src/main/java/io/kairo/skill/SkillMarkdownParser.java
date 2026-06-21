@@ -85,6 +85,70 @@ public class SkillMarkdownParser {
     private final ObjectMapper yamlMapper = new ObjectMapper(new YAMLFactory());
 
     /**
+     * Characters that require quoting in YAML values (mirrors Claude Code's YAML_SPECIAL_CHARS).
+     */
+    private static final java.util.regex.Pattern YAML_SPECIAL =
+            java.util.regex.Pattern.compile("[{}\\[\\]*&#!|>%@`]|: ");
+
+    /**
+     * Lenient YAML front-matter parser following Claude Code's two-pass strategy:
+     *
+     * <ol>
+     *   <li>Try strict YAML parse.
+     *   <li>On failure, auto-quote values containing YAML special characters, then retry.
+     * </ol>
+     *
+     * <p>This handles bare {@code :} in description fields, glob patterns with {@code {}[]}, and
+     * other characters that trip SnakeYAML without resorting to lossy line-by-line extraction.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseYamlLenient(String yamlBlock) {
+        try {
+            return yamlMapper.readValue(yamlBlock, Map.class);
+        } catch (IOException firstError) {
+            // Second pass: auto-quote problematic values and retry
+            String quoted = quoteProblematicValues(yamlBlock);
+            try {
+                return yamlMapper.readValue(quoted, Map.class);
+            } catch (IOException retryError) {
+                throw new IllegalArgumentException(
+                        "Invalid YAML front-matter: " + retryError.getMessage(), retryError);
+            }
+        }
+    }
+
+    /**
+     * Pre-processes YAML text to wrap values containing special characters in double quotes. Only
+     * handles simple {@code key: value} lines (not indented list items or block scalars).
+     */
+    private static String quoteProblematicValues(String yamlText) {
+        StringBuilder result = new StringBuilder();
+        for (String line : yamlText.split("\n")) {
+            java.util.regex.Matcher m =
+                    java.util.regex.Pattern.compile("^([a-zA-Z_-]+):\\s+(.+)$").matcher(line);
+            if (m.matches()) {
+                String key = m.group(1);
+                String value = m.group(2);
+                // Skip already-quoted values
+                if ((value.startsWith("\"") && value.endsWith("\""))
+                        || (value.startsWith("'") && value.endsWith("'"))) {
+                    result.append(line);
+                } else if (YAML_SPECIAL.matcher(value).find()) {
+                    // Escape existing double quotes and backslashes, then wrap
+                    String escaped = value.replace("\\", "\\\\").replace("\"", "\\\"");
+                    result.append(key).append(": \"").append(escaped).append("\"");
+                } else {
+                    result.append(line);
+                }
+            } else {
+                result.append(line);
+            }
+            result.append('\n');
+        }
+        return result.toString();
+    }
+
+    /**
      * Parse a Markdown string with YAML front-matter into a {@link SkillDefinition}.
      *
      * @param markdown the raw Markdown content
@@ -112,38 +176,33 @@ public class SkillMarkdownParser {
                 trimmed.substring(FRONT_MATTER_DELIMITER.length(), secondDelimiter).strip();
         String body = trimmed.substring(secondDelimiter + FRONT_MATTER_DELIMITER.length()).strip();
 
-        try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> frontMatter = yamlMapper.readValue(yamlBlock, Map.class);
+        Map<String, Object> frontMatter = parseYamlLenient(yamlBlock);
 
-            String name = requireString(frontMatter, "name");
-            String version = getStringOrDefault(frontMatter, "version", "1.0.0");
-            String category = getStringOrDefault(frontMatter, "category", "GENERAL");
-            List<String> triggers = extractTriggers(frontMatter);
-            List<String> pathPatterns = extractStringList(frontMatter, "path_patterns");
-            List<String> requiredTools = extractStringList(frontMatter, "required_tools");
-            String platform = getStringOrDefault(frontMatter, "platform", null);
-            int matchScore = getIntOrDefault(frontMatter, "match_score", 0);
-            List<String> allowedTools = extractStringList(frontMatter, "allowed_tools");
+        String name = requireString(frontMatter, "name");
+        String version = getStringOrDefault(frontMatter, "version", "1.0.0");
+        String category = getStringOrDefault(frontMatter, "category", "GENERAL");
+        List<String> triggers = extractTriggers(frontMatter);
+        List<String> pathPatterns = extractStringList(frontMatter, "path_patterns");
+        List<String> requiredTools = extractStringList(frontMatter, "required_tools");
+        String platform = getStringOrDefault(frontMatter, "platform", null);
+        int matchScore = getIntOrDefault(frontMatter, "match_score", 0);
+        List<String> allowedTools = extractStringList(frontMatter, "allowed_tools");
 
-            // Extract description from the first paragraph of the body (after any heading)
-            String description = extractDescription(body);
+        // Extract description from the first paragraph of the body (after any heading)
+        String description = extractDescription(body);
 
-            return new SkillDefinition(
-                    name,
-                    version,
-                    description,
-                    body,
-                    triggers,
-                    parseCategory(category),
-                    pathPatterns.isEmpty() ? null : pathPatterns,
-                    requiredTools.isEmpty() ? null : requiredTools,
-                    platform,
-                    matchScore,
-                    allowedTools.isEmpty() ? null : allowedTools);
-        } catch (IOException e) {
-            throw new IllegalArgumentException("Invalid YAML front-matter: " + e.getMessage(), e);
-        }
+        return new SkillDefinition(
+                name,
+                version,
+                description,
+                body,
+                triggers,
+                parseCategory(category),
+                pathPatterns.isEmpty() ? null : pathPatterns,
+                requiredTools.isEmpty() ? null : requiredTools,
+                platform,
+                matchScore,
+                allowedTools.isEmpty() ? null : allowedTools);
     }
 
     /**
@@ -180,17 +239,12 @@ public class SkillMarkdownParser {
         String yamlBlock =
                 trimmed.substring(FRONT_MATTER_DELIMITER.length(), secondDelimiter).strip();
 
-        try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> frontMatter = yamlMapper.readValue(yamlBlock, Map.class);
-            SkillVisibility visibility = parseVisibility(frontMatter);
-            boolean disableModelInvocation =
-                    getBooleanOrDefault(frontMatter, "disable_model_invocation", false);
-            SkillDefinition definition = parse(markdown);
-            return new SkillMetadata(definition, visibility, disableModelInvocation);
-        } catch (IOException e) {
-            throw new IllegalArgumentException("Invalid YAML front-matter: " + e.getMessage(), e);
-        }
+        Map<String, Object> frontMatter = parseYamlLenient(yamlBlock);
+        SkillVisibility visibility = parseVisibility(frontMatter);
+        boolean disableModelInvocation =
+                getBooleanOrDefault(frontMatter, "disable_model_invocation", false);
+        SkillDefinition definition = parse(markdown);
+        return new SkillMetadata(definition, visibility, disableModelInvocation);
     }
 
     /**
