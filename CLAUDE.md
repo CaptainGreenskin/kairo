@@ -27,7 +27,7 @@ kairo-capabilities/       ← cohort: 能力模块（业务功能）
   ├─ kairo-multi-agent/   ← A2A 协议 + 团队协调
   ├─ kairo-skill/         ← Markdown 技能系统
   ├─ kairo-evolution/     ← 自进化管道
-  ├─ kairo-expert-team/   ← plan/generate/evaluate 协调
+  ├─ kairo-expert-team/   ← plan/generate/evaluate 协调 (planned, not yet created)
   ├─ kairo-observability/ ← OpenTelemetry
   ├─ kairo-security-pii/  ← PII 脱敏 + 审计
   ├─ kairo-plugin/        ← Plugin SPI 实现（Claude Code 格式兼容）
