@@ -137,6 +137,14 @@ public class EvolutionPipelineOrchestrator {
                                 return Mono.empty();
                             }
 
+                            if (current == EvolutionState.REVIEWING) {
+                                log.debug(
+                                        "Evolution: skipping concurrent review for agent '{}'"
+                                                + " (already REVIEWING)",
+                                        agentName);
+                                return Mono.empty();
+                            }
+
                             stateStore.setState(
                                     agentName,
                                     stateMachine.transit(current, EvolutionSignal.START_REVIEW));
