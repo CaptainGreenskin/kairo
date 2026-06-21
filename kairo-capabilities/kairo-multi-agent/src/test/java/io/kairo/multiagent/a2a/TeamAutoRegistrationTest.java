@@ -94,7 +94,7 @@ class TeamAutoRegistrationTest {
         @Test
         @DisplayName("addAgent registers AgentCard in resolver automatically")
         void addAgentRegistersCard() {
-            teamManager.create("team-alpha");
+            teamManager.create(io.kairo.api.team.TeamCreateRequest.ofName("team-alpha"));
             Agent agent = stubAgent("agent-1", "Agent One", Mono.empty());
 
             teamManager.addAgent("team-alpha", agent);
@@ -111,7 +111,7 @@ class TeamAutoRegistrationTest {
         @Test
         @DisplayName("removeAgent unregisters AgentCard from resolver automatically")
         void removeAgentUnregistersCard() {
-            teamManager.create("team-beta");
+            teamManager.create(io.kairo.api.team.TeamCreateRequest.ofName("team-beta"));
             Agent agent = stubAgent("agent-2", Mono.empty());
             teamManager.addAgent("team-beta", agent);
             assertThat(resolver.resolveScoped("team-beta", "agent-2")).isPresent();
@@ -124,7 +124,7 @@ class TeamAutoRegistrationTest {
         @Test
         @DisplayName("adding multiple agents registers all cards")
         void addMultipleAgentsRegistersAll() {
-            teamManager.create("team-gamma");
+            teamManager.create(io.kairo.api.team.TeamCreateRequest.ofName("team-gamma"));
             Agent a1 = stubAgent("a1", Mono.empty());
             Agent a2 = stubAgent("a2", Mono.empty());
             Agent a3 = stubAgent("a3", Mono.empty());
@@ -142,7 +142,7 @@ class TeamAutoRegistrationTest {
         @Test
         @DisplayName("removing one agent does not affect other agents' cards")
         void removeOneAgentKeepsOthers() {
-            teamManager.create("team-delta");
+            teamManager.create(io.kairo.api.team.TeamCreateRequest.ofName("team-delta"));
             Agent a1 = stubAgent("d1", Mono.empty());
             Agent a2 = stubAgent("d2", Mono.empty());
             teamManager.addAgent("team-delta", a1);
@@ -162,7 +162,7 @@ class TeamAutoRegistrationTest {
         @Test
         @DisplayName("auto-registered agent is discoverable via resolver.discover(tags)")
         void discoverByTagsAfterAutoRegistration() {
-            teamManager.create("team-discover");
+            teamManager.create(io.kairo.api.team.TeamCreateRequest.ofName("team-discover"));
             // Auto-registration creates card with empty tags by default,
             // so we register a card with tags explicitly and then add agent
             AgentCard taggedCard =
@@ -191,7 +191,7 @@ class TeamAutoRegistrationTest {
         @Test
         @DisplayName("auto-registered agent is discoverable via empty tags (list all)")
         void discoverAllAfterAutoRegistration() {
-            teamManager.create("team-all");
+            teamManager.create(io.kairo.api.team.TeamCreateRequest.ofName("team-all"));
             Agent a1 = stubAgent("all-1", Mono.empty());
             Agent a2 = stubAgent("all-2", Mono.empty());
             teamManager.addAgent("team-all", a1);
@@ -207,7 +207,7 @@ class TeamAutoRegistrationTest {
         @Test
         @DisplayName("unregistered agent is no longer discoverable")
         void notDiscoverableAfterRemoval() {
-            teamManager.create("team-gone");
+            teamManager.create(io.kairo.api.team.TeamCreateRequest.ofName("team-gone"));
             Agent agent = stubAgent("gone-1", Mono.empty());
             teamManager.addAgent("team-gone", agent);
             assertThat(resolver.discoverScoped("team-gone", Set.of())).hasSize(1);
@@ -225,7 +225,7 @@ class TeamAutoRegistrationTest {
         @Test
         @DisplayName("auto-registered agent can be invoked via A2aClient.send()")
         void sendToAutoRegisteredAgent() {
-            teamManager.create("team-invoke");
+            teamManager.create(io.kairo.api.team.TeamCreateRequest.ofName("team-invoke"));
             Msg expected = Msg.of(MsgRole.ASSISTANT, "hello from agent");
             Agent agent = stubAgent("invoke-1", Mono.just(expected));
             teamManager.addAgent("team-invoke", agent);
@@ -241,7 +241,7 @@ class TeamAutoRegistrationTest {
         @Test
         @DisplayName("auto-registered agent can be streamed via A2aClient.stream()")
         void streamToAutoRegisteredAgent() {
-            teamManager.create("team-stream");
+            teamManager.create(io.kairo.api.team.TeamCreateRequest.ofName("team-stream"));
             Msg expected = Msg.of(MsgRole.ASSISTANT, "streamed response");
             Agent agent = stubAgent("stream-1", Mono.just(expected));
             teamManager.addAgent("team-stream", agent);
@@ -257,7 +257,7 @@ class TeamAutoRegistrationTest {
         @Test
         @DisplayName("removed agent's card causes A2aClient.send() to fail")
         void sendToRemovedAgentFails() {
-            teamManager.create("team-fail");
+            teamManager.create(io.kairo.api.team.TeamCreateRequest.ofName("team-fail"));
             Agent agent = stubAgent("fail-1", Mono.just(Msg.of(MsgRole.ASSISTANT, "ok")));
             teamManager.addAgent("team-fail", agent);
             a2aClient.registerScopedAgent("team-fail", agent);

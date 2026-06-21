@@ -63,7 +63,7 @@ public class TeamCreateTool implements SyncTool {
             return ToolResult.error(null, "Parameter 'name' is required");
         }
 
-        Team team = teamManager.create(name);
+        Team team = teamManager.create(io.kairo.api.team.TeamCreateRequest.ofName(name));
         return ToolResult.success(
                 null, String.format("Created team '%s'", name), Map.of("teamName", name));
     }

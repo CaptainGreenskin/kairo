@@ -84,7 +84,7 @@ class TeamToolsTest {
         ToolResult result = tool.execute(Map.of("name", "alpha"), CTX).block();
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("alpha");
-        verify(teamManager).create("alpha");
+        verify(teamManager).create(io.kairo.api.team.TeamCreateRequest.ofName("alpha"));
     }
 
     @Test
