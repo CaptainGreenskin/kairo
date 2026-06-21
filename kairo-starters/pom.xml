@@ -29,7 +29,7 @@
         <module>kairo-spring-boot-starter-cron</module>
         <module>kairo-spring-boot-starter-multi-agent</module>
         <module>kairo-spring-boot-starter-evolution</module>
-        <module>kairo-spring-boot-starter-expert-team</module>
+        <!-- kairo-spring-boot-starter-expert-team: disabled until kairo-expert-team module exists -->
         <module>kairo-spring-boot-starter-event-stream</module>
         <module>kairo-spring-boot-starter-channel-dingtalk</module>
         <module>kairo-spring-boot-starter-gateway</module>
