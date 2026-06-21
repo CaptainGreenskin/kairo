@@ -22,6 +22,7 @@ import io.kairo.api.guardrail.GuardrailPhase;
 import io.kairo.api.guardrail.GuardrailPolicy;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import reactor.core.publisher.Mono;
@@ -36,6 +37,9 @@ import reactor.core.publisher.Mono;
 public class ToolLoopDetectionPolicy implements GuardrailPolicy {
 
     private static final String NAME = "ToolLoopDetectionPolicy";
+
+    private static final Set<String> BATCH_SAFE_TOOLS =
+            Set.of("memory_write", "memory_read", "todo_write", "task_create", "task_update");
 
     private final int warnThreshold;
     private final int blockThreshold;
@@ -67,6 +71,10 @@ public class ToolLoopDetectionPolicy implements GuardrailPolicy {
 
     private Mono<GuardrailDecision> evaluatePreTool(GuardrailContext context) {
         if (!(context.payload() instanceof GuardrailPayload.ToolInput toolInput)) {
+            return Mono.just(GuardrailDecision.allow(NAME));
+        }
+
+        if (BATCH_SAFE_TOOLS.contains(toolInput.toolName())) {
             return Mono.just(GuardrailDecision.allow(NAME));
         }
 
