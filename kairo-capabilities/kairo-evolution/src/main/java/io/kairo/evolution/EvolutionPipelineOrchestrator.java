@@ -253,7 +253,10 @@ public class EvolutionPipelineOrchestrator {
                 agentName,
                 stateMachine.transit(EvolutionState.QUARANTINED, EvolutionSignal.SCAN_PASS));
 
-        EvolvedSkill activated =
+        // Keep as DRAFT — require human approval before activation.
+        // DRAFT skills are NOT injected into system prompt (SkillContentInjector
+        // filters by minTrust=VALIDATED). User approves via EvolutionPanel or API.
+        EvolvedSkill pending =
                 new EvolvedSkill(
                         skill.name(),
                         skill.version(),
@@ -261,24 +264,61 @@ public class EvolutionPipelineOrchestrator {
                         skill.instructions(),
                         skill.category(),
                         skill.tags(),
-                        SkillTrustLevel.VALIDATED,
+                        SkillTrustLevel.DRAFT,
                         skill.metadata(),
                         skill.createdAt(),
                         Instant.now(),
                         skill.usageCount());
 
         return skillStore
-                .save(activated)
+                .save(pending)
                 .doOnNext(
                         s -> {
                             log.info(
-                                    "Evolution event: {} — skill '{}' for agent '{}'",
+                                    "Evolution event: {} — skill '{}' pending approval"
+                                            + " for agent '{}'",
                                     EvolutionEventType.SKILL_ACTIVATED,
                                     s.name(),
                                     agentName);
                             publish(EvolutionEventType.SKILL_ACTIVATED, agentName, s.name());
                         })
                 .then();
+    }
+
+    /**
+     * Approve a DRAFT evolved skill, promoting it to VALIDATED so it gets injected into future
+     * sessions via SkillContentInjector.
+     */
+    public Mono<Void> approveSkill(String skillName) {
+        return skillStore
+                .get(skillName)
+                .flatMap(
+                        opt -> {
+                            if (opt.isEmpty()) return Mono.empty();
+                            EvolvedSkill skill = opt.get();
+                            if (skill.trustLevel() == SkillTrustLevel.VALIDATED) {
+                                return Mono.empty();
+                            }
+                            EvolvedSkill approved =
+                                    new EvolvedSkill(
+                                            skill.name(),
+                                            skill.version(),
+                                            skill.description(),
+                                            skill.instructions(),
+                                            skill.category(),
+                                            skill.tags(),
+                                            SkillTrustLevel.VALIDATED,
+                                            skill.metadata(),
+                                            skill.createdAt(),
+                                            Instant.now(),
+                                            skill.usageCount());
+                            return skillStore.save(approved).then();
+                        });
+    }
+
+    /** Reject a DRAFT evolved skill, deleting it from the store. */
+    public Mono<Void> rejectSkill(String skillName) {
+        return skillStore.delete(skillName);
     }
 
     private Mono<Void> reject(String agentName, EvolvedSkill skill) {
