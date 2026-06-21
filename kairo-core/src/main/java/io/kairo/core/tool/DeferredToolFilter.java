@@ -46,7 +46,9 @@ public final class DeferredToolFilter {
                     "enter_plan_mode",
                     "exit_plan_mode",
                     "search_tools",
-                    "execute_tool");
+                    "execute_tool",
+                    "memory_read",
+                    "memory_write");
 
     private DeferredToolFilter() {}
 
