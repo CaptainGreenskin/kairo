@@ -85,6 +85,9 @@ public class MonitorTool implements SyncTool {
         }
 
         try {
+            if (io.kairo.core.util.ShellCommand.isWindows()) {
+                return ToolResult.error(toolUseId, "monitor tool is not supported on Windows");
+            }
             // Safe: target is guaranteed to be numeric-only at this point
             String command =
                     "ps -p "
@@ -101,7 +104,8 @@ public class MonitorTool implements SyncTool {
                             + target
                             + "'; fi";
 
-            ProcessBuilder pb = new ProcessBuilder("/bin/sh", "-c", command);
+            ProcessBuilder pb =
+                    new ProcessBuilder(io.kairo.core.util.ShellCommand.buildCommand(command));
             pb.redirectErrorStream(true);
             Process process = pb.start();
 

@@ -209,11 +209,7 @@ public class CommandHookExecutor implements ExternalHookExecutor {
     }
 
     private static String[] buildCommand(String command) {
-        String os = System.getProperty("os.name", "").toLowerCase();
-        if (os.contains("win")) {
-            return new String[] {"cmd", "/c", command};
-        }
-        return new String[] {"/bin/sh", "-c", command};
+        return io.kairo.core.util.ShellCommand.buildCommand(command);
     }
 
     /**

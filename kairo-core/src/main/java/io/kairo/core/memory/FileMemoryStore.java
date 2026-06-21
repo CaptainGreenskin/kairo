@@ -28,7 +28,6 @@ import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -100,11 +99,7 @@ public class FileMemoryStore implements MemoryStore {
                                         .writerWithDefaultPrettyPrinter()
                                         .writeValueAsString(entry);
                         Files.writeString(tmpFile, json);
-                        Files.move(
-                                tmpFile,
-                                targetFile,
-                                StandardCopyOption.REPLACE_EXISTING,
-                                StandardCopyOption.ATOMIC_MOVE);
+                        io.kairo.core.util.SafeFileOps.atomicMove(tmpFile, targetFile);
 
                         log.debug("Saved memory entry {} to {}", entry.id(), targetFile);
                         return entry;
@@ -410,11 +405,7 @@ public class FileMemoryStore implements MemoryStore {
                         Path tmpFile = scopeDir.resolve(key + TMP_SUFFIX);
 
                         Files.writeString(tmpFile, value);
-                        Files.move(
-                                tmpFile,
-                                targetFile,
-                                StandardCopyOption.REPLACE_EXISTING,
-                                StandardCopyOption.ATOMIC_MOVE);
+                        io.kairo.core.util.SafeFileOps.atomicMove(tmpFile, targetFile);
 
                         log.debug("Saved raw entry {} to {}", key, targetFile);
                     } catch (IOException e) {

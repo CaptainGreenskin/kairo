@@ -274,7 +274,8 @@ public class VerifyExecutionTool implements SyncTool {
         long start = System.nanoTime();
         try {
             ProcessBuilder pb =
-                    new ProcessBuilder("/bin/sh", "-c", cmd).directory(workDir.toFile());
+                    new ProcessBuilder(io.kairo.core.util.ShellCommand.buildCommand(cmd))
+                            .directory(workDir.toFile());
             pb.redirectErrorStream(false);
             Process proc = pb.start();
 
