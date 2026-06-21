@@ -88,3 +88,6 @@ tasks/
 
 # local Claude Code config / dispatch commands
 .claude/
+
+# Playwright MCP snapshots
+.playwright-mcp/
