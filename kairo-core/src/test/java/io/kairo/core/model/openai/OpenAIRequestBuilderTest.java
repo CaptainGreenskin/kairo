@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.api.model.ModelConfig;
@@ -142,5 +143,110 @@ class OpenAIRequestBuilderTest {
         JsonNode root = mapper.readTree(body);
 
         assertEquals("medium", root.path("reasoning_effort").asText());
+    }
+
+    // ── Image content tests ─────────────────────────────────────────────────────
+
+    @Test
+    void imageContentWithUrlSerializesAsImageUrl() throws Exception {
+        Msg msg =
+                Msg.builder()
+                        .role(MsgRole.USER)
+                        .addContent(new Content.TextContent("Describe this image"))
+                        .addContent(
+                                new Content.ImageContent(
+                                        "https://example.com/photo.png", "image/png", null))
+                        .build();
+        ModelConfig config = ModelConfig.builder().model("gpt-4o").build();
+        String body = builder.buildRequestBody(List.of(msg), config, false);
+        JsonNode root = mapper.readTree(body);
+
+        JsonNode content = root.path("messages").get(0).path("content");
+        assertTrue(content.isArray(), "multi-part content should be an array");
+        assertEquals(2, content.size());
+
+        // First part: text
+        assertEquals("text", content.get(0).path("type").asText());
+        assertEquals("Describe this image", content.get(0).path("text").asText());
+
+        // Second part: image_url with direct URL
+        assertEquals("image_url", content.get(1).path("type").asText());
+        assertEquals(
+                "https://example.com/photo.png",
+                content.get(1).path("image_url").path("url").asText());
+    }
+
+    @Test
+    void imageContentWithBase64DataSerializesAsDataUrl() throws Exception {
+        byte[] fakeImageBytes = new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47}; // PNG magic bytes
+        Msg msg =
+                Msg.builder()
+                        .role(MsgRole.USER)
+                        .addContent(new Content.TextContent("What is in this picture?"))
+                        .addContent(new Content.ImageContent(null, "image/png", fakeImageBytes))
+                        .build();
+        ModelConfig config = ModelConfig.builder().model("gpt-4o").build();
+        String body = builder.buildRequestBody(List.of(msg), config, false);
+        JsonNode root = mapper.readTree(body);
+
+        JsonNode content = root.path("messages").get(0).path("content");
+        assertTrue(content.isArray());
+        assertEquals(2, content.size());
+
+        JsonNode imageNode = content.get(1);
+        assertEquals("image_url", imageNode.path("type").asText());
+
+        String url = imageNode.path("image_url").path("url").asText();
+        assertTrue(url.startsWith("data:image/png;base64,"), "should be a data: URL");
+
+        // Verify the base64 payload round-trips
+        String base64Part = url.substring("data:image/png;base64,".length());
+        byte[] decoded = java.util.Base64.getDecoder().decode(base64Part);
+        assertArrayEquals(fakeImageBytes, decoded);
+    }
+
+    @Test
+    void imageContentWithBase64DefaultsMediaTypeToPng() throws Exception {
+        byte[] data = "fake-image".getBytes();
+        Msg msg =
+                Msg.builder()
+                        .role(MsgRole.USER)
+                        .addContent(new Content.TextContent("describe"))
+                        .addContent(new Content.ImageContent(null, null, data))
+                        .build();
+        ModelConfig config = ModelConfig.builder().model("gpt-4o").build();
+        String body = builder.buildRequestBody(List.of(msg), config, false);
+        JsonNode root = mapper.readTree(body);
+
+        String url =
+                root.path("messages")
+                        .get(0)
+                        .path("content")
+                        .get(1)
+                        .path("image_url")
+                        .path("url")
+                        .asText();
+        assertTrue(
+                url.startsWith("data:image/png;base64,"),
+                "null mediaType should default to image/png");
+    }
+
+    @Test
+    void imageContentWithNeitherUrlNorDataIsOmitted() throws Exception {
+        Msg msg =
+                Msg.builder()
+                        .role(MsgRole.USER)
+                        .addContent(new Content.TextContent("hello"))
+                        .addContent(new Content.ImageContent(null, null, null))
+                        .build();
+        ModelConfig config = ModelConfig.builder().model("gpt-4o").build();
+        String body = builder.buildRequestBody(List.of(msg), config, false);
+        JsonNode root = mapper.readTree(body);
+
+        JsonNode content = root.path("messages").get(0).path("content");
+        // Only the text part should remain; the empty image is skipped
+        assertTrue(content.isArray());
+        assertEquals(1, content.size());
+        assertEquals("text", content.get(0).path("type").asText());
     }
 }
