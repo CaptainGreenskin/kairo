@@ -262,12 +262,22 @@ public class OpenAIRequestBuilder implements ProviderPipeline.RequestBuilder<Str
                     n.put("type", "text");
                     n.put("text", tc.text());
                     contentArray.add(n);
-                } else if (content instanceof Content.ImageContent ic && ic.url() != null) {
-                    ObjectNode n = objectMapper.createObjectNode();
-                    n.put("type", "image_url");
-                    ObjectNode imageUrl = n.putObject("image_url");
-                    imageUrl.put("url", ic.url());
-                    contentArray.add(n);
+                } else if (content instanceof Content.ImageContent ic) {
+                    if (ic.url() != null) {
+                        ObjectNode n = objectMapper.createObjectNode();
+                        n.put("type", "image_url");
+                        ObjectNode imageUrl = n.putObject("image_url");
+                        imageUrl.put("url", ic.url());
+                        contentArray.add(n);
+                    } else if (ic.data() != null) {
+                        ObjectNode n = objectMapper.createObjectNode();
+                        n.put("type", "image_url");
+                        ObjectNode imageUrl = n.putObject("image_url");
+                        String base64 = java.util.Base64.getEncoder().encodeToString(ic.data());
+                        String mediaType = ic.mediaType() != null ? ic.mediaType() : "image/png";
+                        imageUrl.put("url", "data:" + mediaType + ";base64," + base64);
+                        contentArray.add(n);
+                    }
                 }
             }
         }
