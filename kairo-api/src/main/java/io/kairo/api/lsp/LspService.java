@@ -52,6 +52,19 @@ public interface LspService {
     /** Current full diagnostics for {@code filePath}, no baseline diff applied. */
     Mono<List<Diagnostic>> currentDiagnostics(Path filePath);
 
+    /**
+     * Search for workspace symbols matching the given query via {@code workspace/symbol}. Returns
+     * an empty list when the language server does not support symbol search.
+     *
+     * @param workspaceRoot the workspace root directory
+     * @param query the symbol search query (fuzzy matched by the language server)
+     * @param limit maximum number of results to return
+     * @since 1.3
+     */
+    default Mono<List<SymbolInfo>> searchSymbols(Path workspaceRoot, String query, int limit) {
+        return Mono.just(List.of());
+    }
+
     /** Stop all spawned subprocesses and release resources. Idempotent. */
     Mono<Void> shutdown();
 }

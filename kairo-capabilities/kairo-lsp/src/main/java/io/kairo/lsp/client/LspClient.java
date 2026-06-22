@@ -252,6 +252,78 @@ public class LspClient {
         return snap == null ? List.of() : List.copyOf(snap);
     }
 
+    /** Search for workspace symbols via {@code workspace/symbol}. */
+    public List<io.kairo.api.lsp.SymbolInfo> workspaceSymbol(String query, int limit) {
+        if (!running.get()) return List.of();
+        try {
+            ObjectNode params = codec.mapper().createObjectNode();
+            params.put("query", query);
+            JsonNode result = requestSync("workspace/symbol", params, Duration.ofSeconds(10));
+            if (result == null || !result.isArray()) return List.of();
+
+            List<io.kairo.api.lsp.SymbolInfo> symbols = new ArrayList<>();
+            for (JsonNode item : result) {
+                if (symbols.size() >= limit) break;
+                String name = item.path("name").asText("");
+                int kindNum = item.path("kind").asInt(0);
+                String kind = symbolKindName(kindNum);
+                String containerName =
+                        item.has("containerName") ? item.path("containerName").asText(null) : null;
+
+                JsonNode location = item.path("location");
+                String uri = location.path("uri").asText("");
+                int line = location.path("range").path("start").path("line").asInt(0) + 1;
+
+                String filePath = uri.startsWith("file://") ? uri.substring(7) : uri;
+                Path absPath = Path.of(filePath);
+                String relativePath =
+                        workspaceRoot != null && absPath.startsWith(workspaceRoot)
+                                ? workspaceRoot.relativize(absPath).toString()
+                                : filePath;
+
+                symbols.add(
+                        new io.kairo.api.lsp.SymbolInfo(
+                                name, kind, relativePath, line, containerName));
+            }
+            return symbols;
+        } catch (Exception e) {
+            log.debug("workspace/symbol failed: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private static String symbolKindName(int kind) {
+        return switch (kind) {
+            case 1 -> "File";
+            case 2 -> "Module";
+            case 3 -> "Namespace";
+            case 4 -> "Package";
+            case 5 -> "Class";
+            case 6 -> "Method";
+            case 7 -> "Property";
+            case 8 -> "Field";
+            case 9 -> "Constructor";
+            case 10 -> "Enum";
+            case 11 -> "Interface";
+            case 12 -> "Function";
+            case 13 -> "Variable";
+            case 14 -> "Constant";
+            case 15 -> "String";
+            case 16 -> "Number";
+            case 17 -> "Boolean";
+            case 18 -> "Array";
+            case 19 -> "Object";
+            case 20 -> "Key";
+            case 21 -> "Null";
+            case 22 -> "EnumMember";
+            case 23 -> "Struct";
+            case 24 -> "Event";
+            case 25 -> "Operator";
+            case 26 -> "TypeParameter";
+            default -> "Symbol";
+        };
+    }
+
     public synchronized void shutdown() {
         if (!running.get()) return;
         running.set(false);
