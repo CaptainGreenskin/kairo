@@ -8,6 +8,7 @@ import io.kairo.api.lsp.LanguageServerRegistry;
 import io.kairo.api.lsp.LspException;
 import io.kairo.api.lsp.LspService;
 import io.kairo.api.lsp.ServerDef;
+import io.kairo.api.lsp.SymbolInfo;
 import io.kairo.lsp.client.LspClient;
 import io.kairo.lsp.client.LspClientPool;
 import io.kairo.lsp.diagnostics.DiagnosticsBaseline;
@@ -127,6 +128,23 @@ public final class DefaultLspService implements LspService {
                             ResolvedClient r = resolve(filePath);
                             if (r == null) return List.<Diagnostic>of();
                             return r.client.currentDiagnostics(filePath);
+                        })
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    @Override
+    public Mono<List<SymbolInfo>> searchSymbols(Path workspaceRoot, String query, int limit) {
+        return Mono.fromCallable(
+                        () -> {
+                            List<SymbolInfo> all = new java.util.ArrayList<>();
+                            for (var def : registry.all()) {
+                                var client = pool.acquire(def, workspaceRoot);
+                                if (client != null) {
+                                    all.addAll(client.workspaceSymbol(query, limit - all.size()));
+                                    if (all.size() >= limit) break;
+                                }
+                            }
+                            return all.size() > limit ? all.subList(0, limit) : all;
                         })
                 .subscribeOn(Schedulers.boundedElastic());
     }
