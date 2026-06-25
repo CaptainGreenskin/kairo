@@ -1444,34 +1444,32 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                             TeamEventType.TEAM_COMPLETED,
                             terminalEmitted,
                             finalOutput);
-                    return persistLessons(request, outcomes, result);
+                    persistLessonsFireAndForget(request, outcomes);
+                    return Mono.just(result);
                 });
     }
 
     /**
-     * Best-effort self-evolution write-back: for each role, extract lessons from that role's step
-     * outcomes and persist them to {@link #memoryStore}. Failures are logged and swallowed — lesson
-     * extraction must never break the main result delivery.
+     * Background self-evolution write-back. Fired via subscribe (fire-and-forget) so lesson
+     * extraction — an LLM call that may be slow — never blocks or delays the team result. Each role
+     * gets a 30s timeout; failures are logged and swallowed.
      */
-    private Mono<TeamResult> persistLessons(
-            TeamExecutionRequest request, List<StepOutcome> outcomes, TeamResult result) {
+    private void persistLessonsFireAndForget(
+            TeamExecutionRequest request, List<StepOutcome> outcomes) {
         if (memoryStore == null || lessonExtractor == null || outcomes.isEmpty()) {
-            return Mono.just(result);
+            return;
         }
-        // Group outcomes by assigned role so each role gets a single batch extraction call.
         java.util.Map<String, List<StepOutcome>> byRole = new java.util.LinkedHashMap<>();
         for (StepOutcome o : outcomes) {
-            String roleId = o.stepId();
-            // stepId isn't the roleId; we approximate by extracting against a single namespace
-            // keyed to the whole execution. A future refinement can thread the real role through.
             byRole.computeIfAbsent(request.requestId(), k -> new java.util.ArrayList<>()).add(o);
         }
         String goal = request.goal() == null ? "" : request.goal();
-        return Flux.fromIterable(byRole.entrySet())
+        Flux.fromIterable(byRole.entrySet())
                 .flatMap(
                         e ->
                                 lessonExtractor
                                         .extract(e.getKey(), e.getValue(), goal)
+                                        .timeout(Duration.ofSeconds(30))
                                         .flatMap(
                                                 lessons ->
                                                         memoryStore
@@ -1483,12 +1481,16 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                         .onErrorResume(
                                                 ex -> {
                                                     log.warn(
-                                                            "Lesson extraction/persist failed for role={}: {}",
+                                                            "Lesson extraction failed for {}: {}",
                                                             e.getKey(),
                                                             ex.getMessage());
                                                     return Mono.empty();
                                                 }))
-                .then(Mono.just(result));
+                .subscribeOn(Schedulers.boundedElastic())
+                .subscribe(
+                        v -> {},
+                        e -> log.warn("Lesson extraction background error: {}", e.getMessage()),
+                        () -> log.debug("Lesson extraction background complete"));
     }
 
     private Mono<TeamResult> onTimeout(
