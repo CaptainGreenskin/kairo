@@ -20,12 +20,11 @@ package io.kairo.multiagent.subagent;
  * via the "expert:" prefix convention.
  */
 public enum ExpertRole {
-    ARCHITECT("expert:architect", "System design and decision arbitration"),
-    RESEARCHER("expert:researcher", "Information gathering and analysis"),
-    CODER("expert:coder", "Code implementation and modification"),
-    REVIEWER("expert:reviewer", "Code review and quality assessment"),
-    TESTER("expert:tester", "Test writing and execution"),
-    SYNTHESIZER("expert:synthesizer", "Result integration and report generation");
+    RESEARCHER("expert:researcher", "Codebase investigation and analysis"),
+    CODER("expert:coder", "Full-stack code implementation and modification"),
+    REVIEWER("expert:reviewer", "Code review, risk identification, and quality assessment"),
+    TESTER("expert:tester", "Test execution and verification"),
+    DEBUGGER("expert:debugger", "Fault reproduction, root-cause analysis, and defect diagnosis");
 
     private final String roleId;
     private final String description;

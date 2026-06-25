@@ -69,23 +69,18 @@ public class ExpertRoleRegistry {
                 List.of(),
                 role.roleId(),
                 null,
-                defaultCapabilities(role));
+                defaultCapabilities(role),
+                defaultContextScopes(role));
     }
 
     private static RoleCapabilities defaultCapabilities(ExpertRole role) {
         return switch (role) {
-            case ARCHITECT ->
-                    new RoleCapabilities(
-                            Set.of(),
-                            Set.of(),
-                            Set.of("architecture", "api", "performance"),
-                            Set.of("design", "research"));
             case RESEARCHER ->
                     new RoleCapabilities(
                             Set.of(),
                             Set.of(),
-                            Set.of("documentation", "observability"),
-                            Set.of("research"));
+                            Set.of("documentation", "observability", "dependencies"),
+                            Set.of("research", "analyze"));
             case CODER ->
                     new RoleCapabilities(
                             Set.of(),
@@ -102,43 +97,82 @@ public class ExpertRoleRegistry {
                     new RoleCapabilities(
                             Set.of(),
                             Set.of(),
-                            Set.of("security", "refactoring"),
+                            Set.of("security", "refactoring", "quality"),
                             Set.of("review"));
             case TESTER ->
                     new RoleCapabilities(
-                            Set.of(), Set.of(), Set.of("testing"), Set.of("test", "debug"));
-            case SYNTHESIZER ->
+                            Set.of(),
+                            Set.of(),
+                            Set.of("testing", "verification"),
+                            Set.of("test", "verify"));
+            case DEBUGGER ->
                     new RoleCapabilities(
                             Set.of(),
                             Set.of(),
-                            Set.of("documentation"),
-                            Set.of("synthesize", "integrate"));
+                            Set.of("debugging", "diagnostics", "observability"),
+                            Set.of("diagnose", "debug", "analyze"));
+        };
+    }
+
+    private static Set<ContextScope> defaultContextScopes(ExpertRole role) {
+        return switch (role) {
+            case RESEARCHER -> Set.of(ContextScope.FULL_TREE, ContextScope.KEY_FILES);
+            case CODER -> Set.of(ContextScope.SOURCE_FILES, ContextScope.UPSTREAM_ONLY);
+            case TESTER -> Set.of(ContextScope.TEST_FILES, ContextScope.UPSTREAM_ONLY);
+            case REVIEWER -> Set.of(ContextScope.UPSTREAM_ONLY);
+            case DEBUGGER -> Set.of(ContextScope.SOURCE_FILES, ContextScope.UPSTREAM_ONLY);
         };
     }
 
     private static String defaultInstructions(ExpertRole role) {
         return switch (role) {
-            case ARCHITECT ->
-                    "You are a system architect. Analyze requirements, design solutions, make technology decisions, and resolve conflicts between team members.";
             case RESEARCHER ->
-                    "You are a researcher. Gather information, analyze codebases, read documentation, and provide comprehensive findings to support the team.";
+                    "You are a researcher. Investigate the codebase, locate relevant code, trace"
+                            + " dependencies, and provide comprehensive findings. In your findings,"
+                            + " always reference files by their full workspace-relative path. When you"
+                            + " identify a directory as relevant, enumerate the specific files within it"
+                            + " rather than just naming the directory.";
             case CODER ->
-                    "You are a software engineer. Write clean, tested, production-quality code following project conventions.";
+                    "You are a full-stack engineer. Implement and modify code across frontend,"
+                            + " backend, and database layers following project conventions. Write clean,"
+                            + " production-quality code. Relevant source files are available from upstream"
+                            + " outputs \u2014 only use read_file for files NOT already provided.";
             case REVIEWER ->
-                    "You are a code reviewer. Evaluate code quality, correctness, security, and adherence to best practices. Provide actionable feedback.";
+                    "You are a code reviewer. Evaluate code quality, correctness, security, and"
+                            + " adherence to best practices. Identify risks and provide actionable"
+                            + " improvement suggestions. Code to review is provided in upstream outputs.";
             case TESTER ->
-                    "You are a test engineer. Write comprehensive tests covering happy paths, edge cases, and error conditions.";
-            case SYNTHESIZER ->
-                    "You are a synthesizer. Integrate outputs from all team members into a coherent final deliverable with summary, changes, and documentation.";
+                    "You are a QA engineer. Run tests and build processes, collect verification"
+                            + " results, and report evidence of correctness or failure. Write tests"
+                            + " covering happy paths, edge cases, and error conditions when needed.";
+            case DEBUGGER ->
+                    "You are a debugger. Reproduce faults, trace root causes through logs and code,"
+                            + " and diagnose defects. Provide a clear root-cause analysis with specific"
+                            + " file locations and a recommended fix. Do not fix the code yourself \u2014"
+                            + " describe the fix for the Coder.";
         };
     }
 
     private static List<String> defaultAllowedTools(ExpertRole role) {
         return switch (role) {
-            case REVIEWER -> List.of("read_file", "grep", "search", "list_files"); // read-only
+            // Researcher keeps all tools \u2014 sole discoverer with full workspace access.
+            case RESEARCHER -> List.of();
+            case CODER ->
+                    List.of(
+                            "read_file",
+                            "write_file",
+                            "edit_file",
+                            "grep",
+                            "search",
+                            "bash",
+                            "run_tests");
+            // Reviewer: read-only inspection of code and diffs.
+            case REVIEWER -> List.of("read_file", "grep", "search", "list_files");
+            // Tester: read + write tests + run them.
             case TESTER ->
                     List.of("read_file", "write_file", "grep", "search", "list_files", "run_tests");
-            default -> List.of(); // empty = all tools allowed
+            // Debugger: read + run diagnostics (bash for logs/stack traces), no file writes.
+            case DEBUGGER -> List.of("read_file", "grep", "search", "bash", "list_files");
         };
     }
 }
