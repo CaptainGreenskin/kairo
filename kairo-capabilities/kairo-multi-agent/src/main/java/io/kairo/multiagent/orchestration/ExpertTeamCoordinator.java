@@ -39,13 +39,18 @@ import io.kairo.api.team.TeamResult;
 import io.kairo.api.team.TeamResult.StepOutcome;
 import io.kairo.api.team.TeamStatus;
 import io.kairo.api.team.TeamStep;
+import io.kairo.api.tool.ToolExecutor;
+import io.kairo.core.agent.DefaultReActAgent;
 import io.kairo.core.agent.ToolCallSink;
 import io.kairo.multiagent.orchestration.ExpertTeamStateMachine.State;
 import io.kairo.multiagent.orchestration.internal.DagExecutor;
 import io.kairo.multiagent.orchestration.internal.DefaultGenerator;
 import io.kairo.multiagent.orchestration.internal.DefaultPlanner;
+import io.kairo.multiagent.orchestration.tool.CachingToolExecutor;
+import io.kairo.multiagent.orchestration.tool.ReadFileCache;
 import io.kairo.multiagent.subagent.ExpertProfile;
 import io.kairo.multiagent.subagent.ExpertRoleRegistry;
+import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -63,6 +68,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -108,6 +114,8 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
     @Nullable private final MessageBus messageBus;
     @Nullable private final ArchitectArbitrator arbitrator;
     @Nullable private final SynthesizerStep synthesizer;
+    @Nullable private final ExpertMemoryStore memoryStore;
+    @Nullable private final LessonExtractor lessonExtractor;
     @Nullable private volatile PlanVerificationStrategy planVerifier;
     private final AtomicLong eventSeq = new AtomicLong(0);
 
@@ -222,6 +230,8 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                 roleRegistry,
                 messageBus,
                 arbitrator,
+                null,
+                null,
                 null);
     }
 
@@ -252,13 +262,17 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             @Nullable ExpertRoleRegistry roleRegistry,
             @Nullable MessageBus messageBus,
             @Nullable ArchitectArbitrator arbitrator,
-            @Nullable SynthesizerStep synthesizer) {
+            @Nullable SynthesizerStep synthesizer,
+            @Nullable ExpertMemoryStore memoryStore,
+            @Nullable LessonExtractor lessonExtractor) {
         this.eventBus = eventBus;
         this.simpleStrategy =
                 Objects.requireNonNull(simpleStrategy, "simpleStrategy must not be null");
         this.agentStrategy = agentStrategy;
         this.planner = Objects.requireNonNull(planner, "planner must not be null");
-        this.generator = new DefaultGenerator();
+        this.memoryStore = memoryStore;
+        this.lessonExtractor = lessonExtractor;
+        this.generator = new DefaultGenerator(roleRegistry, null, memoryStore);
         this.stateMachine = new ExpertTeamStateMachine();
         this.roleRegistry = roleRegistry;
         this.messageBus = messageBus;
@@ -374,6 +388,11 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
 
         EvaluationStrategy strategy = selectStrategy(ctx.request().config());
 
+        // ── Install team-scoped ReadFileCache ────────────────────────────────
+        ReadFileCache readFileCache = new ReadFileCache();
+        Map<Agent, ToolExecutor> cachedOriginals =
+                installCachingExecutors(ctx.bindings(), readFileCache);
+
         log.debug(" confirmAndExecute: {} steps to run", ctx.plan().steps().size());
         // Schedule by the plan DAG: dependency-driven, independent steps run in parallel within a
         // layer (bounded). Replaces the old strictly-sequential array-order chain.
@@ -433,7 +452,12 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                                         warnings,
                                                         started,
                                                         terminalEmitted,
-                                                        ctx.plan())));
+                                                        ctx.plan())))
+                        .doFinally(
+                                signal -> {
+                                    readFileCache.logSummary();
+                                    uninstallCachingExecutors(cachedOriginals);
+                                });
 
         return pipeline.timeout(
                         ctx.request().config().teamTimeout(),
@@ -570,6 +594,10 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
 
         EvaluationStrategy strategy = selectStrategy(request.config());
 
+        // ── Install team-scoped ReadFileCache ────────────────────────────────
+        ReadFileCache readFileCache = new ReadFileCache();
+        Map<Agent, ToolExecutor> cachedOriginals = installCachingExecutors(bindings, readFileCache);
+
         TeamExecutionPlan finalPlan = plan;
         // Dependency-driven DAG scheduling (parallel within a layer), replacing sequential order.
         return dagExecutor
@@ -634,7 +662,12 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                                 warnings,
                                                 started,
                                                 terminalEmitted,
-                                                finalPlan)));
+                                                finalPlan)))
+                .doFinally(
+                        signal -> {
+                            readFileCache.logSummary();
+                            uninstallCachingExecutors(cachedOriginals);
+                        });
     }
 
     private Mono<Void> executeStep(
@@ -1344,7 +1377,7 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             finalOutputMono = Mono.just(assembleFinalOutput(orderedOutcomes));
         }
 
-        return finalOutputMono.map(
+        return finalOutputMono.flatMap(
                 finalOutput -> {
                     List<String> allWarnings = new ArrayList<>(warnings);
 
@@ -1385,8 +1418,51 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                             TeamEventType.TEAM_COMPLETED,
                             terminalEmitted,
                             finalOutput);
-                    return result;
+                    return persistLessons(request, outcomes, result);
                 });
+    }
+
+    /**
+     * Best-effort self-evolution write-back: for each role, extract lessons from that role's step
+     * outcomes and persist them to {@link #memoryStore}. Failures are logged and swallowed — lesson
+     * extraction must never break the main result delivery.
+     */
+    private Mono<TeamResult> persistLessons(
+            TeamExecutionRequest request, List<StepOutcome> outcomes, TeamResult result) {
+        if (memoryStore == null || lessonExtractor == null || outcomes.isEmpty()) {
+            return Mono.just(result);
+        }
+        // Group outcomes by assigned role so each role gets a single batch extraction call.
+        java.util.Map<String, List<StepOutcome>> byRole = new java.util.LinkedHashMap<>();
+        for (StepOutcome o : outcomes) {
+            String roleId = o.stepId();
+            // stepId isn't the roleId; we approximate by extracting against a single namespace
+            // keyed to the whole execution. A future refinement can thread the real role through.
+            byRole.computeIfAbsent(request.requestId(), k -> new java.util.ArrayList<>()).add(o);
+        }
+        String goal = request.goal() == null ? "" : request.goal();
+        return Flux.fromIterable(byRole.entrySet())
+                .flatMap(
+                        e ->
+                                lessonExtractor
+                                        .extract(e.getKey(), e.getValue(), goal)
+                                        .flatMap(
+                                                lessons ->
+                                                        memoryStore
+                                                                .recordLessons(
+                                                                        e.getKey(),
+                                                                        e.getKey(),
+                                                                        lessons)
+                                                                .then(Mono.<Object>empty()))
+                                        .onErrorResume(
+                                                ex -> {
+                                                    log.warn(
+                                                            "Lesson extraction/persist failed for role={}: {}",
+                                                            e.getKey(),
+                                                            ex.getMessage());
+                                                    return Mono.empty();
+                                                }))
+                .then(Mono.just(result));
     }
 
     private Mono<TeamResult> onTimeout(
@@ -1691,5 +1767,70 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
     /** Exposed for tests — reflects the coordinator's policy view on evaluator selection. */
     Optional<EvaluationStrategy> agentStrategy() {
         return Optional.ofNullable(agentStrategy);
+    }
+
+    // ── ReadFileCache infrastructure ─────────────────────────────────────────
+
+    private static final Field CACHE_TOOL_EXECUTOR_FIELD;
+
+    static {
+        Field f = null;
+        try {
+            f = DefaultReActAgent.class.getDeclaredField("toolExecutor");
+            f.setAccessible(true);
+        } catch (NoSuchFieldException | SecurityException e) {
+            LoggerFactory.getLogger(ExpertTeamCoordinator.class)
+                    .warn("Cannot access toolExecutor field; ReadFileCache disabled", e);
+        }
+        CACHE_TOOL_EXECUTOR_FIELD = f;
+    }
+
+    /**
+     * Install a {@link CachingToolExecutor} wrapping each agent's current executor. Returns a map
+     * of agent → original executor for later restoration. Agents that are not {@link
+     * DefaultReActAgent} or whose field is inaccessible are silently skipped.
+     */
+    private Map<Agent, ToolExecutor> installCachingExecutors(
+            Map<String, Agent> bindings, ReadFileCache cache) {
+        Map<Agent, ToolExecutor> originals = new HashMap<>();
+        if (CACHE_TOOL_EXECUTOR_FIELD == null) {
+            return originals;
+        }
+        for (Agent agent : bindings.values()) {
+            if (!(agent instanceof DefaultReActAgent)) {
+                continue;
+            }
+            try {
+                ToolExecutor original = (ToolExecutor) CACHE_TOOL_EXECUTOR_FIELD.get(agent);
+                if (original != null && !(original instanceof CachingToolExecutor)) {
+                    CachingToolExecutor cached = new CachingToolExecutor(original, cache);
+                    CACHE_TOOL_EXECUTOR_FIELD.set(agent, cached);
+                    originals.put(agent, original);
+                }
+            } catch (IllegalAccessException e) {
+                log.warn("Failed to install CachingToolExecutor for agent '{}'", agent.name(), e);
+            }
+        }
+        if (!originals.isEmpty()) {
+            log.debug("ReadFileCache installed on {} agent(s)", originals.size());
+        }
+        return originals;
+    }
+
+    /** Restore original executors after team execution completes. */
+    private void uninstallCachingExecutors(Map<Agent, ToolExecutor> originals) {
+        if (CACHE_TOOL_EXECUTOR_FIELD == null) {
+            return;
+        }
+        for (var entry : originals.entrySet()) {
+            try {
+                CACHE_TOOL_EXECUTOR_FIELD.set(entry.getKey(), entry.getValue());
+            } catch (IllegalAccessException e) {
+                log.warn(
+                        "Failed to restore original executor for agent '{}'",
+                        entry.getKey().name(),
+                        e);
+            }
+        }
     }
 }

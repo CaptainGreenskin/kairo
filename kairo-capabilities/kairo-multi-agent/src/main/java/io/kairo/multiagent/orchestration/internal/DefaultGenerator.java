@@ -23,14 +23,22 @@ import io.kairo.api.skill.SkillRegistry;
 import io.kairo.api.team.EvaluationVerdict;
 import io.kairo.api.team.TeamResult.StepOutcome;
 import io.kairo.api.team.TeamStep;
+import io.kairo.api.tool.ToolExecutor;
+import io.kairo.core.agent.DefaultReActAgent;
 import io.kairo.core.agent.ToolCallSink;
+import io.kairo.multiagent.orchestration.ExpertMemoryEntry;
+import io.kairo.multiagent.orchestration.ExpertMemoryStore;
+import io.kairo.multiagent.orchestration.tool.RoleScopedToolExecutor;
 import io.kairo.multiagent.subagent.ExpertProfile;
 import io.kairo.multiagent.subagent.ExpertRoleRegistry;
+import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import javax.annotation.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 /**
@@ -46,12 +54,15 @@ import reactor.core.publisher.Mono;
  */
 public final class DefaultGenerator {
 
+    private static final Logger log = LoggerFactory.getLogger(DefaultGenerator.class);
+
     private final ExpertRoleRegistry roleRegistry;
     private final SkillRegistry skillRegistry; // nullable — works without skills
+    private final ExpertMemoryStore memoryStore; // nullable — self-evolution off when null
 
     /** Create a generator without skill injection support. */
     public DefaultGenerator() {
-        this(null, null);
+        this(null, null, null);
     }
 
     /**
@@ -61,8 +72,23 @@ public final class DefaultGenerator {
      * @param skillRegistry the skill registry (nullable — system works without skills)
      */
     public DefaultGenerator(ExpertRoleRegistry roleRegistry, SkillRegistry skillRegistry) {
+        this(roleRegistry, skillRegistry, null);
+    }
+
+    /**
+     * Create a generator with skill injection + cross-task lesson recall (self-evolution).
+     *
+     * @param roleRegistry the expert role registry (nullable)
+     * @param skillRegistry the skill registry (nullable)
+     * @param memoryStore the expert memory store for prior-lesson recall (nullable — off when null)
+     */
+    public DefaultGenerator(
+            ExpertRoleRegistry roleRegistry,
+            SkillRegistry skillRegistry,
+            ExpertMemoryStore memoryStore) {
         this.roleRegistry = roleRegistry;
         this.skillRegistry = skillRegistry;
+        this.memoryStore = memoryStore;
     }
 
     /** Produce an artifact for the given step using the role-bound agent. */
@@ -185,9 +211,48 @@ public final class DefaultGenerator {
         } else {
             input = Msg.of(MsgRole.USER, prompt);
         }
+
+        // ── Per-step role-scoped tool restriction ─────────────────────────────
+        List<String> allowedTools = step.assignedRole().allowedTools();
+        RoleScopedToolExecutor scopedExecutor = null;
+        ToolExecutor originalExecutor = null;
+        if (!allowedTools.isEmpty()) {
+            originalExecutor = extractToolExecutor(agent);
+            if (originalExecutor != null) {
+                scopedExecutor =
+                        new RoleScopedToolExecutor(
+                                originalExecutor, allowedTools, step.assignedRole().roleId());
+                injectToolExecutor(agent, scopedExecutor);
+                log.debug(
+                        "Step '{}' role '{}': tool restriction active (allowed: {})",
+                        step.stepId(),
+                        step.assignedRole().roleId(),
+                        allowedTools);
+            }
+        }
+
+        final RoleScopedToolExecutor capturedScopedExecutor = scopedExecutor;
+        final ToolExecutor capturedOriginalExecutor = originalExecutor;
+
         Mono<String> call = agent.call(input).map(Msg::text);
         if (toolCallSink != null) {
             call = call.contextWrite(ctx -> ctx.put(ToolCallSink.CONTEXT_KEY, toolCallSink));
+        }
+
+        // Restore original executor after step completes (success or error)
+        if (capturedOriginalExecutor != null) {
+            call =
+                    call.doFinally(
+                            signal -> {
+                                injectToolExecutor(agent, capturedOriginalExecutor);
+                                if (capturedScopedExecutor != null) {
+                                    log.info(
+                                            "Step '{}' role '{}' completed with {} tool rejections",
+                                            step.stepId(),
+                                            step.assignedRole().roleId(),
+                                            capturedScopedExecutor.getRejectionCount());
+                                }
+                            });
         }
         return call;
     }
@@ -216,6 +281,10 @@ public final class DefaultGenerator {
 
         // Inject mounted skill content if available
         appendMountedSkills(sb, step.assignedRole().roleId());
+
+        // Inject prior lessons (self-evolution): recall top-N lessons for this role from
+        // cross-task memory, so the expert benefits from past experience instead of starting cold.
+        appendPriorLessons(sb, step.assignedRole().roleId());
 
         // Feed the outputs of the steps this one depends on, so e.g. the coder sees the
         // architect's design instead of having to rediscover it from the filesystem.
@@ -274,6 +343,76 @@ public final class DefaultGenerator {
                             .append('\n');
                 }
             }
+        }
+    }
+
+    /**
+     * Recall the top prior lessons for this role from cross-task memory and inject them so the
+     * expert starts from accumulated experience rather than cold. No-op when no memory store is
+     * configured or the role has no recorded lessons.
+     */
+    private void appendPriorLessons(StringBuilder sb, String roleId) {
+        if (memoryStore == null) {
+            return;
+        }
+        try {
+            // Recall is reactive (file I/O); block here since buildPrompt is a synchronous prompt
+            // assembly on a boundedElastic-backed execution thread.
+            List<ExpertMemoryEntry> lessons =
+                    memoryStore.recall(roleId, roleId, 5).collectList().block();
+            if (lessons == null || lessons.isEmpty()) {
+                return;
+            }
+            sb.append(
+                    "\n[Prior Lessons] (cross-task experience for your role — apply where relevant)\n");
+            for (ExpertMemoryEntry e : lessons) {
+                sb.append("- ").append(e.lesson()).append('\n');
+            }
+        } catch (Exception e) {
+            log.debug("Prior-lesson recall failed for role {}: {}", roleId, e.getMessage());
+        }
+    }
+
+    // ── Reflective tool executor access ────────────────────────────────────────
+
+    private static final Field TOOL_EXECUTOR_FIELD;
+
+    static {
+        Field f = null;
+        try {
+            f = DefaultReActAgent.class.getDeclaredField("toolExecutor");
+            f.setAccessible(true);
+        } catch (NoSuchFieldException | SecurityException e) {
+            // Silently degrade — tool scoping will be unavailable
+            LoggerFactory.getLogger(DefaultGenerator.class)
+                    .warn(
+                            "Cannot access toolExecutor field; role-scoped tool restriction disabled",
+                            e);
+        }
+        TOOL_EXECUTOR_FIELD = f;
+    }
+
+    @Nullable
+    private static ToolExecutor extractToolExecutor(Agent agent) {
+        if (TOOL_EXECUTOR_FIELD == null || !(agent instanceof DefaultReActAgent)) {
+            return null;
+        }
+        try {
+            return (ToolExecutor) TOOL_EXECUTOR_FIELD.get(agent);
+        } catch (IllegalAccessException e) {
+            log.warn("Failed to extract toolExecutor from agent '{}'", agent.name(), e);
+            return null;
+        }
+    }
+
+    private static void injectToolExecutor(Agent agent, ToolExecutor executor) {
+        if (TOOL_EXECUTOR_FIELD == null || !(agent instanceof DefaultReActAgent)) {
+            return;
+        }
+        try {
+            TOOL_EXECUTOR_FIELD.set(agent, executor);
+        } catch (IllegalAccessException e) {
+            log.warn("Failed to inject toolExecutor into agent '{}'", agent.name(), e);
         }
     }
 }
