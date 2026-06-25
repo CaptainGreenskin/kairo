@@ -46,8 +46,8 @@ public final class LlmPlannerPrompt {
 
         // System instruction
         sb.append("You are a task planner for an expert team. Your job is to decompose a goal ");
-        sb.append(
-                "into a directed acyclic graph (DAG) of steps, each assigned to an expert role.\n\n");
+        sb.append("into steps — but ONLY when decomposition genuinely helps. Many tasks are best ");
+        sb.append("handled by a single step.\n\n");
 
         // Output format specification
         sb.append("## Output Format\n");
@@ -70,6 +70,26 @@ public final class LlmPlannerPrompt {
         sb.append("- The graph MUST be acyclic (no circular dependencies)\n");
         sb.append("- Maximize parallelism: only add a dependency if truly required\n");
         sb.append("- Each step should be a meaningful unit of work, not trivially small\n\n");
+
+        // CRITICAL: simplicity-first decomposition guidance
+        sb.append("## Decomposition Guidance (READ CAREFULLY)\n");
+        sb.append("- **Prefer FEWER steps.** 1-2 steps is ideal for most tasks. ");
+        sb.append("Rarely exceed 4.\n");
+        sb.append("- **Single step is valid.** If one expert can complete the task end-to-end ");
+        sb.append("(read a file, write code, create a document), output exactly ONE step. ");
+        sb.append("Do not artificially split into research→design→implement for simple tasks.\n");
+        sb.append("- **Choose roles by what the task ACTUALLY needs**: ");
+        sb.append("writing/editing files → coder; reading/analyzing code → researcher; ");
+        sb.append("reviewing quality → reviewer; running tests → tester. ");
+        sb.append(
+                "Do NOT assign researcher+architect+synthesizer when a single coder step suffices.\n");
+        sb.append("- **Instructions must be SPECIFIC and ACTIONABLE.** Include concrete ");
+        sb.append("deliverables (file paths, function names, exact changes). ");
+        sb.append("Bad: \"analyze the codebase\". ");
+        sb.append("Good: \"read src/main/Config.java, extract all @Value annotations, ");
+        sb.append("write docs/config-reference.md listing each property\".\n");
+        sb.append("- **Do NOT include verification/review steps unless the task is high-risk.** ");
+        sb.append("Writing a doc or simple script does not need a reviewer step.\n\n");
 
         // Available roles with capabilities
         sb.append("## Available Expert Roles\n");
