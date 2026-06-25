@@ -22,6 +22,7 @@ import io.kairo.multiagent.subagent.ExpertRoleRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -82,6 +83,56 @@ public final class ExpertTeamComposer {
             agents.add(a);
         }
         ExpertTeamCoordinator coordinator = new ExpertTeamCoordinator(null);
+        ExpertRoleRegistry roleRegistry = new ExpertRoleRegistry();
+        MessageBus messageBus = noOpMessageBus();
+        return new Composition(coordinator, roleRegistry, messageBus, agents);
+    }
+
+    /**
+     * Build a team composition with self-evolution wired: an {@link ExpertMemoryStore} for
+     * cross-task lesson persistence and a {@link LessonExtractor} for LLM-driven extraction at team
+     * completion. Host applications (e.g. kairo-code) call this overload to activate the read-write
+     * self-evolution loop.
+     *
+     * @param agentCount number of worker agents to create (must be ≥ 1)
+     * @param agentSupplier factory invoked once per worker; must not return null
+     * @param memoryStore expert memory store for prior-lesson recall + write-back (nullable)
+     * @param lessonExtractor LLM-backed lesson extractor at team completion (nullable — disables
+     *     write-back when null; recall still works against pre-existing memories)
+     * @return a {@link Composition} bundling the four parts
+     * @since v0.10
+     */
+    public static Composition create(
+            int agentCount,
+            Supplier<Agent> agentSupplier,
+            @Nullable ExpertMemoryStore memoryStore,
+            @Nullable LessonExtractor lessonExtractor) {
+        if (agentCount < 1) {
+            throw new IllegalArgumentException("agentCount must be ≥ 1, got " + agentCount);
+        }
+        if (agentSupplier == null) {
+            throw new IllegalArgumentException("agentSupplier must not be null");
+        }
+        List<Agent> agents = new ArrayList<>(agentCount);
+        for (int i = 0; i < agentCount; i++) {
+            Agent a = agentSupplier.get();
+            if (a == null) {
+                throw new IllegalStateException("agentSupplier returned null on iteration " + i);
+            }
+            agents.add(a);
+        }
+        ExpertTeamCoordinator coordinator =
+                new ExpertTeamCoordinator(
+                        null,
+                        new SimpleEvaluationStrategy(),
+                        null,
+                        new io.kairo.multiagent.orchestration.internal.DefaultPlanner(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        memoryStore,
+                        lessonExtractor);
         ExpertRoleRegistry roleRegistry = new ExpertRoleRegistry();
         MessageBus messageBus = noOpMessageBus();
         return new Composition(coordinator, roleRegistry, messageBus, agents);
