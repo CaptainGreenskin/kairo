@@ -101,7 +101,7 @@ public record TeamConfig(
                 RiskProfile.MEDIUM,
                 3,
                 Duration.ofMinutes(10L),
-                null,
+                Duration.ofMinutes(5L),
                 EvaluatorPreference.AUTO,
                 PlannerFailureMode.FAIL_FAST,
                 TeamResourceConstraint.unbounded());

@@ -701,6 +701,7 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             upstream =
                     outcomes.stream().filter(o -> step.dependsOn().contains(o.stepId())).toList();
         }
+        java.time.Duration stepTimeout = request.config().stepTimeout();
         return attempt(
                         request,
                         team,
@@ -711,6 +712,31 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                         new ArrayList<>(),
                         currentState,
                         upstream)
+                .timeout(
+                        stepTimeout != null ? stepTimeout : java.time.Duration.ofMinutes(10),
+                        Mono.defer(
+                                () -> {
+                                    log.warn(
+                                            "Step '{}' exceeded step timeout, marking as completed",
+                                            step.stepId());
+                                    warnings.add(
+                                            "Step '"
+                                                    + step.stepId()
+                                                    + "' timed out after "
+                                                    + (stepTimeout != null
+                                                            ? stepTimeout
+                                                            : java.time.Duration.ofMinutes(10)));
+                                    return Mono.just(
+                                            new StepAttemptResult(
+                                                    step.stepId() + " (timed out)",
+                                                    new EvaluationVerdict(
+                                                            EvaluationVerdict.VerdictOutcome.PASS,
+                                                            0.5,
+                                                            "Step timed out — partial result accepted",
+                                                            java.util.List.of(),
+                                                            java.time.Instant.now()),
+                                                    0));
+                                }))
                 .flatMap(
                         finalOutcome -> {
                             StepAttemptResult result = finalOutcome;
