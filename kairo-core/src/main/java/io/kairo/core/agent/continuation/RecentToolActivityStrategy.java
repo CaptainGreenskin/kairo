@@ -80,6 +80,12 @@ public final class RecentToolActivityStrategy implements AgentContinuationStrate
 
     @Override
     public Mono<ContinuationDecision> decide(ContinuationContext ctx) {
+        // Respect the model's own completion signal. When stopReason is END_TURN, the model
+        // consciously decided it's done — don't second-guess it with a nudge just because it
+        // recently used tools. This mirrors Claude Code's behavior: end_turn = agent finished.
+        if (ctx.stopReason() == io.kairo.api.model.ModelResponse.StopReason.END_TURN) {
+            return Mono.just(ContinuationDecision.Pass.INSTANCE);
+        }
         if (ctx.toolCallsInLastKIterations() > 0 && !looksLikeFinalAnswer(ctx.lastAssistantMsg())) {
             Msg synthetic = Msg.nudge(NUDGE_MESSAGE, name());
             return Mono.just(
