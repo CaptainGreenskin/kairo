@@ -897,17 +897,6 @@ public class DefaultReActAgent implements Agent {
                         () -> reactLoop.getHistory());
         return terminalGuard
                 .fireSessionEndOnce(event)
-                .timeout(
-                        Duration.ofSeconds(30),
-                        Mono.defer(
-                                () -> {
-                                    log.warn(
-                                            "Session-end hooks timed out after 30s for agent '{}'"
-                                                    + " — proceeding with result (best-effort)",
-                                            name);
-                                    return Mono.empty();
-                                }))
-                .fireSessionEndOnce(event)
                 .doFinally(
                         signal -> {
                             if (hookChain instanceof io.kairo.core.hook.DefaultHookChain dhc) {
