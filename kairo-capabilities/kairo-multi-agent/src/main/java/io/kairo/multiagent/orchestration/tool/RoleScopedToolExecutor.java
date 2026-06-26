@@ -23,6 +23,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -41,9 +44,12 @@ import reactor.core.publisher.Mono;
  */
 public class RoleScopedToolExecutor implements ToolExecutor {
 
+    private static final Logger log = LoggerFactory.getLogger(RoleScopedToolExecutor.class);
+
     private final ToolExecutor delegate;
     private final Set<String> allowedTools;
     private final String roleId;
+    private final AtomicInteger rejectionCount = new AtomicInteger(0);
 
     /**
      * @param delegate the underlying executor to delegate permitted calls to; must not be null
@@ -165,6 +171,13 @@ public class RoleScopedToolExecutor implements ToolExecutor {
     }
 
     private ToolResult blockedResult(String toolName, String toolUseId) {
+        int count = rejectionCount.incrementAndGet();
+        log.info(
+                "Role '{}' tool rejection #{}: {} attempted (allowed: {})",
+                roleId,
+                count,
+                toolName,
+                allowedTools);
         String message =
                 "Tool '"
                         + toolName
@@ -174,5 +187,10 @@ public class RoleScopedToolExecutor implements ToolExecutor {
                         + "Allowed tools: "
                         + allowedTools;
         return ToolResult.error(toolUseId, message);
+    }
+
+    /** Returns the total number of tool rejections so far. */
+    public int getRejectionCount() {
+        return rejectionCount.get();
     }
 }

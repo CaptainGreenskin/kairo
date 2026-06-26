@@ -18,6 +18,7 @@ package io.kairo.multiagent.subagent;
 import io.kairo.api.team.RoleDefinition;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Extended profile for an expert role, enriching the base {@link RoleDefinition} with skill
@@ -31,9 +32,12 @@ public record ExpertProfile(
         List<String> mountedSkills,
         String memoryNamespace,
         String modelOverride, // nullable — senior model ID for escalation
-        RoleCapabilities capabilities) {
+        RoleCapabilities capabilities,
+        Set<ContextScope> contextScopes) {
 
-    /** Backward-compatible constructor without capabilities (defaults to EMPTY). */
+    /**
+     * Backward-compatible constructor without capabilities and contextScopes (defaults to EMPTY).
+     */
     public ExpertProfile(
             String roleId,
             RoleDefinition roleDefinition,
@@ -48,7 +52,28 @@ public record ExpertProfile(
                 mountedSkills,
                 memoryNamespace,
                 modelOverride,
-                RoleCapabilities.EMPTY);
+                RoleCapabilities.EMPTY,
+                Set.of());
+    }
+
+    /** Backward-compatible constructor without contextScopes (defaults to empty set). */
+    public ExpertProfile(
+            String roleId,
+            RoleDefinition roleDefinition,
+            String skillProfile,
+            List<String> mountedSkills,
+            String memoryNamespace,
+            String modelOverride,
+            RoleCapabilities capabilities) {
+        this(
+                roleId,
+                roleDefinition,
+                skillProfile,
+                mountedSkills,
+                memoryNamespace,
+                modelOverride,
+                capabilities,
+                Set.of());
     }
 
     public ExpertProfile {
@@ -62,5 +87,6 @@ public record ExpertProfile(
         if (capabilities == null) {
             capabilities = RoleCapabilities.EMPTY;
         }
+        contextScopes = contextScopes != null ? Set.copyOf(contextScopes) : Set.of();
     }
 }
