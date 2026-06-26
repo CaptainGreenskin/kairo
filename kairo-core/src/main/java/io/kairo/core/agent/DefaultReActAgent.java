@@ -669,11 +669,43 @@ public class DefaultReActAgent implements Agent {
                                                                                                     .get());
                                                                                     publishAgentDone(
                                                                                             "completed");
-                                                                                    return fireSessionEndBestEffort(
+                                                                                    // Fire
+                                                                                    // session-end
+                                                                                    // hooks in
+                                                                                    // background —
+                                                                                    // truly
+                                                                                    // best-effort.
+                                                                                    // Never block
+                                                                                    // result
+                                                                                    // delivery on
+                                                                                    // hooks
+                                                                                    // (evolution,
+                                                                                    // memory, etc).
+                                                                                    fireSessionEndBestEffort(
                                                                                                     AgentState
                                                                                                             .COMPLETED,
                                                                                                     null)
-                                                                                            .thenReturn(
+                                                                                            .subscribeOn(
+                                                                                                    reactor
+                                                                                                            .core
+                                                                                                            .scheduler
+                                                                                                            .Schedulers
+                                                                                                            .boundedElastic())
+                                                                                            .subscribe(
+                                                                                                    v ->
+                                                                                                            log
+                                                                                                                    .info(
+                                                                                                                            "Session-end hooks completed for agent '{}'",
+                                                                                                                            name),
+                                                                                                    e ->
+                                                                                                            log
+                                                                                                                    .warn(
+                                                                                                                            "Session-end hooks error for agent '{}': {}",
+                                                                                                                            name,
+                                                                                                                            e
+                                                                                                                                    .getMessage()));
+                                                                                    return Mono
+                                                                                            .just(
                                                                                                     result);
                                                                                 })));
                                             })
@@ -864,6 +896,17 @@ public class DefaultReActAgent implements Agent {
                         errorMessage,
                         () -> reactLoop.getHistory());
         return terminalGuard
+                .fireSessionEndOnce(event)
+                .timeout(
+                        Duration.ofSeconds(30),
+                        Mono.defer(
+                                () -> {
+                                    log.warn(
+                                            "Session-end hooks timed out after 30s for agent '{}'"
+                                                    + " — proceeding with result (best-effort)",
+                                            name);
+                                    return Mono.empty();
+                                }))
                 .fireSessionEndOnce(event)
                 .doFinally(
                         signal -> {
