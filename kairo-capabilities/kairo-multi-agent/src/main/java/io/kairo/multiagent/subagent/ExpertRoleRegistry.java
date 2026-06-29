@@ -111,6 +111,24 @@ public class ExpertRoleRegistry {
                             Set.of(),
                             Set.of("debugging", "diagnostics", "observability"),
                             Set.of("diagnose", "debug", "analyze"));
+            case ARCHITECT ->
+                    new RoleCapabilities(
+                            Set.of(),
+                            Set.of(),
+                            Set.of("architecture", "design", "api", "performance", "scalability"),
+                            Set.of("design", "plan", "evaluate"));
+            case DEVOPS ->
+                    new RoleCapabilities(
+                            Set.of(),
+                            Set.of(),
+                            Set.of("devops", "ci", "build", "deployment", "infrastructure"),
+                            Set.of("configure", "automate", "deploy"));
+            case DESIGNER ->
+                    new RoleCapabilities(
+                            Set.of(),
+                            Set.of(),
+                            Set.of("ux", "ui", "frontend", "accessibility", "design"),
+                            Set.of("design", "prototype", "review"));
         };
     }
 
@@ -121,6 +139,9 @@ public class ExpertRoleRegistry {
             case TESTER -> Set.of(ContextScope.TEST_FILES, ContextScope.UPSTREAM_ONLY);
             case REVIEWER -> Set.of(ContextScope.UPSTREAM_ONLY);
             case DEBUGGER -> Set.of(ContextScope.SOURCE_FILES, ContextScope.UPSTREAM_ONLY);
+            case ARCHITECT -> Set.of(ContextScope.FULL_TREE, ContextScope.KEY_FILES);
+            case DEVOPS -> Set.of(ContextScope.KEY_FILES, ContextScope.SOURCE_FILES);
+            case DESIGNER -> Set.of(ContextScope.SOURCE_FILES, ContextScope.UPSTREAM_ONLY);
         };
     }
 
@@ -150,6 +171,22 @@ public class ExpertRoleRegistry {
                             + " and diagnose defects. Provide a clear root-cause analysis with specific"
                             + " file locations and a recommended fix. Do not fix the code yourself \u2014"
                             + " describe the fix for the Coder.";
+            case ARCHITECT ->
+                    "You are a software architect. Design the system/module structure, define"
+                            + " interfaces and component boundaries, and analyze trade-offs (performance,"
+                            + " scalability, maintainability). Produce a concrete design/plan with"
+                            + " specific files, types, and responsibilities. Do not implement the code"
+                            + " yourself \u2014 hand a clear blueprint to the Coder.";
+            case DEVOPS ->
+                    "You are a DevOps engineer. Handle build scripts, CI/CD pipelines,"
+                            + " containerization (Docker/compose), and deployment configuration. Follow"
+                            + " project conventions; produce working, runnable configs and verify them"
+                            + " with the appropriate build/CLI commands.";
+            case DESIGNER ->
+                    "You are a UI/UX designer-engineer. Design and refine user interfaces and"
+                            + " component structure for clarity, consistency, and accessibility. When"
+                            + " implementing frontend, follow the project's existing design system and"
+                            + " conventions. Relevant source files are available from upstream outputs.";
         };
     }
 
@@ -173,6 +210,22 @@ public class ExpertRoleRegistry {
                     List.of("read_file", "write_file", "grep", "search", "list_files", "run_tests");
             // Debugger: read + run diagnostics (bash for logs/stack traces), no file writes.
             case DEBUGGER -> List.of("read_file", "grep", "search", "bash", "list_files");
+            // Architect: read-only — designs the blueprint, hands implementation to the Coder.
+            case ARCHITECT -> List.of("read_file", "grep", "search", "list_files");
+            // DevOps: read + write configs + run build/deploy commands.
+            case DEVOPS ->
+                    List.of(
+                            "read_file",
+                            "write_file",
+                            "edit_file",
+                            "grep",
+                            "search",
+                            "bash",
+                            "run_tests",
+                            "list_files");
+            // Designer: read + write frontend/UI files.
+            case DESIGNER ->
+                    List.of("read_file", "write_file", "edit_file", "grep", "search", "list_files");
         };
     }
 }

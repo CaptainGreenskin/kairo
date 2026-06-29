@@ -116,6 +116,14 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
     @Nullable private final SynthesizerStep synthesizer;
     @Nullable private final ExpertMemoryStore memoryStore;
     @Nullable private final LessonExtractor lessonExtractor;
+
+    /**
+     * Level-2 team self-evolution (optional). When set, successful team compositions are recorded
+     * at completion and recalled at planning time so the planner reuses what worked for similar
+     * tasks. Wired via {@link #setTeamPatternStore} to avoid threading a param through every
+     * constructor. Null → L2 disabled (L1 expert memory unaffected).
+     */
+    @Nullable private volatile TeamPatternStore teamPatternStore;
     @Nullable private volatile PlanVerificationStrategy planVerifier;
     private final AtomicLong eventSeq = new AtomicLong(0);
 
@@ -526,7 +534,7 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             boolean planOnly) {
         TeamExecutionPlan plan;
         try {
-            plan = planner.plan(request, team);
+            plan = planner.plan(requestForPlanning(request), team);
         } catch (RuntimeException primary) {
             if (request.config().plannerFailureMode() == PlannerFailureMode.SINGLE_STEP_FALLBACK) {
                 log.warn(
@@ -1491,6 +1499,7 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                             terminalEmitted,
                             finalOutput);
                     persistLessonsFireAndForget(request, outcomes);
+                    recordTeamPatternFireAndForget(request, plan, true);
                     return Mono.just(result);
                 });
     }
@@ -1804,6 +1813,84 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             }
         }
         return hit;
+    }
+
+    /** Enable Level-2 team self-evolution: record successful compositions + recall at planning. */
+    public void setTeamPatternStore(@Nullable TeamPatternStore store) {
+        this.teamPatternStore = store;
+    }
+
+    /**
+     * Return a request whose goal is augmented with recalled team-collaboration patterns (L2
+     * recall), so the planner reuses expert compositions that worked for similar past tasks.
+     * No-op (returns the original request) when L2 is disabled or nothing relevant is recalled.
+     */
+    private TeamExecutionRequest requestForPlanning(TeamExecutionRequest request) {
+        TeamPatternStore store = this.teamPatternStore;
+        if (store == null) {
+            return request;
+        }
+        List<TeamPattern> patterns;
+        try {
+            patterns = store.recall(request.goal(), 3);
+        } catch (RuntimeException ex) {
+            log.debug("Team pattern recall failed: {}", ex.toString());
+            return request;
+        }
+        if (patterns.isEmpty()) {
+            return request;
+        }
+        StringBuilder sb = new StringBuilder(request.goal() == null ? "" : request.goal());
+        sb.append(
+                "\n\n[Learned team compositions — for similar past tasks these expert sequences"
+                        + " worked; reuse when they fit]");
+        for (TeamPattern p : patterns) {
+            sb.append("\n- roles: ").append(String.join(" → ", p.roleSequence()))
+                    .append(" (").append(p.dagShape()).append(")")
+                    .append(p.success() ? " [succeeded]" : " [failed]");
+        }
+        return new TeamExecutionRequest(
+                request.requestId(), sb.toString(), request.context(), request.config());
+    }
+
+    /**
+     * Record the executed team composition as a learned pattern (L2 write-back). Fire-and-forget;
+     * deterministic (roleSequence + DAG shape from the plan, success from the terminal state) — no
+     * extra LLM call.
+     */
+    private void recordTeamPatternFireAndForget(
+            TeamExecutionRequest request, @Nullable TeamExecutionPlan plan, boolean success) {
+        TeamPatternStore store = this.teamPatternStore;
+        if (store == null || plan == null || plan.steps() == null || plan.steps().isEmpty()) {
+            return;
+        }
+        try {
+            List<String> roleSequence =
+                    plan.steps().stream()
+                            .map(s -> s.assignedRole() != null ? s.assignedRole().roleId() : "?")
+                            .toList();
+            int maxDeps =
+                    plan.steps().stream()
+                            .mapToInt(s -> s.dependsOn() == null ? 0 : s.dependsOn().size())
+                            .max()
+                            .orElse(0);
+            String dagShape = maxDeps == 0 ? "parallel:" + plan.steps().size() : "serial";
+            TeamPattern pattern =
+                    new TeamPattern(
+                            request.goal() == null ? "" : request.goal(),
+                            roleSequence,
+                            dagShape,
+                            success,
+                            success ? 1.0 : 0.0,
+                            Instant.now());
+            store.record(pattern)
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .subscribe(
+                            v -> {},
+                            e -> log.debug("Team pattern record error: {}", e.getMessage()));
+        } catch (RuntimeException ex) {
+            log.debug("Team pattern capture skipped: {}", ex.toString());
+        }
     }
 
     /**

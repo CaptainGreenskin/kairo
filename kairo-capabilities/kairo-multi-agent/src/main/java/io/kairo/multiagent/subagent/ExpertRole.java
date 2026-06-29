@@ -24,7 +24,10 @@ public enum ExpertRole {
     CODER("expert:coder", "Full-stack code implementation and modification"),
     REVIEWER("expert:reviewer", "Code review, risk identification, and quality assessment"),
     TESTER("expert:tester", "Test execution and verification"),
-    DEBUGGER("expert:debugger", "Fault reproduction, root-cause analysis, and defect diagnosis");
+    DEBUGGER("expert:debugger", "Fault reproduction, root-cause analysis, and defect diagnosis"),
+    ARCHITECT("expert:architect", "System and software architecture design and trade-off analysis"),
+    DEVOPS("expert:devops", "Build, CI/CD, containerization, and deployment"),
+    DESIGNER("expert:designer", "UI/UX design and frontend interface quality");
 
     private final String roleId;
     private final String description;
