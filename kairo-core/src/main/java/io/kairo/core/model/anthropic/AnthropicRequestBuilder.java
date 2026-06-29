@@ -43,6 +43,9 @@ import java.util.Map;
  */
 public class AnthropicRequestBuilder implements ProviderPipeline.RequestBuilder<String> {
 
+    /** Anthropic's hard minimum for extended-thinking {@code budget_tokens}. */
+    private static final int MIN_THINKING_BUDGET = 1024;
+
     private final ObjectMapper objectMapper;
     private final ComplexityEstimator complexityEstimator = new ComplexityEstimator();
     private final ToolDescriptionAdapter toolAdapter = new ToolDescriptionAdapter();
@@ -191,11 +194,21 @@ public class AnthropicRequestBuilder implements ProviderPipeline.RequestBuilder<
             }
         }
 
-        // Extended thinking — use dynamic budget from complexity if not explicitly configured
+        // Extended thinking — Anthropic requires budget_tokens >= 1024 AND strictly less than
+        // max_tokens. When both can't be satisfied (e.g. a small-max_tokens call like title
+        // generation), thinking is skipped entirely rather than emitting an invalid request
+        // (previously a budget got clamped down to maxTokens-1, producing budget_tokens like 63
+        // and a 400). Anthropic also rejects any temperature != 1 when thinking is enabled, so
+        // temperature is forced to 1 below whenever a thinking block is actually emitted.
+        boolean thinkingEnabled = false;
         if (config.thinking() != null && config.thinking().enabled()) {
-            ObjectNode thinkingNode = root.putObject("thinking");
-            thinkingNode.put("type", "enabled");
-            thinkingNode.put("budget_tokens", config.thinking().budgetTokens());
+            int budget = Math.min(config.thinking().budgetTokens(), config.maxTokens() - 1);
+            if (budget >= MIN_THINKING_BUDGET) {
+                ObjectNode thinkingNode = root.putObject("thinking");
+                thinkingNode.put("type", "enabled");
+                thinkingNode.put("budget_tokens", budget);
+                thinkingEnabled = true;
+            }
         } else if (capability.supportsThinking() && capability.thinkingBudgetRange() != null) {
             // Auto-enable thinking with dynamic budget based on conversation complexity
             Integer explicitBudget = config.thinkingBudget();
@@ -208,13 +221,17 @@ public class AnthropicRequestBuilder implements ProviderPipeline.RequestBuilder<
                 budget = capability.thinkingBudgetRange().clamp(budget);
             }
             // Anthropic requires: max_tokens > budget_tokens (strictly greater)
-            int maxTokens = config.maxTokens();
-            budget = Math.min(budget, maxTokens - 1);
-            if (budget > 0) {
+            budget = Math.min(budget, config.maxTokens() - 1);
+            if (budget >= MIN_THINKING_BUDGET) {
                 ObjectNode thinkingNode = root.putObject("thinking");
                 thinkingNode.put("type", "enabled");
                 thinkingNode.put("budget_tokens", budget);
+                thinkingEnabled = true;
             }
+        }
+        // Anthropic: "temperature may only be set to 1 when thinking is enabled."
+        if (thinkingEnabled) {
+            root.put("temperature", 1.0);
         }
 
         // Correct: Map effort to output_config.effort (Anthropic API format)
