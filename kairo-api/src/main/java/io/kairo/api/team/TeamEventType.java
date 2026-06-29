@@ -69,5 +69,12 @@ public enum TeamEventType {
     STEP_TOOL_CALL,
 
     /** Incremental artifact output from a step. */
-    STEP_ARTIFACT_CHUNK
+    STEP_ARTIFACT_CHUNK,
+
+    /**
+     * The user steered a running step mid-flight: a directive was injected into the executing
+     * worker agent's conversation (picked up at its next reasoning iteration, without interrupting
+     * the current turn). Attributes carry the target {@code stepId} and the directive text.
+     */
+    STEP_STEERED
 }

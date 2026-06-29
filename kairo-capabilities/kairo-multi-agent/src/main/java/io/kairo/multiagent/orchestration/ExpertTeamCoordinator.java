@@ -127,6 +127,27 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             new ConcurrentHashMap<>();
 
     /**
+     * Currently-executing steps, keyed by stepId. Populated for the duration of a step's worker
+     * {@code generate(...)} window (see {@link #trackActive}) and cleared when it settles. Enables
+     * real-time mid-flight steering: {@link #steer} injects a user directive into the live worker
+     * agent's conversation. The coordinator is per-session, so this map only ever holds the active
+     * steps of this session's team.
+     */
+    private final ConcurrentHashMap<String, ActiveStep> activeStepAgents = new ConcurrentHashMap<>();
+
+    /** A step actively running its worker agent, with the context needed to emit STEP_STEERED. */
+    private record ActiveStep(Agent agent, Team team, TeamExecutionRequest request) {}
+
+    /**
+     * Mid-flight user directives accumulated during the current execution (belt-and-suspenders for
+     * {@link #steer}): besides the live {@code injectMessages} into the running worker, every steer
+     * is recorded here and appended to the goal of every SUBSEQUENT step's worker, so a directive
+     * still takes effect even if the step it targeted was already wrapping up. Cleared at the start
+     * of each {@link #execute} (a fresh task) so directives never leak across tasks.
+     */
+    private final java.util.List<String> steerDirectives = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /**
      * Minimal coordinator with the built-in simple strategy.
      *
      * @param eventBus optional event bus for lifecycle telemetry (may be {@code null})
@@ -310,6 +331,9 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
     public Mono<TeamResult> execute(TeamExecutionRequest request, Team team, boolean planOnly) {
         Objects.requireNonNull(request, "request must not be null");
         Objects.requireNonNull(team, "team must not be null");
+
+        // Fresh task: drop any mid-flight directives accumulated by a previous execution.
+        steerDirectives.clear();
 
         Instant started = Instant.now();
         AtomicReference<State> currentState = new AtomicReference<>(State.IDLE);
@@ -923,15 +947,19 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                     publish(team, request, TeamEventType.STEP_TOOL_CALL, attrs);
                 };
 
-        return generator
-                .generate(
+        return trackActive(
                         step,
                         bindings,
-                        request.goal(),
-                        attemptNumber,
-                        priorVerdicts,
-                        toolSink,
-                        upstreamOutcomes)
+                        team,
+                        request,
+                        generator.generate(
+                                step,
+                                bindings,
+                                augmentGoal(request.goal()),
+                                attemptNumber,
+                                priorVerdicts,
+                                toolSink,
+                                upstreamOutcomes))
                 .doOnNext(
                         artifact ->
                                 log.debug(
@@ -1068,8 +1096,17 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
 
             transitionIfNeeded(currentState, State.GENERATING);
 
-            return generator
-                    .generate(step, bindings, request.goal(), finalAttempt, priorVerdicts)
+            return trackActive(
+                            step,
+                            bindings,
+                            team,
+                            request,
+                            generator.generate(
+                                    step,
+                                    bindings,
+                                    augmentGoal(request.goal()),
+                                    finalAttempt,
+                                    priorVerdicts))
                     .flatMap(
                             artifact -> {
                                 transitionIfNeeded(currentState, State.EVALUATING);
@@ -1248,9 +1285,18 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
 
         transitionIfNeeded(currentState, State.GENERATING);
 
-        return generator
-                .generateWithModelOverride(
-                        step, bindings, request.goal(), seniorAttempt, priorVerdicts, modelOverride)
+        return trackActive(
+                        step,
+                        bindings,
+                        team,
+                        request,
+                        generator.generateWithModelOverride(
+                                step,
+                                bindings,
+                                augmentGoal(request.goal()),
+                                seniorAttempt,
+                                priorVerdicts,
+                                modelOverride))
                 .flatMap(
                         artifact -> {
                             transitionIfNeeded(currentState, State.EVALUATING);
@@ -1700,6 +1746,95 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             eventBus.publish(event.toKairoEvent());
         } catch (RuntimeException ex) {
             log.debug("KairoEventBus publish failed for team event {}: {}", type, ex.toString());
+        }
+    }
+
+    /**
+     * Wrap a step's worker {@code generate(...)} so the running worker agent is registered in
+     * {@link #activeStepAgents} for the duration of execution, then removed when it settles
+     * (success, error, or cancel). This is the window during which {@link #steer} can inject a
+     * mid-flight user directive into the live worker.
+     */
+    private Mono<String> trackActive(
+            TeamStep step,
+            Map<String, Agent> bindings,
+            Team team,
+            TeamExecutionRequest request,
+            Mono<String> generate) {
+        return Mono.defer(
+                () -> {
+                    Agent agent = bindings.get(step.assignedRole().roleId());
+                    if (agent != null) {
+                        activeStepAgents.put(
+                                step.stepId(), new ActiveStep(agent, team, request));
+                    }
+                    return generate.doFinally(sig -> activeStepAgents.remove(step.stepId()));
+                });
+    }
+
+    /**
+     * Inject a user directive into one or all currently-executing worker agents (mid-flight
+     * steering). The directive is appended to the worker's conversation via {@link
+     * Agent#injectMessages} and picked up at its next reasoning iteration without interrupting the
+     * current turn.
+     *
+     * @param stepId target a specific running step; {@code null}/blank → all active steps
+     * @param directive the user's instruction; blank → no-op
+     * @return {@code true} if at least one active worker received the directive (caller can fall
+     *     back to queuing for the next plan when this returns {@code false})
+     */
+    public boolean steer(@Nullable String stepId, String directive) {
+        if (directive == null || directive.isBlank()) {
+            return false;
+        }
+        // Belt-and-suspenders: record the directive so every subsequent step's worker also sees
+        // it (via augmentGoal), even if the live injection below lands on a step that's wrapping up.
+        steerDirectives.add(directive.trim());
+
+        Msg msg = Msg.of(MsgRole.USER, "[用户实时干预] " + directive.trim());
+        boolean hit = false;
+        if (stepId != null && !stepId.isBlank()) {
+            ActiveStep target = activeStepAgents.get(stepId);
+            if (target != null) {
+                hit = injectAndPublish(target, stepId, directive, msg);
+            }
+        } else {
+            for (Map.Entry<String, ActiveStep> e : activeStepAgents.entrySet()) {
+                hit |= injectAndPublish(e.getValue(), e.getKey(), directive, msg);
+            }
+        }
+        return hit;
+    }
+
+    /**
+     * Append any accumulated mid-flight {@link #steerDirectives} to a step's goal so subsequent
+     * steps incorporate user directives that arrived during execution. No-op when none recorded.
+     */
+    private String augmentGoal(String goal) {
+        if (steerDirectives.isEmpty()) {
+            return goal;
+        }
+        StringBuilder sb = new StringBuilder(goal == null ? "" : goal);
+        sb.append("\n\n[Mid-flight user directives — incorporate these into your work]");
+        for (String d : steerDirectives) {
+            sb.append("\n- ").append(d);
+        }
+        return sb.toString();
+    }
+
+    private boolean injectAndPublish(ActiveStep active, String stepId, String directive, Msg msg) {
+        try {
+            active.agent().injectMessages(List.of(msg));
+            publish(
+                    active.team(),
+                    active.request(),
+                    TeamEventType.STEP_STEERED,
+                    Map.of("stepId", stepId, "directive", trimForEvent(directive)));
+            log.info("Mid-flight steer injected into step {} ({} chars)", stepId, directive.length());
+            return true;
+        } catch (RuntimeException ex) {
+            log.warn("steer injectMessages failed for step {}: {}", stepId, ex.toString());
+            return false;
         }
     }
 
