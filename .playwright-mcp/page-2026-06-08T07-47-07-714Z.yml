@@ -1,3 +1,0 @@
-- generic [ref=e2]:
-  - generic [ref=e7]: kairo-code 鈥� ~/projects/spring-app
-  - generic [ref=e8]: "kairo-code> Find all TODO comments in src/ [model] in=2,847 out=42 cache_read=0 context: [鈻堚枅鈻戔枒鈻戔枒鈻戔枒鈻戔枒鈻戔枒鈻戔枒鈻戔枒鈻戔枒鈻戔枒] 8% I'll search for TODO comments in your source files. tool: grep pattern: TODO path: src/ include: *.java"

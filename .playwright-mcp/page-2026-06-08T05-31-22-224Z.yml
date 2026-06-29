@@ -1,3 +1,0 @@
-- generic [ref=e2]:
-  - generic [ref=e7]: kairo-code — ~/projects/my-app
-  - generic [ref=e8]: "kairo-code> :cost Session Cost Summary 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Model: claude-sonnet-4-20250514 Provider: anthropic Turns: 7 Tool calls: 23 Input tokens: 45,821 ($0.1374) Output tokens: 3,247 ($0.0487) Cache read: 38,102 ($0.0114) 83% hit rate Cache write: 7,719 ($0.0289) Total cost: $0.2264 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ kairo-code> _"
