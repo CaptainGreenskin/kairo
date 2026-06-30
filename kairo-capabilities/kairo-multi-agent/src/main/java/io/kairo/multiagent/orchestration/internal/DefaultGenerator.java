@@ -368,6 +368,14 @@ public final class DefaultGenerator {
             for (ExpertMemoryEntry e : lessons) {
                 sb.append("- ").append(e.lesson()).append('\n');
             }
+            // INFO so self-evolution is observable end-to-end: this is the only proof that a
+            // recalled lesson actually reached a worker prompt. Without it, the L1-style "wired but
+            // silently no-op" failure is invisible (recall returning nothing looks identical to a
+            // successful injection of nothing).
+            log.info(
+                    "Injected {} prior lesson(s) into worker prompt for role {}",
+                    lessons.size(),
+                    roleId);
         } catch (Exception e) {
             log.debug("Prior-lesson recall failed for role {}: {}", roleId, e.getMessage());
         }
