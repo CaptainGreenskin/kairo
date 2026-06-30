@@ -1498,7 +1498,7 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                             TeamEventType.TEAM_COMPLETED,
                             terminalEmitted,
                             finalOutput);
-                    persistLessonsFireAndForget(request, outcomes);
+                    persistLessonsFireAndForget(request, outcomes, plan);
                     recordTeamPatternFireAndForget(request, plan, true);
                     return Mono.just(result);
                 });
@@ -1509,14 +1509,44 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
      * extraction — an LLM call that may be slow — never blocks or delays the team result. Each role
      * gets a 30s timeout; failures are logged and swallowed.
      */
-    private void persistLessonsFireAndForget(
-            TeamExecutionRequest request, List<StepOutcome> outcomes) {
-        if (memoryStore == null || lessonExtractor == null || outcomes.isEmpty()) {
-            return;
+    /**
+     * Group step outcomes by the STABLE roleId (e.g. "expert:coder"), not the per-task requestId.
+     * The recall side ({@code DefaultGenerator#appendPriorLessons}) reads lessons by roleId, so
+     * writing under requestId meant lessons landed in throwaway UUID namespaces and were NEVER
+     * recalled — cross-task self-evolution was silently a no-op. Outcomes whose step has no
+     * resolvable role (plan missing / unmapped stepId) are dropped. Visible for testing.
+     */
+    static java.util.Map<String, List<StepOutcome>> groupOutcomesByRole(
+            List<StepOutcome> outcomes, @Nullable TeamExecutionPlan plan) {
+        java.util.Map<String, String> stepToRole = new java.util.HashMap<>();
+        if (plan != null && plan.steps() != null) {
+            for (TeamStep s : plan.steps()) {
+                if (s.assignedRole() != null) {
+                    stepToRole.put(s.stepId(), s.assignedRole().roleId());
+                }
+            }
         }
         java.util.Map<String, List<StepOutcome>> byRole = new java.util.LinkedHashMap<>();
         for (StepOutcome o : outcomes) {
-            byRole.computeIfAbsent(request.requestId(), k -> new java.util.ArrayList<>()).add(o);
+            String roleId = stepToRole.get(o.stepId());
+            if (roleId == null || roleId.isBlank()) {
+                continue;
+            }
+            byRole.computeIfAbsent(roleId, k -> new java.util.ArrayList<>()).add(o);
+        }
+        return byRole;
+    }
+
+    private void persistLessonsFireAndForget(
+            TeamExecutionRequest request,
+            List<StepOutcome> outcomes,
+            @Nullable TeamExecutionPlan plan) {
+        if (memoryStore == null || lessonExtractor == null || outcomes.isEmpty()) {
+            return;
+        }
+        java.util.Map<String, List<StepOutcome>> byRole = groupOutcomesByRole(outcomes, plan);
+        if (byRole.isEmpty()) {
+            return;
         }
         String goal = request.goal() == null ? "" : request.goal();
         Flux.fromIterable(byRole.entrySet())
