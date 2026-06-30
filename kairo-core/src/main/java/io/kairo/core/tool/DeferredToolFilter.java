@@ -62,6 +62,11 @@ public final class DeferredToolFilter {
                     "web_fetch",
                     "web_search",
                     "ask_user",
+                    // Scheduling (agent should reach these directly — recurring/deferred tasks are
+                    // a primary use case, not a rare lookup)
+                    "CronCreate",
+                    "CronList",
+                    "CronTrigger",
                     // Meta (deferred tool system)
                     "search_tools",
                     "execute_tool");

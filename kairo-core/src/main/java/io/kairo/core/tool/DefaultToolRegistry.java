@@ -119,6 +119,19 @@ public class DefaultToolRegistry implements ToolRegistry {
     }
 
     /**
+     * Register a tool by scanning its class for the {@code @Tool} definition, then bind a pre-built
+     * instance. Use this when the tool needs constructor injection (e.g. a {@code CronScheduler}) —
+     * {@link #registerTool(Class)} only auto-instantiates no-arg constructors and would log an
+     * error otherwise. The definition goes into the discovery map (so the tool is visible to
+     * search/deferred filtering) and the instance into the execution map.
+     */
+    public void registerWithInstance(Class<?> toolClass, Object instance) {
+        ToolDefinition def = scanner.scanClass(toolClass);
+        register(def);
+        registerInstance(def.name(), instance);
+    }
+
+    /**
      * Register a tool class by scanning its annotations and auto-creating an instance.
      *
      * @param toolClass the annotated tool class (must implement {@link SyncTool} or {@link
