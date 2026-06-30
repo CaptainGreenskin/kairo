@@ -81,6 +81,30 @@ class PermissionSettingsLoaderTest {
     }
 
     @Test
+    void loadModeAliases() throws IOException {
+        // Users intuitively type "allow"/"ask"/"readonly"; these must map to the real modes
+        // instead of being silently dropped (which would fall back to DEFAULT and surprise them
+        // with approval prompts).
+        for (String alias : List.of("allow", "auto", "AUTO_APPROVE")) {
+            Path config = tempDir.resolve("perm-" + alias + ".json");
+            Files.writeString(config, "{\"mode\": \"" + alias + "\"}");
+            PermissionSettings settings =
+                    new PermissionSettingsLoader(objectMapper, List.of(config)).load();
+            assertThat(settings.mode())
+                    .as("alias '%s' should map to BYPASS", alias)
+                    .isEqualTo(PermissionMode.BYPASS);
+        }
+        Path askCfg = tempDir.resolve("perm-ask.json");
+        Files.writeString(askCfg, "{\"mode\": \"ask\"}");
+        assertThat(new PermissionSettingsLoader(objectMapper, List.of(askCfg)).load().mode())
+                .isEqualTo(PermissionMode.STRICT);
+        Path roCfg = tempDir.resolve("perm-readonly.json");
+        Files.writeString(roCfg, "{\"mode\": \"readonly\"}");
+        assertThat(new PermissionSettingsLoader(objectMapper, List.of(roCfg)).load().mode())
+                .isEqualTo(PermissionMode.PLAN);
+    }
+
+    @Test
     void loadRulesOnly() throws IOException {
         Path config = tempDir.resolve("permissions.json");
         Files.writeString(

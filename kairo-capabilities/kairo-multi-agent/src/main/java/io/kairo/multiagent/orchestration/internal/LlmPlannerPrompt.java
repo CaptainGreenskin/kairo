@@ -79,10 +79,19 @@ public final class LlmPlannerPrompt {
         sb.append("(read a file, write code, create a document), output exactly ONE step. ");
         sb.append("Do not artificially split into research→design→implement for simple tasks.\n");
         sb.append("- **Choose roles by what the task ACTUALLY needs**: ");
-        sb.append("writing/editing files → coder; reading/analyzing code → researcher; ");
-        sb.append("reviewing quality → reviewer; running tests → tester. ");
         sb.append(
-                "Do NOT assign researcher+architect+synthesizer when a single coder step suffices.\n");
+                "writing/editing files → coder; reading/analyzing code → researcher; ");
+        sb.append("reviewing quality → reviewer; running tests → tester; ");
+        sb.append(
+                "designing system/module architecture & trade-offs → architect; ");
+        sb.append(
+                "build, CI/CD, Docker, deploy → devops; ");
+        sb.append("UI/UX or frontend interface work → designer. ");
+        sb.append(
+                "Do NOT assign researcher+architect+synthesizer when a single coder step suffices,\n");
+        sb.append(
+                "but DO use architect/devops/designer when the task is genuinely about architecture, "
+                        + "build/deploy, or UI.\n");
         sb.append("- **Instructions must be SPECIFIC and ACTIONABLE.** Include concrete ");
         sb.append("deliverables (file paths, function names, exact changes). ");
         sb.append("Bad: \"analyze the codebase\". ");

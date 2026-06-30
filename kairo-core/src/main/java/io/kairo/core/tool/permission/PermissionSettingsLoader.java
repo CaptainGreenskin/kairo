@@ -111,11 +111,32 @@ public final class PermissionSettingsLoader {
         if (modeNode == null || !modeNode.isTextual()) {
             return null;
         }
-        String modeText = modeNode.asText().strip().toUpperCase();
+        String raw = modeNode.asText().strip();
+        String modeText = raw.toUpperCase();
+        // Accept intuitive aliases a user is likely to type, so a typo doesn't silently fall back
+        // to DEFAULT (which would surprise them with approval prompts on every write).
+        switch (modeText) {
+            case "ALLOW", "AUTO", "AUTO_APPROVE", "YIELD", "AUTO_APPROVAL" -> {
+                return PermissionMode.BYPASS;
+            }
+            case "ASK", "REQUIRE_APPROVAL" -> {
+                return PermissionMode.STRICT;
+            }
+            case "READONLY", "READ_ONLY" -> {
+                return PermissionMode.PLAN;
+            }
+            default -> {
+                // fall through to enum lookup
+            }
+        }
         try {
             return PermissionMode.valueOf(modeText);
         } catch (IllegalArgumentException e) {
-            log.warn("Unknown permission mode '{}', ignoring", modeNode.asText());
+            log.warn(
+                    "Unknown permission mode '{}'. Valid modes: DEFAULT, PLAN, STRICT, BYPASS "
+                            + "(aliases: allow→BYPASS, strict/ask→STRICT, plan/readonly→PLAN). "
+                            + "Falling back to DEFAULT.",
+                    raw);
             return null;
         }
     }
