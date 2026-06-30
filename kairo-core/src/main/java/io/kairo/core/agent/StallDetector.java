@@ -36,7 +36,11 @@ import reactor.core.publisher.Sinks;
  */
 public class StallDetector {
     private static final Logger log = LoggerFactory.getLogger(StallDetector.class);
-    private static final long DEFAULT_IDLE_MS = 300_000L;
+    // 2 minutes — tightened from 5 min so a stalled model call recovers sooner (the session stays
+    // resumable, and the user/UI can retry without staring at a dead spinner for 5 minutes). The
+    // stream-idle watchdog (60s) handles mid-stream hangs; this is the backstop for fully-silent
+    // stalls. Override with KAIRO_AGENT_STALL_IDLE_MS.
+    private static final long DEFAULT_IDLE_MS = 120_000L;
     private static final Duration CHECK_INTERVAL = Duration.ofSeconds(5);
 
     private final long idleThresholdMs;
