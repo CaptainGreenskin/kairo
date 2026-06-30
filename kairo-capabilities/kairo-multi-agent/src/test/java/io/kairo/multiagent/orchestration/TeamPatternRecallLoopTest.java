@@ -65,9 +65,11 @@ class TeamPatternRecallLoopTest {
                 requestForPlanning(coord, req("create a REST API users endpoint"));
 
         // The augmented goal must carry the recalled composition into the planner prompt.
-        assertTrue(planReq.goal().contains("Learned team compositions"),
+        assertTrue(
+                planReq.goal().contains("Learned team compositions"),
                 "planning goal should include the recalled-compositions section");
-        assertTrue(planReq.goal().contains("expert:architect"),
+        assertTrue(
+                planReq.goal().contains("expert:architect"),
                 "planning goal should include the recalled role sequence");
         // Original goal is preserved.
         assertTrue(planReq.goal().contains("create a REST API users endpoint"));

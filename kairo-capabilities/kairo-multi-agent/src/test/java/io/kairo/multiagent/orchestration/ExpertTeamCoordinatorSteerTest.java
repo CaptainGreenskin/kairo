@@ -40,7 +40,11 @@ class ExpertTeamCoordinatorSteerTest {
 
     @SuppressWarnings("unchecked")
     private static void putActiveStep(
-            ExpertTeamCoordinator coord, String stepId, Agent agent, Team team, TeamExecutionRequest req)
+            ExpertTeamCoordinator coord,
+            String stepId,
+            Agent agent,
+            Team team,
+            TeamExecutionRequest req)
             throws Exception {
         Field f = ExpertTeamCoordinator.class.getDeclaredField("activeStepAgents");
         f.setAccessible(true);
@@ -48,7 +52,8 @@ class ExpertTeamCoordinatorSteerTest {
         Class<?> activeStepCls =
                 Class.forName("io.kairo.multiagent.orchestration.ExpertTeamCoordinator$ActiveStep");
         Constructor<?> ctor =
-                activeStepCls.getDeclaredConstructor(Agent.class, Team.class, TeamExecutionRequest.class);
+                activeStepCls.getDeclaredConstructor(
+                        Agent.class, Team.class, TeamExecutionRequest.class);
         ctor.setAccessible(true);
         map.put(stepId, ctor.newInstance(agent, team, req));
     }

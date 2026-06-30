@@ -21,6 +21,7 @@ import io.kairo.api.message.MsgRole;
 import io.kairo.api.skill.SkillDefinition;
 import io.kairo.api.skill.SkillRegistry;
 import io.kairo.api.team.EvaluationVerdict;
+import io.kairo.api.team.SharedContext;
 import io.kairo.api.team.TeamResult.StepOutcome;
 import io.kairo.api.team.TeamStep;
 import io.kairo.api.tool.ToolExecutor;
@@ -29,13 +30,16 @@ import io.kairo.core.agent.ToolCallSink;
 import io.kairo.multiagent.orchestration.ExpertMemoryEntry;
 import io.kairo.multiagent.orchestration.ExpertMemoryStore;
 import io.kairo.multiagent.orchestration.tool.RoleScopedToolExecutor;
+import io.kairo.multiagent.subagent.ContextScope;
 import io.kairo.multiagent.subagent.ExpertProfile;
 import io.kairo.multiagent.subagent.ExpertRoleRegistry;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -199,73 +203,104 @@ public final class DefaultGenerator {
                                     + "'"));
         }
 
-        String prompt = buildPrompt(step, goal, attemptNumber, priorVerdicts, upstreamOutcomes);
-        Msg input;
-        if (modelOverride != null) {
-            input =
-                    Msg.builder()
-                            .role(MsgRole.USER)
-                            .addContent(new io.kairo.api.message.Content.TextContent(prompt))
-                            .metadata("kairo.modelOverride", modelOverride)
-                            .build();
-        } else {
-            input = Msg.of(MsgRole.USER, prompt);
-        }
+        // The shared workspace context is published by the coordinator via Reactor Context (see
+        // ExpertTeamCoordinator#execute) and read here so this stateless generator stays
+        // thread-safe
+        // across concurrent team executions. Absent → empty → appendWorkspaceContext is a no-op.
+        return Mono.deferContextual(
+                ctxView -> {
+                    SharedContext sharedContext =
+                            ctxView.getOrDefault(SHARED_CONTEXT_KEY, SharedContext.empty());
+                    String prompt =
+                            buildPrompt(
+                                    step,
+                                    goal,
+                                    attemptNumber,
+                                    priorVerdicts,
+                                    upstreamOutcomes,
+                                    sharedContext);
+                    Msg input;
+                    if (modelOverride != null) {
+                        input =
+                                Msg.builder()
+                                        .role(MsgRole.USER)
+                                        .addContent(
+                                                new io.kairo.api.message.Content.TextContent(
+                                                        prompt))
+                                        .metadata("kairo.modelOverride", modelOverride)
+                                        .build();
+                    } else {
+                        input = Msg.of(MsgRole.USER, prompt);
+                    }
 
-        // ── Per-step role-scoped tool restriction ─────────────────────────────
-        List<String> allowedTools = step.assignedRole().allowedTools();
-        RoleScopedToolExecutor scopedExecutor = null;
-        ToolExecutor originalExecutor = null;
-        if (!allowedTools.isEmpty()) {
-            originalExecutor = extractToolExecutor(agent);
-            if (originalExecutor != null) {
-                scopedExecutor =
-                        new RoleScopedToolExecutor(
-                                originalExecutor, allowedTools, step.assignedRole().roleId());
-                injectToolExecutor(agent, scopedExecutor);
-                log.debug(
-                        "Step '{}' role '{}': tool restriction active (allowed: {})",
-                        step.stepId(),
-                        step.assignedRole().roleId(),
-                        allowedTools);
-            }
-        }
+                    // ── Per-step role-scoped tool restriction ─────────────────────────────
+                    List<String> allowedTools = step.assignedRole().allowedTools();
+                    RoleScopedToolExecutor scopedExecutor = null;
+                    ToolExecutor originalExecutor = null;
+                    if (!allowedTools.isEmpty()) {
+                        originalExecutor = extractToolExecutor(agent);
+                        if (originalExecutor != null) {
+                            scopedExecutor =
+                                    new RoleScopedToolExecutor(
+                                            originalExecutor,
+                                            allowedTools,
+                                            step.assignedRole().roleId());
+                            injectToolExecutor(agent, scopedExecutor);
+                            log.debug(
+                                    "Step '{}' role '{}': tool restriction active (allowed: {})",
+                                    step.stepId(),
+                                    step.assignedRole().roleId(),
+                                    allowedTools);
+                        }
+                    }
 
-        final RoleScopedToolExecutor capturedScopedExecutor = scopedExecutor;
-        final ToolExecutor capturedOriginalExecutor = originalExecutor;
+                    final RoleScopedToolExecutor capturedScopedExecutor = scopedExecutor;
+                    final ToolExecutor capturedOriginalExecutor = originalExecutor;
 
-        Mono<String> call = agent.call(input).map(Msg::text);
-        if (toolCallSink != null) {
-            call = call.contextWrite(ctx -> ctx.put(ToolCallSink.CONTEXT_KEY, toolCallSink));
-        }
+                    Mono<String> call = agent.call(input).map(Msg::text);
+                    if (toolCallSink != null) {
+                        call =
+                                call.contextWrite(
+                                        ctx -> ctx.put(ToolCallSink.CONTEXT_KEY, toolCallSink));
+                    }
 
-        // Restore original executor after step completes (success or error)
-        if (capturedOriginalExecutor != null) {
-            call =
-                    call.doFinally(
-                            signal -> {
-                                injectToolExecutor(agent, capturedOriginalExecutor);
-                                if (capturedScopedExecutor != null) {
-                                    log.info(
-                                            "Step '{}' role '{}' completed with {} tool rejections",
-                                            step.stepId(),
-                                            step.assignedRole().roleId(),
-                                            capturedScopedExecutor.getRejectionCount());
-                                }
-                            });
-        }
-        return call;
+                    // Restore original executor after step completes (success or error)
+                    if (capturedOriginalExecutor != null) {
+                        call =
+                                call.doFinally(
+                                        signal -> {
+                                            injectToolExecutor(agent, capturedOriginalExecutor);
+                                            if (capturedScopedExecutor != null) {
+                                                log.info(
+                                                        "Step '{}' role '{}' completed with {}"
+                                                                + " tool rejections",
+                                                        step.stepId(),
+                                                        step.assignedRole().roleId(),
+                                                        capturedScopedExecutor.getRejectionCount());
+                                            }
+                                        });
+                    }
+                    return call;
+                });
     }
 
     /** Max chars of an upstream artifact injected into a downstream step's prompt. */
     private static final int MAX_UPSTREAM_CHARS = 6_000;
+
+    /**
+     * Reactor Context key under which the coordinator publishes the once-per-execution {@link
+     * SharedContext}. Propagating it via Reactor Context (rather than a generator field) keeps this
+     * stateless generator thread-safe across concurrent team executions.
+     */
+    public static final String SHARED_CONTEXT_KEY = "kairo.team.sharedContext";
 
     private String buildPrompt(
             TeamStep step,
             String goal,
             int attemptNumber,
             List<EvaluationVerdict> priorVerdicts,
-            List<StepOutcome> upstreamOutcomes) {
+            List<StepOutcome> upstreamOutcomes,
+            SharedContext sharedContext) {
         StringBuilder sb = new StringBuilder();
         sb.append("[Goal] ").append(goal).append('\n');
         sb.append("[Step ")
@@ -285,6 +320,12 @@ public final class DefaultGenerator {
         // Inject prior lessons (self-evolution): recall top-N lessons for this role from
         // cross-task memory, so the expert benefits from past experience instead of starting cold.
         appendPriorLessons(sb, step.assignedRole().roleId());
+
+        // Inject the shared workspace context (tree / key files / summary) filtered by this role's
+        // declared ContextScopes, so the worker orients itself without redundant exploration tool
+        // calls. No-op when no gatherer is wired (empty SharedContext) or the role is
+        // UPSTREAM_ONLY.
+        appendWorkspaceContext(sb, step, sharedContext);
 
         // Feed the outputs of the steps this one depends on, so e.g. the coder sees the
         // architect's design instead of having to rediscover it from the filesystem.
@@ -379,6 +420,84 @@ public final class DefaultGenerator {
         } catch (Exception e) {
             log.debug("Prior-lesson recall failed for role {}: {}", roleId, e.getMessage());
         }
+    }
+
+    /**
+     * Inject the shared workspace context, filtered to the slices this step's role declared via its
+     * {@code ContextScope}s. {@code FULL_TREE}/{@code TREE_SUMMARY}/{@code ALL} → workspace tree;
+     * {@code KEY_FILES}/{@code ALL} → key project files; {@code SOURCE_FILES}/{@code KEY_FILES} →
+     * project summary. {@code UPSTREAM_ONLY} (alone) → skip entirely. No-op when no gatherer is
+     * wired (empty {@link SharedContext}) or the registry has no scope hint for the role.
+     */
+    private void appendWorkspaceContext(
+            StringBuilder sb, TeamStep step, SharedContext sharedContext) {
+        if (sharedContext == null || isEmptyContext(sharedContext)) {
+            return;
+        }
+        Set<ContextScope> scopes =
+                roleRegistry == null
+                        ? Set.of()
+                        : roleRegistry
+                                .resolve(step.assignedRole().roleId())
+                                .map(ExpertProfile::contextScopes)
+                                .orElse(Set.of());
+        if (scopes.isEmpty()) {
+            return;
+        }
+        boolean upstreamOnly =
+                scopes.contains(ContextScope.UPSTREAM_ONLY)
+                        && scopes.stream().noneMatch(s -> s != ContextScope.UPSTREAM_ONLY);
+        if (upstreamOnly) {
+            return;
+        }
+
+        boolean wantTree =
+                scopes.contains(ContextScope.FULL_TREE)
+                        || scopes.contains(ContextScope.TREE_SUMMARY)
+                        || scopes.contains(ContextScope.ALL);
+        boolean wantKeyFiles =
+                scopes.contains(ContextScope.KEY_FILES) || scopes.contains(ContextScope.ALL);
+        boolean wantSummary =
+                scopes.contains(ContextScope.SOURCE_FILES)
+                        || scopes.contains(ContextScope.KEY_FILES)
+                        || scopes.contains(ContextScope.ALL);
+
+        List<String> parts = new ArrayList<>();
+        if (wantTree && !sharedContext.workspaceTree().isBlank()) {
+            parts.add("Workspace tree:\n" + sharedContext.workspaceTree());
+        }
+        if (wantKeyFiles && !sharedContext.keyFiles().isEmpty()) {
+            StringBuilder kf = new StringBuilder("Key project files:");
+            sharedContext
+                    .keyFiles()
+                    .forEach(
+                            (path, content) ->
+                                    kf.append("\n--- ")
+                                            .append(path)
+                                            .append(" ---\n")
+                                            .append(content));
+            parts.add(kf.toString());
+        }
+        if (wantSummary && !sharedContext.projectSummary().isBlank()) {
+            parts.add("Project: " + sharedContext.projectSummary());
+        }
+        if (parts.isEmpty()) {
+            return;
+        }
+        sb.append("\n[Workspace Context] (pre-gathered; avoid redundant exploration)\n");
+        for (String p : parts) {
+            sb.append(p).append('\n');
+        }
+        log.info(
+                "Injected workspace context into worker prompt for role {} (scopes={})",
+                step.assignedRole().roleId(),
+                scopes);
+    }
+
+    private static boolean isEmptyContext(SharedContext ctx) {
+        return ctx.workspaceTree().isBlank()
+                && ctx.keyFiles().isEmpty()
+                && ctx.projectSummary().isBlank();
     }
 
     // ── Reflective tool executor access ────────────────────────────────────────

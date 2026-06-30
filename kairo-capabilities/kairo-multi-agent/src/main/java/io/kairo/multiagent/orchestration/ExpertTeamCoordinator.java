@@ -28,6 +28,7 @@ import io.kairo.api.team.EvaluatorPreference;
 import io.kairo.api.team.MessageBus;
 import io.kairo.api.team.PlannerFailureMode;
 import io.kairo.api.team.RiskProfile;
+import io.kairo.api.team.SharedContext;
 import io.kairo.api.team.Team;
 import io.kairo.api.team.TeamConfig;
 import io.kairo.api.team.TeamCoordinator;
@@ -116,6 +117,7 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
     @Nullable private final SynthesizerStep synthesizer;
     @Nullable private final ExpertMemoryStore memoryStore;
     @Nullable private final LessonExtractor lessonExtractor;
+    @Nullable private volatile WorkspaceContextGatherer contextGatherer;
 
     /**
      * Level-2 team self-evolution (optional). When set, successful team compositions are recorded
@@ -124,6 +126,7 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
      * constructor. Null → L2 disabled (L1 expert memory unaffected).
      */
     @Nullable private volatile TeamPatternStore teamPatternStore;
+
     @Nullable private volatile PlanVerificationStrategy planVerifier;
     private final AtomicLong eventSeq = new AtomicLong(0);
 
@@ -141,7 +144,8 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
      * agent's conversation. The coordinator is per-session, so this map only ever holds the active
      * steps of this session's team.
      */
-    private final ConcurrentHashMap<String, ActiveStep> activeStepAgents = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, ActiveStep> activeStepAgents =
+            new ConcurrentHashMap<>();
 
     /** A step actively running its worker agent, with the context needed to emit STEP_STEERED. */
     private record ActiveStep(Agent agent, Team team, TeamExecutionRequest request) {}
@@ -153,7 +157,8 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
      * still takes effect even if the step it targeted was already wrapping up. Cleared at the start
      * of each {@link #execute} (a fresh task) so directives never leak across tasks.
      */
-    private final java.util.List<String> steerDirectives = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final java.util.List<String> steerDirectives =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
 
     /**
      * Minimal coordinator with the built-in simple strategy.
@@ -352,30 +357,48 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
         publish(team, request, TeamEventType.TEAM_STARTED, Map.of("goal", request.goal()));
         transitionTo(currentState, State.PLANNING);
 
+        // Gather the shared workspace context once per execution. A gather failure degrades to an
+        // empty context (appendWorkspaceContext becomes a no-op) — the team still runs. Published
+        // via Reactor Context so the stateless DefaultGenerator reads it thread-safely per
+        // execution rather than through a racy instance field.
+        Mono<SharedContext> ctxMono =
+                contextGatherer != null
+                        ? contextGatherer
+                                .gather(request)
+                                .onErrorResume(e -> Mono.just(SharedContext.empty()))
+                        : Mono.just(SharedContext.empty());
+
         Mono<TeamResult> pipeline =
-                Mono.defer(
-                                () ->
-                                        runPlanAndSteps(
-                                                request,
-                                                team,
-                                                currentState,
-                                                outcomes,
-                                                warnings,
-                                                started,
-                                                terminalEmitted,
-                                                planOnly))
-                        .timeout(
-                                request.config().teamTimeout(),
+                ctxMono.flatMap(
+                        sharedContext ->
                                 Mono.defer(
-                                        () ->
-                                                onTimeout(
-                                                        request,
-                                                        team,
-                                                        currentState,
-                                                        outcomes,
-                                                        warnings,
-                                                        started,
-                                                        terminalEmitted)));
+                                                () ->
+                                                        runPlanAndSteps(
+                                                                request,
+                                                                team,
+                                                                currentState,
+                                                                outcomes,
+                                                                warnings,
+                                                                started,
+                                                                terminalEmitted,
+                                                                planOnly))
+                                        .timeout(
+                                                request.config().teamTimeout(),
+                                                Mono.defer(
+                                                        () ->
+                                                                onTimeout(
+                                                                        request,
+                                                                        team,
+                                                                        currentState,
+                                                                        outcomes,
+                                                                        warnings,
+                                                                        started,
+                                                                        terminalEmitted)))
+                                        .contextWrite(
+                                                ctx ->
+                                                        ctx.put(
+                                                                DefaultGenerator.SHARED_CONTEXT_KEY,
+                                                                sharedContext)));
 
         // Planning runs synchronously at the head of runPlanAndSteps and, when an LLM planning
         // agent is wired, blocks on the model call. Offload the whole pipeline to boundedElastic
@@ -491,29 +514,46 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                     uninstallCachingExecutors(cachedOriginals);
                                 });
 
-        return pipeline.timeout(
-                        ctx.request().config().teamTimeout(),
-                        Mono.defer(
-                                () ->
-                                        onTimeout(
-                                                ctx.request(),
-                                                ctx.team(),
-                                                currentState,
-                                                outcomes,
-                                                warnings,
-                                                started,
-                                                terminalEmitted)))
-                .onErrorResume(
-                        ex ->
-                                onFailure(
-                                        ctx.request(),
-                                        ctx.team(),
-                                        currentState,
-                                        outcomes,
-                                        warnings,
-                                        started,
-                                        terminalEmitted,
-                                        ex));
+        // Gather workspace context (same as execute) so the confirmAndExecute path — which is the
+        // one experts actually use after plan approval — also publishes SharedContext via Reactor
+        // Context for the generator to inject per role scope.
+        Mono<SharedContext> ctxMono =
+                contextGatherer != null
+                        ? contextGatherer
+                                .gather(ctx.request())
+                                .onErrorResume(e -> Mono.just(SharedContext.empty()))
+                        : Mono.just(SharedContext.empty());
+
+        return ctxMono.flatMap(
+                sharedContext ->
+                        pipeline.timeout(
+                                        ctx.request().config().teamTimeout(),
+                                        Mono.defer(
+                                                () ->
+                                                        onTimeout(
+                                                                ctx.request(),
+                                                                ctx.team(),
+                                                                currentState,
+                                                                outcomes,
+                                                                warnings,
+                                                                started,
+                                                                terminalEmitted)))
+                                .onErrorResume(
+                                        ex ->
+                                                onFailure(
+                                                        ctx.request(),
+                                                        ctx.team(),
+                                                        currentState,
+                                                        outcomes,
+                                                        warnings,
+                                                        started,
+                                                        terminalEmitted,
+                                                        ex))
+                                .contextWrite(
+                                        c ->
+                                                c.put(
+                                                        DefaultGenerator.SHARED_CONTEXT_KEY,
+                                                        sharedContext)));
     }
 
     /** Check if a pending plan exists for the given team ID. */
@@ -1804,8 +1844,7 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                 () -> {
                     Agent agent = bindings.get(step.assignedRole().roleId());
                     if (agent != null) {
-                        activeStepAgents.put(
-                                step.stepId(), new ActiveStep(agent, team, request));
+                        activeStepAgents.put(step.stepId(), new ActiveStep(agent, team, request));
                     }
                     return generate.doFinally(sig -> activeStepAgents.remove(step.stepId()));
                 });
@@ -1827,7 +1866,8 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             return false;
         }
         // Belt-and-suspenders: record the directive so every subsequent step's worker also sees
-        // it (via augmentGoal), even if the live injection below lands on a step that's wrapping up.
+        // it (via augmentGoal), even if the live injection below lands on a step that's wrapping
+        // up.
         steerDirectives.add(directive.trim());
 
         Msg msg = Msg.of(MsgRole.USER, "[用户实时干预] " + directive.trim());
@@ -1851,9 +1891,19 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
     }
 
     /**
+     * Enable workspace-context injection: when set, the coordinator gathers a shared workspace
+     * snapshot once per execution and publishes it via Reactor Context so each worker's prompt is
+     * augmented with the slices its role declared (see {@code ContextScope}), without redundant
+     * exploration tool calls.
+     */
+    public void setWorkspaceContextGatherer(@Nullable WorkspaceContextGatherer gatherer) {
+        this.contextGatherer = gatherer;
+    }
+
+    /**
      * Return a request whose goal is augmented with recalled team-collaboration patterns (L2
-     * recall), so the planner reuses expert compositions that worked for similar past tasks.
-     * No-op (returns the original request) when L2 is disabled or nothing relevant is recalled.
+     * recall), so the planner reuses expert compositions that worked for similar past tasks. No-op
+     * (returns the original request) when L2 is disabled or nothing relevant is recalled.
      */
     private TeamExecutionRequest requestForPlanning(TeamExecutionRequest request) {
         TeamPatternStore store = this.teamPatternStore;
@@ -1875,8 +1925,11 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                 "\n\n[Learned team compositions — for similar past tasks these expert sequences"
                         + " worked; reuse when they fit]");
         for (TeamPattern p : patterns) {
-            sb.append("\n- roles: ").append(String.join(" → ", p.roleSequence()))
-                    .append(" (").append(p.dagShape()).append(")")
+            sb.append("\n- roles: ")
+                    .append(String.join(" → ", p.roleSequence()))
+                    .append(" (")
+                    .append(p.dagShape())
+                    .append(")")
                     .append(p.success() ? " [succeeded]" : " [failed]");
         }
         return new TeamExecutionRequest(
@@ -1947,7 +2000,10 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                     active.request(),
                     TeamEventType.STEP_STEERED,
                     Map.of("stepId", stepId, "directive", trimForEvent(directive)));
-            log.info("Mid-flight steer injected into step {} ({} chars)", stepId, directive.length());
+            log.info(
+                    "Mid-flight steer injected into step {} ({} chars)",
+                    stepId,
+                    directive.length());
             return true;
         } catch (RuntimeException ex) {
             log.warn("steer injectMessages failed for step {}: {}", stepId, ex.toString());

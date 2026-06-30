@@ -83,7 +83,9 @@ public class TeamPatternStore {
                             List<TeamPattern> all = readAll();
                             all.add(pattern);
                             if (all.size() > MAX_PATTERNS) {
-                                all = new ArrayList<>(all.subList(all.size() - MAX_PATTERNS, all.size()));
+                                all =
+                                        new ArrayList<>(
+                                                all.subList(all.size() - MAX_PATTERNS, all.size()));
                             }
                             objectMapper.writeValue(file.toFile(), all);
                             log.debug(

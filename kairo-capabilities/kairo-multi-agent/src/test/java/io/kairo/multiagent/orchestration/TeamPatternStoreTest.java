@@ -48,14 +48,29 @@ class TeamPatternStoreTest {
     @DisplayName("recall ranks keyword-relevant patterns above unrelated ones")
     void recallRanksByRelevance(@TempDir Path dir) {
         TeamPatternStore store = new TeamPatternStore(dir);
-        store.record(new TeamPattern("write database migration scripts",
-                List.of("expert:coder"), "serial", true, 1.0, Instant.now())).block();
-        store.record(new TeamPattern("design a REST API for the users service",
-                List.of("expert:architect", "expert:coder"), "serial", true, 1.0, Instant.now())).block();
+        store.record(
+                        new TeamPattern(
+                                "write database migration scripts",
+                                List.of("expert:coder"),
+                                "serial",
+                                true,
+                                1.0,
+                                Instant.now()))
+                .block();
+        store.record(
+                        new TeamPattern(
+                                "design a REST API for the users service",
+                                List.of("expert:architect", "expert:coder"),
+                                "serial",
+                                true,
+                                1.0,
+                                Instant.now()))
+                .block();
 
         List<TeamPattern> recalled = store.recall("create a REST API users endpoint", 1);
         assertEquals(1, recalled.size());
-        assertTrue(recalled.get(0).roleSequence().contains("expert:architect"),
+        assertTrue(
+                recalled.get(0).roleSequence().contains("expert:architect"),
                 "expected the API-related pattern to rank first");
     }
 
@@ -64,7 +79,10 @@ class TeamPatternStoreTest {
     void emptyAndGuard(@TempDir Path dir) {
         TeamPatternStore store = new TeamPatternStore(dir);
         assertTrue(store.recall("anything", 5).isEmpty());
-        store.record(new TeamPattern("x", List.of("expert:coder"), "serial", true, 1.0, Instant.now())).block();
+        store.record(
+                        new TeamPattern(
+                                "x", List.of("expert:coder"), "serial", true, 1.0, Instant.now()))
+                .block();
         assertTrue(store.recall("x", 0).isEmpty());
         assertFalse(store.recall("x", 5).isEmpty());
     }
