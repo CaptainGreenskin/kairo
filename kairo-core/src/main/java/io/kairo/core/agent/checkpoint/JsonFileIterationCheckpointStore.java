@@ -63,8 +63,25 @@ public final class JsonFileIterationCheckpointStore implements IterationCheckpoi
     private static final String META_SUFFIX = ".json";
     private static final String MESSAGES_SUFFIX = "-messages.json";
     private static final String ITERATION_PREFIX = "iteration-";
-    private static final int DEFAULT_MAX_RETAINED = 3;
+
+    // Retained checkpoints double as rewind targets, so the default is generous enough for a
+    // meaningful rewind depth (was 3, which only covered crash recovery). Override with
+    // KAIRO_ITERATION_CHECKPOINT_RETENTION.
+    private static final int DEFAULT_MAX_RETAINED = resolveDefaultRetention();
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+
+    private static int resolveDefaultRetention() {
+        String env = System.getenv("KAIRO_ITERATION_CHECKPOINT_RETENTION");
+        if (env != null && !env.isBlank()) {
+            try {
+                int parsed = Integer.parseInt(env.trim());
+                if (parsed >= 1) return parsed;
+            } catch (NumberFormatException ignored) {
+                // fall through to default
+            }
+        }
+        return 20;
+    }
 
     private final Path storageDir;
     private final ObjectMapper objectMapper;
@@ -217,6 +234,50 @@ public final class JsonFileIterationCheckpointStore implements IterationCheckpoi
                                         e.getMessage());
                             }
                             log.debug("Deleted all iteration checkpoints from {}", storageDir);
+                        })
+                .subscribeOn(Schedulers.boundedElastic())
+                .then();
+    }
+
+    /**
+     * Load a specific iteration checkpoint by index — the rewind counterpart to {@link
+     * #loadLast()}.
+     *
+     * <p>Not part of the {@link IterationCheckpointStore} SPI (which only exposes {@code
+     * loadLast}); callers that need a specific iteration hold the concrete type. Returns empty if
+     * that checkpoint no longer exists (e.g. it was pruned beyond the retention window).
+     *
+     * @param iteration the iteration index to load
+     * @return a Mono emitting the checkpoint, or empty if absent
+     */
+    public Mono<Optional<IterationCheckpoint>> loadAt(int iteration) {
+        return Mono.fromCallable(() -> loadCheckpoint(iteration))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /**
+     * Delete every checkpoint with an iteration index greater than {@code iteration}. Used by
+     * rewind so that {@link #loadLast()} subsequently returns the rewind target and a resumed run
+     * continues from there rather than from the (now discarded) later turns.
+     *
+     * @param iteration the highest iteration to keep
+     * @return a Mono completing when the later checkpoints are removed
+     */
+    public Mono<Void> deleteAfter(int iteration) {
+        return Mono.fromRunnable(
+                        () -> {
+                            try {
+                                for (int it : listAllIterations()) {
+                                    if (it > iteration) {
+                                        deleteCheckpointFiles(it);
+                                    }
+                                }
+                            } catch (IOException e) {
+                                log.warn(
+                                        "Failed to delete checkpoints after {}: {}",
+                                        iteration,
+                                        e.getMessage());
+                            }
                         })
                 .subscribeOn(Schedulers.boundedElastic())
                 .then();

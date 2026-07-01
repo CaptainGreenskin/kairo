@@ -1009,6 +1009,15 @@ public class DefaultReActAgent implements Agent {
     }
 
     /**
+     * Register a best-effort callback fired with the iteration index after each iteration's
+     * checkpoint is persisted. Used by the app layer to capture a rewindable workspace snapshot
+     * aligned with the checkpoint at that iteration.
+     */
+    public void setOnIterationComplete(java.util.function.IntConsumer onIterationComplete) {
+        reactLoop.setOnIterationComplete(onIterationComplete);
+    }
+
+    /**
      * Return the cost tracker configured for this agent.
      *
      * @return the cost tracker, never {@code null} (defaults to {@link NoopCostTracker})

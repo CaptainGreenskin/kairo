@@ -191,20 +191,23 @@ class JsonFileIterationCheckpointStoreTest {
     class PruningTests {
 
         @Test
-        @DisplayName("retains only latest 3 checkpoints by default")
-        void retainsLatestThreeByDefault() {
-            // Save 5 checkpoints
+        @DisplayName("default retention (20) keeps recent checkpoints for rewind depth")
+        void defaultRetentionKeepsRecentCheckpoints() {
+            // Save 5 checkpoints — well within the default retention window, so none are pruned
+            // (the default is generous precisely so rewind can reach several turns back).
             for (int i = 1; i <= 5; i++) {
                 store.save(i, testMessages(i)).block();
             }
 
-            // Verify only 3/4/5 remain
             List<String> files = listMetaFiles();
             assertThat(files)
                     .containsExactlyInAnyOrder(
-                            "iteration-3.json", "iteration-4.json", "iteration-5.json");
+                            "iteration-1.json",
+                            "iteration-2.json",
+                            "iteration-3.json",
+                            "iteration-4.json",
+                            "iteration-5.json");
 
-            // Verify loadLast returns iteration 5
             Optional<IterationCheckpoint> loaded = store.loadLast().block();
             assertThat(loaded).isPresent();
             assertThat(loaded.get().iteration()).isEqualTo(5);
@@ -222,6 +225,42 @@ class JsonFileIterationCheckpointStoreTest {
 
             List<String> files = listMetaFiles();
             assertThat(files).containsExactlyInAnyOrder("iteration-3.json", "iteration-4.json");
+        }
+
+        @Test
+        @DisplayName("loadAt targets a specific iteration (rewind), empty when pruned/absent")
+        void loadAtTargetsSpecificIteration() {
+            JsonFileIterationCheckpointStore concrete =
+                    new JsonFileIterationCheckpointStore(tempDir, new SessionSerializer());
+            for (int i = 1; i <= 3; i++) {
+                concrete.save(i, testMessages(i)).block();
+            }
+
+            Optional<IterationCheckpoint> mid = concrete.loadAt(2).block();
+            assertThat(mid).isPresent();
+            assertThat(mid.get().iteration()).isEqualTo(2);
+
+            assertThat(concrete.loadAt(99).block()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("deleteAfter discards later iterations so loadLast returns the rewind target")
+        void deleteAfterTruncatesToRewindTarget() {
+            JsonFileIterationCheckpointStore concrete =
+                    new JsonFileIterationCheckpointStore(tempDir, new SessionSerializer());
+            for (int i = 0; i <= 4; i++) {
+                concrete.save(i, testMessages(i)).block();
+            }
+
+            concrete.deleteAfter(2).block();
+
+            List<String> files = listMetaFiles();
+            assertThat(files)
+                    .containsExactlyInAnyOrder(
+                            "iteration-0.json", "iteration-1.json", "iteration-2.json");
+            Optional<IterationCheckpoint> last = concrete.loadLast().block();
+            assertThat(last).isPresent();
+            assertThat(last.get().iteration()).isEqualTo(2);
         }
 
         @Test

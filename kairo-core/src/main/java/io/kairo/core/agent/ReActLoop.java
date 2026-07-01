@@ -97,6 +97,10 @@ class ReActLoop {
     @Nullable private volatile KairoEventBus eventBus;
     @Nullable private volatile CompactionTrigger compactionTrigger;
     @Nullable private volatile StallDetector stallDetector;
+    // Best-effort per-iteration callback (iteration index) fired after each iteration's checkpoint
+    // is persisted — used by the app layer to capture a rewindable workspace snapshot aligned with
+    // the checkpoint. Injected post-construction like the other collaborators above.
+    @Nullable private volatile java.util.function.IntConsumer onIterationComplete;
 
     // Decomposed phase collaborators
     private final IterationGuards guards;
@@ -235,6 +239,10 @@ class ReActLoop {
         this.toolPhase.setCheckpointManager(checkpointManager);
     }
 
+    void setOnIterationComplete(@Nullable java.util.function.IntConsumer onIterationComplete) {
+        this.onIterationComplete = onIterationComplete;
+    }
+
     /** Returns the total number of tool calls executed in this loop. */
     int getTotalToolCalls() {
         return toolPhase.getTotalToolCalls();
@@ -247,6 +255,20 @@ class ReActLoop {
 
     void setStreamingEnabled(boolean enabled) {
         this.streamingEnabled = enabled;
+    }
+
+    /**
+     * Fire the per-iteration callback (best-effort); called inline at each tool-bearing continue.
+     */
+    private void fireIterationComplete(int iteration) {
+        var cb = onIterationComplete;
+        if (cb != null) {
+            try {
+                cb.accept(iteration);
+            } catch (RuntimeException e) {
+                log.debug("onIterationComplete callback failed: {}", e.toString());
+            }
+        }
     }
 
     boolean isStreamingEnabled() {
@@ -465,17 +487,26 @@ class ReActLoop {
             }
             case IterationSignal.ContinueAfterTools ignored -> {
                 consecutiveSkips.set(0);
+                // Fire the per-iteration callback NOW — tools just finished, the checkpoint for
+                // this iteration is persisted, and the working tree holds exactly this iteration's
+                // end state. Doing this here (not on the recursive runLoop's doOnNext) is what
+                // makes
+                // each snapshot capture a DISTINCT iteration instead of all collapsing to the final
+                // state when the deferred chain resolves at agent end.
+                fireIterationComplete(currentIteration.get());
                 currentIteration.incrementAndGet();
                 yield Mono.defer(this::runLoop);
             }
             case IterationSignal.ContinueWithNudge n -> {
                 consecutiveSkips.set(0);
+                fireIterationComplete(currentIteration.get());
                 currentIteration.incrementAndGet();
                 conversationHistory.add(n.syntheticMsg());
                 yield Mono.defer(this::runLoop);
             }
             case IterationSignal.CompactThenContinue cc -> {
                 consecutiveSkips.set(0);
+                fireIterationComplete(currentIteration.get());
                 currentIteration.incrementAndGet();
                 if (compactionTrigger != null) {
                     yield compactionTrigger
