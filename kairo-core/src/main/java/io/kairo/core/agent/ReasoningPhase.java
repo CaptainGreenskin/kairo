@@ -223,14 +223,24 @@ public class ReasoningPhase {
                                     }
                                     List<Msg> finalMessages = effectiveMessages;
                                     ModelConfig finalConfig = guardedConfig;
+                                    Mono<ModelResponse> call;
                                     if (streamingEnabledSupplier.get()) {
-                                        return callModelStreamingWithFallback(
-                                                finalMessages, finalConfig);
+                                        call =
+                                                callModelStreamingWithFallback(
+                                                        finalMessages, finalConfig);
+                                    } else {
+                                        call =
+                                                guards.withCancellationSignal(
+                                                        ctx.errorRecovery()
+                                                                .callModelWithRecovery(
+                                                                        finalMessages,
+                                                                        finalConfig,
+                                                                        0));
                                     }
-                                    return guards.withCancellationSignal(
-                                            ctx.errorRecovery()
-                                                    .callModelWithRecovery(
-                                                            finalMessages, finalConfig, 0));
+                                    // POST_MODEL guardrail — evaluate the model's response for
+                                    // DENY/MODIFY. Previously this was defined but never wired into
+                                    // the flow, so post-model deny/modify silently never fired.
+                                    return call.flatMap(this::evaluatePostModelGuardrail);
                                 });
 
         return guards.withCooperativeCancellation(
