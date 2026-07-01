@@ -15,6 +15,7 @@
  */
 package io.kairo.core.agent;
 
+import io.kairo.api.agent.AgentDiagnostics;
 import io.kairo.api.agent.IterationSignal;
 import io.kairo.api.exception.AgentInterruptedException;
 import io.kairo.api.execution.ExecutionEventType;
@@ -666,6 +667,27 @@ class ToolPhase {
                                                     e.getClass().getSimpleName(),
                                                     "tool_name",
                                                     toolName)));
+                        })
+                // Mark the tool active for the duration of the call so the StallDetector suppresses
+                // its idle check while a legitimately long tool (build, test, subagent) runs.
+                // doFinally guarantees the clear fires on complete/error/cancel; the diagnostics
+                // impl also self-heals if a clear is ever missed.
+                .transformDeferredContextual(
+                        (mono, ctxView) -> {
+                            MutableDiagnostics diag =
+                                    ctxView.getOrDefault(MutableDiagnostics.class, null);
+                            if (diag == null) {
+                                return mono;
+                            }
+                            return mono.doOnSubscribe(
+                                            s ->
+                                                    diag.setActiveTool(
+                                                            new AgentDiagnostics
+                                                                    .ToolInvocationSnapshot(
+                                                                    toolUseId,
+                                                                    toolName,
+                                                                    Instant.now())))
+                                    .doFinally(sig -> diag.clearActiveTool());
                         });
     }
 

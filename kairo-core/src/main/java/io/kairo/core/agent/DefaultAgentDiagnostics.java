@@ -38,6 +38,10 @@ final class DefaultAgentDiagnostics implements AgentDiagnostics, MutableDiagnost
     private final AtomicLong lastEventAtEpochMs = new AtomicLong(System.currentTimeMillis());
     private final ConcurrentHashMap<String, AtomicLong> eventCountsMap = new ConcurrentHashMap<>();
     private final AtomicReference<ToolInvocationSnapshot> activeTool = new AtomicReference<>();
+    // Depth counter so parallel/nested tool calls don't let the first clearActiveTool()
+    // prematurely clear while siblings are still running — only the last clear resets state.
+    private final AtomicInteger activeToolDepth = new AtomicInteger(0);
+    private volatile long activeToolStartedAtMs = 0;
     private volatile boolean activeModelCall = false;
     private volatile long modelCallStartMs = 0;
     private volatile String traceId;
@@ -82,7 +86,20 @@ final class DefaultAgentDiagnostics implements AgentDiagnostics, MutableDiagnost
 
     @Override
     public Optional<ToolInvocationSnapshot> activeToolInvocation() {
-        return Optional.ofNullable(activeTool.get());
+        ToolInvocationSnapshot snap = activeTool.get();
+        if (snap == null) return Optional.empty();
+        // Self-heal: if a tool has been "active" past the hard limit, presume clearActiveTool()
+        // was missed (e.g. a reactive chain that never terminated so doFinally never fired) and
+        // clear it — otherwise the StallDetector would stay suppressed forever and a genuinely
+        // hung tool would only be caught by the 4h overall timeout.
+        if (activeToolStartedAtMs > 0
+                && System.currentTimeMillis() - activeToolStartedAtMs > activeToolHardLimitMs) {
+            activeToolDepth.set(0);
+            activeTool.set(null);
+            activeToolStartedAtMs = 0;
+            return Optional.empty();
+        }
+        return Optional.of(snap);
     }
 
     @Override
@@ -116,11 +133,21 @@ final class DefaultAgentDiagnostics implements AgentDiagnostics, MutableDiagnost
     @Override
     public void setActiveTool(ToolInvocationSnapshot snapshot) {
         activeTool.set(snapshot);
+        activeToolStartedAtMs = System.currentTimeMillis();
+        activeToolDepth.incrementAndGet();
+        recordEvent("tool_call_start");
     }
 
     @Override
     public void clearActiveTool() {
-        activeTool.set(null);
+        if (activeToolDepth.decrementAndGet() <= 0) {
+            activeToolDepth.set(0);
+            activeTool.set(null);
+            activeToolStartedAtMs = 0;
+            // Refresh the stall clock so a long tool that just finished doesn't immediately trip
+            // the StallDetector before the next model call has a chance to start.
+            recordEvent("tool_call_end");
+        }
     }
 
     @Override
@@ -149,6 +176,37 @@ final class DefaultAgentDiagnostics implements AgentDiagnostics, MutableDiagnost
     }
 
     private static final long MODEL_CALL_HARD_LIMIT_MS = 600_000L; // 10 minutes
+
+    // Backstop for a leaked activeTool (missed clearActiveTool()). Generous by default — longer
+    // than any typical tool/build so it never false-clears a legitimately long tool; it only fires
+    // when a clear was genuinely lost. Raise via KAIRO_ACTIVE_TOOL_HARD_LIMIT_MS for multi-hour
+    // subagents. This is a bug-backstop, not a policy timeout — real per-tool limits live in
+    // DefaultToolExecutor.
+    private static final long ACTIVE_TOOL_HARD_LIMIT_MS = resolveActiveToolHardLimit();
+
+    // Instance-level copy so tests can shrink it without waiting out the 30-minute default.
+    private volatile long activeToolHardLimitMs = ACTIVE_TOOL_HARD_LIMIT_MS;
+
+    /**
+     * Package-private override for tests — shrink the self-heal window to assert it
+     * deterministically.
+     */
+    void setActiveToolHardLimitMs(long ms) {
+        this.activeToolHardLimitMs = ms;
+    }
+
+    private static long resolveActiveToolHardLimit() {
+        String env = System.getenv("KAIRO_ACTIVE_TOOL_HARD_LIMIT_MS");
+        if (env != null && !env.isBlank()) {
+            try {
+                long parsed = Long.parseLong(env.trim());
+                if (parsed > 0) return parsed;
+            } catch (NumberFormatException ignored) {
+                // fall through to default
+            }
+        }
+        return 1_800_000L; // 30 minutes
+    }
 
     boolean isActiveModelCall() {
         if (!activeModelCall) return false;

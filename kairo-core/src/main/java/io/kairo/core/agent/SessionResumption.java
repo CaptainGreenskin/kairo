@@ -20,6 +20,7 @@ import io.kairo.api.message.Content;
 import io.kairo.api.message.Msg;
 import io.kairo.api.message.MsgRole;
 import io.kairo.core.memory.SessionMemoryCompact;
+import java.time.Duration;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +36,23 @@ import reactor.core.scheduler.Schedulers;
 class SessionResumption {
 
     private static final Logger log = LoggerFactory.getLogger(SessionResumption.class);
+
+    // Bound the memory-store load so a stalled/unavailable store can't hang session rehydration.
+    // Env-configurable via KAIRO_SESSION_LOAD_TIMEOUT_MS (default 30s).
+    private static final Duration LOAD_TIMEOUT = resolveLoadTimeout();
+
+    private static Duration resolveLoadTimeout() {
+        String env = System.getenv("KAIRO_SESSION_LOAD_TIMEOUT_MS");
+        if (env != null && !env.isBlank()) {
+            try {
+                long parsed = Long.parseLong(env.trim());
+                if (parsed > 0) return Duration.ofMillis(parsed);
+            } catch (NumberFormatException ignored) {
+                // fall through to default
+            }
+        }
+        return Duration.ofSeconds(30);
+    }
 
     private final AgentConfig config;
     private final ReActLoop reactLoop;
@@ -52,14 +70,15 @@ class SessionResumption {
         if (config.sessionId() == null || config.memoryStore() == null) {
             return Mono.empty();
         }
-        return Mono.fromCallable(
+        return Mono.defer(
                         () -> {
                             var sessionMemory =
                                     new SessionMemoryCompact(
                                             config.memoryStore(), config.modelProvider());
-                            return sessionMemory.loadSession(config.sessionId()).block();
+                            return sessionMemory.loadSession(config.sessionId());
                         })
                 .subscribeOn(Schedulers.boundedElastic())
+                .timeout(LOAD_TIMEOUT)
                 .flatMap(
                         previousSession -> {
                             if (previousSession != null && !previousSession.isEmpty()) {
