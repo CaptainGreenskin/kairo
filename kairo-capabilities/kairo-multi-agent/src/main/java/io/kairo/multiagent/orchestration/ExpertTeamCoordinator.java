@@ -1885,6 +1885,36 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
         return hit;
     }
 
+    /**
+     * Stop a single running expert step immediately. The worker agent is interrupted (cancels
+     * in-flight model/tool calls within ~50ms via {@link Agent#interrupt()}), and a {@link
+     * TeamEventType#STEP_COMPLETED} event with {@code status:"stopped"} is published. Other running
+     * steps are unaffected — the DAG's {@code onErrorResume} swallows the resulting {@link
+     * io.kairo.api.exception.AgentInterruptedException} as a failed-step warning, so dependent
+     * steps still run.
+     *
+     * @param stepId the step to stop; null/blank → no-op
+     * @return {@code true} if the step was found and interrupted; {@code false} if not running
+     */
+    public boolean stopStep(@Nullable String stepId) {
+        if (stepId == null || stepId.isBlank()) {
+            return false;
+        }
+        ActiveStep active = activeStepAgents.get(stepId);
+        if (active == null) {
+            log.debug("stopStep: step '{}' not in activeStepAgents (already finished?)", stepId);
+            return false;
+        }
+        active.agent().interrupt();
+        publish(
+                active.team(),
+                active.request(),
+                TeamEventType.STEP_COMPLETED,
+                Map.of("stepId", stepId, "status", "stopped"));
+        log.info("stopStep: interrupted worker for step '{}'", stepId);
+        return true;
+    }
+
     /** Enable Level-2 team self-evolution: record successful compositions + recall at planning. */
     public void setTeamPatternStore(@Nullable TeamPatternStore store) {
         this.teamPatternStore = store;
