@@ -62,6 +62,9 @@ public final class DeferredToolFilter {
                     "web_fetch",
                     "web_search",
                     "ask_user",
+                    // Experts-mode dispatch (only in registry when experts preset is active;
+                    // harmless in Agent/Team — registry won't contain it so nothing is sent)
+                    "request_expert_team",
                     // Scheduling (agent should reach these directly — recurring/deferred tasks are
                     // a primary use case, not a rare lookup)
                     "CronCreate",
