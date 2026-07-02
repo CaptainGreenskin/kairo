@@ -573,8 +573,13 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             AtomicReference<Boolean> terminalEmitted,
             boolean planOnly) {
         TeamExecutionPlan plan;
+        long planStart = System.currentTimeMillis();
         try {
             plan = planner.plan(requestForPlanning(request), team);
+            log.info(
+                    "Planning completed in {}ms, {} steps",
+                    System.currentTimeMillis() - planStart,
+                    plan.totalSteps());
         } catch (RuntimeException primary) {
             if (request.config().plannerFailureMode() == PlannerFailureMode.SINGLE_STEP_FALLBACK) {
                 log.warn(
@@ -755,6 +760,7 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
         // Ensure we are in GENERATING before dispatching a step.
         transitionIfNeeded(currentState, State.GENERATING);
 
+        long stepStart = System.currentTimeMillis();
         publish(
                 team,
                 request,
@@ -835,10 +841,19 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                                         stepAgent != null
                                                 ? stepAgent.totalTokensUsed() - tokensBefore
                                                 : 0;
+                                long stepElapsed = System.currentTimeMillis() - stepStart;
+                                log.info(
+                                        "Step '{}' (role={}) completed in {}ms, {} tokens, {} attempt(s)",
+                                        step.stepId(),
+                                        step.assignedRole().roleId(),
+                                        stepElapsed,
+                                        stepTokens,
+                                        result.attempt());
                                 Map<String, Object> completedAttrs = new LinkedHashMap<>();
                                 completedAttrs.put("stepId", step.stepId());
                                 completedAttrs.put("attempts", result.attempt());
                                 completedAttrs.put("tokensUsed", stepTokens);
+                                completedAttrs.put("elapsedMs", stepElapsed);
                                 publish(
                                         team,
                                         request,
@@ -1524,13 +1539,19 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
                         }
                     }
 
+                    Duration totalDuration = Duration.between(started, Instant.now());
+                    log.info(
+                            "Team execution completed: {} steps, {}ms total, status={}",
+                            orderedOutcomes.size(),
+                            totalDuration.toMillis(),
+                            status);
                     TeamResult result =
                             TeamResult.of(
                                     request.requestId(),
                                     status,
                                     orderedOutcomes,
                                     finalOutput,
-                                    Duration.between(started, Instant.now()),
+                                    totalDuration,
                                     List.copyOf(allWarnings));
                     emitTerminalOnce(
                             team,
@@ -1582,6 +1603,12 @@ public class ExpertTeamCoordinator implements TeamCoordinator {
             List<StepOutcome> outcomes,
             @Nullable TeamExecutionPlan plan) {
         if (memoryStore == null || lessonExtractor == null || outcomes.isEmpty()) {
+            return;
+        }
+        // Skip lesson extraction for trivial executions: single-step plans rarely produce
+        // durable cross-task lessons, and the LLM call adds latency/cost for little value.
+        if (plan != null && plan.totalSteps() <= 1) {
+            log.debug("Skipping lesson extraction: single-step plan");
             return;
         }
         java.util.Map<String, List<StepOutcome>> byRole = groupOutcomesByRole(outcomes, plan);
